@@ -7,8 +7,9 @@ Openvstorage currently is not optimized for boot drive storage and for big data 
 # Solution
 
 Make separate architecture for boot volume storage.
-It should be deduplicated
-Fast 
+It should be:
+* deduplicated
+* Fast 
 
 # Proposed architectre
 
