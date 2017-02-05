@@ -12,9 +12,7 @@ Fast
 
 # Proposed architectre
 
-Volume driver for qemu
-=>
-Connects to a network volume driver (EFBD deamon)
+![EFBD Architecture](https://github.com/g8os/EFBD/blob/master/EFBD%20Architecture.png "EFBD Architecture")
 
 EFBD connects to a network of ARDB or Tarantool (decide what is better) instances.
 
