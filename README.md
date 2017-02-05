@@ -12,16 +12,16 @@ Fast
 
 # Proposed architectre
 
-Volume driver for kemu
+Volume driver for qemu
 =>
-Connects to a StorageController
+Connects to a network volume driver (EFBD deamon)
 
-StorageController Manages network of ARDB or Tarantool (decide what is better) instances.
+EFBD connects to a network of ARDB or Tarantool (decide what is better) instances.
 
-- Each block of data (what size?) is hashed and stored in ARDB/Tarantool instances utilizing the hash of the data block as a key. 
+- Each block of data (16kb) is hashed and stored in ARDB/Tarantool instances utilizing the hash of the data block as a key. 
 - First byte of the hash will determine which instance should store it [0-255]. In total there are 256 master instances in the network.
 - Eash instance should have slave backup with async replication. 256 master and 256 slave.
-- For each block we keep metadata in CAPMP format(?) with a references to up to 10 current users of the data.
+- For each block we keep metadata in CAPNP format with a references to up to 10 current users of the data.
 - If nobody references to the data block anymore its get deleted.
 - If more than 10 references exists - block is marked as permanent and no reference accounting needed anymore.
 
