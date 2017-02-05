@@ -15,7 +15,7 @@ It should be:
 
 ![EFBD Architecture](https://docs.google.com/drawings/d/1XH0dqAPFfoNBUaA4A4Si7HnhFU_0xP0wFrJFvWig5iI/pub?w=1149&h=634 "EFBD Architecture")
 
-EFBD have  
+EFBD block device   
 connects to a network of ARDB or Tarantool (decide what is better) instances.
 
 - Each block of data (16kb) is hashed and stored in ARDB/Tarantool instances utilizing the hash of the data block as a key. 
@@ -25,6 +25,8 @@ connects to a network of ARDB or Tarantool (decide what is better) instances.
 - If nobody references to the data block anymore its get deleted.
 - If more than 10 references exists - block is marked as permanent and no reference accounting needed anymore.
 
+Metadata 
+[Metadata structure draft](https://docs.google.com/a/greenitglobe.com/spreadsheets/d/13MmEJ0OPdlovPn54ZJ-vLDtlGKYWw9EmkhST5GY0Wtc/edit?usp=sharing)
 
 
 ##Advancements:
