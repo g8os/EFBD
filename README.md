@@ -42,3 +42,5 @@ It should be:
 #### Snapshots and history: 
 1. All changes to sequence of hashes should be logged to archive storage.
 
+Links:
+https://github.com/abligh/gonbdserver
