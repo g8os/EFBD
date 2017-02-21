@@ -1,0 +1,48 @@
+{
+	"ImportPath": "github.com/g8os/blockstor/nbdserver",
+	"GoVersion": "go1.7",
+	"GodepVersion": "v75",
+	"Deps": [
+		{
+			"ImportPath": "github.com/abligh/gonbdserver/nbd",
+			"Rev": "6a789f71f3276b52b8c70c096c0ee814e5c08fa4"
+		},
+		{
+			"ImportPath": "github.com/ceph/go-ceph/rados",
+			"Rev": "25b1a318b3872325bccb2cd2afad001c11b9bf4f"
+		},
+		{
+			"ImportPath": "github.com/ceph/go-ceph/rbd",
+			"Rev": "25b1a318b3872325bccb2cd2afad001c11b9bf4f"
+		},
+		{
+			"ImportPath": "github.com/garyburd/redigo/internal",
+			"Rev": "d8dbe4d94f15fe89232e0402c6e8a0ddf21af3ab"
+		},
+		{
+			"ImportPath": "github.com/garyburd/redigo/redis",
+			"Rev": "d8dbe4d94f15fe89232e0402c6e8a0ddf21af3ab"
+		},
+		{
+			"ImportPath": "github.com/kardianos/osext",
+			"Rev": "29ae4ffbc9a6fe9fb2bc5029050ce6996ea1d3bc"
+		},
+		{
+			"ImportPath": "github.com/sevlyar/go-daemon",
+			"Comment": "v0.1.0-5-g8577c7d",
+			"Rev": "8577c7ddef908e104dae56c9e46f0956cb33c844"
+		},
+		{
+			"ImportPath": "github.com/traetox/goaio",
+			"Rev": "e74e0b9af5c95b47600d5a543972b9b02cce75db"
+		},
+		{
+			"ImportPath": "golang.org/x/net/context",
+			"Rev": "61557ac0112b576429a0df080e1c2cef5dfbb642"
+		},
+		{
+			"ImportPath": "gopkg.in/yaml.v2",
+			"Rev": "14227de293ca979cf205cd88769fe71ed96a97e2"
+		}
+	]
+}
