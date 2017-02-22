@@ -28,6 +28,10 @@
 			"Rev": "29ae4ffbc9a6fe9fb2bc5029050ce6996ea1d3bc"
 		},
 		{
+			"ImportPath": "github.com/minio/blake2b-simd",
+			"Rev": "3f5f724cb5b182a5c278d6d3d55b40e7f8c2efb4"
+		},
+		{
 			"ImportPath": "github.com/sevlyar/go-daemon",
 			"Comment": "v0.1.0-5-g8577c7d",
 			"Rev": "8577c7ddef908e104dae56c9e46f0956cb33c844"
