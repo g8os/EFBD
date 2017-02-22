@@ -4,7 +4,7 @@ The data in the ardb's is deduped and stored using the blake2b hash of the conte
 
 The LBA lookup tables are split per 128 entries, let's call them LBA-shards. The datastructure is simply an array containing the hashes on the appropriate index so an LBA-shard has a maximum size of 4096 bytes and can address 512 KiB.
 
-An example read operation at offset `o` means:
+An read operation at offset `o` means:
 ```
 * block index = o/4096                      // blocksize of 4096
 * LBA-shard number = block index / 128      // 128 entries per LBA-shard
