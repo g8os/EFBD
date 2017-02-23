@@ -2,7 +2,7 @@
 
 The data in the ardb's is deduped and stored using the blake2b hash of the content as it's key so there is an LBA translation for every read operation. Doing a lookup for every read towards an external ardb is way too slow so we need some LBA lookup table caching.
 
-The LBA lookup tables are split per 128 entries, let's call them LBA-shards. The datastructure is simply an array containing the hashes on the appropriate index so an LBA-shard has a maximum size of 4096 bytes and can address 512 KiB.
+The LBA lookup tables are split per 128 entries, let's call them LBA-shards. The datastructure is simply an array containing the hashes on the appropriate index so an LBA-shard has a maximum size of 4096 bytes and can address 512 KiB (if 4KB blocks).
 
 An read operation at offset `o` means:
 ```
