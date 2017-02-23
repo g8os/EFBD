@@ -20,7 +20,9 @@ type ArdbBackend struct {
 
 //WriteAt implements nbd.Backend.WriteAt
 func (ab *ArdbBackend) WriteAt(ctx context.Context, b []byte, offset int64, fua bool) (bytesWritten int, err error) {
-	log.Println("Writing block at offset", offset, " - length:", len(b), "FUA:", fua)
+	if (offset % int64(ab.BlockSize)) != 0 {
+		log.Println("[ERROR] Stupid thing does not write on block boundary, offset:", offset, "length:", len(b))
+	}
 	conn := ab.Connections.Get()
 	defer conn.Close()
 	conn.Send("SET", offset, b)
@@ -33,7 +35,12 @@ func (ab *ArdbBackend) WriteAt(ctx context.Context, b []byte, offset int64, fua 
 
 //ReadAt implements nbd.Backend.ReadAt
 func (ab *ArdbBackend) ReadAt(ctx context.Context, b []byte, offset int64) (bytesRead int, err error) {
-	log.Println("Reading block at offset", offset)
+	log.Println("Reading block at offset", offset, "len", len(b))
+	offsetInsideBlock := offset % int64(ab.BlockSize)
+	if offsetInsideBlock != 0 {
+		offset -= offsetInsideBlock
+	}
+
 	conn := ab.Connections.Get()
 	defer conn.Close()
 	reply, err := conn.Do("GET", offset)
@@ -42,12 +49,12 @@ func (ab *ArdbBackend) ReadAt(ctx context.Context, b []byte, offset int64) (byte
 
 	}
 	if reply == nil && err == nil {
-		bytesRead = ab.BlockSize
+		bytesRead = len(b)
 		return
 	}
 	block, err := redis.Bytes(reply, err)
-	copy(b, block)
-	bytesRead = len(block)
+	copy(b, block[offsetInsideBlock:int(offsetInsideBlock)+len(b)])
+	bytesRead = len(b)
 	return
 }
 
@@ -72,7 +79,7 @@ func (ab *ArdbBackend) Close(ctx context.Context) (err error) {
 //Geometry implements nbd.Backend.Geometry
 func (ab *ArdbBackend) Geometry(ctx context.Context) (uint64, uint64, uint64, uint64, error) {
 	//TODO: get the volume definition and set the size
-	return 20000000000, uint64(ab.BlockSize), uint64(ab.BlockSize), 32 * 1024 * 1024, nil
+	return 20000000000, 1, uint64(ab.BlockSize), 32 * 1024 * 1024, nil
 }
 
 //HasFua implements nbd.Backend.HasFua
