@@ -12,7 +12,7 @@ func NewLBAShard() *LBAShard {
 }
 
 //An LBA implements the functionality to lookup block keys through the logical block index
-type LBA []LBAShard
+type LBA []*LBAShard
 
 //NewLBA creates a new LBA with enough shards to hold the requested numberOfBlocks
 // TODO: this is a naive in memory implementation so we can continue testing
@@ -22,7 +22,27 @@ func NewLBA(numberOfBlocks uint64) (lba *LBA) {
 	if (numberOfBlocks % NumberOfRecordsPerLBAShard) != 0 {
 		numberOfShards++
 	}
-	l := LBA(make([]LBAShard, numberOfShards, numberOfShards))
+	l := LBA(make([]*LBAShard, numberOfShards, numberOfShards))
 	lba = &l
+	return
+}
+
+//Set the content hash for a specific block
+func (lba *LBA) Set(blockIndex int64, h Hash) {
+	shard := (*lba)[blockIndex/NumberOfRecordsPerLBAShard]
+	if shard == nil {
+		//TODO: make this thing thread safe
+		shard = NewLBAShard()
+		(*lba)[blockIndex/NumberOfRecordsPerLBAShard] = shard
+	}
+	(*shard)[blockIndex%NumberOfRecordsPerLBAShard] = h
+}
+
+//Get returns the hash for a block, nil if no hash registered
+func (lba *LBA) Get(blockIndex int64) (h Hash) {
+	shard := (*lba)[blockIndex/NumberOfRecordsPerLBAShard]
+	if shard != nil {
+		h = (*shard)[blockIndex%NumberOfRecordsPerLBAShard]
+	}
 	return
 }
