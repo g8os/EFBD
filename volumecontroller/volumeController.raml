@@ -2,9 +2,6 @@
 title: VolumeController
 description: Volume Controller
 version: 0.1
-baseUri: https://objstor.greenitglobe.com
-securitySchemes:
-  oauth_2_0: !include securitySchemes/oauth_2_0.raml
 
 types:
   VolumeInformation:
@@ -17,8 +14,6 @@ types:
         type: integer
         description: blocksize in bytes
       storagecluster: string
-
-securedBy: [ oauth_2_0 ]
 
 /volumes:
   post:
