@@ -4,7 +4,7 @@ package main
 const NumberOfRecordsPerLBAShard = 128
 
 //LBAShard is a collection of 128 LBA Records (Hash)
-type LBAShard [NumberOfRecordsPerLBAShard]Hash
+type LBAShard [NumberOfRecordsPerLBAShard]*Hash
 
 //NewLBAShard initializes a new LBAShard an returns a pointer to it
 func NewLBAShard() *LBAShard {
@@ -28,7 +28,7 @@ func NewLBA(numberOfBlocks uint64) (lba *LBA) {
 }
 
 //Set the content hash for a specific block
-func (lba *LBA) Set(blockIndex int64, h Hash) {
+func (lba *LBA) Set(blockIndex int64, h *Hash) {
 	shard := (*lba)[blockIndex/NumberOfRecordsPerLBAShard]
 	if shard == nil {
 		//TODO: make this thing thread safe
@@ -39,7 +39,7 @@ func (lba *LBA) Set(blockIndex int64, h Hash) {
 }
 
 //Get returns the hash for a block, nil if no hash registered
-func (lba *LBA) Get(blockIndex int64) (h Hash) {
+func (lba *LBA) Get(blockIndex int64) (h *Hash) {
 	shard := (*lba)[blockIndex/NumberOfRecordsPerLBAShard]
 	if shard != nil {
 		h = (*shard)[blockIndex%NumberOfRecordsPerLBAShard]

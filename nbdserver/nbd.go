@@ -5,6 +5,8 @@ import (
 	"log"
 	"time"
 
+	"github.com/g8os/blockstor/nbdserver/stubs"
+
 	"golang.org/x/net/context"
 
 	"github.com/abligh/gonbdserver/nbd"
@@ -34,12 +36,11 @@ func (ab *ArdbBackend) WriteAt(ctx context.Context, b []byte, offset int64, fua 
 	//Save to Ardb
 	conn := ab.Connections.Get()
 	defer conn.Close()
-	conn.Send("SET", contentHash, b)
+	conn.Send("SET", *contentHash, b)
 	err = conn.Flush()
 
 	//Save hash in the LBA tables
 	ab.LBA.Set(offset/ab.BlockSize, contentHash)
-
 	if err == nil {
 		bytesWritten = len(b)
 	}
@@ -50,7 +51,6 @@ func (ab *ArdbBackend) WriteAt(ctx context.Context, b []byte, offset int64, fua 
 func (ab *ArdbBackend) ReadAt(ctx context.Context, b []byte, offset int64) (bytesRead int, err error) {
 	blockIndex := offset / ab.BlockSize
 	offsetInsideBlock := offset % ab.BlockSize
-	log.Println("Reading block at offset", offset, "(in block:", offsetInsideBlock, ") len", len(b))
 
 	contentHash := ab.LBA.Get(blockIndex)
 	if contentHash == nil {
@@ -60,7 +60,7 @@ func (ab *ArdbBackend) ReadAt(ctx context.Context, b []byte, offset int64) (byte
 
 	conn := ab.Connections.Get()
 	defer conn.Close()
-	reply, err := conn.Do("GET", contentHash)
+	reply, err := conn.Do("GET", *contentHash)
 	if err != nil {
 		log.Println(reply, err)
 
@@ -70,7 +70,14 @@ func (ab *ArdbBackend) ReadAt(ctx context.Context, b []byte, offset int64) (byte
 		return
 	}
 	block, err := redis.Bytes(reply, err)
-	copy(b, block[offsetInsideBlock:int(offsetInsideBlock)+len(b)])
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println(r)
+			fmt.Println("Offset", offset, "len(b):", len(b), "Reply:", reply, "len(block):", len(block))
+		}
+	}()
+
+	copy(b, block[offsetInsideBlock:len(block)])
 	bytesRead = len(b)
 	return
 }
@@ -120,10 +127,21 @@ func NewArdbBackend(ctx context.Context, ec *nbd.ExportConfig) (backend nbd.Back
 	}
 	ab := &ArdbBackend{BlockSize: BlockSize, Size: diskSize, LBA: NewLBA(numberOfBlocks)}
 	//TODO: should be pool of different ardb's
+	var dialFunc func() (redis.Conn, error)
+	if ec.DriverParameters["ardbimplementation"] == "inmemory" {
+		inMemoryRedisConnection := stubs.NewMemoryRedisConn()
+		dialFunc = func() (redis.Conn, error) {
+			return inMemoryRedisConnection, nil
+		}
+	} else {
+		dialFunc = func() (redis.Conn, error) {
+			return redis.Dial("tcp", "localhost:16379")
+		}
+	}
 	ab.Connections = &redis.Pool{
 		MaxIdle:     5,
 		IdleTimeout: 240 * time.Second,
-		Dial:        func() (redis.Conn, error) { return redis.Dial("tcp", "localhost:16379") },
+		Dial:        dialFunc,
 	}
 	backend = ab
 	return
