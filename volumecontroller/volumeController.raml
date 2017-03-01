@@ -1,0 +1,77 @@
+#%RAML 1.0
+title: VolumeController
+description: Volume Controller
+version: 0.1
+baseUri: https://objstor.greenitglobe.com
+securitySchemes:
+  oauth_2_0: !include securitySchemes/oauth_2_0.raml
+
+types:
+  VolumeInformation:
+    properties:
+      id: string
+      size:
+        type: integer
+        description: size in bytes
+      blocksize:
+        type: integer
+        description: blocksize in bytes
+      storagecluster: string
+
+securedBy: [ oauth_2_0 ]
+
+/volumes:
+  post:
+    displayName: CreateNewVolume
+    description: Create a new volume, can be a copy from an existing volume
+    body:
+      application/json:
+        properties:
+          size: integer
+          storagecluster: string
+          templatevolume:
+            type: string
+            required: false
+
+    responses:
+      201:
+        body:
+          application/json:
+            properties:
+              volumeid: string
+      404:
+        description: The template volume or storagecluster do not exist
+
+  /{volumeid}:
+    get:
+      displayName: GetVolumeInfo
+      description: Get volume information
+      responses:
+        200:
+          body:
+            application/json:
+              type: VolumeInformation
+        404:
+          description: The volume does not exist
+    delete:
+      displayName: DeleteVolume
+      description: Delete Drive - Not implemented for now
+      responses:
+        202:
+          description: Volume has been marked for deletion
+        204:
+          description: Deleted
+        404:
+          description: The volume does not exist
+
+    /resize:
+      post:
+        displayName: ResizeVolume
+        description: Resize Volume
+        body:
+          application/json:
+            properties:
+              newSize: integer
+        responses:
+          204:
+            description: Volume Resized
