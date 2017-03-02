@@ -3,10 +3,12 @@ package main
 import (
 	"flag"
 	"log"
+	"net/http/httptest"
 	"os"
 	"sync"
 
 	"github.com/abligh/gonbdserver/nbd"
+	"github.com/g8os/blockstor/nbdserver/stubs"
 	"golang.org/x/net/context"
 )
 
@@ -14,12 +16,22 @@ func main() {
 	var inMemoryStorage bool
 	var protocol string
 	var address string
+	var volumecontrolleraddress string
 	flag.BoolVar(&inMemoryStorage, "memorystorage", false, "Stores the data in memory only, usefull for testing or benchmarking")
 	flag.StringVar(&protocol, "protocol", "unix", "Protocol to listen on, 'tcp' or 'unix'")
 	flag.StringVar(&address, "address", "/tmp/nbd-socket", "Address to listen on, unix socket or tcp address, ':6666' for example")
+	flag.StringVar(&volumecontrolleraddress, "volumecontroller", "", "Address of the volumecontroller REST API, leave empty to use the embedded stub")
 	flag.Parse()
 
 	logger := log.New(os.Stderr, "nbdserver:", log.Ldate|log.Ltime)
+	if volumecontrolleraddress == "" {
+		logger.Println("[INFO] Starting embedded volumecontroller")
+		var s *httptest.Server
+		s, volumecontrolleraddress = stubs.NewVolumeControllerServer()
+		defer s.Close()
+	}
+	logger.Println("[INFO] Using volumecontroller at", volumecontrolleraddress)
+
 	var sessionWaitGroup sync.WaitGroup
 
 	ctx, cancelFunc := context.WithCancel(context.Background())
@@ -34,17 +46,20 @@ func main() {
 		Protocol: protocol,
 		Address:  address,
 		Exports: []nbd.ExportConfig{nbd.ExportConfig{
-			Name:             "default",
-			Description:      "Deduped g8os blockstor",
-			Driver:           "ardb",
-			Workers:          5,
-			DriverParameters: map[string]string{"ardbimplementation": "external"},
+			Name:        "default",
+			Description: "Deduped g8os blockstor",
+			Driver:      "ardb",
+			Workers:     5,
+			DriverParameters: map[string]string{
+				"ardbimplementation":      "external",
+				"volumecontrolleraddress": volumecontrolleraddress,
+			},
 		}},
 	}
 	if inMemoryStorage {
 		s.Exports[0].DriverParameters["ardbimplementation"] = "inmemory"
+		logger.Println("[INFO] Using in-memory block storage")
 	}
-	log.Println(s.Exports[0].DriverParameters["ardbimplementation"])
 	l, err := nbd.NewListener(logger, s)
 	if err != nil {
 		logger.Fatal(err)

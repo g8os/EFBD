@@ -4,7 +4,7 @@ import (
 	"log"
 	"net/http"
 
-	"examples.com/ramlcode/goraml"
+	"github.com/g8os/blockstor/nbdserver/stubs/volumecontroller/goraml"
 
 	"github.com/gorilla/mux"
 	"gopkg.in/validator.v2"

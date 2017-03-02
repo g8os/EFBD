@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/g8os/blockstor/nbdserver/stubs"
+	"github.com/g8os/blockstor/nbdserver/volumecontroller"
 
 	"golang.org/x/net/context"
 
@@ -23,6 +24,8 @@ type ArdbBackend struct {
 	LBA       *LBA
 	//TODO: should be pool of different ardb's
 	Connections *redis.Pool
+
+	VolumeControllerClient *volumecontroller.VolumeController
 }
 
 //WriteAt implements nbd.Backend.WriteAt
@@ -126,6 +129,9 @@ func NewArdbBackend(ctx context.Context, ec *nbd.ExportConfig) (backend nbd.Back
 		numberOfBlocks++
 	}
 	ab := &ArdbBackend{BlockSize: BlockSize, Size: diskSize, LBA: NewLBA(numberOfBlocks)}
+	ab.VolumeControllerClient = volumecontroller.NewVolumeController()
+	ab.VolumeControllerClient.BaseURI = ec.DriverParameters["volumecontrolleraddress"]
+
 	//TODO: should be pool of different ardb's
 	var dialFunc func() (redis.Conn, error)
 	if ec.DriverParameters["ardbimplementation"] == "inmemory" {
