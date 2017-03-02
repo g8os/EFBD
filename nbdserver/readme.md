@@ -13,3 +13,12 @@ Connect your nbdclient using localhost:6666:
 ```
 sudo nbd-client -b 4096 -name default localhost 6666 /dev/nbd1
 ```
+
+## Development
+
+### Volumecontroller api changes
+
+When the volumecontroller raml definition changed, regenerate the client and stub interface:
+```
+go generate
+```
