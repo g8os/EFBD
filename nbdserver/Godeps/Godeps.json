@@ -1,7 +1,7 @@
 {
 	"ImportPath": "github.com/g8os/blockstor/nbdserver",
 	"GoVersion": "go1.7",
-	"GodepVersion": "v75",
+	"GodepVersion": "v79",
 	"Deps": [
 		{
 			"ImportPath": "github.com/abligh/gonbdserver/nbd",
@@ -24,6 +24,11 @@
 			"Rev": "d8dbe4d94f15fe89232e0402c6e8a0ddf21af3ab"
 		},
 		{
+			"ImportPath": "github.com/gorilla/mux",
+			"Comment": "v1.3.0-5-g599cba5",
+			"Rev": "599cba5e7b6137d46ddf58fb1765f5d928e69604"
+		},
+		{
 			"ImportPath": "github.com/kardianos/osext",
 			"Rev": "29ae4ffbc9a6fe9fb2bc5029050ce6996ea1d3bc"
 		},
@@ -43,6 +48,10 @@
 		{
 			"ImportPath": "golang.org/x/net/context",
 			"Rev": "61557ac0112b576429a0df080e1c2cef5dfbb642"
+		},
+		{
+			"ImportPath": "gopkg.in/validator.v2",
+			"Rev": "0a9835d809fb647a62611d30cb792e0b5dd65b11"
 		},
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
