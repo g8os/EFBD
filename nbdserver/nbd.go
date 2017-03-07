@@ -3,10 +3,9 @@ package main
 import (
 	"fmt"
 	"log"
-	"time"
 
+	"github.com/g8os/blockstor/nbdserver/clients/storagebackendcontroller"
 	"github.com/g8os/blockstor/nbdserver/clients/volumecontroller"
-	"github.com/g8os/blockstor/nbdserver/stubs"
 
 	"golang.org/x/net/context"
 
@@ -25,8 +24,11 @@ type ArdbBackend struct {
 	Size      uint64
 	Deduped   bool
 	LBA       *LBA
-	//TODO: should be pool of different ardb's
-	Connections *redis.Pool
+
+	RedisConnectionPool *RedisPool
+
+	backendConnectionStrings []storagebackendcontroller.Server
+	numberOfStorageServers   int
 
 	VolumeControllerClient *volumecontroller.VolumeController
 }
@@ -40,7 +42,7 @@ func (ab *ArdbBackend) WriteAt(ctx context.Context, b []byte, offset int64, fua 
 	contentHash := HashBytes(b)
 
 	//Save to Ardb
-	conn := ab.Connections.Get()
+	conn := ab.RedisConnectionPool.Get(ab.backendConnectionStrings[int(contentHash[0])%ab.numberOfStorageServers].ConnectionString)
 	defer conn.Close()
 	conn.Send("SET", *contentHash, b)
 	err = conn.Flush()
@@ -64,7 +66,7 @@ func (ab *ArdbBackend) ReadAt(ctx context.Context, b []byte, offset int64) (byte
 		return
 	}
 
-	conn := ab.Connections.Get()
+	conn := ab.RedisConnectionPool.Get(ab.backendConnectionStrings[int(contentHash[0])%ab.numberOfStorageServers].ConnectionString)
 	defer conn.Close()
 	reply, err := conn.Do("GET", *contentHash)
 	if err != nil {
@@ -100,8 +102,8 @@ func (ab *ArdbBackend) Flush(ctx context.Context) (err error) {
 
 //Close implements nbd.Backend.Close
 func (ab *ArdbBackend) Close(ctx context.Context) (err error) {
-	if ab.Connections != nil {
-		ab.Connections.Close()
+	if ab.RedisConnectionPool != nil {
+		ab.RedisConnectionPool.Close()
 	}
 	return
 }
@@ -123,14 +125,22 @@ func (ab *ArdbBackend) HasFlush(ctx context.Context) bool {
 	return true
 }
 
+//ArdbBackendFactory holds come variables that can not be passed in the exportconfig like the pool of ardbconnections
+// I hate the factory pattern but I hate global variables even more
+type ArdbBackendFactory struct {
+	BackendPool *RedisPool
+}
+
 //NewArdbBackend generates a new ardb backend
-func NewArdbBackend(ctx context.Context, ec *nbd.ExportConfig) (backend nbd.Backend, err error) {
+func (f *ArdbBackendFactory) NewArdbBackend(ctx context.Context, ec *nbd.ExportConfig) (backend nbd.Backend, err error) {
 	volumeID := ec.Name
-	ab := &ArdbBackend{}
-	ab.VolumeControllerClient = volumecontroller.NewVolumeController()
-	ab.VolumeControllerClient.BaseURI = ec.DriverParameters["volumecontrolleraddress"]
+	ab := &ArdbBackend{RedisConnectionPool: f.BackendPool}
+
+	//Get information about the volume
+	volumeControllerClient := volumecontroller.NewVolumeController()
+	volumeControllerClient.BaseURI = ec.DriverParameters["volumecontrolleraddress"]
 	fmt.Println("[INFO] Starting volume", volumeID)
-	volumeInfo, _, err := ab.VolumeControllerClient.Volumes.GetVolumeInfo(volumeID, nil, nil)
+	volumeInfo, _, err := volumeControllerClient.Volumes.GetVolumeInfo(volumeID, nil, nil)
 	if err != nil {
 		fmt.Println("[ERROR]", err)
 		return
@@ -144,28 +154,18 @@ func NewArdbBackend(ctx context.Context, ec *nbd.ExportConfig) (backend nbd.Back
 	}
 	ab.LBA = NewLBA(numberOfBlocks)
 
-	//TODO: should be pool of different ardb's
-	var dialFunc func() (redis.Conn, error)
-	if ec.DriverParameters["ardbimplementation"] == "inmemory" {
-		inMemoryRedisConnection := stubs.NewMemoryRedisConn()
-		dialFunc = func() (redis.Conn, error) {
-			return inMemoryRedisConnection, nil
-		}
-	} else {
-		dialFunc = func() (redis.Conn, error) {
-			return redis.Dial("tcp", "localhost:16379")
-		}
+	//Get information about the backend storage nodes
+	// TODO: need a way to update while staying alive
+	storageBackendClient := storagebackendcontroller.NewStorageBackend()
+	storageBackendClient.BaseURI = ec.DriverParameters["backendcontrolleraddress"]
+	storageClusterInfo, _, err := storageBackendClient.Storagecluster.GetStorageClusterInfo(volumeInfo.Storagecluster, nil, nil)
+	if err != nil {
+		fmt.Println("[ERROR]", err)
+		return
 	}
-	ab.Connections = &redis.Pool{
-		MaxIdle:     5,
-		IdleTimeout: 240 * time.Second,
-		Dial:        dialFunc,
-	}
+	ab.backendConnectionStrings = storageClusterInfo.Storageservers
+	ab.numberOfStorageServers = len(ab.backendConnectionStrings)
+
 	backend = ab
 	return
-}
-
-// Register our backend
-func init() {
-	nbd.RegisterBackend("ardb", NewArdbBackend)
 }

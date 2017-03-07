@@ -25,6 +25,11 @@ func main() {
 	flag.StringVar(&backendcontrolleraddress, "backendcontroller", "", "Address of the storage backend controller REST API, leave empty to use the embedded stub")
 	flag.Parse()
 
+	//TODO: make this dependant of a profiling flag
+	// go func() {
+	// 	log.Println(http.ListenAndServe("localhost:6060", http.HandlerFunc(pprof.Index)))
+	// }()
+
 	logger := log.New(os.Stderr, "nbdserver:", log.Ldate|log.Ltime)
 	if volumecontrolleraddress == "" {
 		logger.Println("[INFO] Starting embedded volume controller")
@@ -61,16 +66,17 @@ func main() {
 			Driver:      "ardb",
 			Workers:     5,
 			DriverParameters: map[string]string{
-				"ardbimplementation":       "external",
 				"volumecontrolleraddress":  volumecontrolleraddress,
 				"backendcontrolleraddress": backendcontrolleraddress,
 			},
 		}},
 	}
 	if inMemoryStorage {
-		s.Exports[0].DriverParameters["ardbimplementation"] = "inmemory"
 		logger.Println("[INFO] Using in-memory block storage")
 	}
+	f := &ArdbBackendFactory{BackendPool: NewRedisPool(inMemoryStorage)}
+	nbd.RegisterBackend("ardb", f.NewArdbBackend)
+
 	l, err := nbd.NewListener(logger, s)
 	if err != nil {
 		logger.Fatal(err)
