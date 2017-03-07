@@ -13,6 +13,10 @@ types:
       blocksize:
         type: integer
         description: blocksize in bytes
+        default: 4096
+      deduped:
+        type: boolean
+        description: Indicates if this volume is deduped or not.
       storagecluster: string
 
 /volumes:
@@ -23,7 +27,14 @@ types:
       application/json:
         properties:
           size: integer
+          blocksize:
+            type: integer
+            description: blocksize in bytes
+            default: 4096
           storagecluster: string
+          deduped:
+            type: boolean
+            default: true
           templatevolume:
             type: string
             required: false

@@ -48,6 +48,7 @@ func (api VolumesAPI) GetVolumeInfo(w http.ResponseWriter, r *http.Request) {
 	respBody.Id = volumeID
 	respBody.Size = 20000000000
 	respBody.Storagecluster = "default"
+	respBody.Deduped = true
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(&respBody)

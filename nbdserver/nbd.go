@@ -5,8 +5,8 @@ import (
 	"log"
 	"time"
 
+	"github.com/g8os/blockstor/nbdserver/clients/volumecontroller"
 	"github.com/g8os/blockstor/nbdserver/stubs"
-	"github.com/g8os/blockstor/nbdserver/volumecontroller"
 
 	"golang.org/x/net/context"
 
@@ -23,6 +23,7 @@ type ArdbBackend struct {
 
 	BlockSize int64
 	Size      uint64
+	Deduped   bool
 	LBA       *LBA
 	//TODO: should be pool of different ardb's
 	Connections *redis.Pool
@@ -134,6 +135,7 @@ func NewArdbBackend(ctx context.Context, ec *nbd.ExportConfig) (backend nbd.Back
 		fmt.Println("[ERROR]", err)
 		return
 	}
+	ab.Deduped = volumeInfo.Deduped
 	ab.BlockSize = int64(volumeInfo.Blocksize)
 	ab.Size = uint64(volumeInfo.Size)
 	numberOfBlocks := ab.Size / uint64(ab.BlockSize)

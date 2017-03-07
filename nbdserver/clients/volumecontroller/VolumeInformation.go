@@ -6,6 +6,7 @@ import (
 
 type VolumeInformation struct {
 	Blocksize      int    `json:"blocksize" validate:"nonzero"`
+	Deduped        bool   `json:"deduped" validate:"nonzero"`
 	Id             string `json:"id" validate:"nonzero"`
 	Size           int    `json:"size" validate:"nonzero"`
 	Storagecluster string `json:"storagecluster" validate:"nonzero"`
