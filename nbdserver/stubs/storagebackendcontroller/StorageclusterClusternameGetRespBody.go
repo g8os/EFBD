@@ -5,9 +5,9 @@ import (
 )
 
 type StorageclusterClusternameGetRespBody struct {
-	Metadataserver server   `json:"metadataserver" validate:"nonzero"`
+	Metadataserver Server   `json:"metadataserver" validate:"nonzero"`
 	Name           string   `json:"name" validate:"nonzero"`
-	Storageservers []server `json:"storageservers" validate:"nonzero"`
+	Storageservers []Server `json:"storageservers" validate:"nonzero"`
 }
 
 func (s StorageclusterClusternameGetRespBody) Validate() error {

@@ -4,12 +4,12 @@ import (
 	"gopkg.in/validator.v2"
 )
 
-type server struct {
-	ConnectionInfo string `json:"connectionInfo" validate:"nonzero"`
-	Type           string `json:"type" validate:"nonzero"`
+type Server struct {
+	ConnectionString string `json:"ConnectionString" validate:"nonzero"`
+	Type             string `json:"Type" validate:"nonzero"`
 }
 
-func (s server) Validate() error {
+func (s Server) Validate() error {
 
 	return validator.Validate(s)
 }

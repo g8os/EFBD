@@ -4,13 +4,10 @@ description: Storage Backend temporary api definition
 version: 0.1
 
 types:
-  server:
+  Server:
     properties:
-      type: string
-      connectionInfo:
-        properties:
-          ip: string
-          port: integer
+      Type: string
+      ConnectionString: string
 
 /storagecluster:
   /{clustername}:
@@ -23,7 +20,7 @@ types:
             application/json:
               properties:
                 name: string
-                metadataserver: server
-                storageservers: server[]
+                metadataserver: Server
+                storageservers: Server[]
         404:
           description: The storage cluster does not exist
