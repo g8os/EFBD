@@ -1,0 +1,29 @@
+#%RAML 1.0
+title: StorageBackend
+description: Storage Backend temporary api definition
+version: 0.1
+
+types:
+  server:
+    properties:
+      type: string
+      connectionInfo:
+        properties:
+          ip: string
+          port: integer
+
+/storagecluster:
+  /{clustername}:
+    get:
+      displayName: GetStorageClusterInfo
+      description: Get storage cluster information
+      responses:
+        200:
+          body:
+            application/json:
+              properties:
+                name: string
+                metadataserver: server
+                storageservers: server[]
+        404:
+          description: The storage cluster does not exist
