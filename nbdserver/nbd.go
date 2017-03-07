@@ -19,6 +19,8 @@ const BlockSize = 4 * 1024
 
 //ArdbBackend is a nbd.Backend implementation on top of ARDB
 type ArdbBackend struct {
+	VolumeID string
+
 	BlockSize int64
 	Size      uint64
 	LBA       *LBA
@@ -122,15 +124,23 @@ func (ab *ArdbBackend) HasFlush(ctx context.Context) bool {
 
 //NewArdbBackend generates a new ardb backend
 func NewArdbBackend(ctx context.Context, ec *nbd.ExportConfig) (backend nbd.Backend, err error) {
-	//TODO: get diskSize from external volume information service
-	var diskSize uint64 = 20000000000
-	numberOfBlocks := diskSize / BlockSize
-	if (diskSize % BlockSize) != 0 {
-		numberOfBlocks++
-	}
-	ab := &ArdbBackend{BlockSize: BlockSize, Size: diskSize, LBA: NewLBA(numberOfBlocks)}
+	volumeID := ec.Name
+	ab := &ArdbBackend{}
 	ab.VolumeControllerClient = volumecontroller.NewVolumeController()
 	ab.VolumeControllerClient.BaseURI = ec.DriverParameters["volumecontrolleraddress"]
+	fmt.Println("[INFO] Starting volume", volumeID)
+	volumeInfo, _, err := ab.VolumeControllerClient.Volumes.GetVolumeInfo(volumeID, nil, nil)
+	if err != nil {
+		fmt.Println("[ERROR]", err)
+		return
+	}
+	ab.BlockSize = int64(volumeInfo.Blocksize)
+	ab.Size = uint64(volumeInfo.Size)
+	numberOfBlocks := ab.Size / uint64(ab.BlockSize)
+	if (ab.Size / uint64(ab.BlockSize)) != 0 {
+		numberOfBlocks++
+	}
+	ab.LBA = NewLBA(numberOfBlocks)
 
 	//TODO: should be pool of different ardb's
 	var dialFunc func() (redis.Conn, error)

@@ -3,6 +3,8 @@ package volumecontroller
 import (
 	"encoding/json"
 	"net/http"
+
+	"github.com/gorilla/mux"
 )
 
 // VolumesAPI is API implementation of /volumes root endpoint
@@ -35,10 +37,20 @@ func (api VolumesAPI) CreateNewVolume(w http.ResponseWriter, r *http.Request) {
 // GetVolumeInfo is the handler for GET /volumes/{volumeid}
 // Get volume information
 func (api VolumesAPI) GetVolumeInfo(w http.ResponseWriter, r *http.Request) {
+	volumeID := mux.Vars(r)["volumeid"]
+	if volumeID == "" {
+		http.Error(w, "`volumeid` is required", http.StatusBadRequest)
+		return
+	}
+
 	var respBody VolumeInformation
+	respBody.Blocksize = 4096
+	respBody.Id = volumeID
+	respBody.Size = 20000000000
+	respBody.Storagecluster = "default"
+
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(&respBody)
-	// uncomment below line to add header
-	// w.Header().Set("key","value")
 }
 
 // DeleteVolume is the handler for DELETE /volumes/{volumeid}
