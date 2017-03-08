@@ -75,7 +75,10 @@ func main() {
 	if inMemoryStorage {
 		logger.Println("[INFO] Using in-memory block storage")
 	}
-	f := &ArdbBackendFactory{BackendPool: NewRedisPool(inMemoryStorage)}
+	r := NewRedisPool(inMemoryStorage)
+	defer r.Close()
+
+	f := &ArdbBackendFactory{BackendPool: r}
 
 	nbd.RegisterBackend("ardb", f.NewArdbBackend)
 
