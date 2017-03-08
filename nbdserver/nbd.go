@@ -125,7 +125,8 @@ func (ab *ArdbBackend) HasFlush(ctx context.Context) bool {
 	return true
 }
 
-//ArdbBackendFactory holds come variables that can not be passed in the exportconfig like the pool of ardbconnections
+//ArdbBackendFactory holds some variables
+// that can not be passed in the exportconfig like the pool of ardbconnections
 // I hate the factory pattern but I hate global variables even more
 type ArdbBackendFactory struct {
 	BackendPool *RedisPool
@@ -139,10 +140,10 @@ func (f *ArdbBackendFactory) NewArdbBackend(ctx context.Context, ec *nbd.ExportC
 	//Get information about the volume
 	volumeControllerClient := volumecontroller.NewVolumeController()
 	volumeControllerClient.BaseURI = ec.DriverParameters["volumecontrolleraddress"]
-	fmt.Println("[INFO] Starting volume", volumeID)
+	log.Println("[INFO] Starting volume", volumeID)
 	volumeInfo, _, err := volumeControllerClient.Volumes.GetVolumeInfo(volumeID, nil, nil)
 	if err != nil {
-		fmt.Println("[ERROR]", err)
+		log.Println("[ERROR]", err)
 		return
 	}
 	ab.Deduped = volumeInfo.Deduped
@@ -160,7 +161,7 @@ func (f *ArdbBackendFactory) NewArdbBackend(ctx context.Context, ec *nbd.ExportC
 	storageBackendClient.BaseURI = ec.DriverParameters["backendcontrolleraddress"]
 	storageClusterInfo, _, err := storageBackendClient.Storagecluster.GetStorageClusterInfo(volumeInfo.Storagecluster, nil, nil)
 	if err != nil {
-		fmt.Println("[ERROR]", err)
+		log.Println("[ERROR]", err)
 		return
 	}
 	ab.backendConnectionStrings = storageClusterInfo.Storageservers

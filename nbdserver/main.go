@@ -58,8 +58,9 @@ func main() {
 		logger.Println("[INFO] Shutdown complete")
 	}()
 	s := nbd.ServerConfig{
-		Protocol: protocol,
-		Address:  address,
+		Protocol:      protocol,
+		Address:       address,
+		DefaultExport: "default",
 		Exports: []nbd.ExportConfig{nbd.ExportConfig{
 			Name:        "default",
 			Description: "Deduped g8os blockstor",
@@ -75,6 +76,7 @@ func main() {
 		logger.Println("[INFO] Using in-memory block storage")
 	}
 	f := &ArdbBackendFactory{BackendPool: NewRedisPool(inMemoryStorage)}
+
 	nbd.RegisterBackend("ardb", f.NewArdbBackend)
 
 	l, err := nbd.NewListener(logger, s)
