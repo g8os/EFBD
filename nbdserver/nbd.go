@@ -52,6 +52,9 @@ func (ab *ArdbBackend) WriteAt(ctx context.Context, b []byte, offset int64, fua 
 	if err == nil {
 		bytesWritten = len(b)
 	}
+	if fua {
+		ab.Flush(ctx)
+	}
 	return
 }
 
@@ -97,6 +100,7 @@ func (ab *ArdbBackend) TrimAt(ctx context.Context, length int, offset int64) (in
 
 //Flush implements nbd.Backend.Flush
 func (ab *ArdbBackend) Flush(ctx context.Context) (err error) {
+	ab.LBA.Flush()
 	return
 }
 

@@ -13,7 +13,8 @@ func NewLBAShard() *LBAShard {
 	return &LBAShard{}
 }
 
-//An LBA implements the functionality to lookup block keys through the logical block index
+// LBA implements the functionality to lookup block keys through the logical block index.
+// The data is persisted to an external metadataserver in shards of 128 keys.
 type LBA struct {
 	shards    []*LBAShard
 	redisPool *redis.Pool
@@ -35,7 +36,9 @@ func NewLBA(numberOfBlocks uint64, pool *redis.Pool) (lba *LBA) {
 	return
 }
 
-//Set the content hash for a specific block
+//Set the content hash for a specific block.
+// When a key is updated, the shard containing this blockindex is marked as dirty and will be
+// stored in the external metadataserver when Flush is called.
 func (lba *LBA) Set(blockIndex int64, h *Hash) {
 	shard := lba.shards[blockIndex/NumberOfRecordsPerLBAShard]
 	if shard == nil {
@@ -49,10 +52,16 @@ func (lba *LBA) Set(blockIndex int64, h *Hash) {
 }
 
 //Get returns the hash for a block, nil if no hash registered
+// If the shard containing this blockindex is not present, it is fetched from the external metadaserver
 func (lba *LBA) Get(blockIndex int64) (h *Hash) {
 	shard := lba.shards[blockIndex/NumberOfRecordsPerLBAShard]
 	if shard != nil {
 		h = (*shard)[blockIndex%NumberOfRecordsPerLBAShard]
 	}
+	return
+}
+
+//Flush stores all dirty shards to the external metadaserver
+func (lba *LBA) Flush() (err error) {
 	return
 }
