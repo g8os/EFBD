@@ -7,7 +7,7 @@ const (
 	HashSize = 32
 )
 
-//Hash is just a pointer to a bytearray of size HashSize
+//Hash is just a bytearray of size HashSize
 type Hash [HashSize]byte
 
 // HashBytes takes a byte slice .

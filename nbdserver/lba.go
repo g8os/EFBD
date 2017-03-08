@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"sync"
 
@@ -118,10 +119,21 @@ func (lba *LBA) storeShardsInExternalStorage(shards map[int64]*LBAShard) (err er
 	conn := lba.redisPool.Get()
 	defer conn.Close()
 
+	var nilHash Hash
+
 	for shardIndex, shard := range shards {
 		key := lba.createShardKey(shardIndex)
-		//TODO: properly convert the shard to a byteslice
-		if err = conn.Send("SET", key, shard); err != nil {
+
+		var buf bytes.Buffer
+
+		for _, h := range *shard {
+			if h == nil {
+				buf.Write(nilHash[:])
+			} else {
+				buf.Write(h[:])
+			}
+		}
+		if err = conn.Send("SET", key, buf.Bytes()); err != nil {
 			return
 		}
 	}
@@ -138,7 +150,16 @@ func (lba *LBA) getShardFromExternalStorage(shardIndex int64) (shard *LBAShard, 
 	if err != nil || reply == nil {
 		return
 	}
-	//TODO: convert the reply to a shard
-	_, err = redis.Bytes(reply, err)
+
+	shardBytes, err := redis.Bytes(reply, err)
+	if err != nil {
+		return
+	}
+	shard = &LBAShard{}
+	for i := 0; i < NumberOfRecordsPerLBAShard; i++ {
+		var h Hash
+		copy(h[:], shardBytes[i*HashSize:])
+		(*shard)[i] = &h
+	}
 	return
 }
