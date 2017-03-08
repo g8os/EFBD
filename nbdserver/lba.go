@@ -1,6 +1,11 @@
 package main
 
-import "github.com/garyburd/redigo/redis"
+import (
+	"fmt"
+	"sync"
+
+	"github.com/garyburd/redigo/redis"
+)
 
 //NumberOfRecordsPerLBAShard is the fixed length of the LBAShards
 const NumberOfRecordsPerLBAShard = 128
@@ -16,22 +21,28 @@ func NewLBAShard() *LBAShard {
 // LBA implements the functionality to lookup block keys through the logical block index.
 // The data is persisted to an external metadataserver in shards of 128 keys.
 type LBA struct {
-	shards    []*LBAShard
+	lock        sync.Mutex
+	shards      []*LBAShard
+	dirtyShards map[int64]*LBAShard
+
 	redisPool *redis.Pool
+	volumeID  string
 }
 
 //NewLBA creates a new LBA with enough shards to hold the requested numberOfBlocks
 // TODO: this is a naive in memory implementation so we can continue testing,
 //		 need to create a persistent implementation (issue #5)
-func NewLBA(numberOfBlocks uint64, pool *redis.Pool) (lba *LBA) {
+func NewLBA(volumeID string, numberOfBlocks uint64, pool *redis.Pool) (lba *LBA) {
 	numberOfShards := numberOfBlocks / NumberOfRecordsPerLBAShard
 	//If the number of blocks is not aligned on the number of shards, add an extra one
 	if (numberOfBlocks % NumberOfRecordsPerLBAShard) != 0 {
 		numberOfShards++
 	}
 	lba = &LBA{
-		shards:    make([]*LBAShard, numberOfShards),
-		redisPool: pool,
+		shards:      make([]*LBAShard, numberOfShards),
+		dirtyShards: make(map[int64]*LBAShard),
+		redisPool:   pool,
+		volumeID:    volumeID,
 	}
 	return
 }
@@ -39,22 +50,47 @@ func NewLBA(numberOfBlocks uint64, pool *redis.Pool) (lba *LBA) {
 //Set the content hash for a specific block.
 // When a key is updated, the shard containing this blockindex is marked as dirty and will be
 // stored in the external metadataserver when Flush is called.
-func (lba *LBA) Set(blockIndex int64, h *Hash) {
-	shard := lba.shards[blockIndex/NumberOfRecordsPerLBAShard]
+func (lba *LBA) Set(blockIndex int64, h *Hash) (err error) {
+	//TODO: let's see if we really need to lock on such a high level
+	lba.lock.Lock()
+	defer lba.lock.Unlock()
+
+	//Fetch the appropriate shard
+	shardIndex := blockIndex / NumberOfRecordsPerLBAShard
+	shard := lba.shards[shardIndex]
 	if shard == nil {
-		//TODO: make this thing thread safe
-		//		(to be done in the same feature work where
-		//		 we make the lba content persistent) (issue #5)
-		shard = NewLBAShard()
-		lba.shards[blockIndex/NumberOfRecordsPerLBAShard] = shard
+		shard, err = lba.getShardFromExternalStorage(shardIndex)
+		if err != nil {
+			return
+		}
+		if shard == nil {
+			shard = NewLBAShard()
+		}
+		lba.shards[shardIndex] = shard
 	}
+	//Update the hash
 	(*shard)[blockIndex%NumberOfRecordsPerLBAShard] = h
+	//Mark the shard as dirty
+	lba.dirtyShards[shardIndex] = shard
+	return
 }
 
 //Get returns the hash for a block, nil if no hash registered
 // If the shard containing this blockindex is not present, it is fetched from the external metadaserver
-func (lba *LBA) Get(blockIndex int64) (h *Hash) {
-	shard := lba.shards[blockIndex/NumberOfRecordsPerLBAShard]
+func (lba *LBA) Get(blockIndex int64) (h *Hash, err error) {
+	//TODO: let's see if we really need to lock on such a high level
+	lba.lock.Lock()
+	defer lba.lock.Unlock()
+
+	shardIndex := blockIndex / NumberOfRecordsPerLBAShard
+	shard := lba.shards[shardIndex]
+	if shard == nil {
+		shard, err = lba.getShardFromExternalStorage(shardIndex)
+		if err != nil {
+			return
+		}
+		lba.shards[shardIndex] = shard
+	}
 	if shard != nil {
 		h = (*shard)[blockIndex%NumberOfRecordsPerLBAShard]
 	}
@@ -63,5 +99,46 @@ func (lba *LBA) Get(blockIndex int64) (h *Hash) {
 
 //Flush stores all dirty shards to the external metadaserver
 func (lba *LBA) Flush() (err error) {
+	//TODO: let's see if we really need to lock on such a high level
+	lba.lock.Lock()
+	defer lba.lock.Unlock()
+
+	lba.storeShardsInExternalStorage(lba.dirtyShards)
+
+	lba.dirtyShards = make(map[int64]*LBAShard)
+
+	return
+}
+
+func (lba *LBA) createShardKey(shardIndex int64) string {
+	return fmt.Sprintf("%s:%d", lba.volumeID, shardIndex)
+}
+
+func (lba *LBA) storeShardsInExternalStorage(shards map[int64]*LBAShard) (err error) {
+	conn := lba.redisPool.Get()
+	defer conn.Close()
+
+	for shardIndex, shard := range shards {
+		key := lba.createShardKey(shardIndex)
+		//TODO: properly convert the shard to a byteslice
+		if err = conn.Send("SET", key, shard); err != nil {
+			return
+		}
+	}
+	err = conn.Flush()
+	return
+}
+
+func (lba *LBA) getShardFromExternalStorage(shardIndex int64) (shard *LBAShard, err error) {
+	key := lba.createShardKey(shardIndex)
+
+	conn := lba.redisPool.Get()
+	defer conn.Close()
+	reply, err := conn.Do("GET", key)
+	if err != nil || reply == nil {
+		return
+	}
+	//TODO: convert the reply to a shard
+	_, err = redis.Bytes(reply, err)
 	return
 }

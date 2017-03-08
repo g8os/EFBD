@@ -53,7 +53,7 @@ func (ab *ArdbBackend) WriteAt(ctx context.Context, b []byte, offset int64, fua 
 		bytesWritten = len(b)
 	}
 	if fua {
-		ab.Flush(ctx)
+		err = ab.Flush(ctx)
 	}
 	return
 }
@@ -63,7 +63,10 @@ func (ab *ArdbBackend) ReadAt(ctx context.Context, b []byte, offset int64) (byte
 	blockIndex := offset / ab.BlockSize
 	offsetInsideBlock := offset % ab.BlockSize
 
-	contentHash := ab.LBA.Get(blockIndex)
+	contentHash, err := ab.LBA.Get(blockIndex)
+	if err != nil {
+		return
+	}
 	if contentHash == nil {
 		bytesRead = len(b)
 		return
@@ -100,7 +103,7 @@ func (ab *ArdbBackend) TrimAt(ctx context.Context, length int, offset int64) (in
 
 //Flush implements nbd.Backend.Flush
 func (ab *ArdbBackend) Flush(ctx context.Context) (err error) {
-	ab.LBA.Flush()
+	err = ab.LBA.Flush()
 	return
 }
 
@@ -167,7 +170,7 @@ func (f *ArdbBackendFactory) NewArdbBackend(ctx context.Context, ec *nbd.ExportC
 	ab.backendConnectionStrings = storageClusterInfo.Storageservers
 	ab.numberOfStorageServers = len(ab.backendConnectionStrings)
 
-	ab.LBA = NewLBA(numberOfBlocks, f.BackendPool.GetConnectionSpecificPool(storageClusterInfo.Metadataserver.ConnectionString))
+	ab.LBA = NewLBA(volumeID, numberOfBlocks, f.BackendPool.GetConnectionSpecificPool(storageClusterInfo.Metadataserver.ConnectionString))
 
 	backend = ab
 	return
