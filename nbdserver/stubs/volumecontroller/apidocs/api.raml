@@ -18,6 +18,15 @@ types:
         type: boolean
         description: Indicates if this volume is deduped or not.
       storagecluster: string
+      readOnly:
+        type: boolean
+        default: false
+        required: false
+      driver:
+        type: string
+        description: name of the driver of this volume
+        required: false
+
 
 /volumes:
   post:
@@ -37,6 +46,14 @@ types:
             default: true
           templatevolume:
             type: string
+            required: false
+          readOnly:
+            type: boolean
+            required: false
+            default: false
+          driver:
+            type: string
+            description: name of the driver of this volume
             required: false
 
     responses:

@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"golang.org/x/net/context"
 	"io/ioutil"
 	"log"
 	"net"
@@ -13,24 +12,98 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/net/context"
 )
 
-// A single listener on a given net.Conn address
-type Listener struct {
-	logger          *log.Logger    // a logger
-	protocol        string         // the protocol we are listening on
-	addr            string         // the address
-	exports         []ExportConfig // a list of export configurations associated
-	defaultExport   string         // name of default export
-	tls             TlsConfig      // the TLS configuration
-	tlsconfig       *tls.Config    // the TLS configuration
-	disableNoZeroes bool           // disable the 'no zeroes' extension
+// ExportConfigManager is the interface,
+// that allows you to dynamically list and generate
+// export configs, which have priority over
+// the static configs predefined on the server
+type ExportConfigManager interface {
+	// List Config Names that this manager has available,
+	// none can be returned in case this manager
+	// does not support such a feature.
+	ListConfigNames() []string
+	// GetConfig returns, if possible,
+	// an export Config linked to a given name
+	GetConfig(name string) (*ExportConfig, error)
 }
 
-// An listener type that does what we want
+// Listener defines a single listener on a given net.Conn address
+type Listener struct {
+	logger          *log.Logger             // a logger
+	protocol        string                  // the protocol we are listening on
+	addr            string                  // the address
+	exports         map[string]ExportConfig // a map of static export configurations associated
+	exportManager   ExportConfigManager     // an export config manager
+	defaultExport   string                  // name of default export
+	tls             TLSConfig               // the TLS configuration
+	tlsconfig       *tls.Config             // the TLS configuration
+	disableNoZeroes bool                    // disable the 'no zeroes' extension
+}
+
+// DeadlineListener defines a listener type that does what we want
 type DeadlineListener interface {
 	SetDeadline(t time.Time) error
 	net.Listener
+}
+
+// SetExportConfigManager sets the manager used to dynamically,
+// manage export configs, which has priority over the statically
+// defined export configs.
+func (l *Listener) SetExportConfigManager(m ExportConfigManager) {
+	l.exportManager = m
+}
+
+// GetExportConfig returns a config based on a given name.
+// If the ExportConfigGenerator is set and it can return a config,
+// using the given name, that config will be returned.
+// Otherwise it will try to find the config in the statically defined list.
+// If it can't find it in that list either, or the static list is empty,
+// an error will be returned.
+func (l *Listener) GetExportConfig(name string) (cfg *ExportConfig, err error) {
+	if l.exportManager != nil {
+		// try to generate the config based on the given name,
+		// generation details are defined by the implementer
+		cfg, err = l.exportManager.GetConfig(name)
+		if err == nil && cfg != nil {
+			return
+		}
+	}
+
+	// try to find it in the statically defined list, if it exists.
+	if l.exports != nil {
+		if exportConfig, found := l.exports[name]; found {
+			cfg = &exportConfig
+			err = nil
+			return
+		}
+	}
+
+	// config could not be dynamically generated or statically found
+	cfg = nil
+	err = fmt.Errorf("no export config could be found for %q", name)
+	return
+}
+
+// ListExportConfigNames returns a list of available exportNames.
+// NOTE: the returned list might not be complete,
+//       as it is possible that a export config manager is being used,
+//       that does not support the listing of available export config names.
+func (l *Listener) ListExportConfigNames() (names []string) {
+	if l.exportManager != nil {
+		names = l.exportManager.ListConfigNames()
+	}
+
+	// array could contain duplicates,
+	// but as the dynamic exports are listed first,
+	// this shouldn't give any issues.
+	for name := range l.exports {
+		names = append(names, name)
+	}
+
+	return
 }
 
 // Listen listens on an given address for incoming connections
@@ -83,7 +156,7 @@ func (l *Listener) Listen(parentCtx context.Context, sessionParentCtx context.Co
 			l.logger.Printf("[ERROR] Error %s listening on %s", err, addr)
 		} else {
 			l.logger.Printf("[INFO] Connect to %s from %s", addr, conn.RemoteAddr())
-			if connection, err := newConnection(l, l.logger, conn); err != nil {
+			if connection, err := NewConnection(l, l.logger, conn); err != nil {
 				l.logger.Printf("[ERROR] Error %s establishing connection to %s from %s", err, addr, conn.RemoteAddr())
 				conn.Close()
 			} else {
@@ -102,8 +175,8 @@ func (l *Listener) Listen(parentCtx context.Context, sessionParentCtx context.Co
 
 }
 
-// make an appropriate TLS config
-func (l *Listener) initTls() error {
+// initTLS makes an appropriate TLS config
+func (l *Listener) initTLS() error {
 	keyFile := l.tls.KeyFile
 	if keyFile == "" {
 		return nil // no TLS
@@ -173,16 +246,21 @@ func (l *Listener) initTls() error {
 
 // NewListener returns a new listener object
 func NewListener(logger *log.Logger, s ServerConfig) (*Listener, error) {
+	exportMap := make(map[string]ExportConfig, len(s.Exports))
+	for _, cfg := range s.Exports {
+		exportMap[cfg.Name] = cfg
+	}
+
 	l := &Listener{
 		logger:          logger,
 		protocol:        s.Protocol,
 		addr:            s.Address,
-		exports:         s.Exports,
+		exports:         exportMap,
 		defaultExport:   s.DefaultExport,
 		disableNoZeroes: s.DisableNoZeroes,
-		tls:             s.Tls,
+		tls:             s.TLS,
 	}
-	if err := l.initTls(); err != nil {
+	if err := l.initTLS(); err != nil {
 		return nil, err
 	}
 	return l, nil

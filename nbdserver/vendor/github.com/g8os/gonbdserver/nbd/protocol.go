@@ -1,7 +1,5 @@
 package nbd
 
-import ()
-
 /* --- START OF NBD PROTOCOL SECTION --- */
 
 // this section is in essence a transcription of the protocol from
@@ -142,7 +140,7 @@ type nbdClientFlags struct {
 // NBD client options
 type nbdClientOpt struct {
 	NbdOptMagic uint64
-	NbdOptId    uint32
+	NbdOptID    uint32
 	NbdOptLen   uint32
 }
 
@@ -155,7 +153,7 @@ type nbdExportDetails struct {
 // NBD option reply
 type nbdOptReply struct {
 	NbdOptReplyMagic  uint64
-	NbdOptId          uint32
+	NbdOptID          uint32
 	NbdOptReplyType   uint32
 	NbdOptReplyLength uint32
 }
@@ -204,7 +202,7 @@ const (
 	CMDT_SET_DISCONNECT_RECEIVED             // a disconnect - don't process any further commands
 )
 
-// A map specifying each command
+// CmdTypeMap is a map specifying each command
 var CmdTypeMap = map[int]uint64{
 	NBD_CMD_READ:         CMDT_CHECK_LENGTH_OFFSET | CMDT_REP_PAYLOAD,
 	NBD_CMD_WRITE:        CMDT_CHECK_LENGTH_OFFSET | CMDT_CHECK_NOT_READ_ONLY | CMDT_REQ_PAYLOAD,
