@@ -28,7 +28,7 @@ type ArdbBackend struct {
 	RedisConnectionPool *RedisPool
 
 	backendConnectionStrings []storagebackendcontroller.Server
-	numberOfStorageServers   int
+	numberOfStorageServers   int //Keep it as a seperate variable since this is constantly needed
 
 	VolumeControllerClient *volumecontroller.VolumeController
 }
@@ -102,9 +102,6 @@ func (ab *ArdbBackend) Flush(ctx context.Context) (err error) {
 
 //Close implements nbd.Backend.Close
 func (ab *ArdbBackend) Close(ctx context.Context) (err error) {
-	if ab.RedisConnectionPool != nil {
-		ab.RedisConnectionPool.Close()
-	}
 	return
 }
 
@@ -153,7 +150,6 @@ func (f *ArdbBackendFactory) NewArdbBackend(ctx context.Context, ec *nbd.ExportC
 	if (ab.Size / uint64(ab.BlockSize)) != 0 {
 		numberOfBlocks++
 	}
-	ab.LBA = NewLBA(numberOfBlocks)
 
 	//Get information about the backend storage nodes
 	// TODO: need a way to update while staying alive
@@ -166,6 +162,8 @@ func (f *ArdbBackendFactory) NewArdbBackend(ctx context.Context, ec *nbd.ExportC
 	}
 	ab.backendConnectionStrings = storageClusterInfo.Storageservers
 	ab.numberOfStorageServers = len(ab.backendConnectionStrings)
+
+	ab.LBA = NewLBA(numberOfBlocks, f.BackendPool.GetConnectionSpecificPool(storageClusterInfo.Metadataserver.ConnectionString))
 
 	backend = ab
 	return

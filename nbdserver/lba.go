@@ -1,5 +1,7 @@
 package main
 
+import "github.com/garyburd/redigo/redis"
+
 //NumberOfRecordsPerLBAShard is the fixed length of the LBAShards
 const NumberOfRecordsPerLBAShard = 128
 
@@ -12,39 +14,43 @@ func NewLBAShard() *LBAShard {
 }
 
 //An LBA implements the functionality to lookup block keys through the logical block index
-type LBA []*LBAShard
+type LBA struct {
+	shards    []*LBAShard
+	redisPool *redis.Pool
+}
 
 //NewLBA creates a new LBA with enough shards to hold the requested numberOfBlocks
 // TODO: this is a naive in memory implementation so we can continue testing,
 //		 need to create a persistent implementation (issue #5)
-func NewLBA(numberOfBlocks uint64) (lba *LBA) {
+func NewLBA(numberOfBlocks uint64, pool *redis.Pool) (lba *LBA) {
 	numberOfShards := numberOfBlocks / NumberOfRecordsPerLBAShard
 	//If the number of blocks is not aligned on the number of shards, add an extra one
 	if (numberOfBlocks % NumberOfRecordsPerLBAShard) != 0 {
 		numberOfShards++
 	}
-
-	l := make(LBA, numberOfShards)
-	lba = &l
+	lba = &LBA{
+		shards:    make([]*LBAShard, numberOfShards),
+		redisPool: pool,
+	}
 	return
 }
 
 //Set the content hash for a specific block
 func (lba *LBA) Set(blockIndex int64, h *Hash) {
-	shard := (*lba)[blockIndex/NumberOfRecordsPerLBAShard]
+	shard := lba.shards[blockIndex/NumberOfRecordsPerLBAShard]
 	if shard == nil {
 		//TODO: make this thing thread safe
 		//		(to be done in the same feature work where
 		//		 we make the lba content persistent) (issue #5)
 		shard = NewLBAShard()
-		(*lba)[blockIndex/NumberOfRecordsPerLBAShard] = shard
+		lba.shards[blockIndex/NumberOfRecordsPerLBAShard] = shard
 	}
 	(*shard)[blockIndex%NumberOfRecordsPerLBAShard] = h
 }
 
 //Get returns the hash for a block, nil if no hash registered
 func (lba *LBA) Get(blockIndex int64) (h *Hash) {
-	shard := (*lba)[blockIndex/NumberOfRecordsPerLBAShard]
+	shard := lba.shards[blockIndex/NumberOfRecordsPerLBAShard]
 	if shard != nil {
 		h = (*shard)[blockIndex%NumberOfRecordsPerLBAShard]
 	}

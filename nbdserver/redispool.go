@@ -42,7 +42,11 @@ func NewRedisPool(inMemory bool) (p *RedisPool) {
 // getting an underlying connection, then the connection Err, Do, Send, Flush
 // and Receive methods return that error.
 func (p *RedisPool) Get(connectionString string) redis.Conn {
-	var singleServerPool *redis.Pool
+	return p.GetConnectionSpecificPool(connectionString).Get()
+}
+
+// GetConnectionSpecificPool get a redis.Pool for a specific connectionString.
+func (p *RedisPool) GetConnectionSpecificPool(connectionString string) (singleServerPool *redis.Pool) {
 	func() {
 		p.lock.Lock()
 		defer p.lock.Unlock()
@@ -57,7 +61,7 @@ func (p *RedisPool) Get(connectionString string) redis.Conn {
 		}
 		p.connections[connectionString] = singleServerPool
 	}()
-	return singleServerPool.Get()
+	return
 }
 
 // Close releases the resources used by the pool.
