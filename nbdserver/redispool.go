@@ -63,9 +63,10 @@ func (p *RedisPool) Get(connectionString string) redis.Conn {
 // Close releases the resources used by the pool.
 func (p *RedisPool) Close() {
 	p.lock.Lock()
+	defer p.lock.Unlock()
+
 	for _, c := range p.connections {
 		c.Close()
 	}
 	p.connections = make(map[string]*redis.Pool)
-	defer p.lock.Unlock()
 }

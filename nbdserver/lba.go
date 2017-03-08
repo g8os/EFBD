@@ -15,14 +15,16 @@ func NewLBAShard() *LBAShard {
 type LBA []*LBAShard
 
 //NewLBA creates a new LBA with enough shards to hold the requested numberOfBlocks
-// TODO: this is a naive in memory implementation so we can continue testing
+// TODO: this is a naive in memory implementation so we can continue testing,
+//		 need to create a persistent implementation (issue #5)
 func NewLBA(numberOfBlocks uint64) (lba *LBA) {
 	numberOfShards := numberOfBlocks / NumberOfRecordsPerLBAShard
 	//If the number of blocks is not aligned on the number of shards, add an extra one
 	if (numberOfBlocks % NumberOfRecordsPerLBAShard) != 0 {
 		numberOfShards++
 	}
-	l := LBA(make([]*LBAShard, numberOfShards, numberOfShards))
+
+	l := make(LBA, numberOfShards)
 	lba = &l
 	return
 }
@@ -32,6 +34,8 @@ func (lba *LBA) Set(blockIndex int64, h *Hash) {
 	shard := (*lba)[blockIndex/NumberOfRecordsPerLBAShard]
 	if shard == nil {
 		//TODO: make this thing thread safe
+		//		(to be done in the same feature work where
+		//		 we make the lba content persistent) (issue #5)
 		shard = NewLBAShard()
 		(*lba)[blockIndex/NumberOfRecordsPerLBAShard] = shard
 	}
