@@ -41,17 +41,26 @@ func (ab *ArdbBackend) WriteAt(ctx context.Context, b []byte, offset int64, fua 
 	}
 	contentHash := HashBytes(b)
 
-	//Save to Ardb
+	//Save to Ardb if this content is not there yet
 	conn := ab.RedisConnectionPool.Get(ab.backendConnectionStrings[int(contentHash[0])%ab.numberOfStorageServers].ConnectionString)
 	defer conn.Close()
-	conn.Send("SET", *contentHash, b)
-	err = conn.Flush()
+	keysFound, err := redis.Int(conn.Do("EXISTS", *contentHash))
+	if err != nil {
+		return
+	}
+	if keysFound == 0 {
+		if err = conn.Send("SET", *contentHash, b); err != nil {
+			return
+		}
+		err = conn.Flush()
+	}
 
 	//Save hash in the LBA tables
 	ab.LBA.Set(offset/ab.BlockSize, contentHash)
 	if err == nil {
 		bytesWritten = len(b)
 	}
+	//Flush the LBA structure on fua
 	if fua {
 		err = ab.Flush(ctx)
 	}

@@ -41,6 +41,17 @@ func (c *MemoryRedis) Do(commandName string, args ...interface{}) (reply interfa
 			return
 		}
 		reply = c.values[args[0]]
+	case "EXISTS":
+		if len(args) < 1 {
+			err = errors.New("Insufficient parameters")
+			return
+		}
+		_, exists := c.values[args[0]]
+		if exists {
+			reply = int64(1)
+		} else {
+			reply = int64(0)
+		}
 	default:
 		err = fmt.Errorf("Command %s not implemented", commandName)
 	}
