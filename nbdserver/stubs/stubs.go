@@ -3,7 +3,9 @@
 package stubs
 
 import (
+	"errors"
 	"net/http/httptest"
+	"strings"
 
 	"github.com/g8os/blockstor/nbdserver/stubs/storagebackendcontroller"
 	"github.com/g8os/blockstor/nbdserver/stubs/volumecontroller"
@@ -29,10 +31,21 @@ func NewVolumeControllerServer() (s *httptest.Server, url string) {
 
 //NewStorageBackendServer starts an HTTP server listening on a system-chosen port on the local loopback interface, for use in tests without an external storage controller service.
 // When finished, Close() should be called on the returned server
-func NewStorageBackendServer() (s *httptest.Server, url string) {
+func NewStorageBackendServer(arbdConnectionStrings string) (s *httptest.Server, url string, err error) {
+	connectionStrings := strings.Split(arbdConnectionStrings, ",")
+	if len(connectionStrings) < 2 {
+		err = errors.New("At least two ardb connectionstrings should be given")
+		return
+	}
+	a := storagebackendcontroller.StorageclusterAPI{}
+	a.MetadataServer = storagebackendcontroller.Server{ConnectionString: connectionStrings[0]}
+	a.StorageServers = make([]storagebackendcontroller.Server, len(connectionStrings)-1)
+	for i, c := range connectionStrings[1:] {
+		a.StorageServers[i] = storagebackendcontroller.Server{ConnectionString: c}
+	}
 	r := mux.NewRouter()
 
-	storagebackendcontroller.StorageclusterInterfaceRoutes(r, storagebackendcontroller.StorageclusterAPI{})
+	storagebackendcontroller.StorageclusterInterfaceRoutes(r, a)
 	s = httptest.NewServer(r)
 	url = s.URL
 	return

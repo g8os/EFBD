@@ -18,11 +18,13 @@ func main() {
 	var address string
 	var volumecontrolleraddress string
 	var backendcontrolleraddress string
+	var testArdbConnectionSrings string
 	flag.BoolVar(&inMemoryStorage, "memorystorage", false, "Stores the data in memory only, usefull for testing or benchmarking")
 	flag.StringVar(&protocol, "protocol", "unix", "Protocol to listen on, 'tcp' or 'unix'")
 	flag.StringVar(&address, "address", "/tmp/nbd-socket", "Address to listen on, unix socket or tcp address, ':6666' for example")
 	flag.StringVar(&volumecontrolleraddress, "volumecontroller", "", "Address of the volumecontroller REST API, leave empty to use the embedded stub")
 	flag.StringVar(&backendcontrolleraddress, "backendcontroller", "", "Address of the storage backend controller REST API, leave empty to use the embedded stub")
+	flag.StringVar(&testArdbConnectionSrings, "testardbs", "localhost:16379,localhost:16379", "Comma seperated list of ardb connection strings returned by the embedded backend controller, first one is the metadataserver")
 	flag.Parse()
 
 	//TODO: make this dependant of a profiling flag
@@ -42,7 +44,11 @@ func main() {
 	if backendcontrolleraddress == "" {
 		logger.Println("[INFO] Starting embedded storage backend controller")
 		var s *httptest.Server
-		s, backendcontrolleraddress = stubs.NewStorageBackendServer()
+		var err error
+		s, backendcontrolleraddress, err = stubs.NewStorageBackendServer(testArdbConnectionSrings)
+		if err != nil {
+			logger.Fatalln("[ERROR]", err)
+		}
 		defer s.Close()
 	}
 	logger.Println("[INFO] Using storage backend controller at", backendcontrolleraddress)

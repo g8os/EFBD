@@ -9,6 +9,8 @@ import (
 
 // StorageclusterAPI is API implementation of /storagecluster root endpoint
 type StorageclusterAPI struct {
+	MetadataServer Server
+	StorageServers []Server
 }
 
 // GetStorageClusterInfo is the handler for GET /storagecluster/{clustername}
