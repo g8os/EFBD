@@ -3,14 +3,12 @@ package nbd
 import (
 	"flag"
 	"fmt"
-	"github.com/sevlyar/go-daemon"
-	"golang.org/x/net/context"
-	"gopkg.in/yaml.v2"
 	"io"
 	"io/ioutil"
 	"log"
 	"log/syslog"
 	"net/http"
+	// registers profiling HTTP Handlers
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
@@ -22,6 +20,10 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+
+	"github.com/sevlyar/go-daemon"
+	"golang.org/x/net/context"
+	"gopkg.in/yaml.v2"
 )
 
 /* Example configuration:
@@ -33,7 +35,6 @@ servers:
   - name: foo
     driver: file
     path: /tmp/test
-    workers: 5
   - name: bar
     readonly: true
     driver: rbd
@@ -58,11 +59,14 @@ var sendSignal = flag.String("s", "", "Send signal to daemon (either \"stop\" or
 var foreground = flag.Bool("f", false, "Run in foreground (not as daemon)")
 var pprof = flag.Bool("pprof", false, "Run pprof")
 
+// Environment variables that can be used to
+// overwrite some of the flags.
 const (
-	ENV_CONFFILE = "_GONBDSERVER_CONFFILE"
-	ENV_PIDFILE  = "_GONBDSERVER_PIDFILE"
+	EnvConfigFile = "_GONBDSERVER_CONFFILE"
+	EnvPIDFile    = "_GONBDSERVER_PIDFILE"
 )
 
+// Control structure is used to sync an async event
 type Control struct {
 	quit chan struct{}
 }
@@ -79,7 +83,7 @@ type ServerConfig struct {
 	Address         string         // address to listen on
 	DefaultExport   string         // name of default export
 	Exports         []ExportConfig // array of configurations of exported items
-	Tls             TlsConfig      // TLS configuration
+	TLS             TLSConfig      // TLS configuration
 	DisableNoZeroes bool           // Disable NoZereos extension
 }
 
@@ -89,16 +93,15 @@ type ExportConfig struct {
 	Description        string                 // description of export
 	Driver             string                 // name of the driver
 	ReadOnly           bool                   // true of the export should be opened readonly
-	Workers            int                    // number of concurrent workers
-	TlsOnly            bool                   // true if the export should only be served over TLS
+	TLSOnly            bool                   // true if the export should only be served over TLS
 	MinimumBlockSize   uint64                 // minimum block size
 	PreferredBlockSize uint64                 // preferred block size
 	MaximumBlockSize   uint64                 // maximum block size
 	DriverParameters   DriverParametersConfig `yaml:",inline"` // driver parameters. These are an arbitrary map. Inline means they go aside teh foregoing
 }
 
-// TlsConfig has the configuration for TLS
-type TlsConfig struct {
+// TLSConfig has the configuration for TLS
+type TLSConfig struct {
 	KeyFile    string // path to TLS key file
 	CertFile   string // path to TLS cert file
 	ServerName string // server name
@@ -108,7 +111,7 @@ type TlsConfig struct {
 	MaxVersion string // maximum TLS version
 }
 
-// DriverConfig is an arbitrary map of other parameters in string format
+// DriverParametersConfig is an arbitrary map of other parameters in string format
 type DriverParametersConfig map[string]string
 
 // LogConfig specifies configuration for logging
@@ -130,7 +133,7 @@ type SyslogWriter struct {
 }
 
 // facilityMap maps textual
-var facilityMap map[string]syslog.Priority = map[string]syslog.Priority{
+var facilityMap = map[string]syslog.Priority{
 	"kern":     syslog.LOG_KERN,
 	"user":     syslog.LOG_USER,
 	"mail":     syslog.LOG_MAIL,
@@ -154,7 +157,7 @@ var facilityMap map[string]syslog.Priority = map[string]syslog.Priority{
 }
 
 // levelMap maps textual levels to syslog levels
-var levelMap map[string]syslog.Priority = map[string]syslog.Priority{
+var levelMap = map[string]syslog.Priority{
 	"EMERG":   syslog.LOG_EMERG,
 	"ALERT":   syslog.LOG_ALERT,
 	"CRIT":    syslog.LOG_CRIT,
@@ -167,52 +170,21 @@ var levelMap map[string]syslog.Priority = map[string]syslog.Priority{
 	"DEBUG":   syslog.LOG_DEBUG,
 }
 
-// isTrue determines whether an argument is true
-func isTrue(v string) (bool, error) {
-	if v == "true" {
-		return true, nil
-	} else if v == "false" || v == "" {
-		return false, nil
-	}
-	return false, fmt.Errorf("Unknown boolean value: %s", v)
-}
-
-// isFalse determines whether an argument is false
-func isFalse(v string) (bool, error) {
-	if v == "false" {
-		return true, nil
-	} else if v == "true" || v == "" {
-		return false, nil
-	}
-	return false, fmt.Errorf("Unknown boolean value: %s", v)
-}
-
-// isTrue determines whether an argument is true or fals
-func isTrueFalse(v string) (bool, bool, error) {
-	if v == "true" {
-		return true, false, nil
-	} else if v == "false" {
-		return false, true, nil
-	} else if v == "" {
-		return false, false, nil
-	}
-	return false, false, fmt.Errorf("Unknown boolean value: %s", v)
-}
-
-// Create a new syslog writer
+// NewSyslogWriter creates a new syslog writer
 func NewSyslogWriter(facility string) (*SyslogWriter, error) {
 	f := syslog.LOG_DAEMON
 	if ff, ok := facilityMap[facility]; ok {
 		f = ff
 	}
 
-	if w, err := syslog.New(f|syslog.LOG_INFO, "gonbdserver:"); err != nil {
+	w, err := syslog.New(f|syslog.LOG_INFO, "gonbdserver:")
+	if err != nil {
 		return nil, err
-	} else {
-		return &SyslogWriter{
-			w: w,
-		}, nil
 	}
+
+	return &SyslogWriter{
+		w: w,
+	}, nil
 }
 
 // Close the channel
@@ -220,8 +192,8 @@ func (s *SyslogWriter) Close() error {
 	return s.w.Close()
 }
 
-var deletePrefix *regexp.Regexp = regexp.MustCompile("gonbdserver:")
-var replaceLevel *regexp.Regexp = regexp.MustCompile("\\[[A-Z]+\\] ")
+var deletePrefix = regexp.MustCompile("gonbdserver:")
+var replaceLevel = regexp.MustCompile("\\[[A-Z]+\\] ")
 
 // Write to the syslog, removing the prefix and setting the appropriate level
 func (s *SyslogWriter) Write(p []byte) (n int, err error) {
@@ -256,26 +228,29 @@ func (s *SyslogWriter) Write(p []byte) (n int, err error) {
 
 // ParseConfig parses the YAML configuration provided
 func ParseConfig() (*Config, error) {
-	if buf, err := ioutil.ReadFile(*configFile); err != nil {
+	buf, err := ioutil.ReadFile(*configFile)
+	if err != nil {
 		return nil, err
-	} else {
-		c := &Config{}
-		if err := yaml.Unmarshal(buf, c); err != nil {
-			return nil, err
-		}
-		for i, _ := range c.Servers {
-			if c.Servers[i].Protocol == "" {
-				c.Servers[i].Protocol = "tcp"
-			}
-			if c.Servers[i].Protocol == "tcp" && c.Servers[i].Address == "" {
-				c.Servers[i].Protocol = fmt.Sprintf("0.0.0.0:%d", NBD_DEFAULT_PORT)
-			}
-		}
-		return c, nil
 	}
+
+	c := &Config{}
+	if err := yaml.Unmarshal(buf, c); err != nil {
+		return nil, err
+	}
+
+	for i := range c.Servers {
+		if c.Servers[i].Protocol == "" {
+			c.Servers[i].Protocol = "tcp"
+		}
+		if c.Servers[i].Protocol == "tcp" && c.Servers[i].Address == "" {
+			c.Servers[i].Protocol = fmt.Sprintf("0.0.0.0:%d", NBD_DEFAULT_PORT)
+		}
+	}
+
+	return c, nil
 }
 
-// Startserver starts a single server.
+// StartServer starts a single server.
 //
 // A parent context is given in which the listener runs, as well as a session context in which the sessions (connections) themselves run.
 // This enables the sessions to be retained when the listener is cancelled on a SIGHUP
@@ -296,6 +271,7 @@ func StartServer(parentCtx context.Context, sessionParentCtx context.Context, se
 	}
 }
 
+// GetLogger returns the configured logger linked to this config
 func (c *Config) GetLogger() (*log.Logger, io.Closer, error) {
 	logFlags := 0
 	if c.Logging.Date {
@@ -313,27 +289,32 @@ func (c *Config) GetLogger() (*log.Logger, io.Closer, error) {
 	if c.Logging.File != "" {
 		mode := os.FileMode(0644)
 		if c.Logging.FileMode != "" {
-			if i, err := strconv.ParseInt(c.Logging.FileMode, 8, 32); err != nil {
+			i, err := strconv.ParseInt(c.Logging.FileMode, 8, 32)
+			if err != nil {
 				return nil, nil, fmt.Errorf("Cannot read file logging mode: %v", err)
-			} else {
-				mode = os.FileMode(i)
 			}
+
+			mode = os.FileMode(i)
 		}
-		if file, err := os.OpenFile(c.Logging.File, os.O_CREATE|os.O_APPEND|os.O_WRONLY, mode); err != nil {
+
+		file, err := os.OpenFile(c.Logging.File, os.O_CREATE|os.O_APPEND|os.O_WRONLY, mode)
+		if err != nil {
 			return nil, nil, err
-		} else {
-			return log.New(file, "gonbdserver:", logFlags), file, nil
 		}
+
+		return log.New(file, "gonbdserver:", logFlags), file, nil
 	}
+
 	if c.Logging.SyslogFacility != "" {
-		if s, err := NewSyslogWriter(c.Logging.SyslogFacility); err != nil {
+		s, err := NewSyslogWriter(c.Logging.SyslogFacility)
+		if err != nil {
 			return nil, nil, err
-		} else {
-			return log.New(s, "gonbdserver:", logFlags), s, nil
 		}
-	} else {
-		return log.New(os.Stderr, "gonbdserver:", logFlags), nil, nil
+
+		return log.New(s, "gonbdserver:", logFlags), s, nil
 	}
+
+	return log.New(os.Stderr, "gonbdserver:", logFlags), nil, nil
 }
 
 // RunConfig - this is effectively the main entry point of the program
@@ -389,51 +370,59 @@ func RunConfig(control *Control) {
 	for {
 		var wg sync.WaitGroup
 		configCtx, configCancelFunc := context.WithCancel(ctx)
-		if c, err := ParseConfig(); err != nil {
-			logger.Println("[ERROR] Cannot parse configuration file: %v", err)
-			return
-		} else {
-			if nlogger, nlogCloser, err := c.GetLogger(); err != nil {
-				logger.Println("[ERROR] Could not load logger: %v", err)
-			} else {
-				if logCloser != nil {
-					logCloser.Close()
-				}
-				logger = nlogger
-				logCloser = nlogCloser
-			}
-			logger.Printf("[INFO] Loaded configuration. Available backends: %s.", strings.Join(GetBackendNames(), ", "))
-			for _, s := range c.Servers {
-				s := s // localise loop variable
-				go func() {
-					wg.Add(1)
-					StartServer(configCtx, ctx, &sessionWaitGroup, logger, s)
-					wg.Done()
-				}()
-			}
 
-			select {
-			case <-ctx.Done():
-				logger.Println("[INFO] Interrupted")
-				return
-			case <-intr:
-				logger.Println("[INFO] Interrupt signal received")
-				return
-			case <-term:
-				logger.Println("[INFO] Terminate signal received")
-				return
-			case <-control.quit:
-				logger.Println("[INFO] Programmatic quit received")
-				return
-			case <-hup:
-				logger.Println("[INFO] Reload signal received; reloading configuration which will be effective for new connections")
-				configCancelFunc() // kill the listeners but not the sessions
-				wg.Wait()
+		c, err := ParseConfig()
+		if err != nil {
+			logger.Printf("[ERROR] Cannot parse configuration file: %v\n", err)
+			return
+		}
+
+		if nlogger, nlogCloser, err := c.GetLogger(); err != nil {
+			logger.Printf("[ERROR] Could not load logger: %v\n", err)
+		} else {
+			if logCloser != nil {
+				logCloser.Close()
 			}
+			logger = nlogger
+			logCloser = nlogCloser
+		}
+
+		logger.Printf("[INFO] Loaded configuration. Available backends: %s\n", strings.Join(GetBackendNames(), ", "))
+
+		for _, s := range c.Servers {
+			s := s // localise loop variable
+			go func() {
+				wg.Add(1)
+				StartServer(configCtx, ctx, &sessionWaitGroup, logger, s)
+				wg.Done()
+			}()
+		}
+
+		select {
+		case <-ctx.Done():
+			logger.Println("[INFO] Interrupted")
+			return
+		case <-intr:
+			logger.Println("[INFO] Interrupt signal received")
+			return
+		case <-term:
+			logger.Println("[INFO] Terminate signal received")
+			return
+		case <-control.quit:
+			logger.Println("[INFO] Programmatic quit received")
+			return
+		case <-hup:
+			logger.Println("[INFO] Reload signal received; reloading configuration which will be effective for new connections")
+			configCancelFunc() // kill the listeners but not the sessions
+			wg.Wait()
 		}
 	}
 }
 
+// Run defines the entry point of this nbd module.
+// It creates the server in the foreground or as a deamon.
+// It will create the listeners and server based on the config and defaults.
+// Once that's all up and running, the service is ready to receive and reply to NBD Requests.
 func Run(control *Control) {
 	if control == nil {
 		control = &Control{}
@@ -451,10 +440,10 @@ func Run(control *Control) {
 	daemon.AddFlag(daemon.StringFlag(sendSignal, "reload"), syscall.SIGHUP)
 
 	if daemon.WasReborn() {
-		if val := os.Getenv(ENV_CONFFILE); val != "" {
+		if val := os.Getenv(EnvConfigFile); val != "" {
 			*configFile = val
 		}
-		if val := os.Getenv(ENV_PIDFILE); val != "" {
+		if val := os.Getenv(EnvPIDFile); val != "" {
 			*pidFile = val
 		}
 	}
@@ -481,8 +470,8 @@ func Run(control *Control) {
 		return
 	}
 
-	os.Setenv(ENV_CONFFILE, *configFile)
-	os.Setenv(ENV_PIDFILE, *pidFile)
+	os.Setenv(EnvConfigFile, *configFile)
+	os.Setenv(EnvPIDFile, *pidFile)
 
 	// Define daemon context
 	d := &daemon.Context{

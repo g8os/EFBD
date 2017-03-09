@@ -7,19 +7,21 @@ import (
 	"os"
 	"sync"
 
-	"github.com/abligh/gonbdserver/nbd"
 	"github.com/g8os/blockstor/nbdserver/stubs"
+	"github.com/g8os/gonbdserver/nbd"
 	"golang.org/x/net/context"
 )
 
 func main() {
 	var inMemoryStorage bool
+	var tslonly bool
 	var protocol string
 	var address string
 	var volumecontrolleraddress string
 	var backendcontrolleraddress string
 	var testArdbConnectionSrings string
 	flag.BoolVar(&inMemoryStorage, "memorystorage", false, "Stores the data in memory only, usefull for testing or benchmarking")
+	flag.BoolVar(&tslonly, "tslonly", false, "Forces all nbd connections to be tsl-enabled")
 	flag.StringVar(&protocol, "protocol", "unix", "Protocol to listen on, 'tcp' or 'unix'")
 	flag.StringVar(&address, "address", "/tmp/nbd-socket", "Address to listen on, unix socket or tcp address, ':6666' for example")
 	flag.StringVar(&volumecontrolleraddress, "volumecontroller", "", "Address of the volumecontroller REST API, leave empty to use the embedded stub")
@@ -53,6 +55,15 @@ func main() {
 	}
 	logger.Println("[INFO] Using storage backend controller at", backendcontrolleraddress)
 
+	exportController, err := NewExportController(
+		volumecontrolleraddress,
+		backendcontrolleraddress,
+		tslonly,
+	)
+	if err != nil {
+		logger.Panicln(err)
+	}
+
 	var sessionWaitGroup sync.WaitGroup
 
 	ctx, cancelFunc := context.WithCancel(context.Background())
@@ -67,16 +78,6 @@ func main() {
 		Protocol:      protocol,
 		Address:       address,
 		DefaultExport: "default",
-		Exports: []nbd.ExportConfig{nbd.ExportConfig{
-			Name:        "default",
-			Description: "Deduped g8os blockstor",
-			Driver:      "ardb",
-			Workers:     5,
-			DriverParameters: map[string]string{
-				"volumecontrolleraddress":  volumecontrolleraddress,
-				"backendcontrolleraddress": backendcontrolleraddress,
-			},
-		}},
 	}
 	if inMemoryStorage {
 		logger.Println("[INFO] Using in-memory block storage")
@@ -93,5 +94,12 @@ func main() {
 		logger.Fatal(err)
 		return
 	}
+
+	// set export config controller,
+	// so we can generate the ExportConfig,
+	// dynamically based on the given volume
+	l.SetExportConfigManager(exportController)
+
+	// listen to requests
 	l.Listen(configCtx, ctx, &sessionWaitGroup)
 }
