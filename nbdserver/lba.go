@@ -31,8 +31,6 @@ type LBA struct {
 }
 
 //NewLBA creates a new LBA with enough shards to hold the requested numberOfBlocks
-// TODO: this is a naive in memory implementation so we can continue testing,
-//		 need to create a persistent implementation (issue #5)
 func NewLBA(volumeID string, numberOfBlocks uint64, pool *redis.Pool) (lba *LBA) {
 	numberOfShards := numberOfBlocks / NumberOfRecordsPerLBAShard
 	//If the number of blocks is not aligned on the number of shards, add an extra one
