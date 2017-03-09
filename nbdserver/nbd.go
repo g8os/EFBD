@@ -9,7 +9,7 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/abligh/gonbdserver/nbd"
+	"github.com/g8os/gonbdserver/nbd"
 	"github.com/garyburd/redigo/redis"
 )
 
@@ -34,7 +34,7 @@ type ArdbBackend struct {
 }
 
 //WriteAt implements nbd.Backend.WriteAt
-func (ab *ArdbBackend) WriteAt(ctx context.Context, b []byte, offset int64, fua bool) (bytesWritten int, err error) {
+func (ab *ArdbBackend) WriteAt(ctx context.Context, b []byte, offset int64, fua bool) (bytesWritten int64, err error) {
 	if (offset%ab.BlockSize) != 0 || len(b) > int(ab.BlockSize) {
 		err = fmt.Errorf("Stupid client does not write on block boundary, offset: %d length: %d", offset, len(b))
 		return
@@ -58,7 +58,7 @@ func (ab *ArdbBackend) WriteAt(ctx context.Context, b []byte, offset int64, fua 
 	//Save hash in the LBA tables
 	ab.LBA.Set(offset/ab.BlockSize, contentHash)
 	if err == nil {
-		bytesWritten = len(b)
+		bytesWritten = int64(len(b))
 	}
 	//Flush the LBA structure on fua
 	if fua {
@@ -68,7 +68,7 @@ func (ab *ArdbBackend) WriteAt(ctx context.Context, b []byte, offset int64, fua 
 }
 
 //ReadAt implements nbd.Backend.ReadAt
-func (ab *ArdbBackend) ReadAt(ctx context.Context, b []byte, offset int64) (bytesRead int, err error) {
+func (ab *ArdbBackend) ReadAt(ctx context.Context, b []byte, offset int64) (bytesRead int64, err error) {
 	blockIndex := offset / ab.BlockSize
 	offsetInsideBlock := offset % ab.BlockSize
 
@@ -77,7 +77,7 @@ func (ab *ArdbBackend) ReadAt(ctx context.Context, b []byte, offset int64) (byte
 		return
 	}
 	if contentHash == nil {
-		bytesRead = len(b)
+		bytesRead = int64(len(b))
 		return
 	}
 
@@ -89,7 +89,7 @@ func (ab *ArdbBackend) ReadAt(ctx context.Context, b []byte, offset int64) (byte
 
 	}
 	if reply == nil && err == nil {
-		bytesRead = len(b)
+		bytesRead = int64(len(b))
 		return
 	}
 	block, err := redis.Bytes(reply, err)
@@ -101,12 +101,12 @@ func (ab *ArdbBackend) ReadAt(ctx context.Context, b []byte, offset int64) (byte
 	}()
 
 	copy(b, block[offsetInsideBlock:len(block)])
-	bytesRead = len(b)
+	bytesRead = int64(len(b))
 	return
 }
 
 //TrimAt implements nbd.Backend.TrimAt
-func (ab *ArdbBackend) TrimAt(ctx context.Context, length int, offset int64) (int, error) {
+func (ab *ArdbBackend) TrimAt(ctx context.Context, offset, length int64) (int64, error) {
 	return 0, nil
 }
 
@@ -122,8 +122,13 @@ func (ab *ArdbBackend) Close(ctx context.Context) (err error) {
 }
 
 //Geometry implements nbd.Backend.Geometry
-func (ab *ArdbBackend) Geometry(ctx context.Context) (uint64, uint64, uint64, uint64, error) {
-	return ab.Size, 1, uint64(ab.BlockSize), 32 * 1024 * 1024, nil
+func (ab *ArdbBackend) Geometry(ctx context.Context) (nbd.Geometry, error) {
+	return nbd.Geometry{
+		Size:               ab.Size,
+		MinimumBlockSize:   1,
+		PreferredBlockSize: uint64(ab.BlockSize),
+		MaximumBlockSize:   32 * 1024 * 1024,
+	}, nil
 }
 
 //HasFua implements nbd.Backend.HasFua
