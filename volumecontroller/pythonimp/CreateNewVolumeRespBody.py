@@ -5,7 +5,6 @@ from wtforms import TextField, FormField, IntegerField, FloatField, FileField, B
 from input_validators import multiple_of
 
 
-
 class CreateNewVolumeRespBody(Form):
-    
+
     volumeid = TextField(validators=[DataRequired(message="")])
