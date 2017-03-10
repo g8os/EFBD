@@ -117,25 +117,40 @@ func (lba *LBA) storeShardsInExternalStorage(shards map[int64]*LBAShard) (err er
 	conn := lba.redisPool.Get()
 	defer conn.Close()
 
+	var key string
+	var h *Hash
 	var nilHash Hash
+	var buffer bytes.Buffer
 
+	// Start Pipe, so that all operations are piped
+	if err = conn.Send("MULTI"); err != nil {
+		return
+	}
+
+	// Collect all sets in output buffer of Redis
 	for shardIndex, shard := range shards {
-		key := lba.createShardKey(shardIndex)
+		buffer.Reset()
 
-		var buf bytes.Buffer
-
-		for _, h := range *shard {
+		key = lba.createShardKey(shardIndex)
+		for _, h = range *shard {
 			if h == nil {
-				buf.Write(nilHash[:])
+				if _, err = buffer.Write(nilHash[:]); err != nil {
+					return
+				}
 			} else {
-				buf.Write(h[:])
+				if _, err = buffer.Write(h[:]); err != nil {
+					return
+				}
 			}
 		}
-		if err = conn.Send("SET", key, buf.Bytes()); err != nil {
+
+		if err = conn.Send("SET", key, buffer.Bytes()); err != nil {
 			return
 		}
 	}
-	err = conn.Flush()
+
+	// Write all sets in output buffer to Redis at once
+	_, err = conn.Do("EXEC")
 	return
 }
 
