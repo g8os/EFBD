@@ -6,7 +6,7 @@ from config import get_configuration, get_redis_connection
 
 from CreateNewVolumeReqBody import CreateNewVolumeReqBody
 from CreateNewVolumeRespBody import CreateNewVolumeRespBody
-from VolumesVolumeidResizePostReqBody import VolumesVolumeidResizePostReqBody
+from VolumeInformation import VolumeInformation
 
 volumes_api = Blueprint('volumes_api', __name__)
 
@@ -39,8 +39,16 @@ def CreateNewVolume():
             clone(keys=[inputs.volume_id, volume_id], args=[inputs.volume_id, volume_id])
 
     # Write file
+    info = VolumeInformation()
+    info.blocksize = inputs.blocksize
+    info.deduped = inputs.deduped
+    info.driver = inputs.driver
+    info.id = volume_id
+    info.readOnly = inputs.readOnly
+    info.size = inputs.size
+    info.storagecluster = inputs.storagecluster
     with open(get_volume_config_filename(volume_id), 'w') as f:
-        f.write(jsonify(inputs))
+        f.write(jsonify(info))
 
     response = CreateNewVolumeRespBody()
     response.volumeid = volume_id
@@ -54,7 +62,8 @@ def GetVolumeInfo(volumeid):
     It is handler for GET /volumes/<volumeid>
     '''
 
-    return jsonify()
+    with open(get_volume_config_filename(volumeid), 'w') as f:
+        return f.read()
 
 
 @volumes_api.route('/volumes/<volumeid>', methods=['DELETE'])
