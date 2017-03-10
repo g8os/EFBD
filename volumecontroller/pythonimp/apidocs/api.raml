@@ -1,0 +1,100 @@
+#%RAML 1.0
+title: VolumeController
+description: Volume Controller
+version: 0.1
+
+types:
+  VolumeInformation:
+    properties:
+      id: string
+      size:
+        type: integer
+        description: size in bytes
+      blocksize:
+        type: integer
+        description: blocksize in bytes
+        default: 4096
+      deduped:
+        type: boolean
+        description: Indicates if this volume is deduped or not.
+      storagecluster: string
+      readOnly:
+        type: boolean
+        default: false
+        required: false
+      driver:
+        type: string
+        description: name of the driver of this volume
+        required: false
+
+
+/volumes:
+  post:
+    displayName: CreateNewVolume
+    description: Create a new volume, can be a copy from an existing volume
+    body:
+      application/json:
+        properties:
+          size: integer
+          blocksize:
+            type: integer
+            description: blocksize in bytes
+            default: 4096
+          storagecluster: string
+          deduped:
+            type: boolean
+            default: true
+          templatevolume:
+            type: string
+            required: false
+          readOnly:
+            type: boolean
+            required: false
+            default: false
+          driver:
+            type: string
+            description: name of the driver of this volume
+            required: false
+
+    responses:
+      201:
+        body:
+          application/json:
+            properties:
+              volumeid: string
+      404:
+        description: The template volume or storagecluster do not exist
+
+  /{volumeid}:
+    get:
+      displayName: GetVolumeInfo
+      description: Get volume information
+      responses:
+        200:
+          body:
+            application/json:
+              type: VolumeInformation
+        404:
+          description: The volume does not exist
+    delete:
+      displayName: DeleteVolume
+      description: Delete Volume
+      responses:
+        202:
+          description: Volume has been marked for deletion
+        204:
+          description: Deleted
+        404:
+          description: The volume does not exist
+
+    /resize:
+      post:
+        displayName: ResizeVolume
+        description: Resize Volume
+        body:
+          application/json:
+            properties:
+              newSize: integer
+        responses:
+          204:
+            description: Volume Resized
