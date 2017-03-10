@@ -14,7 +14,7 @@ import (
 )
 
 //BlockSize is the fixed blocksize for the ardbackend
-const BlockSize = 4 * 1024
+const BlockSize = 4 * 1024 // 4kB
 
 //ArdbBackend is a nbd.Backend implementation on top of ARDB
 type ArdbBackend struct {
@@ -35,35 +35,89 @@ type ArdbBackend struct {
 
 //WriteAt implements nbd.Backend.WriteAt
 func (ab *ArdbBackend) WriteAt(ctx context.Context, b []byte, offset int64, fua bool) (bytesWritten int64, err error) {
-	if (offset%ab.BlockSize) != 0 || len(b) > int(ab.BlockSize) {
-		err = fmt.Errorf("Stupid client does not write on block boundary, offset: %d length: %d", offset, len(b))
-		return
-	}
-	contentHash := HashBytes(b)
+	blockIndex := offset / ab.BlockSize
+	offsetInsideBlock := offset % ab.BlockSize
 
-	//Save to Ardb if this content is not there yet
-	conn := ab.RedisConnectionPool.Get(ab.backendConnectionStrings[int(contentHash[0])%ab.numberOfStorageServers].ConnectionString)
-	defer conn.Close()
-	keysFound, err := redis.Int(conn.Do("EXISTS", *contentHash))
-	if err != nil {
-		return
-	}
-	if keysFound == 0 {
-		if err = conn.Send("SET", *contentHash, b); err != nil {
+	// the contentHash that we will eventually store in LBA
+	var contentHash *Hash
+
+	if offsetInsideBlock+int64(len(b)) > ab.BlockSize {
+		// Option 1.
+		// We have an offset > 0, and it requires 2 blocks
+
+		// this one will require 2 WriteAt operations
+		length := ab.BlockSize - offsetInsideBlock
+		// this first write operation, also stores the hash in LBA,
+		// for the first half of the given content
+		bytesWritten, err = ab.WriteAt(ctx, b[:length], offset, fua)
+		if err != nil {
 			return
 		}
-		err = conn.Flush()
+		if bytesWritten != length {
+			err = fmt.Errorf("write 1/2 wrote %d bytes, while expected to write %d bytes",
+				bytesWritten, length)
+			bytesWritten = 0
+			return
+		}
+
+		// reset output variable, to start clean
+		bytesWritten = 0
+
+		// write part 2/2,
+		// merging any existing content, which starts at `> length`
+		// a process very similar to what happens in option 2 of this method
+		content := b[length:]
+		offsetInsideBlock = int64(len(content))
+		// we need to move up 1 block index,
+		// as LBA is set later, using this index
+		blockIndex++
+		// do the actual combining and writing (if possible)
+		contentHash, err = ab.combineContent(blockIndex, offsetInsideBlock, content)
+		if err != nil {
+			return
+		}
+	} else if offsetInsideBlock > 0 {
+		// Option 2.
+		// We have an offset > 0, and it fits 1 one block
+		// requires a bit of copying, though.
+		// On top of that it might also require an extra read,
+		// in case we have already content written
+		contentHash, err = ab.combineContent(blockIndex, offsetInsideBlock, b)
+		if err != nil {
+			return
+		}
+	} else if length := int64(len(b)); length < ab.BlockSize {
+		// Option 3.
+		// We have no offset, but the length is smaller then ab.BlockSize,
+		// thus we will merge both contents
+		contentHash, err = ab.combineContent(blockIndex, length, b)
+		if err != nil {
+			return
+		}
+	} else {
+		// Option 4.
+		// Which is hopefully the most common option
+		// in this option we write without an offset,
+		// and write a full-sized block, thus no merging required
+		contentHash, err = ab.setContentIfNotExistsYet(b)
+		if err != nil {
+			return
+		}
 	}
 
-	//Save hash in the LBA tables
-	ab.LBA.Set(offset/ab.BlockSize, contentHash)
+	// Save hash in the LBA tables
+	// NOTE: the blockIndex, might have moved up by 1 (due to option 1),
+	//       in case this WriteAt function resulted in
+	//       having to write 2 blocks at once
+	err = ab.LBA.Set(blockIndex, contentHash)
 	if err == nil {
 		bytesWritten = int64(len(b))
+		// Flush the LBA structure on fua
+		if fua {
+			err = ab.Flush(ctx)
+		}
 	}
-	//Flush the LBA structure on fua
-	if fua {
-		err = ab.Flush(ctx)
-	}
+
 	return
 }
 
@@ -71,37 +125,29 @@ func (ab *ArdbBackend) WriteAt(ctx context.Context, b []byte, offset int64, fua 
 func (ab *ArdbBackend) ReadAt(ctx context.Context, b []byte, offset int64) (bytesRead int64, err error) {
 	blockIndex := offset / ab.BlockSize
 	offsetInsideBlock := offset % ab.BlockSize
+	contentLength := int64(len(b))
 
 	contentHash, err := ab.LBA.Get(blockIndex)
 	if err != nil {
 		return
 	}
 	if contentHash == nil {
-		bytesRead = int64(len(b))
+		bytesRead = contentLength
 		return
 	}
 
-	conn := ab.RedisConnectionPool.Get(ab.backendConnectionStrings[int(contentHash[0])%ab.numberOfStorageServers].ConnectionString)
-	defer conn.Close()
-	reply, err := conn.Do("GET", *contentHash)
-	if err != nil {
-		log.Println(reply, err)
-
-	}
-	if reply == nil && err == nil {
-		bytesRead = int64(len(b))
-		return
-	}
-	block, err := redis.Bytes(reply, err)
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Println(r)
-			fmt.Println("Offset", offset, "len(b):", len(b), "Reply:", reply, "len(block):", len(block))
+	var block []byte
+	if block, err = ab.getContent(contentHash); err != nil {
+		if err == redis.ErrNil {
+			bytesRead = contentLength
+			err = nil
 		}
-	}()
 
-	copy(b, block[offsetInsideBlock:len(block)])
-	bytesRead = int64(len(b))
+		return
+	}
+
+	copy(b, block[offsetInsideBlock:])
+	bytesRead = contentLength
 	return
 }
 
@@ -141,6 +187,62 @@ func (ab *ArdbBackend) HasFua(ctx context.Context) bool {
 // Yes, we support flush
 func (ab *ArdbBackend) HasFlush(ctx context.Context) bool {
 	return true
+}
+
+// get a redis connection based on a hash
+func (ab *ArdbBackend) getRedisConnection(hash *Hash) (conn redis.Conn) {
+	bcIndex := int(hash[0]) % ab.numberOfStorageServers
+	conn = ab.RedisConnectionPool.Get(
+		ab.backendConnectionStrings[bcIndex].ConnectionString)
+	return
+}
+
+// sets the content in the right connection if it doesn't exist yet
+func (ab *ArdbBackend) setContentIfNotExistsYet(content []byte) (hash *Hash, err error) {
+	hash = HashBytes(content)
+	conn := ab.getRedisConnection(hash)
+	defer conn.Close()
+
+	exists, err := redis.Bool(conn.Do("EXISTS", *hash))
+	if err != nil || exists {
+		return
+	}
+
+	_, err = conn.Do("SET", *hash, content)
+	return
+}
+
+// combine the content of an existing block (if it really exists),
+// and the newly given content, effectively merging the 2 together,
+// and storing them under a new hash.
+// NOTE: original content (which is now merged into the new content,
+//		 is /NOT/ deleted from Redis, and remains in there, until
+//		 deleted due to another cause
+func (ab *ArdbBackend) combineContent(blockIndex, offset int64, b []byte) (hash *Hash, err error) {
+	hash, _ = ab.LBA.Get(blockIndex)
+	content := make([]byte, ab.BlockSize)
+
+	if hash != nil {
+		// copy original content
+		origContent, _ := ab.getContent(hash)
+		copy(content, origContent)
+	}
+
+	// copy in new content
+	copy(content[offset:], b)
+
+	// store new content
+	hash, err = ab.setContentIfNotExistsYet(content)
+	return
+}
+
+// gets content based on a given hash, if possible
+func (ab *ArdbBackend) getContent(hash *Hash) (content []byte, err error) {
+	conn := ab.getRedisConnection(hash)
+	defer conn.Close()
+
+	content, err = redis.Bytes(conn.Do("GET", *hash))
+	return
 }
 
 //ArdbBackendFactory holds some variables
