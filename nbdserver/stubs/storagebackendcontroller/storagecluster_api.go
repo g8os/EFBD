@@ -17,13 +17,10 @@ type StorageclusterAPI struct {
 // Get storage cluster information
 func (api StorageclusterAPI) GetStorageClusterInfo(w http.ResponseWriter, r *http.Request) {
 	var respBody StorageclusterClusternameGetRespBody
-	lo := Server{}
-	lo.Type = "ardb"
-	lo.ConnectionString = "localhost:16379"
 
 	respBody.Name = mux.Vars(r)["clustername"]
-	respBody.Metadataserver = lo
-	respBody.Storageservers = []Server{lo}
+	respBody.Metadataserver = api.MetadataServer
+	respBody.Storageservers = api.StorageServers
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(&respBody)
