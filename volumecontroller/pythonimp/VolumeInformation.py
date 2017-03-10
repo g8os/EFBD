@@ -7,7 +7,7 @@ from input_validators import multiple_of
 
 
 class VolumeInformation(Form):
-    
+
     blocksize = IntegerField(validators=[DataRequired(message="")])
     deduped = BooleanField(validators=[DataRequired(message="")])
     driver = TextField(validators=[])

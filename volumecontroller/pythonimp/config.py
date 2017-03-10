@@ -3,7 +3,7 @@ import redis
 
 
 def get_configuration():
-    return current_app['config']
+    return current_app.config['config']
 
 
 def get_redis_connection():
