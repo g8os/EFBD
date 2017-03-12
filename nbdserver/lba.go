@@ -74,6 +74,35 @@ func (lba *LBA) Set(blockIndex int64, h *Hash) (err error) {
 	return
 }
 
+//Delete the content hash for a specific block.
+// When a key is updated, the shard containing this blockindex is marked as dirty and will be
+// stored in the external metadaserver when Flush is called
+// Deleting means actually that the nilhash will be set for this blockindex.
+func (lba *LBA) Delete(blockIndex int64) (err error) {
+	//TODO: let's see if we really need to lock on such a high level
+	lba.lock.Lock()
+	defer lba.lock.Unlock()
+
+	//Fetch the appropriate shard
+	shardIndex := blockIndex / NumberOfRecordsPerLBAShard
+	shard := lba.shards[shardIndex]
+	if shard == nil {
+		shard, err = lba.getShardFromExternalStorage(shardIndex)
+		if err != nil {
+			return
+		}
+		if shard == nil {
+			shard = NewLBAShard()
+		}
+		lba.shards[shardIndex] = shard
+	}
+	//Update the hash
+	(*shard)[blockIndex%NumberOfRecordsPerLBAShard] = nil
+	//Mark the shard as dirty
+	lba.dirtyShards[shardIndex] = shard
+	return
+}
+
 //Get returns the hash for a block, nil if no hash registered
 // If the shard containing this blockindex is not present, it is fetched from the external metadaserver
 func (lba *LBA) Get(blockIndex int64) (h *Hash, err error) {
