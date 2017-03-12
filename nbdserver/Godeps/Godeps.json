@@ -5,7 +5,7 @@
 	"Deps": [
 		{
 			"ImportPath": "github.com/g8os/gonbdserver/nbd",
-			"Rev": "608acee50fd3ac0fde4482345522198bcac2b3a5"
+			"Rev": "efa16b8187738bc0f0ab1fc470b2a6c0e51659e0"
 		},
 		{
 			"ImportPath": "github.com/garyburd/redigo/internal",

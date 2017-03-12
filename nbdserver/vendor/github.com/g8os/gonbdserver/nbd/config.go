@@ -52,12 +52,26 @@ logging:
   syslogfacility: local1
 */
 
-// Location of the config file on disk; overriden by flags
-var configFile = flag.String("c", "/etc/gonbdserver.conf", "Path to YAML config file")
-var pidFile = flag.String("p", "/var/run/gonbdserver.pid", "Path to PID file")
-var sendSignal = flag.String("s", "", "Send signal to daemon (either \"stop\" or \"reload\")")
-var foreground = flag.Bool("f", false, "Run in foreground (not as daemon)")
-var pprof = flag.Bool("pprof", false, "Run pprof")
+var (
+	// Location of the config file on disk; overriden by flags
+	configFile        string
+	pidFile           string
+	sendSignal        string
+	foreground        bool
+	pprof             bool
+	registerFlagsOnce sync.Once
+)
+
+// RegisterFlags registers all NBD-Specific flags
+func RegisterFlags() {
+	registerFlagsOnce.Do(func() {
+		flag.StringVar(&configFile, "c", "/etc/gonbdserver.conf", "Path to YAML config file")
+		flag.StringVar(&pidFile, "p", "/var/run/gonbdserver.pid", "Path to PID file")
+		flag.StringVar(&sendSignal, "s", "", "Send signal to daemon (either \"stop\" or \"reload\")")
+		flag.BoolVar(&foreground, "f", false, "Run in foreground (not as daemon)")
+		flag.BoolVar(&pprof, "pprof", false, "Run pprof")
+	})
+}
 
 // Environment variables that can be used to
 // overwrite some of the flags.
@@ -228,7 +242,7 @@ func (s *SyslogWriter) Write(p []byte) (n int, err error) {
 
 // ParseConfig parses the YAML configuration provided
 func ParseConfig() (*Config, error) {
-	buf, err := ioutil.ReadFile(*configFile)
+	buf, err := ioutil.ReadFile(configFile)
 	if err != nil {
 		return nil, err
 	}
@@ -428,7 +442,7 @@ func Run(control *Control) {
 		control = &Control{}
 	}
 
-	if *pprof {
+	if pprof {
 		runtime.MemProfileRate = 1
 		go http.ListenAndServe(":8080", nil)
 	}
@@ -436,23 +450,23 @@ func Run(control *Control) {
 	// Just for this routine
 	logger := log.New(os.Stderr, "gonbdserver:", log.LstdFlags)
 
-	daemon.AddFlag(daemon.StringFlag(sendSignal, "stop"), syscall.SIGTERM)
-	daemon.AddFlag(daemon.StringFlag(sendSignal, "reload"), syscall.SIGHUP)
+	daemon.AddFlag(daemon.StringFlag(&sendSignal, "stop"), syscall.SIGTERM)
+	daemon.AddFlag(daemon.StringFlag(&sendSignal, "reload"), syscall.SIGHUP)
 
 	if daemon.WasReborn() {
 		if val := os.Getenv(EnvConfigFile); val != "" {
-			*configFile = val
+			configFile = val
 		}
 		if val := os.Getenv(EnvPIDFile); val != "" {
-			*pidFile = val
+			pidFile = val
 		}
 	}
 
 	var err error
-	if *configFile, err = filepath.Abs(*configFile); err != nil {
+	if configFile, err = filepath.Abs(configFile); err != nil {
 		logger.Fatalf("[CRIT] Error canonicalising config file path: %s", err)
 	}
-	if *pidFile, err = filepath.Abs(*pidFile); err != nil {
+	if pidFile, err = filepath.Abs(pidFile); err != nil {
 		logger.Fatalf("[CRIT] Error canonicalising pid file path: %v", err)
 	}
 
@@ -465,17 +479,17 @@ func Run(control *Control) {
 		return
 	}
 
-	if *foreground {
+	if foreground {
 		RunConfig(control)
 		return
 	}
 
-	os.Setenv(EnvConfigFile, *configFile)
-	os.Setenv(EnvPIDFile, *pidFile)
+	os.Setenv(EnvConfigFile, configFile)
+	os.Setenv(EnvPIDFile, pidFile)
 
 	// Define daemon context
 	d := &daemon.Context{
-		PidFileName: *pidFile,
+		PidFileName: pidFile,
 		PidFilePerm: 0644,
 		Umask:       027,
 	}
@@ -498,8 +512,8 @@ func Run(control *Control) {
 			if err := p.Signal(syscall.Signal(0)); err == nil {
 				logger.Fatalf("[CRIT] Daemon is already running (pid %d)", p.Pid)
 			} else {
-				logger.Printf("[INFO] Removing stale PID file %s", *pidFile)
-				os.Remove(*pidFile)
+				logger.Printf("[INFO] Removing stale PID file %s", pidFile)
+				os.Remove(pidFile)
 			}
 		}
 	}
@@ -516,7 +530,7 @@ func Run(control *Control) {
 	defer func() {
 		d.Release()
 		// for some reason this is not removing the pid file
-		os.Remove(*pidFile)
+		os.Remove(pidFile)
 	}()
 
 	RunConfig(control)
