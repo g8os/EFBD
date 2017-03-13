@@ -134,7 +134,7 @@ func (ab *ArdbBackend) ReadAt(ctx context.Context, b []byte, offset int64) (byte
 	// This branch handles that case by delegating the first portion,
 	// and reading the rest as usual
 	if offsetInsideBlock+contentLength > ab.BlockSize {
-		length := ab.BlockSize - offset
+		length := ab.BlockSize - offsetInsideBlock
 		bytesRead, err = ab.ReadAt(ctx, b[:length], offset)
 		if err != nil {
 			bytesRead = 0
