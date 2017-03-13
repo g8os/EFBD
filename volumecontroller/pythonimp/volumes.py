@@ -36,14 +36,14 @@ def CreateNewVolume():
     # Generate new id
     volume_id = hex(int(time.time() * 10000000))
     volume['id'] = volume_id
-
+    templatevolume = volume['templatevolume']
     # Clone the template volume
-    if volume['templatevolume']:
+    if templatevolume:
         with open(os.path.join(os.path.dirname(__file__), 'copyvolume.lua'), 'r') as f:
             lua_script = f.read()
-        with get_redis_connection() as c:
-            clone = c.register_script(lua_script)
-            clone(keys=[inputs.volume_id, volume_id], args=[inputs.volume_id, volume_id])
+        c = get_redis_connection()
+        clone = c.register_script(lua_script)
+        clone(keys=[templatevolume, volume_id], args=[templatevolume, volume_id])
     del volume['templatevolume']
 
     # Write file
