@@ -131,7 +131,7 @@ func (lba *LBA) Flush() (err error) {
 	lba.lock.Lock()
 	defer lba.lock.Unlock()
 
-	lba.storeShardsInExternalStorage(lba.dirtyShards)
+	err = lba.storeShardsInExternalStorage(lba.dirtyShards)
 
 	lba.dirtyShards = make(map[int64]*LBAShard)
 
