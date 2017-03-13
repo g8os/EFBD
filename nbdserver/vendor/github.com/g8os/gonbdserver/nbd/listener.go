@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"golang.org/x/net/context"
@@ -124,6 +125,9 @@ func (l *Listener) Listen(parentCtx context.Context, sessionParentCtx context.Co
 		sessionWaitGroup.Done()
 	}()
 
+	if l.protocol == "unix" {
+		syscall.Unlink(l.addr)
+	}
 	nli, err := net.Listen(l.protocol, l.addr)
 	if err != nil {
 		l.logger.Printf("[ERROR] Could not listen on address %s", addr)
