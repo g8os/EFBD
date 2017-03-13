@@ -128,33 +128,6 @@ func (ab *ArdbBackend) ReadAt(ctx context.Context, b []byte, offset int64) (byte
 	offsetInsideBlock := offset % ab.BlockSize
 	contentLength := int64(len(b))
 
-	// with a local offset neq 0,
-	// we could end up in a situation where the wanted content
-	// stretches 2 blocks, not 1.
-	// This branch handles that case by delegating the first portion,
-	// and reading the rest as usual
-	if offsetInsideBlock+contentLength > ab.BlockSize {
-		length := ab.BlockSize - offsetInsideBlock
-		bytesRead, err = ab.ReadAt(ctx, b[:length], offset)
-		if err != nil {
-			bytesRead = 0
-			return
-		}
-		if bytesRead != length {
-			err = fmt.Errorf("read 1/2 read %d bytes, while expected to write %d bytes",
-				bytesRead, length)
-			bytesRead = 0
-			return
-		}
-
-		// prepare buffer, offset and index for read 2/2
-		b = b[length:]
-		contentLength = ab.BlockSize - length
-		offsetInsideBlock = 0
-		bytesRead = 0
-		blockIndex++
-	}
-
 	contentHash, err := ab.LBA.Get(blockIndex)
 	if err != nil {
 		return
