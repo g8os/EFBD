@@ -151,6 +151,7 @@ func (ab *ArdbBackend) ReadAt(ctx context.Context, b []byte, offset int64) (byte
 		b = b[length:]
 		contentLength = ab.BlockSize - length
 		offsetInsideBlock = 0
+		bytesRead = 0
 		blockIndex++
 	}
 

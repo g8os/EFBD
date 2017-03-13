@@ -24,6 +24,7 @@ func main() {
 	var volumecontrolleraddress string
 	var backendcontrolleraddress string
 	var testArdbConnectionSrings string
+	var defaultExport string
 	flag.BoolVar(&inMemoryStorage, "memorystorage", false, "Stores the data in memory only, usefull for testing or benchmarking")
 	flag.BoolVar(&tslonly, "tslonly", false, "Forces all nbd connections to be tsl-enabled")
 	flag.StringVar(&profileAddress, "profileaddress", "", "Enables profiling of this server as an http service")
@@ -32,6 +33,7 @@ func main() {
 	flag.StringVar(&volumecontrolleraddress, "volumecontroller", "", "Address of the volumecontroller REST API, leave empty to use the embedded stub")
 	flag.StringVar(&backendcontrolleraddress, "backendcontroller", "", "Address of the storage backend controller REST API, leave empty to use the embedded stub")
 	flag.StringVar(&testArdbConnectionSrings, "testardbs", "localhost:16379,localhost:16379", "Comma seperated list of ardb connection strings returned by the embedded backend controller, first one is the metadataserver")
+	flag.StringVar(&defaultExport, "export", "default", "default export to list and use")
 	flag.Parse()
 
 	logger := log.New(os.Stderr, "nbdserver:", log.Ldate|log.Ltime)
@@ -70,6 +72,7 @@ func main() {
 		volumecontrolleraddress,
 		backendcontrolleraddress,
 		tslonly,
+		defaultExport,
 	)
 	if err != nil {
 		logger.Panicln(err)
@@ -88,7 +91,7 @@ func main() {
 	s := nbd.ServerConfig{
 		Protocol:      protocol,
 		Address:       address,
-		DefaultExport: "default",
+		DefaultExport: defaultExport,
 	}
 	if inMemoryStorage {
 		logger.Println("[INFO] Using in-memory block storage")

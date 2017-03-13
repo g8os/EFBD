@@ -10,7 +10,7 @@ import (
 )
 
 // NewExportController creates a new export config manager.
-func NewExportController(volumecontrolleraddress, backendcontrolleraddress string, tslOnly bool) (controller *ExportController, err error) {
+func NewExportController(volumecontrolleraddress, backendcontrolleraddress string, tslOnly bool, defaultExport string) (controller *ExportController, err error) {
 	if volumecontrolleraddress == "" {
 		err = errors.New("ExportController requires a non-empty volumecontrolleraddress")
 		return
@@ -24,6 +24,7 @@ func NewExportController(volumecontrolleraddress, backendcontrolleraddress strin
 		volumeController:         volumecontroller.NewVolumeController(),
 		volumecontrolleraddress:  volumecontrolleraddress,
 		backendcontrolleraddress: backendcontrolleraddress,
+		defaultExport:            defaultExport,
 		tslOnly:                  tslOnly,
 	}
 	controller.volumeController.BaseURI = volumecontrolleraddress
@@ -36,12 +37,18 @@ type ExportController struct {
 	volumeController         *volumecontroller.VolumeController
 	volumecontrolleraddress  string
 	backendcontrolleraddress string
+	defaultExport            string
 	tslOnly                  bool
 }
 
 // ListConfigNames implements nbd.ExportConfigManager.ListConfigNames
 func (c *ExportController) ListConfigNames() []string {
-	return nil // not supported
+	if c.defaultExport == "" {
+		return nil
+	}
+
+	// TODO: Come up with a better solution to support listing exports.
+	return []string{c.defaultExport}
 }
 
 // GetConfig implements nbd.ExportConfigManager.GetConfig

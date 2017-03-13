@@ -440,20 +440,6 @@ func (c *Connection) receive(ctx context.Context) {
 			}
 			return
 
-		case NBD_CMD_CLOSE:
-			c.waitForInflight(ctx, 1) // this request is itself in flight, so 1 is permissible
-			c.logger.Printf("[INFO] Client %s requested close\n", c.name)
-			if err := c.backend.Flush(ctx); err != nil {
-				c.logger.Printf("[ERROR] Client %s cannot flush backend: %s\n", c.name, err)
-			}
-			select {
-			case c.repCh <- rep:
-			case <-ctx.Done():
-			}
-			c.waitForInflight(ctx, 0) // wait for this request to be no longer inflight (i.e. reply transmitted)
-			c.logger.Printf("[INFO] Client %s close completed", c.name)
-			return
-
 		default:
 			c.logger.Printf("[ERROR] Client %s sent unknown command %d\n",
 				c.name, req.NbdCommandType)
