@@ -296,30 +296,27 @@ func (c *Connection) receive(ctx context.Context) {
 		length := uint64(req.NbdLength) // make length local
 		offset := req.NbdOffset         // make offset local
 
+		memoryBlockSize := c.export.memoryBlockSize
+		blocklen := memoryBlockSize
+		if blocklen > length {
+			blocklen = length
+		}
+
+		//Make sure the reads are until the blockboundary
+		if offsetInsideBlock := offset % memoryBlockSize; blocklen+offsetInsideBlock > memoryBlockSize {
+			blocklen = memoryBlockSize - offsetInsideBlock
+		}
+
 		// handle request command
 		switch req.NbdCommandType {
 		case NBD_CMD_READ:
 			rep.payload = make([]byte, length)
 
 			var n int64
-			var pstart, pend, blocklen uint64
+			var pstart, pend uint64
 			var err error
 
-			memoryBlockSize := c.export.memoryBlockSize
-			offsetInsideBlock := offset % memoryBlockSize
-
-			for length > 0 {
-				blocklen = memoryBlockSize
-				if blocklen > length {
-					blocklen = length
-				}
-
-				//Make sure the reads are until the blockboundary
-				if offsetInsideBlock > 0 && (blocklen+offsetInsideBlock) > memoryBlockSize {
-					blocklen = memoryBlockSize - offsetInsideBlock
-					offsetInsideBlock = 0
-				}
-
+			for blocklen > 0 {
 				pend = pstart + blocklen
 
 				// WARNING: potential overflow (offset)
@@ -337,29 +334,19 @@ func (c *Connection) receive(ctx context.Context) {
 				length -= blocklen
 				offset += blocklen
 				pstart += blocklen
+
+				blocklen = memoryBlockSize
+				if blocklen > length {
+					blocklen = length
+				}
 			}
 
 		case NBD_CMD_WRITE:
 			var cn int
 			var bn int64
-			var blocklen uint64
 			var err error
 
-			memoryBlockSize := c.export.memoryBlockSize
-			offsetInsideBlock := offset % memoryBlockSize
-
-			for length > 0 {
-				blocklen = memoryBlockSize
-				if blocklen > length {
-					blocklen = length
-				}
-
-				//Make sure the reads are until the blockboundary
-				if offsetInsideBlock > 0 && (blocklen+offsetInsideBlock) > memoryBlockSize {
-					blocklen = memoryBlockSize - offsetInsideBlock
-					offsetInsideBlock = 0
-				}
-
+			for blocklen > 0 {
 				cn, err = io.ReadFull(c.conn, c.wBuffer[:blocklen])
 				if err != nil {
 					if isClosedErr(err) {
@@ -391,28 +378,18 @@ func (c *Connection) receive(ctx context.Context) {
 
 				length -= blocklen
 				offset += blocklen
-			}
 
-		case NBD_CMD_WRITE_ZEROES:
-			var n int64
-			var blocklen uint64
-			var err error
-
-			memoryBlockSize := c.export.memoryBlockSize
-			offsetInsideBlock := offset % memoryBlockSize
-
-			for length > 0 {
 				blocklen = memoryBlockSize
 				if blocklen > length {
 					blocklen = length
 				}
+			}
 
-				//Make sure the reads are until the blockboundary
-				if offsetInsideBlock > 0 && (blocklen+offsetInsideBlock) > memoryBlockSize {
-					blocklen = memoryBlockSize - offsetInsideBlock
-					offsetInsideBlock = 0
-				}
+		case NBD_CMD_WRITE_ZEROES:
+			var n int64
+			var err error
 
+			for blocklen > 0 {
 				// WARNING: potential overflow (blocklen, offset)
 				n, err = c.backend.WriteAt(ctx, c.zwBuffer[:blocklen], int64(offset), fua)
 				if err != nil {
@@ -427,6 +404,11 @@ func (c *Connection) receive(ctx context.Context) {
 
 				length -= blocklen
 				offset += blocklen
+
+				blocklen = memoryBlockSize
+				if blocklen > length {
+					blocklen = length
+				}
 			}
 
 		case NBD_CMD_FLUSH:
@@ -434,24 +416,9 @@ func (c *Connection) receive(ctx context.Context) {
 
 		case NBD_CMD_TRIM:
 			var n int64
-			var blocklen uint64
 			var err error
 
-			memoryBlockSize := c.export.memoryBlockSize
-			offsetInsideBlock := offset % memoryBlockSize
-
-			for length > 0 {
-				blocklen = memoryBlockSize
-				if blocklen > length {
-					blocklen = length
-				}
-
-				//Make sure the reads are until the blockboundary
-				if offsetInsideBlock > 0 && (blocklen+offsetInsideBlock) > memoryBlockSize {
-					blocklen = memoryBlockSize - offsetInsideBlock
-					offsetInsideBlock = 0
-				}
-
+			for blocklen > 0 {
 				// WARNING: potential overflow (length, offset)
 				n, err = c.backend.TrimAt(ctx, int64(offset), int64(blocklen))
 				if err != nil {
@@ -466,6 +433,11 @@ func (c *Connection) receive(ctx context.Context) {
 
 				length -= blocklen
 				offset += blocklen
+
+				blocklen = memoryBlockSize
+				if blocklen > length {
+					blocklen = length
+				}
 			}
 
 		case NBD_CMD_DISC:
