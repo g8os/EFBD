@@ -321,6 +321,7 @@ func (c *Connection) receive(ctx context.Context) {
 				}
 
 				pend = pstart + blocklen
+
 				// WARNING: potential overflow (offset)
 				n, err = c.backend.ReadAt(ctx, rep.payload[pstart:pend], int64(offset))
 				if err != nil {
@@ -397,10 +398,19 @@ func (c *Connection) receive(ctx context.Context) {
 			var blocklen uint64
 			var err error
 
+			memoryBlockSize := c.export.memoryBlockSize
+			offsetInsideBlock := offset % memoryBlockSize
+
 			for length > 0 {
-				blocklen = c.export.memoryBlockSize
+				blocklen = memoryBlockSize
 				if blocklen > length {
 					blocklen = length
+				}
+
+				//Make sure the reads are until the blockboundary
+				if offsetInsideBlock > 0 && (blocklen+offsetInsideBlock) > memoryBlockSize {
+					blocklen = memoryBlockSize - offsetInsideBlock
+					offsetInsideBlock = 0
 				}
 
 				// WARNING: potential overflow (blocklen, offset)
@@ -427,10 +437,19 @@ func (c *Connection) receive(ctx context.Context) {
 			var blocklen uint64
 			var err error
 
+			memoryBlockSize := c.export.memoryBlockSize
+			offsetInsideBlock := offset % memoryBlockSize
+
 			for length > 0 {
-				blocklen = c.export.memoryBlockSize
+				blocklen = memoryBlockSize
 				if blocklen > length {
 					blocklen = length
+				}
+
+				//Make sure the reads are until the blockboundary
+				if offsetInsideBlock > 0 && (blocklen+offsetInsideBlock) > memoryBlockSize {
+					blocklen = memoryBlockSize - offsetInsideBlock
+					offsetInsideBlock = 0
 				}
 
 				// WARNING: potential overflow (length, offset)
