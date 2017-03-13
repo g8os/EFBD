@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 
 	"github.com/g8os/blockstor/nbdserver/clients/storagebackendcontroller"
@@ -38,87 +37,27 @@ func (ab *ArdbBackend) WriteAt(ctx context.Context, b []byte, offset int64, fua 
 	blockIndex := offset / ab.BlockSize
 	offsetInsideBlock := offset % ab.BlockSize
 
-	if offsetInsideBlock == 0 {
-		length := int64(len(b))
-		if length == ab.BlockSize {
-			// Option 1.
-			// Which is hopefully the most common option
-			// in this option we write without an offset,
-			// and write a full-sized block, thus no merging required
-			err = ab.setContent(ctx, blockIndex, b, fua)
-			if err != nil {
-				return
-			}
+	length := int64(len(b))
+	if offsetInsideBlock == 0 && length == ab.BlockSize {
+		// Option 1.
+		// Which is hopefully the most common option
+		// in this option we write without an offset,
+		// and write a full-sized block, thus no merging required
+		err = ab.setContent(ctx, blockIndex, b, fua)
 
-			bytesWritten = int64(len(b))
-			return
-		}
-
+	} else {
 		// Option 2.
-		// We have no offset, but the length is smaller then ab.BlockSize,
-		// thus we will merge both contents.
+		// We need to merge both contents.
 		// the length can't be bigger, as that is guaranteed by gonbdserver
-		err = ab.combineContent(ctx, blockIndex, length, b, fua)
-		if err != nil {
-			return
-		}
-
-		bytesWritten = int64(len(b))
-		return
-	}
-
-	if offsetInsideBlock+int64(len(b)) <= ab.BlockSize {
-		// Option 3.
-		// We have an offset > 0, and it fits 1 one block
-		// requires a bit of copying, though.
-		// On top of that it might also require an extra read,
-		// in case we have already content written
 		err = ab.combineContent(ctx, blockIndex, offsetInsideBlock, b, fua)
-		if err != nil {
-			return
-		}
-
-		bytesWritten = int64(len(b))
-		return
 	}
 
-	// Option 4.
-	// We have an offset > 0, and it requires 2 blocks
-
-	// this one will require 2 WriteAt operations
-	length := ab.BlockSize - offsetInsideBlock
-	// this first write operation, also stores the hash in LBA,
-	// for the first half of the given content
-	bytesWritten, err = ab.WriteAt(ctx, b[:length], offset, fua)
-	if err != nil {
-		bytesWritten = 0
-		return
-	}
-	if bytesWritten != length {
-		err = fmt.Errorf("write 1/2 wrote %d bytes, while expected to write %d bytes",
-			bytesWritten, length)
-		bytesWritten = 0
-		return
-	}
-
-	// reset output variable, to start clean
-	bytesWritten = 0
-
-	// write part 2/2,
-	// merging any existing content, which starts at `> length`
-	// a process very similar to what happens in option 2 of this method
-	content := b[length:]
-	offsetInsideBlock = int64(len(content))
-	// we need to move up 1 block index,
-	// as LBA is set later, using this index
-	blockIndex++
-	// do the actual combining and writing (if possible)
-	err = ab.combineContent(ctx, blockIndex, offsetInsideBlock, content, fua)
 	if err != nil {
 		return
 	}
 
 	bytesWritten = int64(len(b))
+
 	return
 }
 
