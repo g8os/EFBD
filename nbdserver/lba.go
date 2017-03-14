@@ -117,11 +117,13 @@ func (lba *LBA) Get(blockIndex int64) (h *Hash, err error) {
 		if err != nil {
 			return
 		}
+		if shard == nil {
+			shard = NewLBAShard()
+		}
 		lba.shards[shardIndex] = shard
 	}
-	if shard != nil {
-		h = (*shard)[blockIndex%NumberOfRecordsPerLBAShard]
-	}
+
+	h = (*shard)[blockIndex%NumberOfRecordsPerLBAShard]
 	return
 }
 
@@ -145,6 +147,8 @@ func (lba *LBA) createShardKey(shardIndex int64) string {
 }
 
 func (lba *LBA) storeShardsInExternalStorage(shards map[int64]*LBAShard) (err error) {
+
+	//TODO: If a shard is competely empty, nil or contains only hashes from "0" content, delete it.
 	conn := lba.redisPool.Get()
 	defer conn.Close()
 
