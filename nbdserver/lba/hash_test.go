@@ -1,4 +1,4 @@
-package main
+package lba
 
 import (
 	"crypto/rand"
