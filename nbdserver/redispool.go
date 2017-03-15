@@ -54,7 +54,9 @@ func (p *RedisPool) GetConnectionSpecificPool(connectionString string) (singleSe
 		return
 	}
 	singleServerPool = &redis.Pool{
-		MaxIdle:     2,
+		MaxActive:   10,
+		MaxIdle:     10,
+		Wait:        true,
 		IdleTimeout: 240 * time.Second,
 		Dial:        func() (redis.Conn, error) { return p.Dial(connectionString) },
 	}

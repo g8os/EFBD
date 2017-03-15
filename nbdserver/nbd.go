@@ -164,21 +164,27 @@ func (ab *ArdbBackend) setContent(ctx context.Context, blockIndex int64, content
 
 	//Make sure to have a []byte type (so redis does not fall back on slow fmt.Print)
 	var hash []byte = HashBytes(content)
-	conn := ab.getRedisConnection(hash)
-	defer conn.Close()
+	err = func() (err error) {
+		conn := ab.getRedisConnection(hash)
+		defer conn.Close()
 
-	var exists bool
-	exists, err = redis.Bool(conn.Do("EXISTS", hash))
-	if err != nil {
-		return
-	}
-
-	// write content to redis in case it doesn't exist yet
-	if !exists {
-		_, err = conn.Do("SET", hash, content)
+		var exists bool
+		exists, err = redis.Bool(conn.Do("EXISTS", hash))
 		if err != nil {
 			return
 		}
+
+		// write content to redis in case it doesn't exist yet
+		if !exists {
+			_, err = conn.Do("SET", hash, content)
+			if err != nil {
+				return
+			}
+		}
+		return
+	}()
+	if err != nil {
+		return
 	}
 
 	// Write Hash to LBA

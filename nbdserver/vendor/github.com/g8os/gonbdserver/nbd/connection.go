@@ -312,25 +312,24 @@ func (c *Connection) receive(ctx context.Context) {
 		case NBD_CMD_READ:
 			rep.payload = make([]byte, length)
 
-			var n int64
 			var pstart, pend uint64
-			var err error
 
+			wg := sync.WaitGroup{}
 			for blocklen > 0 {
 				pend = pstart + blocklen
-
-				// WARNING: potential overflow (offset)
-				n, err = c.backend.ReadAt(ctx, rep.payload[pstart:pend], int64(offset))
-				if err != nil {
-					c.logger.Printf("[WARN] Client %s got read I/O error: %s", c.name, err)
-					rep.nbdRep.NbdError = errorCodeFromGolangError(err)
-					break
-				} else if uint64(n) != blocklen {
-					c.logger.Printf("[WARN] Client %s got incomplete read (%d != %d) at offset %d", c.name, n, blocklen, offset)
-					rep.nbdRep.NbdError = NBD_EIO
-					break
-				}
-
+				wg.Add(1)
+				go func(pstart, pend uint64, offset int64, blocklen uint64) {
+					defer wg.Done()
+					// WARNING: potential overflow (offset)
+					n, err := c.backend.ReadAt(ctx, rep.payload[pstart:pend], offset)
+					if err != nil {
+						c.logger.Printf("[WARN] Client %s got read I/O error: %s", c.name, err)
+						rep.nbdRep.NbdError = errorCodeFromGolangError(err)
+					} else if uint64(n) != blocklen {
+						c.logger.Printf("[WARN] Client %s got incomplete read (%d != %d) at offset %d", c.name, n, blocklen, offset)
+						rep.nbdRep.NbdError = NBD_EIO
+					}
+				}(pstart, pend, int64(offset), blocklen)
 				length -= blocklen
 				offset += blocklen
 				pstart += blocklen
@@ -340,14 +339,15 @@ func (c *Connection) receive(ctx context.Context) {
 					blocklen = length
 				}
 			}
+			wg.Wait()
 
 		case NBD_CMD_WRITE:
 			var cn int
-			var bn int64
 			var err error
-
+			wg := sync.WaitGroup{}
 			for blocklen > 0 {
-				cn, err = io.ReadFull(c.conn, c.wBuffer[:blocklen])
+				wBuffer := make([]byte, blocklen)
+				cn, err = io.ReadFull(c.conn, wBuffer)
 				if err != nil {
 					if isClosedErr(err) {
 						// Don't report this - we closed it
@@ -363,19 +363,20 @@ func (c *Connection) receive(ctx context.Context) {
 					return
 
 				}
-
-				// WARNING: potential overflow (blocklen, offset)
-				bn, err = c.backend.WriteAt(ctx, c.wBuffer[:blocklen], int64(offset), fua)
-				if err != nil {
-					c.logger.Printf("[WARN] Client %s got write I/O error: %s", c.name, err)
-					rep.nbdRep.NbdError = errorCodeFromGolangError(err)
-					break
-				} else if uint64(bn) != blocklen {
-					c.logger.Printf("[WARN] Client %s got incomplete write (%d != %d) at offset %d", c.name, bn, blocklen, offset)
-					rep.nbdRep.NbdError = NBD_EIO
-					break
-				}
-
+				wg.Add(1)
+				go func(wBuffer []byte, offset int64, blocklen uint64) {
+					defer wg.Done()
+					// WARNING: potential overflow (blocklen, offset)
+					//TODO: only pass the fua = true on the last block of a fua write
+					bn, err := c.backend.WriteAt(ctx, wBuffer, offset, fua)
+					if err != nil {
+						c.logger.Printf("[WARN] Client %s got write I/O error: %s", c.name, err)
+						rep.nbdRep.NbdError = errorCodeFromGolangError(err)
+					} else if uint64(bn) != blocklen {
+						c.logger.Printf("[WARN] Client %s got incomplete write (%d != %d) at offset %d", c.name, bn, blocklen, offset)
+						rep.nbdRep.NbdError = NBD_EIO
+					}
+				}(wBuffer, int64(offset), blocklen)
 				length -= blocklen
 				offset += blocklen
 
@@ -384,6 +385,7 @@ func (c *Connection) receive(ctx context.Context) {
 					blocklen = length
 				}
 			}
+			wg.Wait()
 
 		case NBD_CMD_WRITE_ZEROES:
 			var n int64
