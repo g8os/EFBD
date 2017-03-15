@@ -1,4 +1,4 @@
-# G8OS Block Storage
+# G8OS Block Storage [![Build Status](https://travis-ci.org/g8os/blockstor.svg?branch=master)](https://travis-ci.org/g8os/blockstor)
 
 The G8OS block storage allows to create and use block devices (volumes) on top of the [G80S object storage](https://github.com/g8os/objstor).
 
