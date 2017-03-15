@@ -13,7 +13,7 @@ func TestHashBytes(t *testing.T) {
 		t.Error("Nil hash returned from the hashfunction")
 		return
 	}
-	if *h == [HashSize]byte{} {
+	if h.Equals(NilHash) {
 		t.Error("Empty hash returned")
 	}
 }

@@ -12,7 +12,7 @@ import (
 const NumberOfRecordsPerLBAShard = 128
 
 //LBAShard is a collection of 128 LBA Records (Hash)
-type LBAShard [NumberOfRecordsPerLBAShard]*Hash
+type LBAShard [NumberOfRecordsPerLBAShard]Hash
 
 //NewLBAShard initializes a new LBAShard an returns a pointer to it
 func NewLBAShard() *LBAShard {
@@ -49,7 +49,7 @@ func NewLBA(volumeID string, numberOfBlocks uint64, pool *redis.Pool) (lba *LBA)
 //Set the content hash for a specific block.
 // When a key is updated, the shard containing this blockindex is marked as dirty and will be
 // stored in the external metadataserver when Flush is called.
-func (lba *LBA) Set(blockIndex int64, h *Hash) (err error) {
+func (lba *LBA) Set(blockIndex int64, h Hash) (err error) {
 	//TODO: let's see if we really need to lock on such a high level
 	lba.lock.Lock()
 	defer lba.lock.Unlock()
@@ -105,7 +105,7 @@ func (lba *LBA) Delete(blockIndex int64) (err error) {
 
 //Get returns the hash for a block, nil if no hash registered
 // If the shard containing this blockindex is not present, it is fetched from the external metadaserver
-func (lba *LBA) Get(blockIndex int64) (h *Hash, err error) {
+func (lba *LBA) Get(blockIndex int64) (h Hash, err error) {
 	//TODO: let's see if we really need to lock on such a high level
 	lba.lock.Lock()
 	defer lba.lock.Unlock()
@@ -153,8 +153,7 @@ func (lba *LBA) storeShardsInExternalStorage(shards map[int64]*LBAShard) (err er
 	defer conn.Close()
 
 	var key string
-	var h *Hash
-	var nilHash Hash
+
 	var buffer bytes.Buffer
 
 	// Start Pipe, so that all operations are piped
@@ -167,13 +166,13 @@ func (lba *LBA) storeShardsInExternalStorage(shards map[int64]*LBAShard) (err er
 		buffer.Reset()
 
 		key = lba.createShardKey(shardIndex)
-		for _, h = range *shard {
+		for _, h := range *shard {
 			if h == nil {
-				if _, err = buffer.Write(nilHash[:]); err != nil {
+				if _, err = buffer.Write(NilHash); err != nil {
 					return
 				}
 			} else {
-				if _, err = buffer.Write(h[:]); err != nil {
+				if _, err = buffer.Write(h); err != nil {
 					return
 				}
 			}
@@ -205,9 +204,9 @@ func (lba *LBA) getShardFromExternalStorage(shardIndex int64) (shard *LBAShard, 
 	}
 	shard = &LBAShard{}
 	for i := 0; i < NumberOfRecordsPerLBAShard; i++ {
-		var h Hash
-		copy(h[:], shardBytes[i*HashSize:])
-		(*shard)[i] = &h
+		h := NewHash()
+		copy(h, shardBytes[i*HashSize:])
+		(*shard)[i] = h
 	}
 	return
 }

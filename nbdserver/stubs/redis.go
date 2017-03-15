@@ -29,24 +29,27 @@ func (c *MemoryRedis) Do(commandName string, args ...interface{}) (reply interfa
 			err = errors.New("Insufficient parameters")
 			return
 		}
+		key := fmt.Sprint(args[0])
 		if byteSliceValue, ok := args[1].([]byte); ok {
 			copyOfValue := make([]byte, len(byteSliceValue), len(byteSliceValue))
 			copy(copyOfValue, byteSliceValue)
 			args[1] = copyOfValue
 		}
-		c.values[args[0]] = args[1]
+		c.values[key] = args[1]
 	case "GET":
 		if len(args) < 1 {
 			err = errors.New("Insufficient parameters")
 			return
 		}
-		reply = c.values[args[0]]
+		key := fmt.Sprint(args[0])
+		reply = c.values[key]
 	case "EXISTS":
 		if len(args) < 1 {
 			err = errors.New("Insufficient parameters")
 			return
 		}
-		_, exists := c.values[args[0]]
+		key := fmt.Sprint(args[0])
+		_, exists := c.values[key]
 		if exists {
 			reply = int64(1)
 		} else {

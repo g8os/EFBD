@@ -47,20 +47,18 @@ func (p *RedisPool) Get(connectionString string) redis.Conn {
 
 // GetConnectionSpecificPool get a redis.Pool for a specific connectionString.
 func (p *RedisPool) GetConnectionSpecificPool(connectionString string) (singleServerPool *redis.Pool) {
-	func() {
-		p.lock.Lock()
-		defer p.lock.Unlock()
-		singleServerPool = p.connections[connectionString]
-		if singleServerPool != nil {
-			return
-		}
-		singleServerPool = &redis.Pool{
-			MaxIdle:     2,
-			IdleTimeout: 240 * time.Second,
-			Dial:        func() (redis.Conn, error) { return p.Dial(connectionString) },
-		}
-		p.connections[connectionString] = singleServerPool
-	}()
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	singleServerPool = p.connections[connectionString]
+	if singleServerPool != nil {
+		return
+	}
+	singleServerPool = &redis.Pool{
+		MaxIdle:     2,
+		IdleTimeout: 240 * time.Second,
+		Dial:        func() (redis.Conn, error) { return p.Dial(connectionString) },
+	}
+	p.connections[connectionString] = singleServerPool
 	return
 }
 

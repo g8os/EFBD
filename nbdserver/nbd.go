@@ -130,7 +130,7 @@ func (ab *ArdbBackend) HasFlush(ctx context.Context) bool {
 }
 
 // get a redis connection based on a hash
-func (ab *ArdbBackend) getRedisConnection(hash *Hash) (conn redis.Conn) {
+func (ab *ArdbBackend) getRedisConnection(hash Hash) (conn redis.Conn) {
 	bcIndex := int(hash[0]) % ab.numberOfStorageServers
 	conn = ab.RedisConnectionPool.Get(
 		ab.backendConnectionStrings[bcIndex].ConnectionString)
@@ -162,19 +162,20 @@ func (ab *ArdbBackend) setContent(ctx context.Context, blockIndex int64, content
 		return
 	}
 
-	hash := HashBytes(content)
+	//Make sure to have a []byte type (so redis does not fall back on slow fmt.Print)
+	var hash []byte = HashBytes(content)
 	conn := ab.getRedisConnection(hash)
 	defer conn.Close()
 
 	var exists bool
-	exists, err = redis.Bool(conn.Do("EXISTS", *hash))
+	exists, err = redis.Bool(conn.Do("EXISTS", hash))
 	if err != nil {
 		return
 	}
 
 	// write content to redis in case it doesn't exist yet
 	if !exists {
-		_, err = conn.Do("SET", *hash, content)
+		_, err = conn.Do("SET", hash, content)
 		if err != nil {
 			return
 		}
@@ -228,11 +229,12 @@ func (ab *ArdbBackend) combineContent(ctx context.Context, blockIndex, offset in
 }
 
 // gets content based on a given hash, if possible
-func (ab *ArdbBackend) getContent(hash *Hash) (content []byte, err error) {
+//Make sure to have a []byte type for the hash (so redis does not fall back on slow fmt.Print)
+func (ab *ArdbBackend) getContent(hash []byte) (content []byte, err error) {
 	conn := ab.getRedisConnection(hash)
 	defer conn.Close()
 
-	content, err = redis.Bytes(conn.Do("GET", *hash))
+	content, err = redis.Bytes(conn.Do("GET", hash))
 	return
 }
 
