@@ -6,4 +6,5 @@ go:
   - 1.8
 
 script:
- - go test $(go list ./... | grep -v vendor)
+  - go test $(go list ./... | grep -v vendor)
+  - ./scripts/codegeneration.sh
