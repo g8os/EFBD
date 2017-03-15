@@ -24,16 +24,16 @@ func shardFromBytes(bytes []byte) (shard *shard, err error) {
 
 	shard = newShard()
 	for i := 0; i < NumberOfRecordsPerLBAShard; i++ {
-		var h Hash
-		copy(h[:], bytes[i*HashSize:])
-		shard.hashes[i] = &h
+		h := NewHash()
+		copy(h, bytes[i*HashSize:])
+		shard.hashes[i] = h
 	}
 
 	return
 }
 
 type shard struct {
-	hashes [NumberOfRecordsPerLBAShard]*Hash
+	hashes [NumberOfRecordsPerLBAShard]Hash
 	dirty  bool
 }
 
@@ -41,26 +41,26 @@ func (s *shard) Dirty() bool {
 	return s.dirty
 }
 
-func (s *shard) Set(hashIndex int64, hash *Hash) {
+func (s *shard) UnsetDirty() {
+	s.dirty = false
+}
+
+func (s *shard) Set(hashIndex int64, hash Hash) {
 	s.hashes[hashIndex] = hash
 	s.dirty = true
 }
 
-func (s *shard) Get(hashIndex int64) *Hash {
+func (s *shard) Get(hashIndex int64) Hash {
 	return s.hashes[hashIndex]
 }
 
 func (s *shard) Write(w io.Writer) (err error) {
-	var h *Hash
-	for _, h = range s.hashes {
-		if h != nil {
-			if _, err = w.Write((*h)[:]); err != nil {
-				return
-			}
-		} else {
-			if _, err = w.Write(nilHash[:]); err != nil {
-				return
-			}
+	for _, h := range s.hashes {
+		if h == nil {
+			h = nilHash
+		}
+		if _, err = w.Write(h[:]); err != nil {
+			return
 		}
 	}
 

@@ -2,7 +2,15 @@
 	"ImportPath": "github.com/g8os/blockstor/nbdserver",
 	"GoVersion": "go1.7",
 	"GodepVersion": "v79",
+	"Packages": [
+		"./..."
+	],
 	"Deps": [
+		{
+			"ImportPath": "github.com/davecgh/go-spew/spew",
+			"Comment": "v1.0.0-3-g6d21280",
+			"Rev": "6d212800a42e8ab5c146b8ace3490ee17e5225f9"
+		},
 		{
 			"ImportPath": "github.com/g8os/gonbdserver/nbd",
 			"Rev": "b3eea4600728b5070439fc277c084f82c7acfae8"
@@ -29,9 +37,19 @@
 			"Rev": "3f5f724cb5b182a5c278d6d3d55b40e7f8c2efb4"
 		},
 		{
+			"ImportPath": "github.com/pmezard/go-difflib/difflib",
+			"Comment": "v1.0.0",
+			"Rev": "792786c7400a136282c1664665ae0a8db921c6c2"
+		},
+		{
 			"ImportPath": "github.com/sevlyar/go-daemon",
 			"Comment": "v0.1.0-5-g8577c7d",
 			"Rev": "8577c7ddef908e104dae56c9e46f0956cb33c844"
+		},
+		{
+			"ImportPath": "github.com/stretchr/testify/assert",
+			"Comment": "v1.1.3-72-ga30d470",
+			"Rev": "a30d47007ef19da43c69f24ed5e40ccc5b6cbb6f"
 		},
 		{
 			"ImportPath": "golang.org/x/net/context",

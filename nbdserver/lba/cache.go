@@ -94,7 +94,7 @@ func (c *shardCache) Delete(shardIndex int64) (deleted bool) {
 	return
 }
 
-// Serialize the entire cache, and clear it afterwards in case no errors occured
+// Serialize the entire cache
 func (c *shardCache) Serialize(serialize func(int64, []byte) error) (err error) {
 	if serialize == nil {
 		err = errors.New("no serialization callback given")
@@ -102,26 +102,41 @@ func (c *shardCache) Serialize(serialize func(int64, []byte) error) (err error) 
 	}
 
 	var buffer bytes.Buffer
-	var shard *shard
+	var entry *cacheEntry
 
-	for shardIndex, elem := range c.shards {
-		shard = elem.Value.(*cacheEntry).shard
+	for elem := c.evictList.Front(); elem != nil; elem = elem.Next() {
+		entry = elem.Value.(*cacheEntry)
 
-		if err = shard.Write(&buffer); err != nil {
+		if !entry.shard.Dirty() {
+			continue // only write dirty shards
+		}
+
+		if err = entry.shard.Write(&buffer); err != nil {
 			return
 		}
 
-		if err = serialize(shardIndex, buffer.Bytes()); err != nil {
+		if err = serialize(entry.shardIndex, buffer.Bytes()); err != nil {
 			return
 		}
 
 		buffer.Reset()
 	}
 
-	c.shards = make(map[int64]*list.Element)
-	c.evictList.Init()
-
 	return
+}
+
+// Clear the entire cache, optionally evicing the items first
+func (c *shardCache) Clear(evict bool) {
+	if evict && c.onEvict != nil {
+		var shard *shard
+		for index, elem := range c.shards {
+			shard = elem.Value.(*cacheEntry).shard
+			c.onEvict(index, shard)
+		}
+	}
+
+	c.shards = make(map[int64]*list.Element, c.size)
+	c.evictList.Init()
 }
 
 // removeOldest removes the oldest item from the cache.

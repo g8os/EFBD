@@ -3,17 +3,20 @@ package lba
 import (
 	"crypto/rand"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestHashBytes(t *testing.T) {
 	data := make([]byte, 435)
 	rand.Read(data)
 	h := HashBytes(data)
-	if h == nil {
-		t.Error("Nil hash returned from the hashfunction")
-		return
+	if assert.NotNil(t, h, "Nil hash returned from the hashfunction") {
+		assert.False(t, h.Equals(nilHash), "empty has returned")
 	}
-	if h.Equals(NilHash) {
-		t.Error("Empty hash returned")
-	}
+}
+
+func TestNilHash(t *testing.T) {
+	assert.Len(t, nilHash, HashSize)
+	assert.True(t, NewHash().Equals(nilHash))
 }

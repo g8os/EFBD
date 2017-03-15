@@ -135,7 +135,7 @@ func (ab *ArdbBackend) HasFlush(ctx context.Context) bool {
 }
 
 // get a redis connection based on a hash
-func (ab *ArdbBackend) getRedisConnection(hash Hash) (conn redis.Conn) {
+func (ab *ArdbBackend) getRedisConnection(hash lba.Hash) (conn redis.Conn) {
 	bcIndex := int(hash[0]) % ab.numberOfStorageServers
 	conn = ab.RedisConnectionPool.Get(
 		ab.backendConnectionStrings[bcIndex].ConnectionString)
@@ -168,7 +168,7 @@ func (ab *ArdbBackend) setContent(ctx context.Context, blockIndex int64, content
 	}
 
 	//Make sure to have a []byte type (so redis does not fall back on slow fmt.Print)
-	var hash []byte = HashBytes(content)
+	var hash []byte = lba.HashBytes(content)
 	err = func() (err error) {
 		conn := ab.getRedisConnection(hash)
 		defer conn.Close()

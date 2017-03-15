@@ -34,7 +34,7 @@ type LBA struct {
 //Set the content hash for a specific block.
 // When a key is updated, the shard containing this blockindex is marked as dirty and will be
 // stored in the external metadataserver when Flush is called.
-func (lba *LBA) Set(blockIndex int64, h *Hash) (err error) {
+func (lba *LBA) Set(blockIndex int64, h Hash) (err error) {
 	//TODO: let's see if we really need to lock on such a high level
 	//		IF NOT, we need to make lba.shardCache thread safe!
 	lba.lock.Lock()
@@ -71,7 +71,7 @@ func (lba *LBA) Delete(blockIndex int64) (err error) {
 
 //Get returns the hash for a block, nil if no hash registered
 // If the shard containing this blockindex is not present, it is fetched from the external metadaserver
-func (lba *LBA) Get(blockIndex int64) (h *Hash, err error) {
+func (lba *LBA) Get(blockIndex int64) (h Hash, err error) {
 	//TODO: let's see if we really need to lock on such a high level
 	//		IF NOT, we need to make lba.shardCache thread safe!
 	lba.lock.Lock()
@@ -176,10 +176,20 @@ func (lba *LBA) storeCacheInExternalStorage() (err error) {
 
 	// Write all sets in output buffer to Redis at once
 	_, err = conn.Do("EXEC")
+	if err != nil {
+		// no need to evict, already serialized them
+		evict := false
+		// clear cache, as we serialized them all
+		lba.cache.Clear(evict)
+	}
 	return
 }
 
 func (lba *LBA) storeShardInExternalStorage(index int64, shard *shard) (err error) {
+	if !shard.Dirty() {
+		return // only store a dirty shard
+	}
+
 	var buffer bytes.Buffer
 	if err = shard.Write(&buffer); err != nil {
 		err = fmt.Errorf("couldn't serialize evicted shard %d: %s", index, err)
@@ -190,6 +200,9 @@ func (lba *LBA) storeShardInExternalStorage(index int64, shard *shard) (err erro
 	defer conn.Close()
 
 	_, err = conn.Do("HSET", lba.volumeID, index, buffer.Bytes())
+	if err != nil {
+		shard.UnsetDirty()
+	}
 
 	return
 }
