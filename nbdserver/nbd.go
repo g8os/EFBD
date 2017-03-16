@@ -5,6 +5,7 @@ import (
 
 	"github.com/g8os/blockstor/nbdserver/clients/storagebackendcontroller"
 	"github.com/g8os/blockstor/nbdserver/clients/volumecontroller"
+	"github.com/g8os/blockstor/nbdserver/lba"
 
 	"golang.org/x/net/context"
 
@@ -12,8 +13,12 @@ import (
 	"github.com/garyburd/redigo/redis"
 )
 
-//BlockSize is the fixed blocksize for the ardbackend
-const BlockSize = 4 * 1024 // 4kB
+const (
+	//BlockSize is the fixed blocksize for the ardbackend
+	BlockSize = 4 * 1024 // 4 kB
+	// DefaultLBACacheLimit defines the default cache limit
+	DefaultLBACacheLimit = 20 * 1024 * 1024 // 20 mB
+)
 
 //ArdbBackend is a nbd.Backend implementation on top of ARDB
 type ArdbBackend struct {
@@ -22,7 +27,7 @@ type ArdbBackend struct {
 	BlockSize int64
 	Size      uint64
 	Deduped   bool
-	LBA       *LBA
+	LBA       *lba.LBA
 
 	RedisConnectionPool *RedisPool
 
@@ -130,7 +135,7 @@ func (ab *ArdbBackend) HasFlush(ctx context.Context) bool {
 }
 
 // get a redis connection based on a hash
-func (ab *ArdbBackend) getRedisConnection(hash Hash) (conn redis.Conn) {
+func (ab *ArdbBackend) getRedisConnection(hash lba.Hash) (conn redis.Conn) {
 	bcIndex := int(hash[0]) % ab.numberOfStorageServers
 	conn = ab.RedisConnectionPool.Get(
 		ab.backendConnectionStrings[bcIndex].ConnectionString)
@@ -163,7 +168,7 @@ func (ab *ArdbBackend) setContent(ctx context.Context, blockIndex int64, content
 	}
 
 	//Make sure to have a []byte type (so redis does not fall back on slow fmt.Print)
-	var hash []byte = HashBytes(content)
+	var hash []byte = lba.HashBytes(content)
 	err = func() (err error) {
 		conn := ab.getRedisConnection(hash)
 		defer conn.Close()
@@ -248,7 +253,10 @@ func (ab *ArdbBackend) getContent(hash []byte) (content []byte, err error) {
 // that can not be passed in the exportconfig like the pool of ardbconnections
 // I hate the factory pattern but I hate global variables even more
 type ArdbBackendFactory struct {
-	BackendPool *RedisPool
+	BackendPool              *RedisPool
+	volumecontrolleraddress  string
+	backendcontrolleraddress string
+	lbacachelimit            int64
 }
 
 //NewArdbBackend generates a new ardb backend
@@ -258,7 +266,7 @@ func (f *ArdbBackendFactory) NewArdbBackend(ctx context.Context, ec *nbd.ExportC
 
 	//Get information about the volume
 	volumeControllerClient := volumecontroller.NewVolumeController()
-	volumeControllerClient.BaseURI = ec.DriverParameters["volumecontrolleraddress"]
+	volumeControllerClient.BaseURI = f.volumecontrolleraddress
 	log.Println("[INFO] Starting volume", volumeID)
 	volumeInfo, _, err := volumeControllerClient.Volumes.GetVolumeInfo(volumeID, nil, nil)
 	if err != nil {
@@ -276,7 +284,7 @@ func (f *ArdbBackendFactory) NewArdbBackend(ctx context.Context, ec *nbd.ExportC
 	//Get information about the backend storage nodes
 	// TODO: need a way to update while staying alive
 	storageBackendClient := storagebackendcontroller.NewStorageBackend()
-	storageBackendClient.BaseURI = ec.DriverParameters["backendcontrolleraddress"]
+	storageBackendClient.BaseURI = f.backendcontrolleraddress
 	storageClusterInfo, _, err := storageBackendClient.Storagecluster.GetStorageClusterInfo(volumeInfo.Storagecluster, nil, nil)
 	if err != nil {
 		log.Println("[ERROR]", err)
@@ -285,7 +293,20 @@ func (f *ArdbBackendFactory) NewArdbBackend(ctx context.Context, ec *nbd.ExportC
 	ab.backendConnectionStrings = storageClusterInfo.Storageservers
 	ab.numberOfStorageServers = len(ab.backendConnectionStrings)
 
-	ab.LBA = NewLBA(volumeID, numberOfBlocks, f.BackendPool.GetConnectionSpecificPool(storageClusterInfo.Metadataserver.ConnectionString))
+	cacheLimit := f.lbacachelimit
+	if cacheLimit < lba.BytesPerShard {
+		cacheLimit = DefaultLBACacheLimit
+	}
+
+	pool := f.BackendPool.GetConnectionSpecificPool(storageClusterInfo.Metadataserver.ConnectionString)
+	ab.LBA, err = lba.NewLBA(
+		volumeID,
+		cacheLimit,
+		pool,
+	)
+	if err != nil {
+		return
+	}
 
 	backend = ab
 	return

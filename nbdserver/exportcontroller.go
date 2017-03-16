@@ -10,22 +10,17 @@ import (
 )
 
 // NewExportController creates a new export config manager.
-func NewExportController(volumecontrolleraddress, backendcontrolleraddress string, tslOnly bool, defaultExport string) (controller *ExportController, err error) {
+func NewExportController(volumecontrolleraddress string, defaultExport string, tslOnly bool) (controller *ExportController, err error) {
 	if volumecontrolleraddress == "" {
 		err = errors.New("ExportController requires a non-empty volumecontrolleraddress")
 		return
 	}
-	if backendcontrolleraddress == "" {
-		err = errors.New("ExportController requires a non-empty backendcontrolleraddress")
-		return
-	}
 
 	controller = &ExportController{
-		volumeController:         volumecontroller.NewVolumeController(),
-		volumecontrolleraddress:  volumecontrolleraddress,
-		backendcontrolleraddress: backendcontrolleraddress,
-		defaultExport:            defaultExport,
-		tslOnly:                  tslOnly,
+		volumeController:        volumecontroller.NewVolumeController(),
+		volumecontrolleraddress: volumecontrolleraddress,
+		defaultExport:           defaultExport,
+		tslOnly:                 tslOnly,
 	}
 	controller.volumeController.BaseURI = volumecontrolleraddress
 	return
@@ -34,11 +29,10 @@ func NewExportController(volumecontrolleraddress, backendcontrolleraddress strin
 // ExportController implements nbd.ExportConfigManager
 // using the VolumeController client internally
 type ExportController struct {
-	volumeController         *volumecontroller.VolumeController
-	volumecontrolleraddress  string
-	backendcontrolleraddress string
-	defaultExport            string
-	tslOnly                  bool
+	volumeController        *volumecontroller.VolumeController
+	volumecontrolleraddress string
+	defaultExport           string
+	tslOnly                 bool
 }
 
 // ListConfigNames implements nbd.ExportConfigManager.ListConfigNames
@@ -78,9 +72,5 @@ func (c *ExportController) GetConfig(name string) (*nbd.ExportConfig, error) {
 		//	+ https://github.com/Jumpscale/go-raml/issues/96
 		// They are related in a way that we would need a way to have
 		// a map[string[string] object generated
-		DriverParameters: nbd.DriverParametersConfig{
-			"volumecontrolleraddress":  c.volumecontrolleraddress,
-			"backendcontrolleraddress": c.backendcontrolleraddress,
-		},
 	}, nil
 }

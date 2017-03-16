@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 
 	_ "net/http/pprof"
 
+	"github.com/g8os/blockstor/nbdserver/lba"
 	"github.com/g8os/blockstor/nbdserver/stubs"
 	"github.com/g8os/gonbdserver/nbd"
 	"golang.org/x/net/context"
@@ -18,6 +20,7 @@ import (
 func main() {
 	var inMemoryStorage bool
 	var tslonly bool
+	var lbacachelimit int64
 	var profileAddress string
 	var protocol string
 	var address string
@@ -34,6 +37,8 @@ func main() {
 	flag.StringVar(&backendcontrolleraddress, "backendcontroller", "", "Address of the storage backend controller REST API, leave empty to use the embedded stub")
 	flag.StringVar(&testArdbConnectionSrings, "testardbs", "localhost:16379,localhost:16379", "Comma seperated list of ardb connection strings returned by the embedded backend controller, first one is the metadataserver")
 	flag.StringVar(&defaultExport, "export", "default", "default export to list and use")
+	flag.Int64Var(&lbacachelimit, "lbacachelimit", DefaultLBACacheLimit,
+		fmt.Sprintf("Cache limit of LBA in bytes, needs to be higher then %d (bytes in 1 shard)", lba.BytesPerShard))
 	flag.Parse()
 
 	logger := log.New(os.Stderr, "nbdserver:", log.Ldate|log.Ltime)
@@ -70,9 +75,8 @@ func main() {
 
 	exportController, err := NewExportController(
 		volumecontrolleraddress,
-		backendcontrolleraddress,
-		tslonly,
 		defaultExport,
+		tslonly,
 	)
 	if err != nil {
 		logger.Panicln(err)
@@ -96,10 +100,16 @@ func main() {
 	if inMemoryStorage {
 		logger.Println("[INFO] Using in-memory block storage")
 	}
-	r := NewRedisPool(inMemoryStorage)
-	defer r.Close()
 
-	f := &ArdbBackendFactory{BackendPool: r}
+	redisPool := NewRedisPool(inMemoryStorage)
+	defer redisPool.Close()
+
+	f := &ArdbBackendFactory{
+		BackendPool:              redisPool,
+		volumecontrolleraddress:  volumecontrolleraddress,
+		backendcontrolleraddress: backendcontrolleraddress,
+		lbacachelimit:            lbacachelimit,
+	}
 
 	nbd.RegisterBackend("ardb", f.NewArdbBackend)
 

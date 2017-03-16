@@ -1,4 +1,4 @@
-package main
+package lba
 
 import (
 	"bytes"
@@ -18,6 +18,10 @@ var (
 
 //Hash is just a bytearray of size HashSize
 type Hash []byte
+
+// nilHash used internally in LBA as place holder for
+// a non-existing hash
+var nilHash = NewHash()
 
 // HashBytes takes a byte slice .
 func HashBytes(data []byte) Hash {
