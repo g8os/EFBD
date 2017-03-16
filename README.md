@@ -4,6 +4,8 @@ The G8OS block storage allows to create and use block devices (volumes) on top o
 
 A volume can be deduped, have various blocksizes and depending on the underlying objectstor cluster used, have different speed characteristics.
 
+Make sure tot have Golang version 1.6 or above installed!
+
 Components:
 * [Volume Controller](volumecontroller/readme.md)
     AYS to manage volumes. A rest api allows easy access from external systems.
@@ -13,11 +15,8 @@ Components:
 # Build for g8os
 - Clone the code to your GOPATH and `go get` the dependencies:
 ```
-cd $GOPATH && mkdir -p github.com/g8os
-cd github.com/g8os
-git clone https://github.com/g8os/blockstor/
-cd blockstor/nbdserver
-go get .
+go get -d github.com/g8os/blockstor
+cd $GOPATH/src/github.com/g8os/blockstor/nbdserver
 ```
 
 - Build (totally static) the binary: `CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static"' .`
