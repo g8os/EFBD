@@ -143,7 +143,7 @@ func (lba *LBA) Flush() (err error) {
 }
 
 func (lba *LBA) createShardKey(shardIndex int64) string {
-	return fmt.Sprintf("%s:%d", lba.volumeID, shardIndex)
+	return fmt.Sprintf("%d", shardIndex)
 }
 
 func (lba *LBA) storeShardsInExternalStorage(shards map[int64]*LBAShard) (err error) {
@@ -178,7 +178,7 @@ func (lba *LBA) storeShardsInExternalStorage(shards map[int64]*LBAShard) (err er
 			}
 		}
 
-		if err = conn.Send("SET", key, buffer.Bytes()); err != nil {
+		if err = conn.Send("HSET", lba.volumeID, key, buffer.Bytes()); err != nil {
 			return
 		}
 	}
@@ -193,7 +193,7 @@ func (lba *LBA) getShardFromExternalStorage(shardIndex int64) (shard *LBAShard, 
 
 	conn := lba.redisPool.Get()
 	defer conn.Close()
-	reply, err := conn.Do("GET", key)
+	reply, err := conn.Do("HGET", lba.volumeID, key)
 	if err != nil || reply == nil {
 		return
 	}
