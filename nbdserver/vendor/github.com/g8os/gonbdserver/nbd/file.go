@@ -27,10 +27,25 @@ func (fb *FileBackend) WriteAt(ctx context.Context, b []byte, offset int64, fua 
 	return int64(n), err
 }
 
-// ReadAt implements Backend.ReadAt
-func (fb *FileBackend) ReadAt(ctx context.Context, b []byte, offset int64) (int64, error) {
-	n, err := fb.file.ReadAt(b, offset)
+// WriteZeroesAt implements Backend.WriteZeroesAt
+func (fb *FileBackend) WriteZeroesAt(ctx context.Context, offset, length int64, fua bool) (int64, error) {
+	b := make([]byte, length)
+	n, err := fb.file.WriteAt(b, offset)
+	if err != nil || !fua {
+		return int64(n), err
+	}
+	err = fb.file.Sync()
+	if err != nil {
+		return 0, err
+	}
 	return int64(n), err
+}
+
+// ReadAt implements Backend.ReadAt
+func (fb *FileBackend) ReadAt(ctx context.Context, offset, length int64) ([]byte, error) {
+	bytes := make([]byte, length)
+	_, err := fb.file.ReadAt(bytes, offset)
+	return bytes, err
 }
 
 // TrimAt implements Backend.TrimAt
