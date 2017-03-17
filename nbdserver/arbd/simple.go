@@ -2,7 +2,6 @@ package arbd
 
 import (
 	"fmt"
-	"sync"
 
 	"github.com/garyburd/redigo/redis"
 )
@@ -20,7 +19,6 @@ func newSimpleStorage(volumeID string, blockSize int64, provider *redisProvider)
 // that simply stores each block in redis using
 // a unique key based on the volumeID and blockIndex
 type simpleStorage struct {
-	lock      sync.Mutex
 	blockSize int64
 	volumeID  string
 	provider  *redisProvider
@@ -28,10 +26,6 @@ type simpleStorage struct {
 
 // Set implements storage.Set
 func (ss *simpleStorage) Set(blockIndex int64, content []byte) (err error) {
-	//TODO: let's see if we really need to lock on such a high level
-	ss.lock.Lock()
-	defer ss.lock.Unlock()
-
 	key := ss.getKey(blockIndex)
 
 	conn := ss.provider.GetRedisConnection(int(blockIndex))
@@ -51,10 +45,6 @@ func (ss *simpleStorage) Set(blockIndex int64, content []byte) (err error) {
 
 // Merge implements storage.Merge
 func (ss *simpleStorage) Merge(blockIndex, offset int64, content []byte) (err error) {
-	//TODO: let's see if we really need to lock on such a high level
-	ss.lock.Lock()
-	defer ss.lock.Unlock()
-
 	key := ss.getKey(blockIndex)
 
 	conn := ss.provider.GetRedisConnection(int(blockIndex))
@@ -84,10 +74,6 @@ func (ss *simpleStorage) Merge(blockIndex, offset int64, content []byte) (err er
 
 // Get implements storage.Get
 func (ss *simpleStorage) Get(blockIndex int64) (content []byte, err error) {
-	//TODO: let's see if we really need to lock on such a high level
-	ss.lock.Lock()
-	defer ss.lock.Unlock()
-
 	key := ss.getKey(blockIndex)
 
 	conn := ss.provider.GetRedisConnection(int(blockIndex))
