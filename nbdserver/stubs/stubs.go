@@ -20,10 +20,12 @@ func NewMemoryRedisConn() (conn redis.Conn) {
 
 //NewVolumeControllerServer starts an HTTP server listening on a system-chosen port on the local loopback interface, for use in tests without an external volumecontroller service.
 // When finished, Close() should be called on the returned server
-func NewVolumeControllerServer() (s *httptest.Server, url string) {
+func NewVolumeControllerServer(nonDedupedVolumes []string) (s *httptest.Server, url string) {
 	r := mux.NewRouter()
 
-	volumecontroller.VolumesInterfaceRoutes(r, volumecontroller.VolumesAPI{})
+	volumecontroller.VolumesInterfaceRoutes(r, volumecontroller.VolumesAPI{
+		NonDedupedVolumes: nonDedupedVolumes,
+	})
 	s = httptest.NewServer(r)
 	url = s.URL
 	return

@@ -9,6 +9,7 @@ import (
 
 // VolumesAPI is API implementation of /volumes root endpoint
 type VolumesAPI struct {
+	NonDedupedVolumes []string
 }
 
 // CreateNewVolume is the handler for POST /volumes
@@ -51,6 +52,13 @@ func (api VolumesAPI) GetVolumeInfo(w http.ResponseWriter, r *http.Request) {
 	respBody.Deduped = true
 	respBody.ReadOnly = false
 	respBody.Driver = "ardb"
+
+	for _, nonDedupedVolumeID := range api.NonDedupedVolumes {
+		if nonDedupedVolumeID == volumeID {
+			respBody.Deduped = false
+			break
+		}
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(&respBody)
