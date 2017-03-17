@@ -1,6 +1,7 @@
 package lba
 
 import (
+	"errors"
 	"fmt"
 	"io"
 )
@@ -10,6 +11,10 @@ const (
 	NumberOfRecordsPerLBAShard = 128
 	// BytesPerShard defines how many bytes each shards requires
 	BytesPerShard = NumberOfRecordsPerLBAShard * HashSize
+)
+
+var (
+	errNilShardWrite = errors.New("shard is nil, and cannot be written")
 )
 
 func newShard() *shard {
@@ -26,7 +31,9 @@ func shardFromBytes(bytes []byte) (shard *shard, err error) {
 	for i := 0; i < NumberOfRecordsPerLBAShard; i++ {
 		h := NewHash()
 		copy(h, bytes[i*HashSize:])
-		shard.hashes[i] = h
+		if !h.Equals(nilHash) {
+			shard.hashes[i] = h
+		}
 	}
 
 	return
@@ -55,7 +62,33 @@ func (s *shard) Get(hashIndex int64) Hash {
 }
 
 func (s *shard) Write(w io.Writer) (err error) {
-	for _, h := range s.hashes {
+	var index int
+
+	// keep going until we encounter a non-nilHash
+	for index = 0; index < NumberOfRecordsPerLBAShard; index++ {
+		if s.hashes[index] != nil {
+			break
+		}
+	}
+
+	// if all were nilHashes, we simply return it as an error
+	if index == NumberOfRecordsPerLBAShard {
+		err = errNilShardWrite
+		return
+	}
+
+	// we have non-nil hashes, so let's write all
+	// nil hashes that came before the first non-nil hash
+	for i := 0; i < index; i++ {
+		if _, err = w.Write(nilHash); err != nil {
+			return
+		}
+	}
+
+	// write all other hashes
+	var h Hash
+	for ; index < NumberOfRecordsPerLBAShard; index++ {
+		h = s.hashes[index]
 		if h == nil {
 			h = nilHash
 		}

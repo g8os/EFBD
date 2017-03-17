@@ -38,12 +38,14 @@ func (ds *dedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 		return
 	}
 
+	//Execute in a function so the redis connection is released before storing the hash in the LBA
+	// If the metadataserver is the same as the content, this causes a deadlock if the connection is not released yet
+	// and now it can already be reused faster as well
 	err = func() (err error) {
 		conn := ds.getRedisConnection(hash)
 		defer conn.Close()
 
-		var exists bool
-		exists, err = redis.Bool(conn.Do("EXISTS", hash))
+		exists, err := redis.Bool(conn.Do("EXISTS", hash))
 		if err != nil || exists {
 			return
 		}
@@ -67,6 +69,7 @@ func (ds *dedupedStorage) Merge(blockIndex, offset int64, content []byte) (err e
 	hash, _ := ds.lba.Get(blockIndex)
 
 	var mergedContent []byte
+
 	if hash != nil {
 		mergedContent, err = ds.getContent(hash)
 		if err != nil {

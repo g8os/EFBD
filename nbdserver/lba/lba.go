@@ -10,10 +10,16 @@ import (
 )
 
 //NewLBA creates a new LBA
-func NewLBA(volumeID string, cacheLimitInBytes int64, pool *redis.Pool) (lba *LBA, err error) {
+func NewLBA(volumeID string, blockCount, cacheLimitInBytes int64, pool *redis.Pool) (lba *LBA, err error) {
+	muxCount := blockCount / NumberOfRecordsPerLBAShard
+	if blockCount%NumberOfRecordsPerLBAShard > 0 {
+		muxCount++
+	}
+
 	lba = &LBA{
 		redisPool: pool,
 		volumeID:  volumeID,
+		shardMux:  make([]sync.Mutex, muxCount),
 	}
 	lba.cache, err = newShardCache(cacheLimitInBytes, lba.onCacheEviction)
 
@@ -24,8 +30,14 @@ func NewLBA(volumeID string, cacheLimitInBytes int64, pool *redis.Pool) (lba *LB
 // The data is persisted to an external metadataserver in shards of n keys,
 // where n = NumberOfRecordsPerLBAShard.
 type LBA struct {
-	lock  sync.Mutex
 	cache *shardCache
+
+	// One mutex per shard, allows us to only lock
+	// on a per-shard basis. Even with 65k block, that's still only a ~500 element mutex array.
+	// We stil need to lock on a per-shard basis,
+	// as otherwise we might have a race condition where for example
+	// 2 operations might create a new shard, and thus we would miss an operation.
+	shardMux []sync.Mutex
 
 	redisPool *redis.Pool
 	volumeID  string
@@ -35,22 +47,27 @@ type LBA struct {
 // When a key is updated, the shard containing this blockindex is marked as dirty and will be
 // stored in the external metadataserver when Flush is called.
 func (lba *LBA) Set(blockIndex int64, h Hash) (err error) {
-	//TODO: let's see if we really need to lock on such a high level
-	//		IF NOT, we need to make lba.shardCache thread safe!
-	lba.lock.Lock()
-	defer lba.lock.Unlock()
-
 	//Fetch the appropriate shard
-	shardIndex := blockIndex / NumberOfRecordsPerLBAShard
-	shard, err := lba.getShard(shardIndex)
+	shard, err := func(shardIndex int64) (shard *shard, err error) {
+		lba.shardMux[shardIndex].Lock()
+		defer lba.shardMux[shardIndex].Unlock()
+
+		shard, err = lba.getShard(shardIndex)
+		if err != nil {
+			return
+		}
+		if shard == nil {
+			shard = newShard()
+			// store the new shard in the cache,
+			// otherwise it will be forgotten...
+			lba.cache.Add(shardIndex, shard)
+		}
+
+		return
+	}(blockIndex / NumberOfRecordsPerLBAShard)
+
 	if err != nil {
 		return
-	}
-	if shard == nil {
-		shard = newShard()
-		// store the new shard in the cache,
-		// otherwise it will be forgotten...
-		lba.cache.Add(shardIndex, shard)
 	}
 
 	//Update the hash
@@ -72,31 +89,26 @@ func (lba *LBA) Delete(blockIndex int64) (err error) {
 //Get returns the hash for a block, nil if no hash registered
 // If the shard containing this blockindex is not present, it is fetched from the external metadaserver
 func (lba *LBA) Get(blockIndex int64) (h Hash, err error) {
-	//TODO: let's see if we really need to lock on such a high level
-	//		IF NOT, we need to make lba.shardCache thread safe!
-	lba.lock.Lock()
-	defer lba.lock.Unlock()
+	shard, err := func(shardIndex int64) (*shard, error) {
+		lba.shardMux[shardIndex].Lock()
+		defer lba.shardMux[shardIndex].Unlock()
 
-	shardIndex := blockIndex / NumberOfRecordsPerLBAShard
-	shard, err := lba.getShard(shardIndex)
-	if err != nil {
+		return lba.getShard(shardIndex)
+	}(blockIndex / NumberOfRecordsPerLBAShard)
+
+	if err != nil || shard == nil {
 		return
 	}
-	if shard != nil {
-		// get the hash
-		hashIndex := blockIndex % NumberOfRecordsPerLBAShard
-		h = shard.Get(hashIndex)
-	}
+
+	// get the hash
+	hashIndex := blockIndex % NumberOfRecordsPerLBAShard
+	h = shard.Get(hashIndex)
+
 	return
 }
 
 //Flush stores all dirty shards to the external metadaserver
 func (lba *LBA) Flush() (err error) {
-	//TODO: let's see if we really need to lock on such a high level
-	//		IF NOT, we need to make lba.shardCache thread safe!
-	lba.lock.Lock()
-	defer lba.lock.Unlock()
-
 	err = lba.storeCacheInExternalStorage()
 	return
 }
@@ -162,15 +174,16 @@ func (lba *LBA) storeCacheInExternalStorage() (err error) {
 	conn := lba.redisPool.Get()
 	defer conn.Close()
 
-	//TODO: If a shard is competely empty,
-	//      nil or contains only hashes from "0" content, delete it.
-
 	if err = conn.Send("MULTI"); err != nil {
 		return
 	}
 
 	lba.cache.Serialize(func(index int64, bytes []byte) (err error) {
-		err = conn.Send("HSET", lba.volumeID, index, bytes)
+		if bytes != nil {
+			err = conn.Send("HSET", lba.volumeID, index, bytes)
+		} else {
+			err = conn.Send("HDEL", lba.volumeID, index)
+		}
 		return
 	})
 

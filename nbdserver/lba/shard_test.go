@@ -30,9 +30,7 @@ func TestCreateShard(t *testing.T) {
 		// getting a shard will keep it clean
 		for i := int64(0); i < NumberOfRecordsPerLBAShard; i++ {
 			h := shard.Get(i) // NOTE: there is no out-of-range protection
-			if assert.NotEmpty(t, h, "created from bytes, no hash should be nil") {
-				assert.Equal(t, nilHash, h, "should be equal to the nilhash")
-			}
+			assert.Empty(t, h, "created from bytes, contain all nil hashes so they are all nil")
 		}
 
 		// setting a shard will make it dirty though
@@ -72,9 +70,7 @@ func TestCreateShard(t *testing.T) {
 				// getting a shard will keep it clean
 				for i := int64(1); i < NumberOfRecordsPerLBAShard; i++ {
 					h := shard.Get(i) // NOTE: there is no out-of-range protection
-					if assert.NotEmpty(t, h, "created from bytes, no hash should be nil") {
-						assert.Equal(t, nilHash, h, "should be equal to the nilhash")
-					}
+					assert.Empty(t, h, "created from bytes, but contained nil hash, so is nil")
 				}
 			}
 		}
