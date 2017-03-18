@@ -18,7 +18,9 @@ var (
 )
 
 func newShard() *shard {
-	return new(shard)
+	shard := new(shard)
+	shard.hashes = make([]byte, BytesPerShard)
+	return shard
 }
 
 func shardFromBytes(bytes []byte) (shard *shard, err error) {
@@ -28,19 +30,12 @@ func shardFromBytes(bytes []byte) (shard *shard, err error) {
 	}
 
 	shard = newShard()
-	for i := 0; i < NumberOfRecordsPerLBAShard; i++ {
-		h := NewHash()
-		copy(h, bytes[i*HashSize:])
-		if !h.Equals(nilHash) {
-			shard.hashes[i] = h
-		}
-	}
-
+	shard.hashes = bytes
 	return
 }
 
 type shard struct {
-	hashes [NumberOfRecordsPerLBAShard]Hash
+	hashes []byte
 	dirty  bool
 }
 
@@ -53,49 +48,36 @@ func (s *shard) UnsetDirty() {
 }
 
 func (s *shard) Set(hashIndex int64, hash Hash) {
-	s.hashes[hashIndex] = hash
+	offset := hashIndex * HashSize
+	if hash == nil {
+		hash = nilHash
+	}
+
+	copy(s.hashes[offset:offset+HashSize], hash)
 	s.dirty = true
 }
 
 func (s *shard) Get(hashIndex int64) Hash {
-	return s.hashes[hashIndex]
+	offset := hashIndex * HashSize
+	return Hash(s.hashes[offset : offset+HashSize])
 }
 
-func (s *shard) Write(w io.Writer) (err error) {
-	var index int
-
-	// keep going until we encounter a non-nilHash
-	for index = 0; index < NumberOfRecordsPerLBAShard; index++ {
-		if s.hashes[index] != nil {
-			break
+func (s *shard) IsNil() bool {
+	for _, b := range s.hashes {
+		if b != 0 {
+			return false
 		}
 	}
 
-	// if all were nilHashes, we simply return it as an error
-	if index == NumberOfRecordsPerLBAShard {
+	return true
+}
+
+func (s *shard) Write(w io.Writer) (err error) {
+	if s.IsNil() {
 		err = errNilShardWrite
 		return
 	}
 
-	// we have non-nil hashes, so let's write all
-	// nil hashes that came before the first non-nil hash
-	for i := 0; i < index; i++ {
-		if _, err = w.Write(nilHash); err != nil {
-			return
-		}
-	}
-
-	// write all other hashes
-	var h Hash
-	for ; index < NumberOfRecordsPerLBAShard; index++ {
-		h = s.hashes[index]
-		if h == nil {
-			h = nilHash
-		}
-		if _, err = w.Write(h[:]); err != nil {
-			return
-		}
-	}
-
+	_, err = w.Write(s.hashes)
 	return
 }

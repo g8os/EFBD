@@ -12,7 +12,7 @@ func TestCreateShard(t *testing.T) {
 	shard := newShard()
 	if assert.NotNil(t, shard, "should never be nil") {
 		assert.False(t, shard.Dirty(), "fresh shard should be clean")
-		assert.Equal(t, NumberOfRecordsPerLBAShard, len(shard.hashes), "should be a static array")
+		assert.Equal(t, BytesPerShard, len(shard.hashes), "should hold enough for all hashes")
 	}
 
 	// will fail, as we need an array that contains all hashes of a shard
@@ -30,7 +30,7 @@ func TestCreateShard(t *testing.T) {
 		// getting a shard will keep it clean
 		for i := int64(0); i < NumberOfRecordsPerLBAShard; i++ {
 			h := shard.Get(i) // NOTE: there is no out-of-range protection
-			assert.Empty(t, h, "created from bytes, contain all nil hashes so they are all nil")
+			assert.Equal(t, nilHash, h, "created from bytes, contain all nil hashes")
 		}
 
 		// setting a shard will make it dirty though
@@ -70,7 +70,7 @@ func TestCreateShard(t *testing.T) {
 				// getting a shard will keep it clean
 				for i := int64(1); i < NumberOfRecordsPerLBAShard; i++ {
 					h := shard.Get(i) // NOTE: there is no out-of-range protection
-					assert.Empty(t, h, "created from bytes, but contained nil hash, so is nil")
+					assert.Equal(t, nilHash, h, "created from bytes, contain all nil hashes")
 				}
 			}
 		}
