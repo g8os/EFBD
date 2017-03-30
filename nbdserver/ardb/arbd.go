@@ -1,4 +1,4 @@
-package arbd
+package ardb
 
 import (
 	"errors"

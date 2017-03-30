@@ -1,4 +1,4 @@
-package arbd
+package ardb
 
 // storage defines the interface for the actual storage implementation,
 // used by ArbdBackend for a particular volume

@@ -12,7 +12,7 @@ import (
 
 	_ "net/http/pprof"
 
-	"github.com/g8os/blockstor/nbdserver/arbd"
+	"github.com/g8os/blockstor/nbdserver/ardb"
 	"github.com/g8os/blockstor/nbdserver/lba"
 	"github.com/g8os/blockstor/nbdserver/stubs"
 	"github.com/g8os/gonbdserver/nbd"
@@ -41,7 +41,7 @@ func main() {
 	flag.StringVar(&backendcontrolleraddress, "backendcontroller", "", "Address of the storage backend controller REST API, leave empty to use the embedded stub")
 	flag.StringVar(&testArdbConnectionSrings, "testardbs", "localhost:16379,localhost:16379", "Comma seperated list of ardb connection strings returned by the embedded backend controller, first one is the metadataserver")
 	flag.StringVar(&exports, "export", "default", "comma seperated list of exports to list and use")
-	flag.Int64Var(&lbacachelimit, "lbacachelimit", arbd.DefaultLBACacheLimit,
+	flag.Int64Var(&lbacachelimit, "lbacachelimit", ardb.DefaultLBACacheLimit,
 		fmt.Sprintf("Cache limit of LBA in bytes, needs to be higher then %d (bytes in 1 shard)", lba.BytesPerShard))
 	flag.Parse()
 
@@ -111,10 +111,10 @@ func main() {
 		logger.Println("[INFO] Using in-memory block storage")
 	}
 
-	redisPool := arbd.NewRedisPool(inMemoryStorage)
+	redisPool := ardb.NewRedisPool(inMemoryStorage)
 	defer redisPool.Close()
 
-	f := &arbd.BackendFactory{
+	f := &ardb.BackendFactory{
 		BackendPool:              redisPool,
 		VolumeControllerAddress:  volumecontrolleraddress,
 		BackendControllerAddress: backendcontrolleraddress,
