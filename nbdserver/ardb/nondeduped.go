@@ -6,26 +6,26 @@ import (
 	"github.com/garyburd/redigo/redis"
 )
 
-// newSimpleStorage returns the simple storage implementation
-func newSimpleStorage(volumeID string, blockSize int64, provider *redisProvider) storage {
-	return &simpleStorage{
+// newNonDedupedStorage returns the non deduped storage implementation
+func newNonDedupedStorage(volumeID string, blockSize int64, provider *redisProvider) storage {
+	return &nonDedupedStorage{
 		blockSize: blockSize,
 		volumeID:  volumeID,
 		provider:  provider,
 	}
 }
 
-// simpleStorage is a storage implementation,
+// nonDedupedStorage is a storage implementation,
 // that simply stores each block in redis using
 // a unique key based on the volumeID and blockIndex
-type simpleStorage struct {
+type nonDedupedStorage struct {
 	blockSize int64
 	volumeID  string
 	provider  *redisProvider
 }
 
 // Set implements storage.Set
-func (ss *simpleStorage) Set(blockIndex int64, content []byte) (err error) {
+func (ss *nonDedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 	key := ss.getKey(blockIndex)
 
 	conn := ss.provider.GetRedisConnection(int(blockIndex))
@@ -44,7 +44,7 @@ func (ss *simpleStorage) Set(blockIndex int64, content []byte) (err error) {
 }
 
 // Merge implements storage.Merge
-func (ss *simpleStorage) Merge(blockIndex, offset int64, content []byte) (err error) {
+func (ss *nonDedupedStorage) Merge(blockIndex, offset int64, content []byte) (err error) {
 	key := ss.getKey(blockIndex)
 
 	conn := ss.provider.GetRedisConnection(int(blockIndex))
@@ -69,7 +69,7 @@ func (ss *simpleStorage) Merge(blockIndex, offset int64, content []byte) (err er
 
 // MergeZeroes implements storage.MergeZeroes
 //  The length + offset should not exceed the blocksize
-func (ss *simpleStorage) MergeZeroes(blockIndex, offset, length int64) (err error) {
+func (ss *nonDedupedStorage) MergeZeroes(blockIndex, offset, length int64) (err error) {
 
 	content, err := ss.Get(blockIndex)
 	if err != nil {
@@ -90,7 +90,7 @@ func (ss *simpleStorage) MergeZeroes(blockIndex, offset, length int64) (err erro
 }
 
 // Get implements storage.Get
-func (ss *simpleStorage) Get(blockIndex int64) (content []byte, err error) {
+func (ss *nonDedupedStorage) Get(blockIndex int64) (content []byte, err error) {
 	key := ss.getKey(blockIndex)
 
 	conn := ss.provider.GetRedisConnection(int(blockIndex))
@@ -108,7 +108,7 @@ func (ss *simpleStorage) Get(blockIndex int64) (content []byte, err error) {
 }
 
 // Delete implements storage.Delete
-func (ss *simpleStorage) Delete(blockIndex int64) (err error) {
+func (ss *nonDedupedStorage) Delete(blockIndex int64) (err error) {
 	conn := ss.provider.GetRedisConnection(int(blockIndex))
 	defer conn.Close()
 
@@ -118,20 +118,20 @@ func (ss *simpleStorage) Delete(blockIndex int64) (err error) {
 }
 
 // Flush implements storage.Flush
-func (ss *simpleStorage) Flush() (err error) {
-	err = nil // not required for the simple storage
+func (ss *nonDedupedStorage) Flush() (err error) {
+	// nothing to do for the nonDeduped Storage
 	return
 }
 
 // get the unique key for a block,
 // based on its index and the shared volumeID
-func (ss *simpleStorage) getKey(blockIndex int64) string {
+func (ss *nonDedupedStorage) getKey(blockIndex int64) string {
 	//Is twice as fast as fmt.Sprintf
 	return ss.volumeID + ":" + strconv.Itoa(int(blockIndex))
 }
 
 // isZeroContent detects if a given content buffer is completely filled with 0s
-func (ss *simpleStorage) isZeroContent(content []byte) bool {
+func (ss *nonDedupedStorage) isZeroContent(content []byte) bool {
 	for _, c := range content {
 		if c != 0 {
 			return false

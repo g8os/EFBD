@@ -7,7 +7,7 @@ import (
 )
 
 func TestTimeOfKeyCreation(t *testing.T) {
-	s := &simpleStorage{
+	s := &nonDedupedStorage{
 		volumeID: "MyVolumeID",
 	}
 	iterations := int64(1000 * 1000)
