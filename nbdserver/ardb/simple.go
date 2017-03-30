@@ -74,12 +74,7 @@ func (ss *simpleStorage) MergeZeroes(blockIndex, offset, length int64) (err erro
 	conn := ss.provider.GetRedisConnection(int(blockIndex))
 	defer conn.Close()
 
-	origContent := func() []byte {
-		conn := ss.provider.GetRedisConnection(int(blockIndex))
-		defer conn.Close()
-		bytes, _ := redis.Bytes(conn.Do("GET", key))
-		return bytes
-	}()
+	origContent, _ := redis.Bytes(conn.Do("GET", key))
 
 	if ocl := int64(len(origContent)); ocl == 0 {
 		origContent = make([]byte, ss.blockSize)
@@ -94,7 +89,7 @@ func (ss *simpleStorage) MergeZeroes(blockIndex, offset, length int64) (err erro
 	if zeroLength > length {
 		zeroLength = length
 	}
-	copy(origContent[offset:], make([]byte, length))
+	copy(origContent[offset:], make([]byte, zeroLength))
 
 	// store new content, as the merged version is non-zero
 	_, err = conn.Do("SET", key, origContent)
@@ -138,7 +133,7 @@ func (ss *simpleStorage) Flush() (err error) {
 // get the unique key for a block,
 // based on its index and the shared volumeID
 func (ss *simpleStorage) getKey(blockIndex int64) string {
-	//Is double as fast as fmt.Sprintf
+	//Is twice as fast as fmt.Sprintf
 	return ss.volumeID + ":" + strconv.Itoa(int(blockIndex))
 }
 

@@ -112,7 +112,7 @@ func (ds *dedupedStorage) MergeZeroes(blockIndex, offset, length int64) (err err
 	if zeroLength > length {
 		zeroLength = length
 	}
-	copy(origContent[offset:], make([]byte, length))
+	copy(origContent[offset:], make([]byte, zeroLength))
 
 	// store new content
 	return ds.Set(blockIndex, origContent)
