@@ -1,7 +1,7 @@
 package ardb
 
 import (
-	"fmt"
+	"strconv"
 
 	"github.com/garyburd/redigo/redis"
 )
@@ -138,7 +138,8 @@ func (ss *simpleStorage) Flush() (err error) {
 // get the unique key for a block,
 // based on its index and the shared volumeID
 func (ss *simpleStorage) getKey(blockIndex int64) string {
-	return fmt.Sprintf("%s:%d", ss.volumeID, blockIndex)
+	//Is double as fast as fmt.Sprintf
+	return ss.volumeID + ":" + strconv.Itoa(int(blockIndex))
 }
 
 // isZeroContent detects if a given content buffer is completely filled with 0s
