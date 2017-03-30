@@ -67,7 +67,7 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	blockSize := int64(volumeInfo.Blocksize)
 
 	if !volumeInfo.Deduped {
-		storage = newSimpleStorage(volumeID, blockSize, redisProvider)
+		storage = newNonDedupedStorage(volumeID, blockSize, redisProvider)
 	} else {
 		cacheLimit := f.LBACacheLimit
 		if cacheLimit < lba.BytesPerShard {
