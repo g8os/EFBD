@@ -68,31 +68,24 @@ func (ss *simpleStorage) Merge(blockIndex, offset int64, content []byte) (err er
 }
 
 // MergeZeroes implements storage.MergeZeroes
+//  The length + offset should not exceed the blocksize
 func (ss *simpleStorage) MergeZeroes(blockIndex, offset, length int64) (err error) {
-	key := ss.getKey(blockIndex)
 
-	conn := ss.provider.GetRedisConnection(int(blockIndex))
-	defer conn.Close()
-
-	origContent, _ := redis.Bytes(conn.Do("GET", key))
-
-	if ocl := int64(len(origContent)); ocl == 0 {
-		origContent = make([]byte, ss.blockSize)
-	} else if ocl < ss.blockSize {
-		oc := make([]byte, ss.blockSize)
-		copy(oc, origContent)
-		origContent = oc
+	content, err := ss.Get(blockIndex)
+	if err != nil {
+		return
 	}
 
-	// copy in zero content
-	zeroLength := ss.blockSize - offset
-	if zeroLength > length {
-		zeroLength = length
+	//If the original content does not exist, no need to fill it with 0's
+	if content == nil {
+		return
 	}
-	copy(origContent[offset:], make([]byte, zeroLength))
-
-	// store new content, as the merged version is non-zero
-	_, err = conn.Do("SET", key, origContent)
+	// Assume the length of the original content == blocksize
+	for i := offset; i < offset+length; i++ {
+		content[i] = 0
+	}
+	// store new content
+	err = ss.Set(blockIndex, content)
 	return
 }
 
