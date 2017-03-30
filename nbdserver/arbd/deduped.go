@@ -1,6 +1,8 @@
 package arbd
 
 import (
+	"fmt"
+
 	"github.com/garyburd/redigo/redis"
 
 	"github.com/g8os/blockstor/nbdserver/lba"
@@ -36,12 +38,14 @@ func (ds *dedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 		return
 	}
 
+	//Execute in a function so the redis connection is released before storing the hash in the LBA
+	// If the metadataserver is the same as the content, this causes a deadlock if the connection is not released yet
+	// and now it can already be reused faster as well
 	err = func() (err error) {
 		conn := ds.getRedisConnection(hash)
 		defer conn.Close()
 
-		var exists bool
-		exists, err = redis.Bool(conn.Do("EXISTS", hash))
+		exists, err := redis.Bool(conn.Do("EXISTS", hash))
 		if err != nil || exists {
 			return
 		}
@@ -63,12 +67,22 @@ func (ds *dedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 // Merge implements storage.Merge
 func (ds *dedupedStorage) Merge(blockIndex, offset int64, content []byte) (err error) {
 	hash, _ := ds.lba.Get(blockIndex)
-	mergedContent := make([]byte, ds.blockSize)
+
+	var mergedContent []byte
 
 	if hash != nil {
-		// copy original content
-		origContent, _ := ds.getContent(hash)
-		copy(mergedContent, origContent)
+		mergedContent, err = ds.getContent(hash)
+		if err != nil {
+			err = fmt.Errorf("LBA hash refered to non-existing content: %s", err)
+			return
+		}
+		if int64(len(mergedContent)) < ds.blockSize {
+			mc := make([]byte, ds.blockSize)
+			copy(mc, mergedContent)
+			mergedContent = mc
+		}
+	} else {
+		mergedContent = make([]byte, ds.blockSize)
 	}
 
 	// copy in new content
@@ -76,6 +90,32 @@ func (ds *dedupedStorage) Merge(blockIndex, offset int64, content []byte) (err e
 
 	// store new content
 	return ds.Set(blockIndex, mergedContent)
+}
+
+// MergeZeroes implements storage.MergeZeroes
+func (ds *dedupedStorage) MergeZeroes(blockIndex, offset, length int64) (err error) {
+	hash, _ := ds.lba.Get(blockIndex)
+	if hash == nil {
+		return
+	}
+
+	origContent, _ := ds.getContent(hash)
+	origLength := int64(len(origContent))
+	if origLength < ds.blockSize {
+		oc := make([]byte, ds.blockSize)
+		copy(oc, origContent)
+		origContent = oc
+	}
+
+	// copy in zero content
+	zeroLength := ds.blockSize - offset
+	if zeroLength > length {
+		zeroLength = length
+	}
+	copy(origContent[offset:], make([]byte, length))
+
+	// store new content
+	return ds.Set(blockIndex, origContent)
 }
 
 // Get implements storage.Get
@@ -86,6 +126,12 @@ func (ds *dedupedStorage) Get(blockIndex int64) (content []byte, err error) {
 	}
 
 	content, err = ds.getContent(contentHash)
+	return
+}
+
+// Delete implements storage.Delete
+func (ds *dedupedStorage) Delete(blockIndex int64) (err error) {
+	err = ds.lba.Delete(blockIndex)
 	return
 }
 

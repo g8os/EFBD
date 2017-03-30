@@ -50,25 +50,54 @@ func (ss *simpleStorage) Merge(blockIndex, offset int64, content []byte) (err er
 	conn := ss.provider.GetRedisConnection(int(blockIndex))
 	defer conn.Close()
 
-	mergedContent := make([]byte, ss.blockSize)
-
-	if oc, _ := redis.Bytes(conn.Do("GET", key)); len(oc) > 0 {
-		// copy original content
-		copy(mergedContent, oc)
+	origContent, _ := redis.Bytes(conn.Do("GET", key))
+	if ocl := int64(len(origContent)); ocl == 0 {
+		origContent = make([]byte, ss.blockSize)
+	} else if ocl < ss.blockSize {
+		oc := make([]byte, ss.blockSize)
+		copy(oc, origContent)
+		origContent = oc
 	}
 
 	// copy in new content
-	copy(mergedContent[offset:], content)
-
-	// don't store zero blocks,
-	// and delete the block if it previously existed
-	if ss.isZeroContent(mergedContent) {
-		_, err = conn.Do("DEL", key)
-		return
-	}
+	copy(origContent[offset:], content)
 
 	// store new content, as the merged version is non-zero
-	_, err = conn.Do("SET", key, mergedContent)
+	_, err = conn.Do("SET", key, origContent)
+	return
+}
+
+// MergeZeroes implements storage.MergeZeroes
+func (ss *simpleStorage) MergeZeroes(blockIndex, offset, length int64) (err error) {
+	key := ss.getKey(blockIndex)
+
+	conn := ss.provider.GetRedisConnection(int(blockIndex))
+	defer conn.Close()
+
+	origContent := func() []byte {
+		conn := ss.provider.GetRedisConnection(int(blockIndex))
+		defer conn.Close()
+		bytes, _ := redis.Bytes(conn.Do("GET", key))
+		return bytes
+	}()
+
+	if ocl := int64(len(origContent)); ocl == 0 {
+		origContent = make([]byte, ss.blockSize)
+	} else if ocl < ss.blockSize {
+		oc := make([]byte, ss.blockSize)
+		copy(oc, origContent)
+		origContent = oc
+	}
+
+	// copy in zero content
+	zeroLength := ss.blockSize - offset
+	if zeroLength > length {
+		zeroLength = length
+	}
+	copy(origContent[offset:], make([]byte, length))
+
+	// store new content, as the merged version is non-zero
+	_, err = conn.Do("SET", key, origContent)
 	return
 }
 
@@ -87,6 +116,16 @@ func (ss *simpleStorage) Get(blockIndex int64) (content []byte, err error) {
 		err = nil
 	}
 
+	return
+}
+
+// Delete implements storage.Delete
+func (ss *simpleStorage) Delete(blockIndex int64) (err error) {
+	conn := ss.provider.GetRedisConnection(int(blockIndex))
+	defer conn.Close()
+
+	key := ss.getKey(blockIndex)
+	_, err = conn.Do("DEL", key)
 	return
 }
 

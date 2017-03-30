@@ -1,6 +1,7 @@
 package nbd
 
 import (
+	"bytes"
 	"crypto/tls"
 	"encoding/binary"
 	"errors"
@@ -51,12 +52,10 @@ type Connection struct {
 	export             *Export               // a pointer to the export
 	backend            Backend               // the backend implementation
 	wg                 sync.WaitGroup        // a waitgroup for the session; we mark this as done on exit
-	repCh              chan Reply            // a channel of replies that have to be sent
+	repCh              chan []byte           // a channel of replies that have to be sent
 	numInflight        int64                 // number of inflight requests
 	name               string                // the name of the connection for logging purposes
 	disconnectReceived int64                 // more then 0 if disconnect has been received
-	wBuffer            []byte                // intermediate buffer used for CMD_WRITE
-	zwBuffer           []byte                // intermediate buffer used for CMD_WRITE_ZEROES
 
 	killCh    chan struct{} // closed by workers to indicate a hard close is required
 	killed    bool          // true if killCh closed already
@@ -65,14 +64,15 @@ type Connection struct {
 
 // Backend is an interface implemented by the various backend drivers
 type Backend interface {
-	WriteAt(ctx context.Context, b []byte, offset int64, fua bool) (int64, error) // write data to w at offset, with force unit access optional
-	ReadAt(ctx context.Context, b []byte, offset int64) (int64, error)            // read from o b at offset
-	TrimAt(ctx context.Context, offset, length int64) (int64, error)              // trim
-	Flush(ctx context.Context) error                                              // flush
-	Close(ctx context.Context) error                                              // close
-	Geometry(ctx context.Context) (Geometry, error)                               // size, minimum BS, preferred BS, maximum BS
-	HasFua(ctx context.Context) bool                                              // does the driver support FUA?
-	HasFlush(ctx context.Context) bool                                            // does the driver support flush?
+	WriteAt(ctx context.Context, b []byte, offset int64, fua bool) (int64, error)     // write data to w at offset, with force unit access optional
+	WriteZeroesAt(ctx context.Context, offset, length int64, fua bool) (int64, error) // write zeroes to w at offset, with force unit access optional
+	ReadAt(ctx context.Context, offset, length int64) ([]byte, error)                 // read from o b at offset
+	TrimAt(ctx context.Context, offset, length int64) (int64, error)                  // trim
+	Flush(ctx context.Context) error                                                  // flush
+	Close(ctx context.Context) error                                                  // close
+	Geometry(ctx context.Context) (Geometry, error)                                   // size, minimum BS, preferred BS, maximum BS
+	HasFua(ctx context.Context) bool                                                  // does the driver support FUA?
+	HasFlush(ctx context.Context) bool                                                // does the driver support flush?
 }
 
 // BackendGenerator is a generator function type that generates a backend
@@ -142,6 +142,40 @@ func isClosedErr(err error) bool {
 	return strings.HasSuffix(err.Error(), "use of closed network connection") // YUCK!
 }
 
+// turn a nbdReply into a payload ready to send
+func (c *Connection) nbdReplyToBytes(rep *nbdReply) (payload []byte, err error) {
+	var buffer bytes.Buffer
+	err = binary.Write(&buffer, binary.BigEndian, rep)
+	if err == nil {
+		payload = buffer.Bytes()
+	}
+
+	return
+}
+
+// sendHeader and returns true in case the sending was OK
+func (c *Connection) sendHeader(ctx context.Context, rep *nbdReply) bool {
+	payload, err := c.nbdReplyToBytes(rep)
+	if err != nil {
+		c.logger.Printf("[ERROR] Client %s couldn't send reply", c.name)
+		return false
+	}
+
+	return c.sendPayload(ctx, payload)
+}
+
+// sendPayload and returns true in case the sending was OK
+func (c *Connection) sendPayload(ctx context.Context, payload []byte) bool {
+	atomic.AddInt64(&c.numInflight, 1) // one more in flight
+	select {
+	case c.repCh <- payload:
+	case <-ctx.Done():
+		return false
+	}
+
+	return true
+}
+
 // reply handles the sending of replies over the connection
 // done async over a goroutine
 func (c *Connection) reply(ctx context.Context) {
@@ -155,46 +189,22 @@ func (c *Connection) reply(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case rep, ok := <-c.repCh:
+		case payload, ok := <-c.repCh:
 			if !ok {
 				return
 			}
 
-			// send the reply back
-			err := binary.Write(c.conn, binary.BigEndian, rep.nbdRep)
+			n, err := c.conn.Write(payload)
 			if err != nil {
-				c.logger.Printf("[ERROR] Client %s cannot write reply header\n", c.name)
+				c.logger.Printf(
+					"[ERROR] Client %s cannot write reply: %s", c.name, err)
 				return
 			}
-
-			if length := uint64(len(rep.payload)); length > 0 {
-				var blocklen, pstart, pend, un uint64
-				var n int
-
-				for length > 0 {
-					blocklen = c.export.memoryBlockSize
-					if blocklen > length {
-						blocklen = length
-					}
-
-					pend = pstart + blocklen
-
-					n, err = c.conn.Write(rep.payload[pstart:pend])
-					if err != nil {
-						c.logger.Printf(
-							"[ERROR] Client %s cannot write reply: %s", c.name, err)
-						return
-					}
-					if un = uint64(n); un != blocklen {
-						c.logger.Printf(
-							"[ERROR] Client %s cannot write reply: written %d instead of %d bytes",
-							c.name, un, blocklen)
-						return
-					}
-
-					pstart += blocklen
-					length -= blocklen
-				}
+			if en := len(payload); en != n {
+				c.logger.Printf(
+					"[ERROR] Client %s cannot write reply: written %d instead of %d bytes",
+					c.name, n, en)
+				return
 			}
 
 			atomic.AddInt64(&c.numInflight, -1) // one less in flight
@@ -267,28 +277,25 @@ func (c *Connection) receive(ctx context.Context) {
 			}
 		}
 
-		atomic.AddInt64(&c.numInflight, 1) // one more in flight
-
 		if flags&CMDT_CHECK_NOT_READ_ONLY != 0 && c.export.readonly {
-			nbdRep := nbdReply{
+			payload, err := c.nbdReplyToBytes(&nbdReply{
 				NbdReplyMagic: NBD_REPLY_MAGIC,
 				NbdHandle:     req.NbdHandle,
 				NbdError:      NBD_EPERM,
+			})
+			if err != nil {
+				c.logger.Printf("[ERROR] Client %s couldn't send error (NBD_EPERM) reply", c.name)
+				return
 			}
 
+			atomic.AddInt64(&c.numInflight, 1) // one more in flight
 			select {
-			case c.repCh <- Reply{nbdRep: nbdRep}:
+			case c.repCh <- payload:
 			case <-ctx.Done():
 				return
 			}
-		}
 
-		rep := Reply{
-			nbdRep: nbdReply{
-				NbdReplyMagic: NBD_REPLY_MAGIC,
-				NbdHandle:     req.NbdHandle,
-				NbdError:      0,
-			},
+			return
 		}
 
 		fua := req.NbdCommandFlags&NBD_CMD_FLAG_FUA != 0
@@ -303,43 +310,72 @@ func (c *Connection) receive(ctx context.Context) {
 		}
 
 		//Make sure the reads are until the blockboundary
-		if offsetInsideBlock := offset % memoryBlockSize; blocklen+offsetInsideBlock > memoryBlockSize {
+		offsetInsideBlock := offset % memoryBlockSize
+		if blocklen+offsetInsideBlock > memoryBlockSize {
 			blocklen = memoryBlockSize - offsetInsideBlock
+		}
+
+		nbdRep := &nbdReply{
+			NbdReplyMagic: NBD_REPLY_MAGIC,
+			NbdHandle:     req.NbdHandle,
+			NbdError:      0,
 		}
 
 		// handle request command
 		switch req.NbdCommandType {
 		case NBD_CMD_READ:
-			rep.payload = make([]byte, length)
+			// be positive, and send header already!
+			if !c.sendHeader(ctx, nbdRep) {
+				return // ouch
+			}
 
-			var pstart, pend uint64
+			var i uint64
+			totalLength := offsetInsideBlock + length
+			readParts := totalLength / memoryBlockSize
+			if totalLength%memoryBlockSize != 0 {
+				readParts++ // 1 extra because of block alignment
+			}
 
-			wg := sync.WaitGroup{}
-			for blocklen > 0 {
-				pend = pstart + blocklen
-				wg.Add(1)
-				go func(pstart, pend uint64, offset int64, blocklen uint64) {
-					defer wg.Done()
-					// WARNING: potential overflow (offset)
-					n, err := c.backend.ReadAt(ctx, rep.payload[pstart:pend], offset)
+			// create channels for reading concurrently,
+			// while still replying in order
+			readChannels := make([]chan []byte, readParts)
+			for i = 0; i < readParts; i++ {
+				readChannels[i] = make(chan []byte, 1)
+				go func(out chan []byte, offset int64, blocklen int64) {
+					payload, err := c.backend.ReadAt(ctx, offset, blocklen)
 					if err != nil {
 						c.logger.Printf("[WARN] Client %s got read I/O error: %s", c.name, err)
-						rep.nbdRep.NbdError = errorCodeFromGolangError(err)
-					} else if uint64(n) != blocklen {
-						c.logger.Printf("[WARN] Client %s got incomplete read (%d != %d) at offset %d", c.name, n, blocklen, offset)
-						rep.nbdRep.NbdError = NBD_EIO
+						out <- nil
+						return
+					} else if actualLength := int64(len(payload)); actualLength != blocklen {
+						c.logger.Printf("[WARN] Client %s got incomplete read (%d != %d) at offset %d", c.name, actualLength, blocklen, offset)
+						out <- nil
+						return
 					}
-				}(pstart, pend, int64(offset), blocklen)
+
+					out <- payload
+				}(readChannels[i], int64(offset), int64(blocklen))
+
 				length -= blocklen
 				offset += blocklen
-				pstart += blocklen
 
 				blocklen = memoryBlockSize
 				if blocklen > length {
 					blocklen = length
 				}
 			}
-			wg.Wait()
+
+			var payload []byte
+			for i = 0; i < readParts; i++ {
+				payload = <-readChannels[i]
+				if payload == nil {
+					return // an error occured
+				}
+
+				if !c.sendPayload(ctx, payload) {
+					return // an error occured
+				}
+			}
 
 		case NBD_CMD_WRITE:
 			var cn int
@@ -364,19 +400,18 @@ func (c *Connection) receive(ctx context.Context) {
 
 				}
 				wg.Add(1)
-				go func(wBuffer []byte, offset int64, blocklen uint64) {
+				go func(wBuffer []byte, offset int64, blocklen uint64, fua bool) {
 					defer wg.Done()
 					// WARNING: potential overflow (blocklen, offset)
-					//TODO: only pass the fua = true on the last block of a fua write
 					bn, err := c.backend.WriteAt(ctx, wBuffer, offset, fua)
 					if err != nil {
 						c.logger.Printf("[WARN] Client %s got write I/O error: %s", c.name, err)
-						rep.nbdRep.NbdError = errorCodeFromGolangError(err)
+						nbdRep.NbdError = errorCodeFromGolangError(err)
 					} else if uint64(bn) != blocklen {
 						c.logger.Printf("[WARN] Client %s got incomplete write (%d != %d) at offset %d", c.name, bn, blocklen, offset)
-						rep.nbdRep.NbdError = NBD_EIO
+						nbdRep.NbdError = NBD_EIO
 					}
-				}(wBuffer, int64(offset), blocklen)
+				}(wBuffer, int64(offset), blocklen, fua && blocklen == length)
 				length -= blocklen
 				offset += blocklen
 
@@ -385,24 +420,28 @@ func (c *Connection) receive(ctx context.Context) {
 					blocklen = length
 				}
 			}
+
 			wg.Wait()
 
 		case NBD_CMD_WRITE_ZEROES:
 			var n int64
 			var err error
 
+			wg := sync.WaitGroup{}
+
 			for blocklen > 0 {
-				// WARNING: potential overflow (blocklen, offset)
-				n, err = c.backend.WriteAt(ctx, c.zwBuffer[:blocklen], int64(offset), fua)
-				if err != nil {
-					c.logger.Printf("[WARN] Client %s got write I/O error: %s", c.name, err)
-					rep.nbdRep.NbdError = errorCodeFromGolangError(err)
-					break
-				} else if uint64(n) != blocklen {
-					c.logger.Printf("[WARN] Client %s got incomplete write (%d != %d) at offset %d", c.name, n, blocklen, offset)
-					rep.nbdRep.NbdError = NBD_EIO
-					break
-				}
+				wg.Add(1)
+				go func(offset int64, blocklen int64, fua bool) {
+					defer wg.Done()
+					n, err = c.backend.WriteZeroesAt(ctx, offset, blocklen, fua)
+					if err != nil {
+						c.logger.Printf("[WARN] Client %s got write I/O error: %s", c.name, err)
+						nbdRep.NbdError = errorCodeFromGolangError(err)
+					} else if int64(n) != blocklen {
+						c.logger.Printf("[WARN] Client %s got incomplete write (%d != %d) at offset %d", c.name, n, blocklen, offset)
+						nbdRep.NbdError = NBD_EIO
+					}
+				}(int64(offset), int64(blocklen), fua && blocklen == length)
 
 				length -= blocklen
 				offset += blocklen
@@ -412,6 +451,8 @@ func (c *Connection) receive(ctx context.Context) {
 					blocklen = length
 				}
 			}
+
+			wg.Wait()
 
 		case NBD_CMD_FLUSH:
 			c.backend.Flush(ctx)
@@ -420,18 +461,21 @@ func (c *Connection) receive(ctx context.Context) {
 			var n int64
 			var err error
 
+			wg := sync.WaitGroup{}
+
 			for blocklen > 0 {
-				// WARNING: potential overflow (length, offset)
-				n, err = c.backend.TrimAt(ctx, int64(offset), int64(blocklen))
-				if err != nil {
-					c.logger.Printf("[WARN] Client %s got trim I/O error: %s", c.name, err)
-					rep.nbdRep.NbdError = errorCodeFromGolangError(err)
-					break
-				} else if uint64(n) != blocklen {
-					c.logger.Printf("[WARN] Client %s got incomplete trim (%d != %d) at offset %d", c.name, n, blocklen, offset)
-					rep.nbdRep.NbdError = NBD_EIO
-					break
-				}
+				wg.Add(1)
+				go func(offset int64, blocklen int64) {
+					defer wg.Done()
+					n, err = c.backend.TrimAt(ctx, offset, blocklen)
+					if err != nil {
+						c.logger.Printf("[WARN] Client %s got trim I/O error: %s", c.name, err)
+						nbdRep.NbdError = errorCodeFromGolangError(err)
+					} else if int64(n) != blocklen {
+						c.logger.Printf("[WARN] Client %s got incomplete trim (%d != %d) at offset %d", c.name, n, blocklen, offset)
+						nbdRep.NbdError = NBD_EIO
+					}
+				}(int64(offset), int64(blocklen))
 
 				length -= blocklen
 				offset += blocklen
@@ -441,6 +485,8 @@ func (c *Connection) receive(ctx context.Context) {
 					blocklen = length
 				}
 			}
+
+			wg.Wait()
 
 		case NBD_CMD_DISC:
 			c.waitForInflight(ctx, 1) // this request is itself in flight, so 1 is permissible
@@ -456,10 +502,10 @@ func (c *Connection) receive(ctx context.Context) {
 			return
 		}
 
-		select {
-		case c.repCh <- rep:
-		case <-ctx.Done():
-			return
+		if req.NbdCommandType != NBD_CMD_READ {
+			if !c.sendHeader(ctx, nbdRep) {
+				return
+			}
 		}
 
 		// if we've recieved a disconnect, just sit waiting for the
@@ -505,7 +551,7 @@ func (c *Connection) waitForInflight(ctx context.Context, limit int64) {
 func (c *Connection) Serve(parentCtx context.Context) {
 	ctx, cancelFunc := context.WithCancel(parentCtx)
 
-	c.repCh = make(chan Reply, 1024)
+	c.repCh = make(chan []byte, 1024)
 	c.killCh = make(chan struct{})
 
 	c.conn = c.plainConn
@@ -821,8 +867,6 @@ func (c *Connection) negotiate(ctx context.Context) error {
 				}
 			}
 			c.export = export
-			c.wBuffer = make([]byte, c.export.memoryBlockSize)
-			c.zwBuffer = make([]byte, c.export.memoryBlockSize)
 			done = true
 
 		case NBD_OPT_LIST:

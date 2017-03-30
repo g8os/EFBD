@@ -74,9 +74,16 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 			cacheLimit = DefaultLBACacheLimit
 		}
 
+		volumeSize := int64(volumeInfo.Size)
+		blockCount := volumeSize / blockSize
+		if volumeSize%blockSize > 0 {
+			blockCount++
+		}
+
 		var vlba *lba.LBA
 		vlba, err = lba.NewLBA(
 			volumeID,
+			blockCount,
 			cacheLimit,
 			pool,
 		)

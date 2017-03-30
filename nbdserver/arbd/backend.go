@@ -1,8 +1,6 @@
 package arbd
 
 import (
-	"fmt"
-
 	"golang.org/x/net/context"
 
 	"github.com/g8os/gonbdserver/nbd"
@@ -21,12 +19,6 @@ func (ab *Backend) WriteAt(ctx context.Context, b []byte, offset int64, fua bool
 	offsetInsideBlock := offset % ab.blockSize
 
 	length := int64(len(b))
-	if length != ab.blockSize {
-		err = fmt.Errorf(
-			"expected a block of %d bytes, but received %d bytes instead",
-			ab.blockSize, length)
-	}
-
 	if offsetInsideBlock == 0 && length == ab.blockSize {
 		// Option 1.
 		// Which is hopefully the most common option
@@ -55,23 +47,70 @@ func (ab *Backend) WriteAt(ctx context.Context, b []byte, offset int64, fua bool
 	return
 }
 
-//ReadAt implements nbd.Backend.ReadAt
-func (ab *Backend) ReadAt(ctx context.Context, b []byte, offset int64) (bytesRead int64, err error) {
+//WriteZeroesAt implements nbd.Backend.WriteZeroesAt
+func (ab *Backend) WriteZeroesAt(ctx context.Context, offset, length int64, fua bool) (bytesWritten int64, err error) {
 	blockIndex := offset / ab.blockSize
 	offsetInsideBlock := offset % ab.blockSize
-	contentLength := int64(len(b))
 
-	content, err := ab.storage.Get(blockIndex)
+	if offsetInsideBlock == 0 && length == ab.blockSize {
+		// Option 1.
+		// Which is hopefully the most common option
+		// in this option we have no offset, and require the full blockSize,
+		// therefore we can simply delete it
+		err = ab.storage.Delete(blockIndex)
+	} else {
+		// Option 2.
+		// We need to write zeroes at an offset,
+		// or the zeroes don't cover the entire block
+		err = ab.storage.MergeZeroes(blockIndex, offsetInsideBlock, length)
+	}
+
 	if err != nil {
 		return
 	}
-	if len(content) == 0 {
-		bytesRead = contentLength
+
+	if fua {
+		err = ab.Flush(ctx)
+		if err != nil {
+			return
+		}
+	}
+
+	bytesWritten = length
+	return
+}
+
+//ReadAt implements nbd.Backend.ReadAt
+func (ab *Backend) ReadAt(ctx context.Context, offset, length int64) (payload []byte, err error) {
+	blockIndex := offset / ab.blockSize
+
+	// try to read the payload
+	payload, err = ab.storage.Get(blockIndex)
+	if err != nil {
 		return
 	}
 
-	copy(b, content[offsetInsideBlock:])
-	bytesRead = contentLength
+	// calculate the local offset and the length of the read payload
+	offsetInsideBlock := offset % ab.blockSize
+	contentLength := int64(len(payload))
+
+	if totalLength := offsetInsideBlock + length; contentLength >= totalLength {
+		// Option 1
+		// we have read content,
+		// and the content is long enough to cover everything including the offset
+		payload = payload[offsetInsideBlock:totalLength]
+	} else {
+		// Option 2
+		// We have read no content,
+		// or we have read content, but it might be shorter than the local offset,
+		// or the read content might only cover partly beyond the local offset.
+		p := make([]byte, length)
+		if contentLength >= offsetInsideBlock {
+			copy(p, payload[offsetInsideBlock:])
+		}
+		payload = p
+	}
+
 	return
 }
 

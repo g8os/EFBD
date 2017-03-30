@@ -5,11 +5,16 @@ import (
 	"container/list"
 	"errors"
 	"fmt"
+	"sync"
 )
 
 // called when an item gets evicted,
 // shard can be nil, in case the shard was evicted explicitely by the user
 type evictCallback func(shardIndex int64, shard *shard)
+
+// called for each shard that gets serialized during cache.Serialize
+// bytes can be nil in case the shard only contains nil hashes
+type serializeCallback func(shardIndex int64, bytes []byte) error
 
 // cacheEntry defines the entry for a cache
 type cacheEntry struct {
@@ -42,12 +47,16 @@ type shardCache struct {
 	onEvict   evictCallback
 	evictList *list.List
 	size      int
+	mux       sync.Mutex
 }
 
 // Add a shard linked to an index,
 // creating either a new entry, or updating an existing one.
 // Returns true if an old entry has been evicted.
 func (c *shardCache) Add(shardIndex int64, shard *shard) bool {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+
 	// Check for existing item
 	if entry, ok := c.shards[shardIndex]; ok {
 		c.evictList.MoveToFront(entry)
@@ -72,6 +81,9 @@ func (c *shardCache) Add(shardIndex int64, shard *shard) bool {
 
 // Get a cached shard, if possible
 func (c *shardCache) Get(shardIndex int64) (shard *shard, ok bool) {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+
 	var elem *list.Element
 	if elem, ok = c.shards[shardIndex]; ok {
 		c.evictList.MoveToFront(elem)
@@ -83,6 +95,9 @@ func (c *shardCache) Get(shardIndex int64) (shard *shard, ok bool) {
 
 // Delete (AKA explicitly evict) a shard from the cache
 func (c *shardCache) Delete(shardIndex int64) (deleted bool) {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+
 	var elem *list.Element
 	if elem, deleted = c.shards[shardIndex]; deleted {
 		// set shard to nil,
@@ -95,8 +110,11 @@ func (c *shardCache) Delete(shardIndex int64) (deleted bool) {
 }
 
 // Serialize the entire cache
-func (c *shardCache) Serialize(serialize func(int64, []byte) error) (err error) {
-	if serialize == nil {
+func (c *shardCache) Serialize(onSerialize serializeCallback) (err error) {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+
+	if onSerialize == nil {
 		err = errors.New("no serialization callback given")
 		return
 	}
@@ -112,10 +130,18 @@ func (c *shardCache) Serialize(serialize func(int64, []byte) error) (err error) 
 		}
 
 		if err = entry.shard.Write(&buffer); err != nil {
-			return
+			// occurs when all shards in a shard were nil
+			if err != errNilShardWrite {
+				return
+			}
+
+			// indicate that shard can be deleted
+			err = onSerialize(entry.shardIndex, nil)
+		} else {
+			err = onSerialize(entry.shardIndex, buffer.Bytes())
 		}
 
-		if err = serialize(entry.shardIndex, buffer.Bytes()); err != nil {
+		if err != nil {
 			return
 		}
 
@@ -127,6 +153,9 @@ func (c *shardCache) Serialize(serialize func(int64, []byte) error) (err error) 
 
 // Clear the entire cache, optionally evicing the items first
 func (c *shardCache) Clear(evict bool) {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+
 	if evict && c.onEvict != nil {
 		var shard *shard
 		for index, elem := range c.shards {

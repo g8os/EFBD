@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"sync"
 
 	_ "net/http/pprof"
@@ -28,19 +29,26 @@ func main() {
 	var volumecontrolleraddress string
 	var backendcontrolleraddress string
 	var testArdbConnectionSrings string
-	var defaultExport string
+	var exports string
+	var nonDedupedExports string
 	flag.BoolVar(&inMemoryStorage, "memorystorage", false, "Stores the data in memory only, usefull for testing or benchmarking")
 	flag.BoolVar(&tslonly, "tslonly", false, "Forces all nbd connections to be tsl-enabled")
 	flag.StringVar(&profileAddress, "profileaddress", "", "Enables profiling of this server as an http service")
 	flag.StringVar(&protocol, "protocol", "unix", "Protocol to listen on, 'tcp' or 'unix'")
 	flag.StringVar(&address, "address", "/tmp/nbd-socket", "Address to listen on, unix socket or tcp address, ':6666' for example")
 	flag.StringVar(&volumecontrolleraddress, "volumecontroller", "", "Address of the volumecontroller REST API, leave empty to use the embedded stub")
+	flag.StringVar(&nonDedupedExports, "nondeduped", "", "when using the embedded volumecontroller, comma seperated list of exports that should not be deduped")
 	flag.StringVar(&backendcontrolleraddress, "backendcontroller", "", "Address of the storage backend controller REST API, leave empty to use the embedded stub")
 	flag.StringVar(&testArdbConnectionSrings, "testardbs", "localhost:16379,localhost:16379", "Comma seperated list of ardb connection strings returned by the embedded backend controller, first one is the metadataserver")
-	flag.StringVar(&defaultExport, "export", "default", "default export to list and use")
+	flag.StringVar(&exports, "export", "default", "comma seperated list of exports to list and use")
 	flag.Int64Var(&lbacachelimit, "lbacachelimit", arbd.DefaultLBACacheLimit,
 		fmt.Sprintf("Cache limit of LBA in bytes, needs to be higher then %d (bytes in 1 shard)", lba.BytesPerShard))
 	flag.Parse()
+
+	exportArray := strings.Split(exports, ",")
+	if len(exportArray) == 0 {
+		exportArray = []string{"default"}
+	}
 
 	logger := log.New(os.Stderr, "nbdserver:", log.Ldate|log.Ltime)
 
@@ -57,7 +65,8 @@ func main() {
 	if volumecontrolleraddress == "" {
 		logger.Println("[INFO] Starting embedded volume controller")
 		var s *httptest.Server
-		s, volumecontrolleraddress = stubs.NewVolumeControllerServer()
+		s, volumecontrolleraddress = stubs.NewVolumeControllerServer(
+			strings.Split(nonDedupedExports, ","))
 		defer s.Close()
 	}
 	logger.Println("[INFO] Using volume controller at", volumecontrolleraddress)
@@ -76,8 +85,8 @@ func main() {
 
 	exportController, err := NewExportController(
 		volumecontrolleraddress,
-		defaultExport,
 		tslonly,
+		exportArray,
 	)
 	if err != nil {
 		logger.Panicln(err)
@@ -96,7 +105,7 @@ func main() {
 	s := nbd.ServerConfig{
 		Protocol:      protocol,
 		Address:       address,
-		DefaultExport: defaultExport,
+		DefaultExport: exportArray[0],
 	}
 	if inMemoryStorage {
 		logger.Println("[INFO] Using in-memory block storage")
