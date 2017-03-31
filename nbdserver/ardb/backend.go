@@ -62,7 +62,7 @@ func (ab *Backend) WriteZeroesAt(ctx context.Context, offset, length int64, fua 
 		// Option 2.
 		// We need to write zeroes at an offset,
 		// or the zeroes don't cover the entire block
-		err = ab.storage.MergeZeroes(blockIndex, offsetInsideBlock, length)
+		err = ab.mergeZeroes(blockIndex, offsetInsideBlock, length)
 	}
 
 	if err != nil {
@@ -77,6 +77,28 @@ func (ab *Backend) WriteZeroesAt(ctx context.Context, offset, length int64, fua 
 	}
 
 	bytesWritten = length
+	return
+}
+
+// MergeZeroes implements storage.MergeZeroes
+//  The length + offset should not exceed the blocksize
+func (ab *Backend) mergeZeroes(blockIndex, offset, length int64) (err error) {
+
+	content, err := ab.storage.Get(blockIndex)
+	if err != nil {
+		return
+	}
+
+	//If the original content does not exist, no need to fill it with 0's
+	if content == nil {
+		return
+	}
+	// Assume the length of the original content == blocksize
+	for i := offset; i < offset+length; i++ {
+		content[i] = 0
+	}
+	// store new content
+	err = ab.storage.Set(blockIndex, content)
 	return
 }
 

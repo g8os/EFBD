@@ -1,21 +1,13 @@
 package ardb
 
-import (
-	"fmt"
-	"testing"
-	"time"
-)
+import "testing"
 
-func TestTimeOfKeyCreation(t *testing.T) {
+func BenchmarkTimeOfKeyCreation(b *testing.B) {
 	s := &nonDedupedStorage{
 		volumeID: "MyVolumeID",
 	}
-	iterations := int64(1000 * 1000)
-	start := time.Now()
-	for i := int64(0); i < iterations; i++ {
-		s.getKey(i)
+	for i := 0; i < b.N; i++ {
+		s.getKey(int64(i))
 	}
-	took := time.Now().Sub(start)
-	fmt.Printf("Creating %d keys took %f seconds", iterations, took.Seconds())
 
 }

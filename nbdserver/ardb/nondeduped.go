@@ -67,28 +67,6 @@ func (ss *nonDedupedStorage) Merge(blockIndex, offset int64, content []byte) (er
 	return
 }
 
-// MergeZeroes implements storage.MergeZeroes
-//  The length + offset should not exceed the blocksize
-func (ss *nonDedupedStorage) MergeZeroes(blockIndex, offset, length int64) (err error) {
-
-	content, err := ss.Get(blockIndex)
-	if err != nil {
-		return
-	}
-
-	//If the original content does not exist, no need to fill it with 0's
-	if content == nil {
-		return
-	}
-	// Assume the length of the original content == blocksize
-	for i := offset; i < offset+length; i++ {
-		content[i] = 0
-	}
-	// store new content
-	err = ss.Set(blockIndex, content)
-	return
-}
-
 // Get implements storage.Get
 func (ss *nonDedupedStorage) Get(blockIndex int64) (content []byte, err error) {
 	key := ss.getKey(blockIndex)

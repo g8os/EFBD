@@ -92,32 +92,6 @@ func (ds *dedupedStorage) Merge(blockIndex, offset int64, content []byte) (err e
 	return ds.Set(blockIndex, mergedContent)
 }
 
-// MergeZeroes implements storage.MergeZeroes
-func (ds *dedupedStorage) MergeZeroes(blockIndex, offset, length int64) (err error) {
-	hash, _ := ds.lba.Get(blockIndex)
-	if hash == nil {
-		return
-	}
-
-	origContent, _ := ds.getContent(hash)
-	origLength := int64(len(origContent))
-	if origLength < ds.blockSize {
-		oc := make([]byte, ds.blockSize)
-		copy(oc, origContent)
-		origContent = oc
-	}
-
-	// copy in zero content
-	zeroLength := ds.blockSize - offset
-	if zeroLength > length {
-		zeroLength = length
-	}
-	copy(origContent[offset:], make([]byte, zeroLength))
-
-	// store new content
-	return ds.Set(blockIndex, origContent)
-}
-
 // Get implements storage.Get
 func (ds *dedupedStorage) Get(blockIndex int64) (content []byte, err error) {
 	contentHash, err := ds.lba.Get(blockIndex)
