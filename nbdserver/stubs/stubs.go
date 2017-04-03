@@ -15,7 +15,10 @@ import (
 
 //NewMemoryRedisConn creates a redis connection that stores everything in memory
 func NewMemoryRedisConn() (conn redis.Conn) {
-	return &MemoryRedis{values: make(map[interface{}]interface{})}
+	return &MemoryRedis{
+		values:  make(map[interface{}]interface{}),
+		hvalues: make(map[interface{}]values),
+	}
 }
 
 //NewVolumeControllerServer starts an HTTP server listening on a system-chosen port on the local loopback interface, for use in tests without an external volumecontroller service.
