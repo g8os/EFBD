@@ -13,7 +13,7 @@
 		},
 		{
 			"ImportPath": "github.com/g8os/gonbdserver/nbd",
-			"Rev": "6cee66e32be36e7c691dec79e5242ad4dc38f358"
+			"Rev": "8a07ae671de49b6c4eb072d7366792ac3a703576"
 		},
 		{
 			"ImportPath": "github.com/garyburd/redigo/internal",

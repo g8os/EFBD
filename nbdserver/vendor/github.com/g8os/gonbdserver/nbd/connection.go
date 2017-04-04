@@ -455,7 +455,10 @@ func (c *Connection) receive(ctx context.Context) {
 			wg.Wait()
 
 		case NBD_CMD_FLUSH:
-			c.backend.Flush(ctx)
+			if err := c.backend.Flush(ctx); err != nil {
+				c.logger.Printf("[WARN] Client %s got flush I/O error: %s", c.name, err)
+				nbdRep.NbdError = errorCodeFromGolangError(err)
+			}
 
 		case NBD_CMD_TRIM:
 			var n int64
