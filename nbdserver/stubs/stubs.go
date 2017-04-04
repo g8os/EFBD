@@ -16,7 +16,7 @@ import (
 //NewMemoryRedisConn creates a redis connection that stores everything in memory
 func NewMemoryRedisConn() (conn redis.Conn) {
 	return &MemoryRedis{
-		values:  make(map[interface{}]interface{}),
+		values:  make(values),
 		hvalues: make(map[interface{}]values),
 	}
 }

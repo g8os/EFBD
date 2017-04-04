@@ -36,6 +36,13 @@ func TestNormalOperations(t *testing.T) {
 	if err != nil || numberOfKeys != 0 {
 		t.Error("Invalid reply", err)
 	}
+
+	//Test "DEL"
+	c.Send("DEL", "key2")
+	numberOfKeys, err = redis.Int(c.Do("EXISTS", "key2"))
+	if err != nil || numberOfKeys != 0 {
+		t.Error("Invalid reply in GET after DEL", err)
+	}
 }
 
 func TestHOperations(t *testing.T) {
@@ -72,5 +79,12 @@ func TestHOperations(t *testing.T) {
 	numberOfKeys, err = redis.Int(c.Do("HEXISTS", "differenthash", "key2"))
 	if err != nil || numberOfKeys != 0 {
 		t.Error("Invalid reply", err)
+	}
+
+	//Test "HDEL"
+	c.Send("HDEL", h, "key2")
+	numberOfKeys, err = redis.Int(c.Do("HEXISTS", h, "key2"))
+	if err != nil || numberOfKeys != 0 {
+		t.Error("Invalid reply in HGET after HDEL", err)
 	}
 }

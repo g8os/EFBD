@@ -23,7 +23,9 @@ func (c *MemoryRedis) Close() error { return nil }
 func (c *MemoryRedis) Err() error { return nil }
 
 //Do implements redis.Conn.Do
-// Only 'GET' and 'SET' commands are implemented, and error is returned if another commandName is given
+// Supported commands:
+//   GET, SET, EXISTS, HGET, HSET, HEXISTS
+// An error is returned if another command is given
 func (c *MemoryRedis) Do(commandName string, args ...interface{}) (reply interface{}, err error) {
 	if strings.HasPrefix(commandName, "H") {
 		if len(args) < 1 {
@@ -40,12 +42,16 @@ func (c *MemoryRedis) Do(commandName string, args ...interface{}) (reply interfa
 		reply, err = c.values.getCommand(args...)
 	case "EXISTS":
 		reply, err = c.values.existsCommand(args...)
+	case "DEL":
+		reply, err = c.values.delCommand(args...)
 	case "HSET":
 		reply, err = c.getHValues(args[0]).setCommand(args[1:]...)
 	case "HGET":
 		reply, err = c.getHValues(args[0]).getCommand(args[1:]...)
 	case "HEXISTS":
 		reply, err = c.getHValues(args[0]).existsCommand(args[1:]...)
+	case "HDEL":
+		reply, err = c.getHValues(args[0]).delCommand(args[1:]...)
 	default:
 		err = fmt.Errorf("Command %s not implemented", commandName)
 	}
@@ -56,19 +62,18 @@ func (c *MemoryRedis) Do(commandName string, args ...interface{}) (reply interfa
 func (c *MemoryRedis) getHValues(hash interface{}) (v values) {
 	v, found := c.hvalues[hash]
 	if !found {
-		v = make(map[interface{}]interface{})
+		v = make(values)
 		c.hvalues[hash] = v
 	}
 	return
 }
 
 //Send implements redis.Conn.Send
-// Not implemented, always returns an error
+// Only a small subset are implemented for Send:
+//  SET, DEL, HSET, HDEL
 func (c *MemoryRedis) Send(commandName string, args ...interface{}) (err error) {
 	switch commandName {
-	case "SET":
-		_, err = c.Do(commandName, args...)
-	case "HSET":
+	case "SET", "DEL", "HSET", "HDEL":
 		_, err = c.Do(commandName, args...)
 	default:
 		err = fmt.Errorf("Command %s not implemented in Send", commandName)
@@ -113,6 +118,22 @@ func (v values) existsCommand(args ...interface{}) (reply interface{}, err error
 	} else {
 		reply = int64(0)
 	}
+	return
+}
+
+func (v values) delCommand(args ...interface{}) (reply interface{}, err error) {
+	if len(args) < 1 {
+		err = errors.New("Insufficient parameters")
+		return
+	}
+	key := fmt.Sprint(args[0])
+	_, exists := v[key]
+	if exists {
+		reply = int64(1)
+	} else {
+		reply = int64(0)
+	}
+	delete(v, key)
 	return
 }
 
