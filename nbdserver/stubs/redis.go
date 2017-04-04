@@ -52,6 +52,7 @@ func (c *MemoryRedis) Do(commandName string, args ...interface{}) (reply interfa
 		reply, err = c.getHValues(args[0]).existsCommand(args[1:]...)
 	case "HDEL":
 		reply, err = c.getHValues(args[0]).delCommand(args[1:]...)
+	case "MULTI", "EXEC": //Ignore  for now
 	default:
 		err = fmt.Errorf("Command %s not implemented", commandName)
 	}
@@ -75,6 +76,7 @@ func (c *MemoryRedis) Send(commandName string, args ...interface{}) (err error) 
 	switch commandName {
 	case "SET", "DEL", "HSET", "HDEL":
 		_, err = c.Do(commandName, args...)
+	case "MULTI", "EXEC": //Ignore these for now
 	default:
 		err = fmt.Errorf("Command %s not implemented in Send", commandName)
 	}

@@ -88,3 +88,16 @@ func TestHOperations(t *testing.T) {
 		t.Error("Invalid reply in HGET after HDEL", err)
 	}
 }
+
+func TestIgnoredCommands(t *testing.T) {
+	c := NewMemoryRedisConn()
+	ignoredCommands := []string{"MULTI", "EXEC"}
+	for _, command := range ignoredCommands {
+		if _, err := c.Do(command); err != nil {
+			t.Errorf("Command %s should be ignored but gives error %s", command, err)
+		}
+		if err := c.Send(command); err != nil {
+			t.Errorf("Command %s should be ignored but gives error %s", command, err)
+		}
+	}
+}
