@@ -24,7 +24,9 @@ func (c *MemoryRedis) Err() error { return nil }
 
 //Do implements redis.Conn.Do
 // Supported commands:
-//   GET, SET, EXISTS, HGET, HSET, HEXISTS
+//   GET, SET, DEL, EXISTS, HGET, HSET, HEXISTS
+// Supported but ignored commands:
+//   MULTI, EXEC
 // An error is returned if another command is given
 func (c *MemoryRedis) Do(commandName string, args ...interface{}) (reply interface{}, err error) {
 	if strings.HasPrefix(commandName, "H") {
@@ -72,6 +74,8 @@ func (c *MemoryRedis) getHValues(hash interface{}) (v values) {
 //Send implements redis.Conn.Send
 // Only a small subset are implemented for Send:
 //  SET, DEL, HSET, HDEL
+// Implemented but ignored:
+//  MULTI, EXEC
 func (c *MemoryRedis) Send(commandName string, args ...interface{}) (err error) {
 	switch commandName {
 	case "SET", "DEL", "HSET", "HDEL":
