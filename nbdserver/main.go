@@ -26,8 +26,7 @@ func main() {
 	var profileAddress string
 	var protocol string
 	var address string
-	var volumecontrolleraddress string
-	var backendcontrolleraddress string
+	var gridapiaddress string
 	var testArdbConnectionSrings string
 	var exports string
 	var nonDedupedExports string
@@ -36,9 +35,8 @@ func main() {
 	flag.StringVar(&profileAddress, "profileaddress", "", "Enables profiling of this server as an http service")
 	flag.StringVar(&protocol, "protocol", "unix", "Protocol to listen on, 'tcp' or 'unix'")
 	flag.StringVar(&address, "address", "/tmp/nbd-socket", "Address to listen on, unix socket or tcp address, ':6666' for example")
-	flag.StringVar(&volumecontrolleraddress, "volumecontroller", "", "Address of the volumecontroller REST API, leave empty to use the embedded stub")
+	flag.StringVar(&gridapiaddress, "gridapi", "", "Address of the grid api REST API, leave empty to use the embedded stub")
 	flag.StringVar(&nonDedupedExports, "nondeduped", "", "when using the embedded volumecontroller, comma seperated list of exports that should not be deduped")
-	flag.StringVar(&backendcontrolleraddress, "backendcontroller", "", "Address of the storage backend controller REST API, leave empty to use the embedded stub")
 	flag.StringVar(&testArdbConnectionSrings, "testardbs", "localhost:16379,localhost:16379", "Comma seperated list of ardb connection strings returned by the embedded backend controller, first one is the metadataserver")
 	flag.StringVar(&exports, "export", "default", "comma seperated list of exports to list and use")
 	flag.Int64Var(&lbacachelimit, "lbacachelimit", ardb.DefaultLBACacheLimit,
@@ -62,29 +60,20 @@ func main() {
 		}()
 	}
 
-	if volumecontrolleraddress == "" {
-		logger.Println("[INFO] Starting embedded volume controller")
-		var s *httptest.Server
-		s, volumecontrolleraddress = stubs.NewVolumeControllerServer(
-			strings.Split(nonDedupedExports, ","))
-		defer s.Close()
-	}
-	logger.Println("[INFO] Using volume controller at", volumecontrolleraddress)
-
-	if backendcontrolleraddress == "" {
-		logger.Println("[INFO] Starting embedded storage backend controller")
+	if gridapiaddress == "" {
+		logger.Println("[INFO] Starting embedded grid api")
 		var s *httptest.Server
 		var err error
-		s, backendcontrolleraddress, err = stubs.NewStorageBackendServer(testArdbConnectionSrings)
+		s, gridapiaddress, err = stubs.NewGridAPIServer(testArdbConnectionSrings, strings.Split(nonDedupedExports, ","))
 		if err != nil {
 			logger.Fatalln("[ERROR]", err)
 		}
 		defer s.Close()
 	}
-	logger.Println("[INFO] Using storage backend controller at", backendcontrolleraddress)
+	logger.Println("[INFO] Using grid api at", gridapiaddress)
 
 	exportController, err := NewExportController(
-		volumecontrolleraddress,
+		gridapiaddress,
 		tslonly,
 		exportArray,
 	)
@@ -115,10 +104,9 @@ func main() {
 	defer redisPool.Close()
 
 	f := &ardb.BackendFactory{
-		BackendPool:              redisPool,
-		VolumeControllerAddress:  volumecontrolleraddress,
-		BackendControllerAddress: backendcontrolleraddress,
-		LBACacheLimit:            lbacachelimit,
+		BackendPool:    redisPool,
+		GridAPIAddress: gridapiaddress,
+		LBACacheLimit:  lbacachelimit,
 	}
 
 	nbd.RegisterBackend("ardb", f.NewBackend)

@@ -8,21 +8,21 @@ import (
 	"github.com/garyburd/redigo/redis"
 )
 
-//RedisPool maintains a pool of connections. The application calls the Get method
+//RedisPool maintains a collection of redis.Pool's per connection. The application calls the Get method
 // to get a connection from the pool and the connection's Close method to
 // return the connection's resources to the pool.
 //
 // The normal redigo.Pool is not adequate since it only maintains connections for a single server.
 type RedisPool struct {
-	lock        sync.Mutex //protects following
-	connections map[string]*redis.Pool
+	lock                    sync.Mutex //protects following
+	connectionSpecificPools map[string]*redis.Pool
 
 	Dial func(connectionString string) (redis.Conn, error)
 }
 
 //NewRedisPool creates a new pool for multiple redis servers
 func NewRedisPool(inMemory bool) (p *RedisPool) {
-	p = &RedisPool{connections: make(map[string]*redis.Pool)}
+	p = &RedisPool{connectionSpecificPools: make(map[string]*redis.Pool)}
 	if inMemory {
 		inMemoryRedisConnection := stubs.NewMemoryRedisConn()
 		p.Dial = func(connectionString string) (redis.Conn, error) {
@@ -45,11 +45,11 @@ func (p *RedisPool) Get(connectionString string) redis.Conn {
 	return p.GetConnectionSpecificPool(connectionString).Get()
 }
 
-// GetConnectionSpecificPool get a redis.Pool for a specific connectionString.
+// GetConnectionSpecificPool gets a redis.Pool for a specific connectionString.
 func (p *RedisPool) GetConnectionSpecificPool(connectionString string) (singleServerPool *redis.Pool) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	singleServerPool = p.connections[connectionString]
+	singleServerPool = p.connectionSpecificPools[connectionString]
 	if singleServerPool != nil {
 		return
 	}
@@ -60,7 +60,7 @@ func (p *RedisPool) GetConnectionSpecificPool(connectionString string) (singleSe
 		IdleTimeout: 240 * time.Second,
 		Dial:        func() (redis.Conn, error) { return p.Dial(connectionString) },
 	}
-	p.connections[connectionString] = singleServerPool
+	p.connectionSpecificPools[connectionString] = singleServerPool
 	return
 }
 
@@ -69,8 +69,8 @@ func (p *RedisPool) Close() {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
-	for _, c := range p.connections {
+	for _, c := range p.connectionSpecificPools {
 		c.Close()
 	}
-	p.connections = make(map[string]*redis.Pool)
+	p.connectionSpecificPools = make(map[string]*redis.Pool)
 }

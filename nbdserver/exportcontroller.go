@@ -5,32 +5,32 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/g8os/blockstor/nbdserver/clients/volumecontroller"
+	"github.com/g8os/blockstor/nbdserver/clients/gridapi"
 	"github.com/g8os/gonbdserver/nbd"
 )
 
 // NewExportController creates a new export config manager.
-func NewExportController(volumecontrolleraddress string, tslOnly bool, exports []string) (controller *ExportController, err error) {
-	if volumecontrolleraddress == "" {
-		err = errors.New("ExportController requires a non-empty volumecontrolleraddress")
+func NewExportController(gridapiaddress string, tslOnly bool, exports []string) (controller *ExportController, err error) {
+	if gridapiaddress == "" {
+		err = errors.New("ExportController requires a non-empty gridapiaddress")
 		return
 	}
 
 	controller = &ExportController{
-		volumeController: volumecontroller.NewVolumeController(),
-		exports:          exports,
-		tslOnly:          tslOnly,
+		gridapi: gridapi.NewG8OSStatelessGRID(),
+		exports: exports,
+		tslOnly: tslOnly,
 	}
-	controller.volumeController.BaseURI = volumecontrolleraddress
+	controller.gridapi.BaseURI = gridapiaddress
 	return
 }
 
 // ExportController implements nbd.ExportConfigManager
 // using the VolumeController client internally
 type ExportController struct {
-	volumeController *volumecontroller.VolumeController
-	exports          []string
-	tslOnly          bool
+	gridapi *gridapi.G8OSStatelessGRID
+	exports []string
+	tslOnly bool
 }
 
 // ListConfigNames implements nbd.ExportConfigManager.ListConfigNames
@@ -41,7 +41,7 @@ func (c *ExportController) ListConfigNames() []string {
 // GetConfig implements nbd.ExportConfigManager.GetConfig
 func (c *ExportController) GetConfig(name string) (*nbd.ExportConfig, error) {
 	log.Printf("[INFO] Getting volume %q", name)
-	volumeInfo, _, err := c.volumeController.Volumes.GetVolumeInfo(
+	volumeInfo, _, err := c.gridapi.Volumes.GetVolumeInfo(
 		name, // volumeID
 		nil,  // headers
 		nil,  // queryParams
@@ -53,7 +53,7 @@ func (c *ExportController) GetConfig(name string) (*nbd.ExportConfig, error) {
 	return &nbd.ExportConfig{
 		Name:               name,
 		Description:        "Deduped g8os blockstor",
-		Driver:             volumeInfo.Driver,
+		Driver:             "ardb",
 		ReadOnly:           volumeInfo.ReadOnly,
 		TLSOnly:            c.tslOnly,
 		MinimumBlockSize:   0, // use size given by ArdbBackend.Geometry
