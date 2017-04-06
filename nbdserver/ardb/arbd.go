@@ -61,9 +61,10 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	var storage storage
 	blockSize := int64(volumeInfo.Blocksize)
 
-	if volumeInfo.Volumetype == gridapi.EnumVolumeVolumetypedb {
+	switch volumeInfo.Volumetype {
+	case gridapi.EnumVolumeVolumetypedb, gridapi.EnumVolumeVolumetypecache:
 		storage = newNonDedupedStorage(volumeID, blockSize, redisProvider)
-	} else {
+	case gridapi.EnumVolumeVolumetypeboot:
 		cacheLimit := f.LBACacheLimit
 		if cacheLimit < lba.BytesPerShard {
 			cacheLimit = DefaultLBACacheLimit
@@ -93,6 +94,8 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 		}
 
 		storage = newDedupedStorage(volumeID, blockSize, redisProvider, vlba)
+	default:
+		err = fmt.Errorf("Unsupported volume type: %s", volumeInfo.Volumetype)
 	}
 
 	backend = &Backend{
