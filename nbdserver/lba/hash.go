@@ -19,10 +19,6 @@ var (
 //Hash is just a bytearray of size HashSize
 type Hash []byte
 
-// nilHash used internally in LBA as place holder for
-// a non-existing hash
-var nilHash = NewHash()
-
 // HashBytes takes a byte slice .
 func HashBytes(data []byte) Hash {
 	b := blake2b.Sum256(data)
@@ -38,4 +34,9 @@ func NewHash() (hash Hash) {
 //Equals returns true if two hashes are the same
 func (h Hash) Equals(compareTo Hash) bool {
 	return bytes.Equal(h, compareTo)
+}
+
+//Bytes returns the hash as a slice of bytes
+func (h Hash) Bytes() []byte {
+	return h[:]
 }

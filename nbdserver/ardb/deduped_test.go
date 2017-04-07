@@ -2,6 +2,7 @@ package ardb
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"runtime/debug"
 	"strconv"
@@ -92,6 +93,7 @@ func createTestDedupedStorage(t *testing.T, vdiskID string, blockSize, blockCoun
 // testContentExists tests if
 // the given content exists in the database
 func testContentExists(t *testing.T, memRedis *redisstub.MemoryRedis, content []byte) {
+	time.Sleep(time.Millisecond * 100) // give background thread time
 	conn, err := memRedis.Dial("")
 	if err != nil {
 		debug.PrintStack()
@@ -101,7 +103,7 @@ func testContentExists(t *testing.T, memRedis *redisstub.MemoryRedis, content []
 
 	hash := lba.HashBytes(content)
 
-	contentReceived, err := redis.Bytes(conn.Do("GET", hash))
+	contentReceived, err := redis.Bytes(conn.Do("GET", hash.Bytes()))
 	if err != nil {
 		debug.PrintStack()
 		t.Fatal(err)
@@ -117,6 +119,7 @@ func testContentExists(t *testing.T, memRedis *redisstub.MemoryRedis, content []
 // testContentDoesNotExist tests if
 // the given content does not exist in the database
 func testContentDoesNotExist(t *testing.T, memRedis *redisstub.MemoryRedis, content []byte) {
+	time.Sleep(time.Millisecond * 100) // give background thread time
 	conn, err := memRedis.Dial("")
 	if err != nil {
 		debug.PrintStack()
@@ -126,13 +129,40 @@ func testContentDoesNotExist(t *testing.T, memRedis *redisstub.MemoryRedis, cont
 
 	hash := lba.HashBytes(content)
 
-	exists, err := redis.Bool(conn.Do("EXISTS", hash))
+	exists, err := redis.Bool(conn.Do("EXISTS", hash.Bytes()))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if exists {
 		t.Fatalf(
 			"content found (%v), while it shouldn't exist", content)
+	}
+}
+
+// testReferenceCount of a certain content
+func testReferenceCount(t *testing.T, memRedis *redisstub.MemoryRedis, content []byte, expected int64) {
+	time.Sleep(time.Millisecond * 100) // give background thread time
+	conn, err := memRedis.Dial("")
+	if err != nil {
+		debug.PrintStack()
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	hash := lba.HashBytes(content)
+	key := dsReferenceKey(hash)
+	length, err := redis.Int64(conn.Do("GET", key))
+	if err == redis.ErrNil {
+		length = 0
+		err = nil
+	}
+	if err != nil {
+		debug.PrintStack()
+		t.Fatal("couldn't get reference count of", hash, err)
+	}
+	if expected != length {
+		debug.PrintStack()
+		t.Fatalf("%v has length %v, while expected %v", content, length, expected)
 	}
 }
 
@@ -321,5 +351,133 @@ func TestGetDedupedRootContent(t *testing.T) {
 	// the content now exists in both storages
 	testContentExists(t, memRedisB, testContent)
 	testContentExists(t, memRedisA, testContent)
+}
 
+// this test only runs when the `redis` flag is specified
+func TestDedupedStorageReferenceCount(t *testing.T) {
+	memoryRedis := redisstub.NewMemoryRedis()
+	go memoryRedis.Listen()
+	defer memoryRedis.Close()
+
+	redisPool := NewRedisPool(memoryRedis.Dial)
+	defer redisPool.Close()
+
+	redisProvider := &testRedisProvider{memoryRedis, nil} // no root
+
+	ctx := context.Background()
+
+	storageA := createTestDedupedStorage(t, "a", 8, 8, redisProvider)
+	defer storageA.Close()
+	go storageA.GoBackground(ctx)
+
+	contentA := []byte{4, 2}
+
+	blockIndexA := int64(1)
+
+	// set content in storageA
+	err := storageA.Set(blockIndexA, contentA)
+	if err != nil {
+		t.Fatal("couldn't set content in storage A", err)
+	}
+	// reference Count should now be 1
+	testReferenceCount(t, memoryRedis, contentA, 1)
+	testContentExists(t, memoryRedis, contentA)
+
+	storageB := createTestDedupedStorage(t, "b", 8, 8, redisProvider)
+	defer storageB.Close()
+	go storageB.GoBackground(ctx)
+
+	err = storageB.Set(blockIndexA, contentA)
+	if err != nil {
+		t.Fatal("couldn't set content in storage B", err)
+	}
+	// reference Count should now be 2
+	testReferenceCount(t, memoryRedis, contentA, 2)
+	testContentExists(t, memoryRedis, contentA)
+
+	// adding the content to a vdiskID that already has it,
+	// should not increase the reference count
+	for i := 0; i < 3; i++ {
+		err = storageB.Set(blockIndexA, contentA)
+		if err != nil {
+			t.Fatal("couldn't set content in storage B", err)
+		}
+		// reference Count should still be 2
+		testReferenceCount(t, memoryRedis, contentA, 2)
+		testContentExists(t, memoryRedis, contentA)
+	}
+
+	blockIndexB := int64(2)
+
+	// adding the content to a vdiskID that already has it,
+	// should not increase the reference count
+	err = storageA.Set(blockIndexB, contentA)
+	if err != nil {
+		t.Fatal("couldn't set content in storage A", err)
+	}
+	// reference Count should be 3 now
+	testReferenceCount(t, memoryRedis, contentA, 3)
+	testContentExists(t, memoryRedis, contentA)
+
+	contentB := []byte{1, 2, 3}
+
+	// set new content in new block
+	err = storageB.Set(blockIndexB, contentB)
+	if err != nil {
+		t.Fatal("couldn't set content in storage B", err)
+	}
+	// reference Count of contentB should be 1, as it is new
+	testReferenceCount(t, memoryRedis, contentB, 1)
+	testContentExists(t, memoryRedis, contentB)
+	// reference Count of contentA should still be 3, as it shouldn't have been touched
+	testReferenceCount(t, memoryRedis, contentA, 3)
+	testContentExists(t, memoryRedis, contentA)
+
+	// overwrite block with new content
+	err = storageA.Set(blockIndexA, contentB)
+	if err != nil {
+		t.Fatal("couldn't set content in storage A", err)
+	}
+	// reference Count of contentB should be 2 now, as both vdisks reference it
+	testReferenceCount(t, memoryRedis, contentB, 2)
+	testContentExists(t, memoryRedis, contentB)
+	// reference Count of contentA should now be 2, as storageA, no longer references it twice
+	testReferenceCount(t, memoryRedis, contentA, 2)
+	testContentExists(t, memoryRedis, contentA)
+
+	err = storageA.Delete(blockIndexA)
+	if err != nil {
+		t.Fatal("couldn't delete content from storage A", err)
+	}
+	// reference Count of contentB should be 1 now, as only storage A references it
+	testReferenceCount(t, memoryRedis, contentB, 1)
+	testContentExists(t, memoryRedis, contentB)
+
+	contentC := []byte{3, 2, 1}
+	// merge contentA with contentC
+	err = storageA.Merge(blockIndexB, 3, contentC)
+	if err != nil {
+		t.Fatal("couldn't merge content in storage A", err)
+	}
+	testReferenceCount(t, memoryRedis, contentA, 1)
+
+	// get merged Content
+	contentAPlusC, err := storageA.Get(blockIndexB)
+	if err != nil {
+		t.Fatal("couldn't get merged content from storage A", err)
+	}
+	if bytes.Compare(contentAPlusC, []byte{4, 2, 0, 3, 2, 1, 0, 0}) != 0 {
+		t.Fatal("contentAPlusC is not correct", contentAPlusC)
+	}
+	testReferenceCount(t, memoryRedis, contentA, 1)
+	testContentExists(t, memoryRedis, contentA)
+
+	testReferenceCount(t, memoryRedis, contentB, 1)
+	testContentExists(t, memoryRedis, contentB)
+
+	testReferenceCount(t, memoryRedis, contentC, 0)
+	testContentDoesNotExist(t, memoryRedis, contentC)
+
+	testReferenceCount(t, memoryRedis, contentAPlusC, 1)
+	testContentExists(t, memoryRedis, contentAPlusC)
 }

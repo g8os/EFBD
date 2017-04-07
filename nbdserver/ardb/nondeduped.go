@@ -1,6 +1,7 @@
 package ardb
 
 import (
+	"context"
 	"strconv"
 
 	"github.com/garyburd/redigo/redis"
@@ -37,12 +38,12 @@ func (ss *nonDedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 	// don't store zero blocks,
 	// and delete existing ones if they already existed
 	if ss.isZeroContent(content) {
-		_, err = conn.Do("DEL", key)
+		err = redisSendNow(conn, "DEL", key)
 		return
 	}
 
 	// content is not zero, so let's (over)write it
-	_, err = conn.Do("SET", key, content)
+	err = redisSendNow(conn, "SET", key, content)
 	return
 }
 
@@ -69,7 +70,7 @@ func (ss *nonDedupedStorage) Merge(blockIndex, offset int64, content []byte) (er
 	copy(origContent[offset:], content)
 
 	// store new content, as the merged version is non-zero
-	_, err = conn.Do("SET", key, origContent)
+	err = redisSendNow(conn, "SET", key, origContent)
 	return
 }
 
@@ -83,14 +84,7 @@ func (ss *nonDedupedStorage) Get(blockIndex int64) (content []byte, err error) {
 	}
 	defer conn.Close()
 
-	content, err = redis.Bytes(conn.Do("GET", key))
-	// This could happen in case the block doesn't exist,
-	// or in case the block is a nullblock.
-	// in both cases we want to simply return it as a null block.
-	if err == redis.ErrNil {
-		err = nil
-	}
-
+	content, err = redisBytes(conn.Do("GET", key))
 	return
 }
 
@@ -111,6 +105,16 @@ func (ss *nonDedupedStorage) Delete(blockIndex int64) (err error) {
 func (ss *nonDedupedStorage) Flush() (err error) {
 	// nothing to do for the nonDeduped backendStorage
 	return
+}
+
+// Close implements backendStorage.Close
+func (ss *nonDedupedStorage) Close() error {
+	return nil // nothing to close
+}
+
+// GoBackground implements backendStorage.GoBackground
+func (ss *nonDedupedStorage) GoBackground(ctx context.Context) {
+	// no background thread needed
 }
 
 // get the unique key for a block,

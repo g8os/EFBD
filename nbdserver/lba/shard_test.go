@@ -30,15 +30,16 @@ func TestCreateShard(t *testing.T) {
 		// getting a shard will keep it clean
 		for i := int64(0); i < NumberOfRecordsPerLBAShard; i++ {
 			h := shard.Get(i) // NOTE: there is no out-of-range protection
-			assert.Equal(t, nilHash, h, "created from bytes, contain all nil hashes")
+			assert.Equal(t, NilHash, h, "created from bytes, contain all nil hashes")
 		}
 
 		// setting a shard will make it dirty though
 		shard.Set(0, HashBytes(nil))
+
 		assert.True(t, shard.Dirty(), "modified shard should be dirty")
 		h := shard.Get(0) // NOTE: there is no out-of-range protection
 		if assert.NotEmpty(t, h, "created from bytes, no hash should be nil") {
-			assert.NotEqual(t, nilHash, h, "should be not equal to the nilhash")
+			assert.NotEqual(t, NilHash, h, "should be not equal to the NilHash")
 		}
 
 		// a shard can be marked non-dirty by the user,
@@ -63,14 +64,14 @@ func TestCreateShard(t *testing.T) {
 
 				// first shard should still not be equal
 				f := shard.Get(0) // NOTE: there is no out-of-range protection
-				if assert.NotEmpty(t, f, "created from bytes, no hash should be nil") {
-					assert.Equal(t, h, f, "should be not equal to the hash written earlier")
+				if assert.NotNil(t, f, "created from bytes, but with noting in, so it's all nil") {
+					assert.Equal(t, h, f, "should be equal to the hash written earlier")
 				}
 
 				// getting a shard will keep it clean
 				for i := int64(1); i < NumberOfRecordsPerLBAShard; i++ {
 					h := shard.Get(i) // NOTE: there is no out-of-range protection
-					assert.Equal(t, nilHash, h, "created from bytes, contain all nil hashes")
+					assert.Equal(t, NilHash, h, "created from bytes, contain all nil hashes")
 				}
 			}
 		}

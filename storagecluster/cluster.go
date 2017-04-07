@@ -266,7 +266,7 @@ func (cc *ClusterClient) loadConfig() bool {
 			cc.storageClusterName)
 		storageClusterName = cc.storageClusterName
 	} else {
-		cc.logger.Info("couldn't load config: either the volumeID or the storageClusterName has to be defined")
+		cc.logger.Info("couldn't load config: either the vdiskID or the storageClusterName has to be defined")
 		return false
 	}
 

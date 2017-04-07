@@ -73,6 +73,7 @@ type Backend interface {
 	Geometry(ctx context.Context) (Geometry, error)                                   // size, minimum BS, preferred BS, maximum BS
 	HasFua(ctx context.Context) bool                                                  // does the driver support FUA?
 	HasFlush(ctx context.Context) bool                                                // does the driver support flush?
+	GoBackground(ctx context.Context)                                                 // optional background thread
 }
 
 // BackendGenerator is a generator function type that generates a backend
@@ -594,6 +595,17 @@ func (c *Connection) Serve(parentCtx context.Context) {
 	c.name = fmt.Sprintf("%s/%s", c.name, c.export.name)
 
 	c.logger.Infof("Negotiation succeeded with %s", c.name)
+
+	// start backend's background thread
+	c.wg.Add(1)
+	go func() {
+		defer func() {
+			c.wg.Done()
+			c.logger.Infof("Backend background thread exiting for %s", c.name)
+		}()
+
+		c.backend.GoBackground(ctx)
+	}()
 
 	// Phase #2: Transmition
 

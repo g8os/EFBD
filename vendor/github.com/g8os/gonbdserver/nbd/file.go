@@ -82,6 +82,11 @@ func (fb *FileBackend) HasFlush(ctx context.Context) bool {
 	return true
 }
 
+// GoBackground implements Backend.GoBackground
+func (fb *FileBackend) GoBackground(ctx context.Context) {
+	// No background thread needed
+}
+
 // NewFileBackend generates a new file backend
 func NewFileBackend(ctx context.Context, ec *ExportConfig) (Backend, error) {
 	perms := os.O_RDWR
