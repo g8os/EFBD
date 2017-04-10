@@ -8,8 +8,8 @@ import (
 	"github.com/g8os/blockstor/nbdserver/lba"
 )
 
-// newDedupedStorage returns the deduped storage implementation
-func newDedupedStorage(volumeID string, blockSize int64, provider *redisProvider, vlba *lba.LBA) storage {
+// newDedupedStorage returns the deduped backendStorage implementation
+func newDedupedStorage(volumeID string, blockSize int64, provider *redisProvider, vlba *lba.LBA) backendStorage {
 	return &dedupedStorage{
 		blockSize:       blockSize,
 		volumeID:        volumeID,
@@ -19,7 +19,7 @@ func newDedupedStorage(volumeID string, blockSize int64, provider *redisProvider
 	}
 }
 
-// dedupedStorage is a storage implementation,
+// dedupedStorage is a backendStorage implementation,
 // that stores the content based on a hash unique to that content,
 // all hashes are linked to the volume using lba.LBA
 type dedupedStorage struct {
@@ -30,7 +30,7 @@ type dedupedStorage struct {
 	lba             *lba.LBA
 }
 
-// Set implements storage.Set
+// Set implements backendStorage.Set
 func (ds *dedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 	hash := lba.HashBytes(content)
 	if ds.zeroContentHash.Equals(hash) {
@@ -42,7 +42,10 @@ func (ds *dedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 	// If the metadataserver is the same as the content, this causes a deadlock if the connection is not released yet
 	// and now it can already be reused faster as well
 	err = func() (err error) {
-		conn := ds.getRedisConnection(hash)
+		conn, err := ds.getRedisConnection(hash)
+		if err != nil {
+			return
+		}
 		defer conn.Close()
 
 		exists, err := redis.Bool(conn.Do("EXISTS", hash))
@@ -64,7 +67,7 @@ func (ds *dedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 	return
 }
 
-// Merge implements storage.Merge
+// Merge implements backendStorage.Merge
 func (ds *dedupedStorage) Merge(blockIndex, offset int64, content []byte) (err error) {
 	hash, _ := ds.lba.Get(blockIndex)
 
@@ -92,7 +95,7 @@ func (ds *dedupedStorage) Merge(blockIndex, offset int64, content []byte) (err e
 	return ds.Set(blockIndex, mergedContent)
 }
 
-// Get implements storage.Get
+// Get implements backendStorage.Get
 func (ds *dedupedStorage) Get(blockIndex int64) (content []byte, err error) {
 	contentHash, err := ds.lba.Get(blockIndex)
 	if err != nil || contentHash == nil {
@@ -103,25 +106,27 @@ func (ds *dedupedStorage) Get(blockIndex int64) (content []byte, err error) {
 	return
 }
 
-// Delete implements storage.Delete
+// Delete implements backendStorage.Delete
 func (ds *dedupedStorage) Delete(blockIndex int64) (err error) {
 	err = ds.lba.Delete(blockIndex)
 	return
 }
 
-// Flush implements storage.Flush
+// Flush implements backendStorage.Flush
 func (ds *dedupedStorage) Flush() (err error) {
 	err = ds.lba.Flush()
 	return
 }
 
-func (ds *dedupedStorage) getRedisConnection(hash lba.Hash) (conn redis.Conn) {
-	conn = ds.provider.GetRedisConnection(int(hash[0]))
-	return
+func (ds *dedupedStorage) getRedisConnection(hash lba.Hash) (redis.Conn, error) {
+	return ds.provider.RedisConnection(int(hash[0]))
 }
 
 func (ds *dedupedStorage) getContent(hash lba.Hash) (content []byte, err error) {
-	conn := ds.getRedisConnection(hash)
+	conn, err := ds.getRedisConnection(hash)
+	if err != nil {
+		return
+	}
 	defer conn.Close()
 
 	content, err = redis.Bytes(conn.Do("GET", hash))

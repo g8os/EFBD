@@ -3,14 +3,16 @@ package ardb
 import (
 	"golang.org/x/net/context"
 
+	"github.com/g8os/blockstor/nbdserver/storage"
 	"github.com/g8os/gonbdserver/nbd"
 )
 
 //Backend is a nbd.Backend implementation on top of ARDB
 type Backend struct {
-	blockSize int64
-	size      uint64
-	storage   storage
+	blockSize         int64
+	size              uint64
+	storage           backendStorage
+	storageClusterCfg *storage.ClusterConfig
 }
 
 //WriteAt implements nbd.Backend.WriteAt
@@ -149,6 +151,7 @@ func (ab *Backend) Flush(ctx context.Context) (err error) {
 
 //Close implements nbd.Backend.Close
 func (ab *Backend) Close(ctx context.Context) (err error) {
+	ab.storageClusterCfg.Close()
 	return
 }
 
