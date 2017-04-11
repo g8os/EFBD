@@ -2,6 +2,7 @@ package lba
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -9,18 +10,29 @@ import (
 	"github.com/garyburd/redigo/redis"
 )
 
+// MetaRedisProvider is used by the LBA,
+// to retreive a Redis Meta Connection
+type MetaRedisProvider interface {
+	MetaRedisConnection() (redis.Conn, error)
+}
+
 //NewLBA creates a new LBA
-func NewLBA(volumeID string, blockCount, cacheLimitInBytes int64, pool *redis.Pool) (lba *LBA, err error) {
+func NewLBA(volumeID string, blockCount, cacheLimitInBytes int64, provider MetaRedisProvider) (lba *LBA, err error) {
+	if provider == nil {
+		return nil, errors.New("NewLBA requires a non-nil MetaRedisProvider")
+	}
+
 	muxCount := blockCount / NumberOfRecordsPerLBAShard
 	if blockCount%NumberOfRecordsPerLBAShard > 0 {
 		muxCount++
 	}
 
 	lba = &LBA{
-		redisPool: pool,
-		volumeID:  volumeID,
-		shardMux:  make([]sync.Mutex, muxCount),
+		provider: provider,
+		volumeID: volumeID,
+		shardMux: make([]sync.Mutex, muxCount),
 	}
+
 	lba.cache, err = newShardCache(cacheLimitInBytes, lba.onCacheEviction)
 
 	return
@@ -39,8 +51,8 @@ type LBA struct {
 	// 2 operations might create a new shard, and thus we would miss an operation.
 	shardMux []sync.Mutex
 
-	redisPool *redis.Pool
-	volumeID  string
+	provider MetaRedisProvider
+	volumeID string
 }
 
 //Set the content hash for a specific block.
@@ -154,7 +166,10 @@ func (lba *LBA) onCacheEviction(index int64, shard *shard) {
 }
 
 func (lba *LBA) getShardFromExternalStorage(index int64) (shard *shard, err error) {
-	conn := lba.redisPool.Get()
+	conn, err := lba.provider.MetaRedisConnection()
+	if err != nil {
+		return
+	}
 	defer conn.Close()
 	reply, err := conn.Do("HGET", lba.volumeID, index)
 	if err != nil || reply == nil {
@@ -171,7 +186,10 @@ func (lba *LBA) getShardFromExternalStorage(index int64) (shard *shard, err erro
 }
 
 func (lba *LBA) storeCacheInExternalStorage() (err error) {
-	conn := lba.redisPool.Get()
+	conn, err := lba.provider.MetaRedisConnection()
+	if err != nil {
+		return
+	}
 	defer conn.Close()
 
 	if err = conn.Send("MULTI"); err != nil {
@@ -209,7 +227,10 @@ func (lba *LBA) storeShardInExternalStorage(index int64, shard *shard) (err erro
 		return
 	}
 
-	conn := lba.redisPool.Get()
+	conn, err := lba.provider.MetaRedisConnection()
+	if err != nil {
+		return
+	}
 	defer conn.Close()
 
 	_, err = conn.Do("HSET", lba.volumeID, index, buffer.Bytes())
@@ -221,7 +242,10 @@ func (lba *LBA) storeShardInExternalStorage(index int64, shard *shard) (err erro
 }
 
 func (lba *LBA) deleteShardFromExternalStorage(index int64) (err error) {
-	conn := lba.redisPool.Get()
+	conn, err := lba.provider.MetaRedisConnection()
+	if err != nil {
+		return
+	}
 	defer conn.Close()
 
 	_, err = conn.Do("HDEL", lba.volumeID, index)

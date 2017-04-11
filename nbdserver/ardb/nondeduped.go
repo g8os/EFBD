@@ -6,8 +6,8 @@ import (
 	"github.com/garyburd/redigo/redis"
 )
 
-// newNonDedupedStorage returns the non deduped storage implementation
-func newNonDedupedStorage(volumeID string, blockSize int64, provider *redisProvider) storage {
+// newNonDedupedStorage returns the non deduped backendStorage implementation
+func newNonDedupedStorage(volumeID string, blockSize int64, provider *redisProvider) backendStorage {
 	return &nonDedupedStorage{
 		blockSize: blockSize,
 		volumeID:  volumeID,
@@ -15,7 +15,7 @@ func newNonDedupedStorage(volumeID string, blockSize int64, provider *redisProvi
 	}
 }
 
-// nonDedupedStorage is a storage implementation,
+// nonDedupedStorage is a backendStorage implementation,
 // that simply stores each block in redis using
 // a unique key based on the volumeID and blockIndex
 type nonDedupedStorage struct {
@@ -24,11 +24,14 @@ type nonDedupedStorage struct {
 	provider  *redisProvider
 }
 
-// Set implements storage.Set
+// Set implements backendStorage.Set
 func (ss *nonDedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 	key := ss.getKey(blockIndex)
 
-	conn := ss.provider.GetRedisConnection(int(blockIndex))
+	conn, err := ss.provider.RedisConnection(int(blockIndex))
+	if err != nil {
+		return
+	}
 	defer conn.Close()
 
 	// don't store zero blocks,
@@ -43,11 +46,14 @@ func (ss *nonDedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 	return
 }
 
-// Merge implements storage.Merge
+// Merge implements backendStorage.Merge
 func (ss *nonDedupedStorage) Merge(blockIndex, offset int64, content []byte) (err error) {
 	key := ss.getKey(blockIndex)
 
-	conn := ss.provider.GetRedisConnection(int(blockIndex))
+	conn, err := ss.provider.RedisConnection(int(blockIndex))
+	if err != nil {
+		return
+	}
 	defer conn.Close()
 
 	origContent, _ := redis.Bytes(conn.Do("GET", key))
@@ -67,11 +73,14 @@ func (ss *nonDedupedStorage) Merge(blockIndex, offset int64, content []byte) (er
 	return
 }
 
-// Get implements storage.Get
+// Get implements backendStorage.Get
 func (ss *nonDedupedStorage) Get(blockIndex int64) (content []byte, err error) {
 	key := ss.getKey(blockIndex)
 
-	conn := ss.provider.GetRedisConnection(int(blockIndex))
+	conn, err := ss.provider.RedisConnection(int(blockIndex))
+	if err != nil {
+		return
+	}
 	defer conn.Close()
 
 	content, err = redis.Bytes(conn.Do("GET", key))
@@ -85,9 +94,12 @@ func (ss *nonDedupedStorage) Get(blockIndex int64) (content []byte, err error) {
 	return
 }
 
-// Delete implements storage.Delete
+// Delete implements backendStorage.Delete
 func (ss *nonDedupedStorage) Delete(blockIndex int64) (err error) {
-	conn := ss.provider.GetRedisConnection(int(blockIndex))
+	conn, err := ss.provider.RedisConnection(int(blockIndex))
+	if err != nil {
+		return
+	}
 	defer conn.Close()
 
 	key := ss.getKey(blockIndex)
@@ -95,9 +107,9 @@ func (ss *nonDedupedStorage) Delete(blockIndex int64) (err error) {
 	return
 }
 
-// Flush implements storage.Flush
+// Flush implements backendStorage.Flush
 func (ss *nonDedupedStorage) Flush() (err error) {
-	// nothing to do for the nonDeduped Storage
+	// nothing to do for the nonDeduped backendStorage
 	return
 }
 
