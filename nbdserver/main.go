@@ -12,9 +12,9 @@ import (
 
 	_ "net/http/pprof"
 
+	"github.com/g8os/blockstor/gridapi"
 	"github.com/g8os/blockstor/nbdserver/ardb"
 	"github.com/g8os/blockstor/nbdserver/lba"
-	"github.com/g8os/blockstor/nbdserver/stubs"
 	"github.com/g8os/gonbdserver/nbd"
 	"golang.org/x/net/context"
 )
@@ -64,7 +64,7 @@ func main() {
 		logger.Println("[INFO] Starting embedded grid api")
 		var s *httptest.Server
 		var err error
-		s, gridapiaddress, err = stubs.NewGridAPIServer(testArdbConnectionSrings, strings.Split(nonDedupedExports, ","))
+		s, gridapiaddress, err = gridapi.NewGridAPIServer(testArdbConnectionSrings, strings.Split(nonDedupedExports, ","))
 		if err != nil {
 			logger.Fatalln("[ERROR]", err)
 		}

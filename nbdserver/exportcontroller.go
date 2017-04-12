@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/g8os/blockstor/nbdserver/clients/gridapi"
+	gridapi "github.com/g8os/blockstor/gridapi/gridapiclient"
 	"github.com/g8os/gonbdserver/nbd"
 )
 

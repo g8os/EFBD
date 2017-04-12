@@ -10,7 +10,7 @@ import (
 
 	"github.com/garyburd/redigo/redis"
 
-	"github.com/g8os/blockstor/nbdserver/clients/gridapi"
+	gridapi "github.com/g8os/blockstor/gridapi/gridapiclient"
 	"github.com/g8os/blockstor/nbdserver/lba"
 	"github.com/g8os/gonbdserver/nbd"
 )
