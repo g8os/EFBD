@@ -4,15 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strconv"
 
 	"golang.org/x/net/context"
 
-	"github.com/garyburd/redigo/redis"
-
 	gridapi "github.com/g8os/blockstor/gridapi/gridapiclient"
 	"github.com/g8os/blockstor/nbdserver/lba"
+	"github.com/g8os/blockstor/nbdserver/storage"
 	"github.com/g8os/gonbdserver/nbd"
+	"github.com/garyburd/redigo/redis"
 )
 
 // shared constants
@@ -21,22 +20,54 @@ const (
 	DefaultLBACacheLimit = 20 * 1024 * 1024 // 20 mB
 )
 
+// NewBackendFactory creates a new Backend Factory,
+// which is used to create a Backend, without having to work with global variables.
+func NewBackendFactory(pool *RedisPool, scConfigFactory *storage.ClusterConfigFactory, gridAPIAddress string, lbaCacheLimit int64) (*BackendFactory, error) {
+	if pool == nil {
+		return nil, errors.New("NewBackendFactory requires a non-nil RedisPool")
+	}
+	if scConfigFactory == nil {
+		return nil, errors.New("NewBackendFactory requires a non-nil storage.ClusterConfigFactory")
+	}
+	if gridAPIAddress == "" {
+		return nil, errors.New("NewBackendFactory requires a non-empty gridAPIAddress")
+	}
+
+	return &BackendFactory{
+		backendPool:     pool,
+		scConfigFactory: scConfigFactory,
+		gridAPIAddress:  gridAPIAddress,
+		lbaCacheLimit:   lbaCacheLimit,
+	}, nil
+}
+
 //BackendFactory holds some variables
 // that can not be passed in the exportconfig like the pool of ardbconnections
 // I hate the factory pattern but I hate global variables even more
 type BackendFactory struct {
-	BackendPool    *RedisPool
-	GridAPIAddress string
-	LBACacheLimit  int64
+	backendPool     *RedisPool
+	scConfigFactory *storage.ClusterConfigFactory
+	gridAPIAddress  string
+	lbaCacheLimit   int64
 }
 
 //NewBackend generates a new ardb backend
 func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (backend nbd.Backend, err error) {
 	volumeID := ec.Name
 
+	// create storage cluster config,
+	// which is used to dynamically reload the configuration
+	storageClusterCfg, err := f.scConfigFactory.NewConfig(volumeID)
+	if err != nil {
+		log.Println("[ERROR]", err)
+		return
+	}
+
+	redisProvider, err := newRedisProvider(f.backendPool, storageClusterCfg)
+
 	//Get information about the volume
 	g8osClient := gridapi.NewG8OSStatelessGRID()
-	g8osClient.BaseURI = f.GridAPIAddress
+	g8osClient.BaseURI = f.gridAPIAddress
 	log.Println("[INFO] Starting volume", volumeID)
 	volumeInfo, _, err := g8osClient.Volumes.GetVolumeInfo(volumeID, nil, nil)
 	if err != nil {
@@ -44,28 +75,14 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 		return
 	}
 
-	//Get information about the backend storage nodes
-	// TODO: need a way to update while staying alive
-	storageClusterInfo, _, err := g8osClient.Storageclusters.GetClusterInfo(volumeInfo.Storagecluster, nil, nil)
-	if err != nil {
-		log.Println("[ERROR]", err)
-		return
-	}
-
-	redisProvider, err := newRedisProvider(f.BackendPool, storageClusterInfo.DataStorage)
-	if err != nil {
-		log.Println("[ERROR]", err)
-		return
-	}
-
-	var storage storage
+	var storage backendStorage
 	blockSize := int64(volumeInfo.Blocksize)
 
 	switch volumeInfo.Volumetype {
 	case gridapi.EnumVolumeVolumetypedb, gridapi.EnumVolumeVolumetypecache:
 		storage = newNonDedupedStorage(volumeID, blockSize, redisProvider)
 	case gridapi.EnumVolumeVolumetypeboot:
-		cacheLimit := f.LBACacheLimit
+		cacheLimit := f.lbaCacheLimit
 		if cacheLimit < lba.BytesPerShard {
 			cacheLimit = DefaultLBACacheLimit
 		}
@@ -75,18 +92,13 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 		if volumeSize%blockSize > 0 {
 			blockCount++
 		}
-		if len(storageClusterInfo.MetadataStorage) < 1 {
-			err = fmt.Errorf("No metadata servers available in storagecluster %s", volumeInfo.Storagecluster)
-			return
-		}
-		lbaRedisPool := f.BackendPool.GetConnectionSpecificPool(connectionStringFromHAStorageServer(storageClusterInfo.MetadataStorage[0]))
 
 		var vlba *lba.LBA
 		vlba, err = lba.NewLBA(
 			volumeID,
 			blockCount,
 			cacheLimit,
-			lbaRedisPool,
+			redisProvider,
 		)
 		if err != nil {
 			log.Println("[ERROR]", err)
@@ -99,49 +111,56 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	}
 
 	backend = &Backend{
-		blockSize: blockSize,
-		size:      uint64(volumeInfo.Size),
-		storage:   storage,
+		blockSize:         blockSize,
+		size:              uint64(volumeInfo.Size),
+		storage:           storage,
+		storageClusterCfg: storageClusterCfg,
 	}
 	return
 }
 
 // newRedisProvider creates a new redis provider
-func newRedisProvider(pool *RedisPool, servers []gridapi.HAStorageServer) (*redisProvider, error) {
+func newRedisProvider(pool *RedisPool, storageClusterCfg *storage.ClusterConfig) (*redisProvider, error) {
 	if pool == nil {
 		return nil, errors.New(
 			"no redis pool is given, while one is required")
 	}
-
-	number := len(servers)
-	if number < 1 {
+	if storageClusterCfg == nil {
 		return nil, errors.New(
-			"received no storageBackendController, while at least 1 is required")
+			"no storage cluster config is given, while one is required")
 	}
 
 	return &redisProvider{
-		redisPool:       pool,
-		servers:         servers,
-		numberOfServers: number,
+		redisPool:         pool,
+		storageClusterCfg: storageClusterCfg,
 	}, nil
 }
 
 // redisProvider allows you to get a redis connection from a pool
 // using a modulo index
 type redisProvider struct {
-	redisPool       *RedisPool
-	servers         []gridapi.HAStorageServer
-	numberOfServers int //Keep it as a seperate variable since this is constantly needed
+	redisPool         *RedisPool
+	storageClusterCfg *storage.ClusterConfig
 }
 
-// GetRedisConnection from the underlying pool,
-// using a modulo index
-func (rp *redisProvider) GetRedisConnection(index int) (conn redis.Conn) {
-	bcIndex := index % rp.numberOfServers
-	conn = rp.redisPool.Get(connectionStringFromHAStorageServer(rp.servers[bcIndex]))
+// GetRedisConnection from the underlying pool, using a modulo index
+func (rp *redisProvider) RedisConnection(index int) (conn redis.Conn, err error) {
+	connString, err := rp.storageClusterCfg.ConnectionString(index)
+	if err != nil {
+		return
+	}
+
+	conn = rp.redisPool.Get(connString)
 	return
 }
 
-func connectionStringFromHAStorageServer(server gridapi.HAStorageServer) string {
-	return server.Master.Ip + ":" + strconv.Itoa(server.Master.Port)
+// MetaRedisConnection implements lba.MetaRedisProvider.MetaRedisConnection
+func (rp *redisProvider) MetaRedisConnection() (conn redis.Conn, err error) {
+	connString, err := rp.storageClusterCfg.MetaConnectionString()
+	if err != nil {
+		return
+	}
+
+	conn = rp.redisPool.Get(connString)
+	return
 }

@@ -1,8 +1,8 @@
 package ardb
 
-// storage defines the interface for the actual storage implementation,
+// backendStorage defines the interface for the actual storage implementation,
 // used by ArbdBackend for a particular volume
-type storage interface {
+type backendStorage interface {
 	Set(blockIndex int64, content []byte) (err error)
 	Merge(blockIndex, offset int64, content []byte) (err error)
 	Get(blockIndex int64) (content []byte, err error)

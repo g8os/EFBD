@@ -15,6 +15,7 @@ import (
 	"github.com/g8os/blockstor/gridapi"
 	"github.com/g8os/blockstor/nbdserver/ardb"
 	"github.com/g8os/blockstor/nbdserver/lba"
+	"github.com/g8os/blockstor/nbdserver/storage"
 	"github.com/g8os/gonbdserver/nbd"
 	"golang.org/x/net/context"
 )
@@ -78,7 +79,7 @@ func main() {
 		exportArray,
 	)
 	if err != nil {
-		logger.Panicln(err)
+		logger.Fatalln("[ERROR]", err)
 	}
 
 	var sessionWaitGroup sync.WaitGroup
@@ -103,17 +104,31 @@ func main() {
 	redisPool := ardb.NewRedisPool(inMemoryStorage)
 	defer redisPool.Close()
 
-	f := &ardb.BackendFactory{
-		BackendPool:    redisPool,
-		GridAPIAddress: gridapiaddress,
-		LBACacheLimit:  lbacachelimit,
+	storageClusterCfgFactory, err := storage.NewClusterConfigFactory(gridapiaddress)
+	if err != nil {
+		logger.Fatalln("[ERROR]", err)
 	}
 
-	nbd.RegisterBackend("ardb", f.NewBackend)
+	// listens to incoming requests to create a dynamic StorageClusterConfig,
+	// this is run on a goroutine, such that it can create
+	// internal listeners as a goroutine
+	go storageClusterCfgFactory.Listen(configCtx)
+
+	backendFactory, err := ardb.NewBackendFactory(
+		redisPool,
+		storageClusterCfgFactory,
+		gridapiaddress,
+		lbacachelimit,
+	)
+	if err != nil {
+		logger.Fatalln("[ERROR]", err)
+	}
+
+	nbd.RegisterBackend("ardb", backendFactory.NewBackend)
 
 	l, err := nbd.NewListener(logger, s)
 	if err != nil {
-		logger.Fatal(err)
+		logger.Fatalln("[ERROR]", err)
 		return
 	}
 
