@@ -23,3 +23,18 @@ When the nbdserver is running on a unix socket:
 ```
 qemu-img convert -p -n ubuntu-16.04-server-cloudimg-amd64-disk1.img -O nbd nbd+unix:///[VOLUMEID]?socket=/tmp/nbd-socket
 ```
+
+# Create a new volume from a template
+
+Example volumecreation post data:
+```
+{
+    "blocksize":4096,
+    "deduped":true,
+    "driver":"ardb",
+    "readOnly":false,
+    "size":20000000000,
+    "storagecluster":"default",
+    "templatevolume":"roblede"
+}
+```
