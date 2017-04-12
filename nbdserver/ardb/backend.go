@@ -3,7 +3,7 @@ package ardb
 import (
 	"golang.org/x/net/context"
 
-	"github.com/g8os/blockstor/nbdserver/storage"
+	"github.com/g8os/blockstor/storagecluster"
 	"github.com/g8os/gonbdserver/nbd"
 )
 
@@ -12,7 +12,7 @@ type Backend struct {
 	blockSize         int64
 	size              uint64
 	storage           backendStorage
-	storageClusterCfg *storage.ClusterConfig
+	storageClusterCfg *storagecluster.ClusterConfig
 }
 
 //WriteAt implements nbd.Backend.WriteAt

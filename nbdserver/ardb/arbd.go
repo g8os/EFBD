@@ -9,7 +9,7 @@ import (
 
 	gridapi "github.com/g8os/blockstor/gridapi/gridapiclient"
 	"github.com/g8os/blockstor/nbdserver/lba"
-	"github.com/g8os/blockstor/nbdserver/storage"
+	"github.com/g8os/blockstor/storagecluster"
 	"github.com/g8os/gonbdserver/nbd"
 	"github.com/garyburd/redigo/redis"
 )
@@ -22,7 +22,7 @@ const (
 
 // NewBackendFactory creates a new Backend Factory,
 // which is used to create a Backend, without having to work with global variables.
-func NewBackendFactory(pool *RedisPool, scConfigFactory *storage.ClusterConfigFactory, gridAPIAddress string, lbaCacheLimit int64) (*BackendFactory, error) {
+func NewBackendFactory(pool *RedisPool, scConfigFactory *storagecluster.ClusterConfigFactory, gridAPIAddress string, lbaCacheLimit int64) (*BackendFactory, error) {
 	if pool == nil {
 		return nil, errors.New("NewBackendFactory requires a non-nil RedisPool")
 	}
@@ -46,7 +46,7 @@ func NewBackendFactory(pool *RedisPool, scConfigFactory *storage.ClusterConfigFa
 // I hate the factory pattern but I hate global variables even more
 type BackendFactory struct {
 	backendPool     *RedisPool
-	scConfigFactory *storage.ClusterConfigFactory
+	scConfigFactory *storagecluster.ClusterConfigFactory
 	gridAPIAddress  string
 	lbaCacheLimit   int64
 }
@@ -120,7 +120,7 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 }
 
 // newRedisProvider creates a new redis provider
-func newRedisProvider(pool *RedisPool, storageClusterCfg *storage.ClusterConfig) (*redisProvider, error) {
+func newRedisProvider(pool *RedisPool, storageClusterCfg *storagecluster.ClusterConfig) (*redisProvider, error) {
 	if pool == nil {
 		return nil, errors.New(
 			"no redis pool is given, while one is required")
@@ -140,7 +140,7 @@ func newRedisProvider(pool *RedisPool, storageClusterCfg *storage.ClusterConfig)
 // using a modulo index
 type redisProvider struct {
 	redisPool         *RedisPool
-	storageClusterCfg *storage.ClusterConfig
+	storageClusterCfg *storagecluster.ClusterConfig
 }
 
 // GetRedisConnection from the underlying pool, using a modulo index

@@ -15,7 +15,7 @@ import (
 	"github.com/g8os/blockstor/gridapi"
 	"github.com/g8os/blockstor/nbdserver/ardb"
 	"github.com/g8os/blockstor/nbdserver/lba"
-	"github.com/g8os/blockstor/nbdserver/storage"
+	"github.com/g8os/blockstor/storagecluster"
 	"github.com/g8os/gonbdserver/nbd"
 	"golang.org/x/net/context"
 )
@@ -104,7 +104,7 @@ func main() {
 	redisPool := ardb.NewRedisPool(inMemoryStorage)
 	defer redisPool.Close()
 
-	storageClusterCfgFactory, err := storage.NewClusterConfigFactory(gridapiaddress)
+	storageClusterCfgFactory, err := storagecluster.NewClusterConfigFactory(gridapiaddress)
 	if err != nil {
 		logger.Fatalln("[ERROR]", err)
 	}
