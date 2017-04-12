@@ -4,9 +4,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/g8os/blockstor/nbdserver/stubs"
 	"github.com/garyburd/redigo/redis"
 )
+
+// DialFunc creates a redis.Conn (if possible),
+// based on a given connectionString.
+type DialFunc func(connectionString string) (redis.Conn, error)
 
 //RedisPool maintains a collection of redis.Pool's per connection. The application calls the Get method
 // to get a connection from the pool and the connection's Close method to
@@ -17,22 +20,20 @@ type RedisPool struct {
 	lock                    sync.Mutex //protects following
 	connectionSpecificPools map[string]*redis.Pool
 
-	Dial func(connectionString string) (redis.Conn, error)
+	Dial DialFunc
 }
 
 //NewRedisPool creates a new pool for multiple redis servers
-func NewRedisPool(inMemory bool) (p *RedisPool) {
+func NewRedisPool(dial DialFunc) (p *RedisPool) {
 	p = &RedisPool{connectionSpecificPools: make(map[string]*redis.Pool)}
-	if inMemory {
-		inMemoryRedisConnection := stubs.NewMemoryRedisConn()
-		p.Dial = func(connectionString string) (redis.Conn, error) {
-			return inMemoryRedisConnection, nil
-		}
-	} else {
+	if dial == nil {
 		p.Dial = func(connectionString string) (redis.Conn, error) {
 			return redis.Dial("tcp", connectionString)
 		}
+	} else {
+		p.Dial = dial
 	}
+
 	return
 }
 
