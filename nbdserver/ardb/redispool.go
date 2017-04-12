@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/g8os/blockstor/nbdserver/stubs"
+	"github.com/g8os/blockstor/redisstub"
 	"github.com/garyburd/redigo/redis"
 )
 
@@ -24,7 +24,7 @@ type RedisPool struct {
 func NewRedisPool(inMemory bool) (p *RedisPool) {
 	p = &RedisPool{connectionSpecificPools: make(map[string]*redis.Pool)}
 	if inMemory {
-		inMemoryRedisConnection := stubs.NewMemoryRedisConn()
+		inMemoryRedisConnection := redisstub.NewMemoryRedis()
 		p.Dial = func(connectionString string) (redis.Conn, error) {
 			return inMemoryRedisConnection, nil
 		}
