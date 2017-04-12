@@ -192,10 +192,6 @@ func (lba *LBA) storeCacheInExternalStorage() (err error) {
 	}
 	defer conn.Close()
 
-	if err = conn.Send("MULTI"); err != nil {
-		return
-	}
-
 	lba.cache.Serialize(func(index int64, bytes []byte) (err error) {
 		if bytes != nil {
 			err = conn.Send("HSET", lba.volumeID, index, bytes)
@@ -206,7 +202,7 @@ func (lba *LBA) storeCacheInExternalStorage() (err error) {
 	})
 
 	// Write all sets in output buffer to Redis at once
-	_, err = conn.Do("EXEC")
+	err = conn.Flush()
 	if err != nil {
 		// no need to evict, already serialized them
 		evict := false
