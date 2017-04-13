@@ -1,0 +1,76 @@
+{
+	"ImportPath": "github.com/g8os/blockstor/tlogserver",
+	"GoVersion": "go1.8",
+	"GodepVersion": "v79",
+	"Packages": [
+		"./..."
+	],
+	"Deps": [
+		{
+			"ImportPath": "github.com/garyburd/redigo/internal",
+			"Comment": "v1.0.0-21-g0d253a6",
+			"Rev": "0d253a66e6e1349f4581d6d2b300ee434ee2da9f"
+		},
+		{
+			"ImportPath": "github.com/garyburd/redigo/redis",
+			"Comment": "v1.0.0-21-g0d253a6",
+			"Rev": "0d253a66e6e1349f4581d6d2b300ee434ee2da9f"
+		},
+		{
+			"ImportPath": "github.com/glycerine/rbtree",
+			"Rev": "cd7940bb26b149ce2faf398e7c63fff01aa7b394"
+		},
+		{
+			"ImportPath": "github.com/golang/snappy",
+			"Rev": "553a641470496b2327abcac10b36396bd98e45c9"
+		},
+		{
+			"ImportPath": "github.com/klauspost/cpuid",
+			"Comment": "v1.0",
+			"Rev": "09cded8978dc9e80714c4d85b0322337b0a1e5e0"
+		},
+		{
+			"ImportPath": "github.com/klauspost/reedsolomon",
+			"Comment": "1.3",
+			"Rev": "5abf0ee302ccf4834e84f63ff74eca3e8b88e4e2"
+		},
+		{
+			"ImportPath": "github.com/minio/blake2b-simd",
+			"Rev": "3f5f724cb5b182a5c278d6d3d55b40e7f8c2efb4"
+		},
+		{
+			"ImportPath": "golang.org/x/net/context",
+			"Rev": "a6577fac2d73be281a500b310739095313165611"
+		},
+		{
+			"ImportPath": "zombiezen.com/go/capnproto2",
+			"Comment": "v2.12.4-1-g02f1032",
+			"Rev": "02f10324cc25fc4acd262b854872e1e5bddb14f7"
+		},
+		{
+			"ImportPath": "zombiezen.com/go/capnproto2/encoding/text",
+			"Comment": "v2.12.4-1-g02f1032",
+			"Rev": "02f10324cc25fc4acd262b854872e1e5bddb14f7"
+		},
+		{
+			"ImportPath": "zombiezen.com/go/capnproto2/internal/nodemap",
+			"Comment": "v2.12.4-1-g02f1032",
+			"Rev": "02f10324cc25fc4acd262b854872e1e5bddb14f7"
+		},
+		{
+			"ImportPath": "zombiezen.com/go/capnproto2/internal/packed",
+			"Comment": "v2.12.4-1-g02f1032",
+			"Rev": "02f10324cc25fc4acd262b854872e1e5bddb14f7"
+		},
+		{
+			"ImportPath": "zombiezen.com/go/capnproto2/schemas",
+			"Comment": "v2.12.4-1-g02f1032",
+			"Rev": "02f10324cc25fc4acd262b854872e1e5bddb14f7"
+		},
+		{
+			"ImportPath": "zombiezen.com/go/capnproto2/std/capnp/schema",
+			"Comment": "v2.12.4-1-g02f1032",
+			"Rev": "02f10324cc25fc4acd262b854872e1e5bddb14f7"
+		}
+	]
+}
