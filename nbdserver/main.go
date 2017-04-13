@@ -32,7 +32,7 @@ func main() {
 	var exports string
 	var nonDedupedExports string
 	flag.BoolVar(&inMemoryStorage, "memorystorage", false, "Stores the data in memory only, usefull for testing or benchmarking")
-	flag.BoolVar(&tslonly, "tslonly", false, "Forces all nbd connections to be tsl-enabled")
+	flag.BoolVar(&tslonly, "tslonly", false, "Forces all nbd connections to be tls-enabled")
 	flag.StringVar(&profileAddress, "profileaddress", "", "Enables profiling of this server as an http service")
 	flag.StringVar(&protocol, "protocol", "unix", "Protocol to listen on, 'tcp' or 'unix'")
 	flag.StringVar(&address, "address", "/tmp/nbd-socket", "Address to listen on, unix socket or tcp address, ':6666' for example")
