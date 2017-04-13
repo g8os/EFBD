@@ -55,7 +55,6 @@ func (s *Server) handle(conn net.Conn) error {
 		if err != nil {
 			return err
 		}
-		log.Printf("sequence = %v\n", tlb.Sequence())
 		// check crc
 
 		// store packet

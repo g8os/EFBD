@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/garyburd/redigo/redis"
+	"github.com/minio/blake2b-simd"
 	"zombiezen.com/go/capnproto2"
 )
 
@@ -80,17 +81,15 @@ func (f *flusher) flush(volID uint32) error {
 		return err
 	}
 
-	return f.storeEncoded(volID, er_encoded)
+	return f.storeEncoded(volID, blake2b.Sum256(data), er_encoded)
 }
 
-func (f *flusher) storeEncoded(volID uint32, encoded [][]byte) error {
-	hash := "thelast"
-
+func (f *flusher) storeEncoded(volID uint32, key [32]byte, encoded [][]byte) error {
 	// store encoded data
 	for i := 0; i < f.k+f.m; i++ {
 		blocks := encoded[i]
 		rc := f.redisPools[i+1].Get()
-		_, err := rc.Do("SET", hash, blocks)
+		_, err := rc.Do("SET", key, blocks)
 		if err != nil {
 			return err
 		}
@@ -99,7 +98,7 @@ func (f *flusher) storeEncoded(volID uint32, encoded [][]byte) error {
 	// store last hash name
 	lastHashKey := fmt.Sprintf("last_hash_%v", volID)
 	rc := f.redisPools[0].Get()
-	_, err := rc.Do("SET", lastHashKey, hash)
+	_, err := rc.Do("SET", lastHashKey, key)
 	return err
 }
 
