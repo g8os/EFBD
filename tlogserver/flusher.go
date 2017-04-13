@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/garyburd/redigo/redis"
-	"github.com/klauspost/reedsolomon"
 	"zombiezen.com/go/capnproto2"
 )
 
@@ -84,27 +83,6 @@ func (f *flusher) flush(volID uint32) error {
 	return f.storeEncoded(volID, er_encoded)
 }
 
-func (f *flusher) encodeErasure(data []byte) ([][]byte, error) {
-	enc, err := reedsolomon.New(f.k, f.m)
-	if err != nil {
-		return nil, err
-	}
-
-	chunkSize := f.erasure.getChunkSize(len(data))
-
-	encoded := make([][]byte, f.k+f.m)
-	for i := 0; i < f.k+f.m; i++ {
-		encoded[i] = make([]byte, chunkSize)
-	}
-
-	for i := 0; i < f.k; i++ {
-		encoded[i] = data[i*chunkSize : (i+1)*chunkSize]
-	}
-
-	err = enc.Encode(encoded)
-	return encoded, err
-}
-
 func (f *flusher) storeEncoded(volID uint32, encoded [][]byte) error {
 	hash := "thelast"
 
@@ -126,6 +104,9 @@ func (f *flusher) storeEncoded(volID uint32, encoded [][]byte) error {
 }
 
 func (f *flusher) encodeCapnp(volID uint32) ([]byte, error) {
+	f.tlogMutex.Lock()
+	defer f.tlogMutex.Unlock()
+
 	// create aggregation
 	msg, seg, err := capnp.NewMessage(capnp.MultiSegment(nil))
 	if err != nil {
@@ -145,9 +126,11 @@ func (f *flusher) encodeCapnp(volID uint32) ([]byte, error) {
 
 	// add blocks
 	for i := 0; i < blockList.Len(); i++ {
-		block := blockList.At(i)
-		block.SetSequence(uint64(i))
-		block.SetVolumeId(volID)
+		// pop first block
+		block := f.tlogs[volID][0]
+		f.tlogs[volID] = f.tlogs[volID][1:]
+
+		blockList.Set(i, *block)
 	}
 
 	// create buffer
