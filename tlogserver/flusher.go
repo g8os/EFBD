@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/garyburd/redigo/redis"
+	"github.com/klauspost/reedsolomon"
 	"zombiezen.com/go/capnproto2"
 )
 
@@ -75,21 +76,58 @@ func (f *flusher) flush(volID uint32) error {
 		return err
 	}
 	// erasure
-	_, err = f.erasure.encode(data)
+	er_encoded, err := f.erasure.encode1(data)
 	if err != nil {
 		return err
 	}
-	return nil
+
+	return f.storeEncoded(volID, er_encoded)
+}
+
+func (f *flusher) encodeErasure(data []byte) ([][]byte, error) {
+	enc, err := reedsolomon.New(f.k, f.m)
+	if err != nil {
+		return nil, err
+	}
+
+	chunkSize := f.erasure.getChunkSize(len(data))
+
+	encoded := make([][]byte, f.k+f.m)
+	for i := 0; i < f.k+f.m; i++ {
+		encoded[i] = make([]byte, chunkSize)
+	}
+
+	for i := 0; i < f.k; i++ {
+		encoded[i] = data[i*chunkSize : (i+1)*chunkSize]
+	}
+
+	err = enc.Encode(encoded)
+	return encoded, err
+}
+
+func (f *flusher) storeEncoded(volID uint32, encoded [][]byte) error {
+	hash := "thelast"
+
+	// store encoded data
+	for i := 0; i < f.k+f.m; i++ {
+		blocks := encoded[i]
+		rc := f.redisPools[i+1].Get()
+		_, err := rc.Do("SET", hash, blocks)
+		if err != nil {
+			return err
+		}
+	}
+
+	// store last hash name
+	lastHashKey := fmt.Sprintf("last_hash_%v", volID)
+	rc := f.redisPools[0].Get()
+	_, err := rc.Do("SET", lastHashKey, hash)
+	return err
 }
 
 func (f *flusher) encodeCapnp(volID uint32) ([]byte, error) {
-	// create buffer
-	dataSize := (f.flushSize * f.packetSize) + 200 // TODO:make it precise
-	data := make([]byte, dataSize)
-	buf := bytes.NewBuffer(data)
-
 	// create aggregation
-	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
+	msg, seg, err := capnp.NewMessage(capnp.MultiSegment(nil))
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +138,7 @@ func (f *flusher) encodeCapnp(volID uint32) ([]byte, error) {
 
 	agg.SetName("The Go Tlog")
 	agg.SetSize(uint64(f.flushSize))
-	blockList, err := agg.NewBlocks(int32(agg.Size()))
+	blockList, err := agg.NewBlocks(int32(f.flushSize))
 	if err != nil {
 		return nil, err
 	}
@@ -111,6 +149,12 @@ func (f *flusher) encodeCapnp(volID uint32) ([]byte, error) {
 		block.SetSequence(uint64(i))
 		block.SetVolumeId(volID)
 	}
+
+	// create buffer
+	dataSize := (f.flushSize * f.packetSize) + 200 // TODO:make it precise
+	data := make([]byte, dataSize)
+	buf := bytes.NewBuffer(data)
+	buf.Truncate(0)
 
 	err = capnp.NewEncoder(buf).Encode(msg)
 	return buf.Bytes(), err

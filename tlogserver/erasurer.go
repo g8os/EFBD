@@ -6,6 +6,8 @@ package main
 import "C"
 import (
 	"unsafe"
+
+	"github.com/klauspost/reedsolomon"
 )
 
 type erasurer struct {
@@ -25,7 +27,25 @@ func newErasurer(k, m int) *erasurer {
 	}
 }
 
-func (e *erasurer) encode(data []byte) ([][]byte, error) {
+func (e *erasurer) encodeKlauspost(data []byte) ([][]byte, error) {
+	enc, err := reedsolomon.New(e.K, e.M)
+	if err != nil {
+		return nil, err
+	}
+
+	chunkSize := e.getChunkSize(len(data))
+
+	encoded := make([][]byte, e.K+e.M)
+	for i := 0; i < e.K+e.M; i++ {
+		encoded[i] = make([]byte, chunkSize)
+	}
+	for i := 0; i < e.K; i++ {
+		copy(encoded[i], data[i*chunkSize:(i+1)*chunkSize])
+	}
+	err = enc.Encode(encoded)
+	return encoded, err
+}
+func (e *erasurer) encodeIsal(data []byte) ([][]byte, error) {
 	chunkSize := e.getChunkSize(len(data))
 	encodedLen := chunkSize * e.K
 
@@ -55,9 +75,9 @@ func (e *erasurer) encode(data []byte) ([][]byte, error) {
 		encodedBlocksPtr[i] = &encodedBlocks[i][0]
 	}
 
-	C.ec_encode_data(C.int(chunkSize), C.int(e.K), C.int(e.M), unsafe.Pointer(e.encodeTab),
-		(**C.uchar)(unsafe.Pointer(&encodedBlocksPtr)), // Pointers to data blocks
-		(**C.uchar)(unsafe.Pointer(&encodedBlocksPtr))) // Pointers to parity blocks
+	C.ec_encode_data(C.int(chunkSize), C.int(e.K), C.int(e.M), e.encodeTab,
+		(**C.uchar)(unsafe.Pointer(&encodedBlocksPtr[:e.K][0])), // Pointers to data blocks
+		(**C.uchar)(unsafe.Pointer(&encodedBlocksPtr[e.K:][0]))) // Pointers to parity blocks
 
 	return encodedBlocks, nil
 }

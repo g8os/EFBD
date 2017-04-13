@@ -42,6 +42,5 @@ func main() {
 		log.Fatalf("failed to create server:%v\n", err)
 	}
 
-	// run forever
 	server.Listen()
 }
