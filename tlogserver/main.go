@@ -29,7 +29,7 @@ func main() {
 	flag.StringVar(&conf.firstObjStorAddr, "first-objstor-addr", "127.0.0.1", "first objstor addr")
 	flag.IntVar(&conf.firstObjStorPort, "first-objstor-port", 16379, "first objstor port")
 	flag.StringVar(&conf.privKey, "priv-key", "12345678901234567890123456789012", "private key")
-	flag.IntVar(&conf.bufSize, "buf-size", 16472, "buffer")
+	flag.IntVar(&conf.bufSize, "buf-size", 16488, "buffer")
 
 	flag.Parse()
 
