@@ -5,6 +5,9 @@ go:
   - 1.7
   - 1.8
 
+before_install:
+  - ./tlogserver/install_dependencies.sh
+
 script:
   - go test $(go list ./... | grep -v vendor)
   - ./scripts/codegeneration.sh
