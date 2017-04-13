@@ -1,11 +1,17 @@
 package main
 
+// #include <isa-l_crypto/aes_cbc.h>
+// #include <isa-l_crypto/aes_keyexp.h>
+// #cgo LDFLAGS: -lisal_crypto
+import "C"
+
 import (
 	"bytes"
 	"fmt"
 	"log"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/garyburd/redigo/redis"
 	"github.com/golang/snappy"
@@ -80,13 +86,48 @@ func (f *flusher) flush(volID uint32) error {
 	compressed := make([]byte, snappy.MaxEncodedLen(len(data)))
 	compressed = snappy.Encode(compressed[:], data[:])
 
+	encrypted := f.encrypt(compressed)
+
 	// erasure
-	er_encoded, err := f.erasure.encodeIsal(compressed[:])
+	er_encoded, err := f.erasure.encodeIsal(encrypted[:])
 	if err != nil {
 		return err
 	}
 
-	return f.storeEncoded(volID, blake2b.Sum256(compressed), er_encoded)
+	return f.storeEncoded(volID, blake2b.Sum256(encrypted), er_encoded)
+}
+
+func (f *flusher) encrypt(data []byte) []byte {
+	// TODO : this initialization should be moved to somewhere else
+	iv := make([]byte, 16)
+	for i := 0; i < len(iv); i++ {
+		iv[i] = '0'
+	}
+	encKey := make([]byte, 256)
+	decKey := make([]byte, 256)
+	bPrivKey := []byte(f.privKey)
+
+	C.aes_keyexp_256((*C.uint8_t)(unsafe.Pointer(&bPrivKey[0])),
+		(*C.uint8_t)(unsafe.Pointer(&encKey[0])),
+		(*C.uint8_t)(unsafe.Pointer(&decKey[0])))
+
+	// alignment
+	alignSize := 16 - (len(data) % 16)
+	if alignSize > 0 {
+		pad := make([]byte, alignSize)
+		data = append(data, pad...)
+	}
+
+	encrypted := make([]byte, len(data))
+
+	// call the devil!!
+	C.aes_cbc_enc_256((unsafe.Pointer(&data[0])),
+		(*C.uint8_t)(unsafe.Pointer(&iv[0])),
+		(*C.uint8_t)(unsafe.Pointer(&encKey[0])),
+		(unsafe.Pointer(&encrypted[0])),
+		(C.uint64_t)(len(data)))
+
+	return encrypted[:]
 }
 
 func (f *flusher) storeEncoded(volID uint32, key [32]byte, encoded [][]byte) error {
