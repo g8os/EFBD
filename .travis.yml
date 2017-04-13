@@ -1,3 +1,4 @@
+sudo: required
 language: go
 
 go:
@@ -5,7 +6,7 @@ go:
   - 1.7
   - 1.8
 
-before_install:
+install:
   - ./tlogserver/install_dependencies.sh
 
 script:
