@@ -12,7 +12,7 @@ type Volume struct {
 	Status             EnumVolumeStatus     `json:"status" validate:"nonzero"`
 	Storagecluster     string               `json:"storagecluster" validate:"nonzero"`
 	TlogStoragecluster string               `json:"tlogStoragecluster" validate:"nonzero"`
-	Volumetype         EnumVolumeVolumetype `json:"volumetype" validate:"nonzero"`
+	Volumetype         EnumVolumeVolumetype `json:"type" validate:"nonzero"`
 }
 
 func (s Volume) Validate() error {
