@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/garyburd/redigo/redis"
+	"github.com/golang/snappy"
 	"github.com/minio/blake2b-simd"
 	"zombiezen.com/go/capnproto2"
 )
@@ -75,13 +76,17 @@ func (f *flusher) flush(volID uint32) error {
 	if err != nil {
 		return err
 	}
+	// compress
+	compressed := make([]byte, snappy.MaxEncodedLen(len(data)))
+	compressed = snappy.Encode(compressed[:], data[:])
+
 	// erasure
-	er_encoded, err := f.erasure.encodeIsal(data)
+	er_encoded, err := f.erasure.encodeIsal(compressed[:])
 	if err != nil {
 		return err
 	}
 
-	return f.storeEncoded(volID, blake2b.Sum256(data), er_encoded)
+	return f.storeEncoded(volID, blake2b.Sum256(compressed), er_encoded)
 }
 
 func (f *flusher) storeEncoded(volID uint32, key [32]byte, encoded [][]byte) error {
