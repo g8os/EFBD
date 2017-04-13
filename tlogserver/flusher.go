@@ -76,7 +76,7 @@ func (f *flusher) flush(volID uint32) error {
 		return err
 	}
 	// erasure
-	er_encoded, err := f.erasure.encode1(data)
+	er_encoded, err := f.erasure.encodeIsal(data)
 	if err != nil {
 		return err
 	}
