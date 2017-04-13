@@ -13,13 +13,13 @@ import (
 type erasurer struct {
 	K         int
 	M         int
-	encodeTab *C.uchar
+	encodeTab []byte
 }
 
 func newErasurer(k, m int) *erasurer {
-	var encodeTab *C.uchar
+	encodeTab := make([]byte, 32*k*(k+m))
 
-	C.init_encode_tab(C.int(k), C.int(m), &encodeTab)
+	C.init_encode_tab(C.int(k), C.int(m), (*C.uchar)(unsafe.Pointer(&encodeTab[0])))
 	return &erasurer{
 		K:         k,
 		M:         m,
@@ -75,7 +75,8 @@ func (e *erasurer) encodeIsal(data []byte) ([][]byte, error) {
 		encodedBlocksPtr[i] = &encodedBlocks[i][0]
 	}
 
-	C.ec_encode_data(C.int(chunkSize), C.int(e.K), C.int(e.M), e.encodeTab,
+	C.ec_encode_data(C.int(chunkSize), C.int(e.K), C.int(e.M),
+		(*C.uchar)(unsafe.Pointer(&e.encodeTab[0])),
 		(**C.uchar)(unsafe.Pointer(&encodedBlocksPtr[:e.K][0])), // Pointers to data blocks
 		(**C.uchar)(unsafe.Pointer(&encodedBlocksPtr[e.K:][0]))) // Pointers to parity blocks
 
