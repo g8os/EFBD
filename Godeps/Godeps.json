@@ -34,7 +34,7 @@
 		},
 		{
 			"ImportPath": "github.com/g8os/gonbdserver/nbd",
-			"Rev": "8a07ae671de49b6c4eb072d7366792ac3a703576"
+			"Rev": "12141ac5bd54edb6ea371d6a1d0ef0a1632bf07d"
 		},
 		{
 			"ImportPath": "github.com/garyburd/redigo/internal",
@@ -52,6 +52,10 @@
 		{
 			"ImportPath": "github.com/golang/snappy",
 			"Rev": "553a641470496b2327abcac10b36396bd98e45c9"
+		},
+		{
+			"ImportPath": "github.com/glendc/go-mini-log",
+			"Rev": "854132bc73fb56a32008220cfbc269fa5814204a"
 		},
 		{
 			"ImportPath": "github.com/gorilla/mux",
