@@ -17,7 +17,11 @@ import (
 // shared constants
 const (
 	// DefaultLBACacheLimit defines the default cache limit
-	DefaultLBACacheLimit = 20 * 1024 * 1024 // 20 mB
+	DefaultLBACacheLimit = 20 * mebibyteAsBytes // 20 MiB
+	// to convert the volume size returned from the GridAPI,
+	// from GiB to Bytes
+	gibibyteAsBytes int64 = 1024 * 1024 * 1024
+	mebibyteAsBytes int64 = 1024 * 1024
 )
 
 // NewBackendFactory creates a new Backend Factory,
@@ -78,6 +82,9 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	var storage backendStorage
 	blockSize := int64(volumeInfo.Blocksize)
 
+	// GridAPI returns the volume size in GiB
+	volumeSize := int64(volumeInfo.Size) * gibibyteAsBytes
+
 	switch volumeInfo.Volumetype {
 	case gridapi.EnumVolumeVolumetypedb, gridapi.EnumVolumeVolumetypecache:
 		storage = newNonDedupedStorage(volumeID, blockSize, redisProvider)
@@ -87,7 +94,6 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 			cacheLimit = DefaultLBACacheLimit
 		}
 
-		volumeSize := int64(volumeInfo.Size)
 		blockCount := volumeSize / blockSize
 		if volumeSize%blockSize > 0 {
 			blockCount++
@@ -112,7 +118,7 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 
 	backend = &Backend{
 		blockSize:         blockSize,
-		size:              uint64(volumeInfo.Size),
+		size:              uint64(volumeSize),
 		storage:           storage,
 		storageClusterCfg: storageClusterCfg,
 	}

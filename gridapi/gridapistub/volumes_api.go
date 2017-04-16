@@ -45,7 +45,7 @@ func (api VolumesAPI) GetVolumeInfo(w http.ResponseWriter, r *http.Request) {
 	var respBody Volume
 	respBody.Blocksize = 4096
 	respBody.Id = volumeID
-	respBody.Size = 20000000000
+	respBody.Size = 20 // 20 GiB
 	respBody.Storagecluster = "default"
 	respBody.Volumetype = EnumVolumeVolumetypeboot
 	respBody.ReadOnly = false
