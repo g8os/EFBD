@@ -3,9 +3,10 @@ package ardb
 import (
 	"errors"
 	"fmt"
-	"log"
 
 	"golang.org/x/net/context"
+
+	log "github.com/glendc/go-mini-log"
 
 	gridapi "github.com/g8os/blockstor/gridapi/gridapiclient"
 	"github.com/g8os/blockstor/nbdserver/lba"
@@ -63,7 +64,7 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	// which is used to dynamically reload the configuration
 	storageClusterCfg, err := f.scConfigFactory.NewConfig(volumeID)
 	if err != nil {
-		log.Println("[ERROR]", err)
+		log.Infof("couldn't get storage cluster info: %s", err.Error())
 		return
 	}
 
@@ -72,10 +73,10 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	//Get information about the volume
 	g8osClient := gridapi.NewG8OSStatelessGRID()
 	g8osClient.BaseURI = f.gridAPIAddress
-	log.Println("[INFO] Starting volume", volumeID)
+	log.Info("starting volume", volumeID)
 	volumeInfo, _, err := g8osClient.Volumes.GetVolumeInfo(volumeID, nil, nil)
 	if err != nil {
-		log.Println("[ERROR]", err)
+		log.Infof("couldn't get volune info: %s", err.Error())
 		return
 	}
 
@@ -107,7 +108,7 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 			redisProvider,
 		)
 		if err != nil {
-			log.Println("[ERROR]", err)
+			log.Infof("couldn't create LBA: %s", err.Error())
 			return
 		}
 

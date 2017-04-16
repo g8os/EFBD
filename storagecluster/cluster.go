@@ -2,12 +2,13 @@ package storagecluster
 
 import (
 	"errors"
-	"log"
 	"os"
 	"os/signal"
 	"strconv"
 	"sync"
 	"syscall"
+
+	log "github.com/glendc/go-mini-log"
 
 	gridapi "github.com/g8os/blockstor/gridapi/gridapiclient"
 	"golang.org/x/net/context"
@@ -57,7 +58,6 @@ func (f *ClusterConfigFactory) Listen(ctx context.Context) {
 			cfg, err := newClusterConfig(
 				f.gridapiaddress,
 				volumeID,
-				nil, // no logger
 			)
 			if err != nil {
 				// couldn't create cfg, early exit
@@ -84,17 +84,12 @@ type clusterConfigResponse struct {
 }
 
 // newClusterConfig creates a new cluster config
-func newClusterConfig(gridapiaddress, volumeID string, logger *log.Logger) (*ClusterConfig, error) {
-	if logger == nil {
-		logger = log.New(os.Stderr, "", log.LstdFlags)
-	}
-
+func newClusterConfig(gridapiaddress, volumeID string) (*ClusterConfig, error) {
 	client := gridapi.NewG8OSStatelessGRID()
 	client.BaseURI = gridapiaddress
 
 	cfg := &ClusterConfig{
 		client:   client,
-		logger:   logger,
 		volumeID: volumeID,
 		done:     make(chan struct{}, 1),
 	}
@@ -110,7 +105,6 @@ func newClusterConfig(gridapiaddress, volumeID string, logger *log.Logger) (*Clu
 // which gets reloaded based on incoming SIGHUP signals.
 type ClusterConfig struct {
 	client   *gridapi.G8OSStatelessGRID
-	logger   *log.Logger
 	volumeID string
 
 	// keep type, such that we can check this,
@@ -176,7 +170,7 @@ func (cfg *ClusterConfig) Close() {
 // listen to incoming signals,
 // and reload configuration when receiving a SIGHUP signal.
 func (cfg *ClusterConfig) listen(ctx context.Context) {
-	cfg.logger.Println("[INFO] ready to reload StorageClusterConfig upon SIGHUP receival for:", cfg.volumeID)
+	log.Info("ready to reload StorageClusterConfig upon SIGHUP receival for:", cfg.volumeID)
 
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGHUP)
@@ -187,22 +181,22 @@ func (cfg *ClusterConfig) listen(ctx context.Context) {
 		case s := <-ch:
 			switch s {
 			case syscall.SIGHUP:
-				cfg.logger.Printf("[INFO] %q received SIGHUP Signal", cfg.volumeID)
+				log.Infof("%q received SIGHUP Signal", cfg.volumeID)
 				func() {
 					cfg.mux.Lock()
 					defer cfg.mux.Unlock()
 					cfg.loadConfig()
 				}()
 			default:
-				cfg.logger.Println("[WARN] received unsupported signal", s)
+				log.Info("received unsupported signal", s)
 			}
 
 		case <-cfg.done:
-			cfg.logger.Println("[INFO] exit listener for StorageClusterConfig for volume:", cfg.volumeID)
+			log.Info("exit listener for StorageClusterConfig for volume:", cfg.volumeID)
 			return
 
 		case <-ctx.Done():
-			cfg.logger.Println("[WARN] abort listener for StorageClusterConfig for volume:", cfg.volumeID)
+			log.Info("abort listener for StorageClusterConfig for volume:", cfg.volumeID)
 			return
 		}
 	}
@@ -211,19 +205,18 @@ func (cfg *ClusterConfig) listen(ctx context.Context) {
 func (cfg *ClusterConfig) loadConfig() bool {
 	cfg.loaded = false
 
-	cfg.logger.Println("[INFO] loading storage cluster config")
+	log.Info("loading storage cluster config")
 
 	// get volume info
 	volumeInfo, _, err := cfg.client.Volumes.GetVolumeInfo(cfg.volumeID, nil, nil)
 	if err != nil {
-		cfg.logger.Println("[ERROR]", err)
+		log.Infof("couldn't get volumeInfo: %s", err.Error())
 		return false
 	}
 
 	// check volumeType, and sure it's the same one as last time
 	if cfg.volumeType != "" && cfg.volumeType != volumeInfo.Volumetype {
-		cfg.logger.Printf(
-			"[ERROR] wrong type for volume %q, expected %q, while received %q",
+		log.Infof("wrong type for volume %q, expected %q, while received %q",
 			cfg.volumeID, cfg.volumeType, volumeInfo.Volumetype)
 		return false
 	}
@@ -232,7 +225,7 @@ func (cfg *ClusterConfig) loadConfig() bool {
 	//Get information about the backend storage nodes
 	storageClusterInfo, _, err := cfg.client.Storageclusters.GetClusterInfo(volumeInfo.Storagecluster, nil, nil)
 	if err != nil {
-		cfg.logger.Println("[ERROR]", err)
+		log.Infof("couldn't get storage cluster info: %s", err.Error())
 		return false
 	}
 
@@ -240,13 +233,13 @@ func (cfg *ClusterConfig) loadConfig() bool {
 	cfg.servers = storageClusterInfo.DataStorage
 	cfg.numberOfServers = len(cfg.servers)
 	if cfg.numberOfServers < 1 {
-		cfg.logger.Println("[ERROR] received no storageBackendController, while at least 1 is required")
+		log.Info("received no storageBackendController, while at least 1 is required")
 		return false
 	}
 
 	// used to store metadata
 	if len(storageClusterInfo.MetadataStorage) < 1 {
-		cfg.logger.Printf("[ERROR] No metadata servers available in storagecluster %s", volumeInfo.Storagecluster)
+		log.Infof("No metadata servers available in storagecluster %s", volumeInfo.Storagecluster)
 		return false
 	}
 	cfg.metaConnectionString = connectionStringFromHAStorageServer(storageClusterInfo.MetadataStorage[0])
