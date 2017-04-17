@@ -57,16 +57,16 @@ func (s *Server) handle(conn net.Conn) error {
 		}
 		// check crc
 
-		// store packet
-		s.f.store(tlb)
+		// store
+		resp := s.f.store(tlb)
 
-		// check if we can do flush
-		if err := s.f.checkDoFlush(tlb.VolumeId()); err != nil {
-			log.Printf("[ERROR] flush : %v\n", err)
+		if err := resp.write(conn); err != nil {
+			return err
 		}
 	}
 }
 
+// decode tlog message from client
 func (s *Server) decode(r io.Reader) (*TlogBlock, error) {
 	msg, err := capnp.NewDecoder(r).Decode()
 	if err != nil {

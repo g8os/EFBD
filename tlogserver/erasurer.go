@@ -86,7 +86,7 @@ func (e *erasurer) encodeIsal(data []byte) ([][]byte, error) {
 func (e *erasurer) getChunkSize(dataLen int) int {
 	size := dataLen / e.K
 	if dataLen%e.K > 0 {
-		size += 1
+		size++
 	}
 	return size
 }

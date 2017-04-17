@@ -62,26 +62,47 @@ func newFlusher(conf *config) *flusher {
 	}
 }
 
-func (f *flusher) store(tlb *TlogBlock) {
+func (f *flusher) store(tlb *TlogBlock) *response {
 	f.tlogMutex.Lock()
 	defer f.tlogMutex.Unlock()
 	f.tlogs[tlb.VolumeId()] = append(f.tlogs[tlb.VolumeId()], tlb)
-}
 
-func (f *flusher) checkDoFlush(volID uint32) error {
-	if !f.okToFlush(volID, false) {
-		return nil
-	}
-	return f.flush(volID)
-}
-
-func (f *flusher) flush(volID uint32) error {
-	log.Printf("flush : %v\n", volID)
-	// capnp -> byte
-	data, err := f.encodeCapnp(volID)
+	seqs, err := f.checkDoFlush(tlb.VolumeId())
 	if err != nil {
-		return err
+		return &response{
+			Status: -1,
+		}
 	}
+	status := int8(1)
+	if err == nil && (seqs == nil || len(seqs) == 0) {
+		seqs = []uint64{tlb.Sequence()}
+		status = 0
+	}
+
+	return &response{
+		Status:    status,
+		Sequences: seqs,
+	}
+}
+
+func (f *flusher) checkDoFlush(volID uint32) ([]uint64, error) {
+	blocks := f.pickToFlush(volID, false)
+	if blocks == nil {
+		return []uint64{}, nil
+	}
+
+	return f.flush(volID, blocks[:])
+}
+
+func (f *flusher) flush(volID uint32, blocks []*TlogBlock) ([]uint64, error) {
+	log.Printf("flush : %v\n", volID)
+
+	// capnp -> byte
+	data, err := f.encodeCapnp(volID, blocks[:])
+	if err != nil {
+		return nil, err
+	}
+
 	// compress
 	compressed := make([]byte, snappy.MaxEncodedLen(len(data)))
 	compressed = snappy.Encode(compressed[:], data[:])
@@ -89,12 +110,22 @@ func (f *flusher) flush(volID uint32) error {
 	encrypted := f.encrypt(compressed)
 
 	// erasure
-	er_encoded, err := f.erasure.encodeIsal(encrypted[:])
+	erEncoded, err := f.erasure.encodeIsal(encrypted[:])
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return f.storeEncoded(volID, blake2b.Sum256(encrypted), er_encoded)
+	// store to ardb
+	if err := f.storeEncoded(volID, blake2b.Sum256(encrypted), erEncoded); err != nil {
+		return nil, err
+	}
+
+	seqs := make([]uint64, len(blocks))
+	for i := 0; i < len(blocks); i++ {
+		seqs[i] = blocks[i].Sequence()
+	}
+
+	return seqs[:], nil
 }
 
 func (f *flusher) encrypt(data []byte) []byte {
@@ -148,11 +179,8 @@ func (f *flusher) storeEncoded(volID uint32, key [32]byte, encoded [][]byte) err
 	return err
 }
 
-func (f *flusher) encodeCapnp(volID uint32) ([]byte, error) {
-	f.tlogMutex.Lock()
-	defer f.tlogMutex.Unlock()
-
-	// create aggregation
+func (f *flusher) encodeCapnp(volID uint32, blocks []*TlogBlock) ([]byte, error) {
+	// create capnp aggregation
 	msg, seg, err := capnp.NewMessage(capnp.MultiSegment(nil))
 	if err != nil {
 		return nil, err
@@ -163,19 +191,15 @@ func (f *flusher) encodeCapnp(volID uint32) ([]byte, error) {
 	}
 
 	agg.SetName("The Go Tlog")
-	agg.SetSize(uint64(f.flushSize))
-	blockList, err := agg.NewBlocks(int32(f.flushSize))
+	agg.SetSize(uint64(len(blocks)))
+	blockList, err := agg.NewBlocks(int32(len(blocks)))
 	if err != nil {
 		return nil, err
 	}
 
 	// add blocks
 	for i := 0; i < blockList.Len(); i++ {
-		// pop first block
-		block := f.tlogs[volID][0]
-		f.tlogs[volID] = f.tlogs[volID][1:]
-
-		blockList.Set(i, *block)
+		blockList.Set(i, *blocks[i])
 	}
 
 	// create buffer
@@ -188,13 +212,20 @@ func (f *flusher) encodeCapnp(volID uint32) ([]byte, error) {
 	return buf.Bytes(), err
 }
 
-func (f *flusher) okToFlush(volID uint32, periodic bool) bool {
-	f.tlogMutex.RLock()
-	defer f.tlogMutex.RUnlock()
-
+// pick packets/tlogs to be flushed
+func (f *flusher) pickToFlush(volID uint32, periodic bool) []*TlogBlock {
 	if !periodic && len(f.tlogs[volID]) < f.flushSize {
-		return false
+		return nil
 	}
 
-	return true
+	sizeToPick := f.flushSize
+	if len(f.tlogs[volID]) < f.flushSize {
+		sizeToPick = len(f.tlogs[volID])
+	}
+
+	blocks := f.tlogs[volID][:sizeToPick]
+
+	f.tlogs[volID] = f.tlogs[volID][sizeToPick:]
+
+	return blocks
 }
