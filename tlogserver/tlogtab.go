@@ -21,12 +21,18 @@ func newTlogTab(volID uint32) *tlogTab {
 
 // check if this volume ID need to be flushed
 func (t *tlogTab) needFlush(flushSize, flushTime int, periodic bool) bool {
-	if len(t.tlogs) < flushSize {
+	if !periodic && len(t.tlogs) < flushSize {
 		return false
 	}
+
+	if periodic && len(t.tlogs) == 0 {
+		return false
+	}
+
 	if periodic && int(time.Since(t.lastFlush).Seconds()) < flushTime {
 		return false
 	}
+
 	return true
 }
 
@@ -50,6 +56,9 @@ func (t *tlogTab) Pick(flushSize, flushTime int, periodic bool) ([]*TlogBlock, b
 	blocks := t.tlogs[:pickLen]
 
 	t.tlogs = t.tlogs[pickLen:]
+
+	// update last flush\
+	t.lastFlush = time.Now()
 
 	return blocks, true
 }

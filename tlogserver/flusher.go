@@ -43,7 +43,7 @@ func newFlusher(conf *config) *flusher {
 		}
 	}
 
-	return &flusher{
+	f := &flusher{
 		k:          conf.K,
 		m:          conf.M,
 		flushSize:  conf.flushSize,
@@ -54,6 +54,8 @@ func newFlusher(conf *config) *flusher {
 		erasure:    newErasurer(conf.K, conf.M),
 		tlogs:      map[uint32]*tlogTab{},
 	}
+	go f.periodicFlush()
+	return f
 }
 
 func (f *flusher) getTlogTab(volID uint32) *tlogTab {
@@ -65,16 +67,14 @@ func (f *flusher) getTlogTab(volID uint32) *tlogTab {
 	return tab
 }
 
-/*
 func (f *flusher) periodicFlush() {
-	tick := time.NewTicker(1 * time.Second)
+	tick := time.Tick(2 * time.Second)
 	for range tick {
-		for volID, logs := range f.tlogs {
-			f.tlogMutex.RLock()
-			f.tlogMutex.RUnlock()
+		for volID, tab := range f.tlogs {
+			f.checkDoFlush(volID, tab, true)
 		}
 	}
-}*/
+}
 
 // store a tlog message and check if we can flush.
 func (f *flusher) store(tlb *TlogBlock) *response {
@@ -83,12 +83,13 @@ func (f *flusher) store(tlb *TlogBlock) *response {
 	tab.Add(tlb)
 
 	// check if we can do flush and do it
-	seqs, err := f.checkDoFlush(tlb.VolumeId(), tab)
+	seqs, err := f.checkDoFlush(tlb.VolumeId(), tab, false)
 	if err != nil {
 		return &response{
 			Status: -1,
 		}
 	}
+
 	status := int8(1)
 	if err == nil && (seqs == nil || len(seqs) == 0) {
 		seqs = []uint64{tlb.Sequence()}
@@ -102,8 +103,8 @@ func (f *flusher) store(tlb *TlogBlock) *response {
 }
 
 // check if we can flush and do it
-func (f *flusher) checkDoFlush(volID uint32, tab *tlogTab) ([]uint64, error) {
-	blocks, needFlush := tab.Pick(f.flushSize, f.flushTime, false)
+func (f *flusher) checkDoFlush(volID uint32, tab *tlogTab, periodic bool) ([]uint64, error) {
+	blocks, needFlush := tab.Pick(f.flushSize, f.flushTime, periodic)
 	if !needFlush {
 		return []uint64{}, nil
 	}
