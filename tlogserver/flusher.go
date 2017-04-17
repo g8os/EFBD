@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"fmt"
 	"log"
-	"sync"
 	"time"
 	"unsafe"
 
@@ -29,11 +28,7 @@ type flusher struct {
 
 	redisPools map[int]*redis.Pool
 	erasure    *erasurer
-	// TODO
-	// improve the mutex to be more fine grained
-	// make it one mutex per volumeID
-	tlogs     map[uint32][]*TlogBlock
-	tlogMutex sync.RWMutex
+	tlogs      map[uint32]*tlogTab
 }
 
 func newFlusher(conf *config) *flusher {
@@ -41,7 +36,6 @@ func newFlusher(conf *config) *flusher {
 	pools := make(map[int]*redis.Pool, 1+conf.K+conf.M)
 	for i := 0; i < conf.K+conf.M+1; i++ {
 		addr := fmt.Sprintf("%v:%v", conf.firstObjStorAddr, conf.firstObjStorPort+i)
-		fmt.Printf("addr:%v\n", addr)
 		pools[i] = &redis.Pool{
 			MaxIdle:     3,
 			IdleTimeout: 240 * time.Second,
@@ -58,16 +52,38 @@ func newFlusher(conf *config) *flusher {
 		packetSize: conf.bufSize,
 		redisPools: pools,
 		erasure:    newErasurer(conf.K, conf.M),
-		tlogs:      map[uint32][]*TlogBlock{},
+		tlogs:      map[uint32]*tlogTab{},
 	}
 }
 
-func (f *flusher) store(tlb *TlogBlock) *response {
-	f.tlogMutex.Lock()
-	defer f.tlogMutex.Unlock()
-	f.tlogs[tlb.VolumeId()] = append(f.tlogs[tlb.VolumeId()], tlb)
+func (f *flusher) getTlogTab(volID uint32) *tlogTab {
+	tab, ok := f.tlogs[volID]
+	if !ok {
+		tab = newTlogTab(volID)
+		f.tlogs[volID] = tab
+	}
+	return tab
+}
 
-	seqs, err := f.checkDoFlush(tlb.VolumeId())
+/*
+func (f *flusher) periodicFlush() {
+	tick := time.NewTicker(1 * time.Second)
+	for range tick {
+		for volID, logs := range f.tlogs {
+			f.tlogMutex.RLock()
+			f.tlogMutex.RUnlock()
+		}
+	}
+}*/
+
+// store a tlog message and check if we can flush.
+func (f *flusher) store(tlb *TlogBlock) *response {
+	// add blocks to tlog table
+	tab := f.getTlogTab(tlb.VolumeId())
+	tab.Add(tlb)
+
+	// check if we can do flush and do it
+	seqs, err := f.checkDoFlush(tlb.VolumeId(), tab)
 	if err != nil {
 		return &response{
 			Status: -1,
@@ -85,9 +101,10 @@ func (f *flusher) store(tlb *TlogBlock) *response {
 	}
 }
 
-func (f *flusher) checkDoFlush(volID uint32) ([]uint64, error) {
-	blocks := f.pickToFlush(volID, false)
-	if blocks == nil {
+// check if we can flush and do it
+func (f *flusher) checkDoFlush(volID uint32, tab *tlogTab) ([]uint64, error) {
+	blocks, needFlush := tab.Pick(f.flushSize, f.flushTime, false)
+	if !needFlush {
 		return []uint64{}, nil
 	}
 
@@ -95,7 +112,7 @@ func (f *flusher) checkDoFlush(volID uint32) ([]uint64, error) {
 }
 
 func (f *flusher) flush(volID uint32, blocks []*TlogBlock) ([]uint64, error) {
-	log.Printf("flush : %v\n", volID)
+	log.Printf("flush @ vol id: %v, size:%v\n", volID, len(blocks))
 
 	// capnp -> byte
 	data, err := f.encodeCapnp(volID, blocks[:])
@@ -210,22 +227,4 @@ func (f *flusher) encodeCapnp(volID uint32, blocks []*TlogBlock) ([]byte, error)
 
 	err = capnp.NewEncoder(buf).Encode(msg)
 	return buf.Bytes(), err
-}
-
-// pick packets/tlogs to be flushed
-func (f *flusher) pickToFlush(volID uint32, periodic bool) []*TlogBlock {
-	if !periodic && len(f.tlogs[volID]) < f.flushSize {
-		return nil
-	}
-
-	sizeToPick := f.flushSize
-	if len(f.tlogs[volID]) < f.flushSize {
-		sizeToPick = len(f.tlogs[volID])
-	}
-
-	blocks := f.tlogs[volID][:sizeToPick]
-
-	f.tlogs[volID] = f.tlogs[volID][sizeToPick:]
-
-	return blocks
 }
