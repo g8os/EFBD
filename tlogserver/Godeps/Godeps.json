@@ -40,37 +40,37 @@
 		},
 		{
 			"ImportPath": "golang.org/x/net/context",
-			"Rev": "a6577fac2d73be281a500b310739095313165611"
+			"Rev": "5602c733f70afc6dcec6766be0d5034d4c4f14de"
 		},
 		{
 			"ImportPath": "zombiezen.com/go/capnproto2",
-			"Comment": "v2.12.4-1-g02f1032",
-			"Rev": "02f10324cc25fc4acd262b854872e1e5bddb14f7"
+			"Comment": "v2.13.0-5-g28f2e70",
+			"Rev": "28f2e70113b36f2cb5b9800929a49550004dbb43"
 		},
 		{
 			"ImportPath": "zombiezen.com/go/capnproto2/encoding/text",
-			"Comment": "v2.12.4-1-g02f1032",
-			"Rev": "02f10324cc25fc4acd262b854872e1e5bddb14f7"
+			"Comment": "v2.13.0-5-g28f2e70",
+			"Rev": "28f2e70113b36f2cb5b9800929a49550004dbb43"
 		},
 		{
 			"ImportPath": "zombiezen.com/go/capnproto2/internal/nodemap",
-			"Comment": "v2.12.4-1-g02f1032",
-			"Rev": "02f10324cc25fc4acd262b854872e1e5bddb14f7"
+			"Comment": "v2.13.0-5-g28f2e70",
+			"Rev": "28f2e70113b36f2cb5b9800929a49550004dbb43"
 		},
 		{
 			"ImportPath": "zombiezen.com/go/capnproto2/internal/packed",
-			"Comment": "v2.12.4-1-g02f1032",
-			"Rev": "02f10324cc25fc4acd262b854872e1e5bddb14f7"
+			"Comment": "v2.13.0-5-g28f2e70",
+			"Rev": "28f2e70113b36f2cb5b9800929a49550004dbb43"
 		},
 		{
 			"ImportPath": "zombiezen.com/go/capnproto2/schemas",
-			"Comment": "v2.12.4-1-g02f1032",
-			"Rev": "02f10324cc25fc4acd262b854872e1e5bddb14f7"
+			"Comment": "v2.13.0-5-g28f2e70",
+			"Rev": "28f2e70113b36f2cb5b9800929a49550004dbb43"
 		},
 		{
 			"ImportPath": "zombiezen.com/go/capnproto2/std/capnp/schema",
-			"Comment": "v2.12.4-1-g02f1032",
-			"Rev": "02f10324cc25fc4acd262b854872e1e5bddb14f7"
+			"Comment": "v2.13.0-5-g28f2e70",
+			"Rev": "28f2e70113b36f2cb5b9800929a49550004dbb43"
 		}
 	]
 }

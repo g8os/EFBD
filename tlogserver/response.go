@@ -19,7 +19,7 @@ func (r *response) capnpSize() int {
 }
 
 func (r *response) toCapnp() (*capnp.Message, error) {
-	msg, seg, err := capnp.NewMessage(capnp.MultiSegment(nil))
+	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
 	if err != nil {
 		return nil, err
 	}
@@ -52,6 +52,7 @@ func (r *response) write(w io.Writer) error {
 
 	bufByte := make([]byte, r.capnpSize())
 	buf := bytes.NewBuffer(bufByte)
+
 	buf.Truncate(0)
 
 	if err := capnp.NewEncoder(buf).Encode(msg); err != nil {

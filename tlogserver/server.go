@@ -1,11 +1,16 @@
 package main
 
+// #include <isa-l/crc.h>
+// #cgo LDFLAGS: -lisal
+import "C"
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"strconv"
+	"unsafe"
 
 	"zombiezen.com/go/capnproto2"
 )
@@ -44,18 +49,25 @@ func (s *Server) handle(conn net.Conn) error {
 	defer conn.Close()
 	for {
 		// read
-		buf := make([]byte, s.bufSize)
-		_, err := io.ReadFull(conn, buf)
+		data := make([]byte, s.bufSize)
+		_, err := io.ReadFull(conn, data)
 		if err != nil {
+			return err
+		}
+		buf := bytes.NewBuffer(data)
+
+		// decode
+		tlb, err := s.decode(buf)
+		if err != nil {
+			log.Printf("failed to decode tlog:%v\n", err)
 			return err
 		}
 
-		// decode
-		tlb, err := s.decode(bytes.NewBuffer(buf))
-		if err != nil {
+		// check crc
+		if err := s.crc(tlb); err != nil {
+			log.Printf("[ERROR] crc:%v\n", err)
 			return err
 		}
-		// check crc
 
 		// store
 		resp := s.f.store(tlb)
@@ -72,9 +84,25 @@ func (s *Server) decode(r io.Reader) (*TlogBlock, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	tlb, err := ReadRootTlogBlock(msg)
 	if err != nil {
 		return nil, err
 	}
+
 	return &tlb, nil
+}
+
+func (s *Server) crc(tlb *TlogBlock) error {
+	data, err := tlb.Data()
+	if err != nil {
+		return err
+	}
+
+	crc := C.crc32_ieee(0, (*C.uchar)(unsafe.Pointer(&data[0])), (C.uint64_t)(len(data)))
+
+	if uint32(crc) != tlb.Crc32() {
+		return fmt.Errorf("invalid crc for tlogs %v from %v", tlb.Sequence(), tlb.VolumeId())
+	}
+	return nil
 }
