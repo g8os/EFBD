@@ -15,6 +15,7 @@ import (
 	"github.com/g8os/blockstor/gridapi"
 	"github.com/g8os/blockstor/nbdserver/ardb"
 	"github.com/g8os/blockstor/nbdserver/lba"
+	"github.com/g8os/blockstor/redisstub"
 	"github.com/g8os/blockstor/storagecluster"
 	"github.com/g8os/gonbdserver/nbd"
 	"golang.org/x/net/context"
@@ -97,11 +98,17 @@ func main() {
 		Address:       address,
 		DefaultExport: exportArray[0],
 	}
+
+	var poolDial ardb.DialFunc
 	if inMemoryStorage {
 		logger.Println("[INFO] Using in-memory block storage")
+		memoryRedis := redisstub.NewMemoryRedis()
+		go memoryRedis.Listen()
+		defer memoryRedis.Close()
+		poolDial = memoryRedis.Dial
 	}
 
-	redisPool := ardb.NewRedisPool(inMemoryStorage)
+	redisPool := ardb.NewRedisPool(poolDial)
 	defer redisPool.Close()
 
 	storageClusterCfgFactory, err := storagecluster.NewClusterConfigFactory(gridapiaddress)
