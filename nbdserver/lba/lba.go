@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 
 	"github.com/garyburd/redigo/redis"
+	log "github.com/glendc/go-mini-log"
 )
 
 // MetaRedisProvider is used by the LBA,
@@ -161,7 +161,7 @@ func (lba *LBA) onCacheEviction(index int64, shard *shard) {
 	}
 
 	if err != nil {
-		log.Printf("[ERROR] error during eviction of shard %d: %s", index, err)
+		log.Infof("error during eviction of shard %d: %s", index, err)
 	}
 }
 

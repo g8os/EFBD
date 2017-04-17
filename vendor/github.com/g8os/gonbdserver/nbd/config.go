@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"log/syslog"
 	"net/http"
 	// registers profiling HTTP Handlers
@@ -20,6 +19,8 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+
+	log "github.com/glendc/go-mini-log"
 
 	"github.com/sevlyar/go-daemon"
 	"golang.org/x/net/context"
@@ -138,6 +139,7 @@ type LogConfig struct {
 	Microseconds   bool   // log microseconds - i.e. log.Lmicroseconds
 	UTC            bool   // log time in URC - i.e. LUTC
 	SourceFile     bool   // log source file - i.e. Lshortfile
+	Debug          bool   // log debug statements
 }
 
 // SyslogWriter is a WriterCloser that logs to syslog with an extracted priority
@@ -268,25 +270,25 @@ func ParseConfig() (*Config, error) {
 //
 // A parent context is given in which the listener runs, as well as a session context in which the sessions (connections) themselves run.
 // This enables the sessions to be retained when the listener is cancelled on a SIGHUP
-func StartServer(parentCtx context.Context, sessionParentCtx context.Context, sessionWaitGroup *sync.WaitGroup, logger *log.Logger, s ServerConfig) {
+func StartServer(parentCtx context.Context, sessionParentCtx context.Context, sessionWaitGroup *sync.WaitGroup, logger log.Logger, s ServerConfig) {
 	ctx, cancelFunc := context.WithCancel(parentCtx)
 
 	defer func() {
 		cancelFunc()
-		logger.Printf("[INFO] Stopping server %s:%s", s.Protocol, s.Address)
+		logger.Infof("Stopping server %s:%s", s.Protocol, s.Address)
 	}()
 
-	logger.Printf("[INFO] Starting server %s:%s", s.Protocol, s.Address)
+	logger.Infof("Starting server %s:%s", s.Protocol, s.Address)
 
 	if l, err := NewListener(logger, s); err != nil {
-		logger.Printf("[ERROR] Could not create listener for %s:%s: %v", s.Protocol, s.Address, err)
+		logger.Infof("Could not create listener for %s:%s: %v", s.Protocol, s.Address, err)
 	} else {
 		l.Listen(ctx, sessionParentCtx, sessionWaitGroup)
 	}
 }
 
 // GetLogger returns the configured logger linked to this config
-func (c *Config) GetLogger() (*log.Logger, io.Closer, error) {
+func (c *Config) GetLogger() (log.Logger, io.Closer, error) {
 	logFlags := 0
 	if c.Logging.Date {
 		logFlags |= log.Ldate
@@ -299,6 +301,9 @@ func (c *Config) GetLogger() (*log.Logger, io.Closer, error) {
 	}
 	if c.Logging.SourceFile {
 		logFlags |= log.Lshortfile
+	}
+	if c.Logging.Debug {
+		logFlags |= log.LDebug
 	}
 	if c.Logging.File != "" {
 		mode := os.FileMode(0644)
@@ -341,10 +346,10 @@ func RunConfig(control *Control) {
 	var sessionWaitGroup sync.WaitGroup
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer func() {
-		logger.Println("[INFO] Shutting down")
+		logger.Info("Shutting down")
 		cancelFunc()
 		sessionWaitGroup.Wait()
-		logger.Println("[INFO] Shutdown complete")
+		logger.Info("Shutdown complete")
 		if logCloser != nil {
 			logCloser.Close()
 		}
@@ -372,11 +377,11 @@ func RunConfig(control *Control) {
 				if !ok {
 					return
 				}
-				logger.Println("[INFO] Run GC()")
+				logger.Info("Run GC()")
 				runtime.GC()
-				logger.Println("[INFO] GC() done")
+				logger.Info("GC() done")
 				debug.FreeOSMemory()
-				logger.Println("[INFO] FreeOsMemory() done")
+				logger.Info("FreeOsMemory() done")
 			}
 		}
 	}()
@@ -387,12 +392,12 @@ func RunConfig(control *Control) {
 
 		c, err := ParseConfig()
 		if err != nil {
-			logger.Printf("[ERROR] Cannot parse configuration file: %v\n", err)
+			logger.Infof("Cannot parse configuration file: %v\n", err)
 			return
 		}
 
 		if nlogger, nlogCloser, err := c.GetLogger(); err != nil {
-			logger.Printf("[ERROR] Could not load logger: %v\n", err)
+			logger.Infof("Could not load logger: %v\n", err)
 		} else {
 			if logCloser != nil {
 				logCloser.Close()
@@ -401,7 +406,7 @@ func RunConfig(control *Control) {
 			logCloser = nlogCloser
 		}
 
-		logger.Printf("[INFO] Loaded configuration. Available backends: %s\n", strings.Join(GetBackendNames(), ", "))
+		logger.Infof("Loaded configuration. Available backends: %s\n", strings.Join(GetBackendNames(), ", "))
 
 		for _, s := range c.Servers {
 			s := s // localise loop variable
@@ -414,19 +419,19 @@ func RunConfig(control *Control) {
 
 		select {
 		case <-ctx.Done():
-			logger.Println("[INFO] Interrupted")
+			logger.Info("Interrupted")
 			return
 		case <-intr:
-			logger.Println("[INFO] Interrupt signal received")
+			logger.Info("Interrupt signal received")
 			return
 		case <-term:
-			logger.Println("[INFO] Terminate signal received")
+			logger.Info("Terminate signal received")
 			return
 		case <-control.quit:
-			logger.Println("[INFO] Programmatic quit received")
+			logger.Info("Programmatic quit received")
 			return
 		case <-hup:
-			logger.Println("[INFO] Reload signal received; reloading configuration which will be effective for new connections")
+			logger.Info("Reload signal received; reloading configuration which will be effective for new connections")
 			configCancelFunc() // kill the listeners but not the sessions
 			wg.Wait()
 		}
@@ -512,7 +517,7 @@ func Run(control *Control) {
 			if err := p.Signal(syscall.Signal(0)); err == nil {
 				logger.Fatalf("[CRIT] Daemon is already running (pid %d)", p.Pid)
 			} else {
-				logger.Printf("[INFO] Removing stale PID file %s", pidFile)
+				logger.Infof("Removing stale PID file %s", pidFile)
 				os.Remove(pidFile)
 			}
 		}

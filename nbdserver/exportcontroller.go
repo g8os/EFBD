@@ -3,10 +3,10 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
 
 	gridapi "github.com/g8os/blockstor/gridapi/gridapiclient"
 	"github.com/g8os/gonbdserver/nbd"
+	log "github.com/glendc/go-mini-log"
 )
 
 // NewExportController creates a new export config manager.
@@ -40,7 +40,7 @@ func (c *ExportController) ListConfigNames() []string {
 
 // GetConfig implements nbd.ExportConfigManager.GetConfig
 func (c *ExportController) GetConfig(name string) (*nbd.ExportConfig, error) {
-	log.Printf("[INFO] Getting volume %q", name)
+	log.Infof("Getting volume %q", name)
 	volumeInfo, _, err := c.gridapi.Volumes.GetVolumeInfo(
 		name, // volumeID
 		nil,  // headers

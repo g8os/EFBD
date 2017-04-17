@@ -6,13 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net"
 	"os"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
+
+	log "github.com/glendc/go-mini-log"
 
 	"golang.org/x/net/context"
 )
@@ -33,7 +34,7 @@ type ExportConfigManager interface {
 
 // Listener defines a single listener on a given net.Conn address
 type Listener struct {
-	logger          *log.Logger             // a logger
+	logger          log.Logger              // a logger
 	protocol        string                  // the protocol we are listening on
 	addr            string                  // the address
 	exports         map[string]ExportConfig // a map of static export configurations associated
@@ -130,22 +131,22 @@ func (l *Listener) Listen(parentCtx context.Context, sessionParentCtx context.Co
 	}
 	nli, err := net.Listen(l.protocol, l.addr)
 	if err != nil {
-		l.logger.Printf("[ERROR] Could not listen on address %s", addr)
+		l.logger.Infof("Could not listen on address %s", addr)
 		return
 	}
 
 	defer func() {
-		l.logger.Printf("[INFO] Stopping listening on %s", addr)
+		l.logger.Infof("Stopping listening on %s", addr)
 		nli.Close()
 	}()
 
 	li, ok := nli.(DeadlineListener)
 	if !ok {
-		l.logger.Printf("[ERROR] Invalid protocol to listen on %s", addr)
+		l.logger.Infof("Invalid protocol to listen on %s", addr)
 		return
 	}
 
-	l.logger.Printf("[INFO] Starting listening on %s", addr)
+	l.logger.Infof("Starting listening on %s", addr)
 	for {
 		select {
 		case <-ctx.Done():
@@ -157,11 +158,11 @@ func (l *Listener) Listen(parentCtx context.Context, sessionParentCtx context.Co
 			if opErr, ok := err.(*net.OpError); ok && opErr.Timeout() {
 				continue
 			}
-			l.logger.Printf("[ERROR] Error %s listening on %s", err, addr)
+			l.logger.Infof("Error %s listening on %s", err, addr)
 		} else {
-			l.logger.Printf("[INFO] Connect to %s from %s", addr, conn.RemoteAddr())
+			l.logger.Infof("Connect to %s from %s", addr, conn.RemoteAddr())
 			if connection, err := NewConnection(l, l.logger, conn); err != nil {
-				l.logger.Printf("[ERROR] Error %s establishing connection to %s from %s", err, addr, conn.RemoteAddr())
+				l.logger.Infof("Error %s establishing connection to %s from %s", err, addr, conn.RemoteAddr())
 				conn.Close()
 			} else {
 				go func() {
@@ -249,7 +250,11 @@ func (l *Listener) initTLS() error {
 }
 
 // NewListener returns a new listener object
-func NewListener(logger *log.Logger, s ServerConfig) (*Listener, error) {
+func NewListener(logger log.Logger, s ServerConfig) (*Listener, error) {
+	if logger == nil {
+		return nil, errors.New("NewListener: requires a non-nil logger")
+	}
+
 	exportMap := make(map[string]ExportConfig, len(s.Exports))
 	for _, cfg := range s.Exports {
 		exportMap[cfg.Name] = cfg
