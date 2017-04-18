@@ -2,10 +2,10 @@ package redisstub
 
 import (
 	"io/ioutil"
-	"log"
 	"os"
 
 	"github.com/garyburd/redigo/redis"
+	log "github.com/glendc/go-mini-log"
 	"github.com/siddontang/ledisdb/config"
 	"github.com/siddontang/ledisdb/server"
 )
@@ -24,7 +24,7 @@ func NewMemoryRedis() *MemoryRedis {
 
 	app, err := server.NewApp(cfg)
 	if err != nil {
-		panic(err)
+		log.Fatalf("couldn't create embedded ledisdb: %s", err.Error())
 	}
 
 	return &MemoryRedis{
@@ -44,7 +44,7 @@ type MemoryRedis struct {
 // Listen to any incoming TCP requests,
 // and process them in the embedded Go Redis Server.
 func (mr *MemoryRedis) Listen() {
-	log.Println("[INFO] embedded LedisDB Server ready and listening at", mr.addr)
+	log.Info("embedded LedisDB Server ready and listening at", mr.addr)
 	mr.app.Run()
 }
 
