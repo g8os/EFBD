@@ -29,6 +29,6 @@ go generate
 
 Dependencies:
 
-+ Go 1.6 or above;
++ Go 1.8 or above;
 + `npm i -g raml2html`: used for generation of HTML docs;
 + `go get -u github.com/Jumpscale/go-raml`: used to generate stubs and clients;

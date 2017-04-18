@@ -4,7 +4,7 @@ The G8OS block storage allows to create and use block devices (volumes) on top o
 
 A volume can be deduped, have various blocksizes and depending on the underlying storage cluster used, have different speed characteristics.
 
-Make sure tot have Golang version 1.6 or above installed!
+Make sure tot have Golang version 1.8 or above installed!
 
 Components:
 * [NBD Server](nbdserver/readme.md)
