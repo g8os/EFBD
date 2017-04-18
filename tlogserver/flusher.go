@@ -128,7 +128,7 @@ func (f *flusher) flush(volID uint32, blocks []*TlogBlock) ([]uint64, error) {
 	encrypted := f.encrypt(compressed)
 
 	// erasure
-	erEncoded, err := f.erasure.encode(encrypted[:])
+	erEncoded, err := f.erasure.encode(volID, encrypted[:])
 	if err != nil {
 		return nil, err
 	}

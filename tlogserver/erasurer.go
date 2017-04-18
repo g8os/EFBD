@@ -5,16 +5,16 @@ package main
 // #cgo LDFLAGS: -lisal
 import "C"
 import (
-	"fmt"
 	"unsafe"
 
-	"github.com/templexxx/reedsolomon"
+	"github.com/iwanbk/reedsolomon"
 )
 
 type erasurer struct {
-	K         int
-	M         int
-	encodeTab []byte
+	K          int
+	M          int
+	encodeTab  []byte                     // isa-l encode table
+	rsEncoders map[uint32]*reedsolomon.Rs // templexxx/reedsolomon encoders
 }
 
 func newErasurer(k, m int) *erasurer {
@@ -22,22 +22,40 @@ func newErasurer(k, m int) *erasurer {
 
 	C.init_encode_tab(C.int(k), C.int(m), (*C.uchar)(unsafe.Pointer(&encodeTab[0])))
 	return &erasurer{
-		K:         k,
-		M:         m,
-		encodeTab: encodeTab,
+		K:          k,
+		M:          m,
+		encodeTab:  encodeTab,
+		rsEncoders: map[uint32]*reedsolomon.Rs{},
 	}
 }
 
-func (e *erasurer) encode(data []byte) ([][]byte, error) {
-	return e.encodeTemplex(data)
-}
+// get reedsolomon encoder object
+func (e *erasurer) getRsEncoder(volID uint32) (*reedsolomon.Rs, error) {
+	rs, ok := e.rsEncoders[volID]
+	if ok {
+		return rs, nil
+	}
 
-func (e *erasurer) encodeTemplex(data []byte) ([][]byte, error) {
-	enc, err := reedsolomon.New(e.K, e.M)
+	rs, err := reedsolomon.New(e.K, e.M)
 	if err != nil {
 		return nil, err
 	}
 
+	e.rsEncoders[volID] = rs
+	return rs, nil
+}
+
+func (e *erasurer) encode(volID uint32, data []byte) ([][]byte, error) {
+	/*enc, err := e.getRsEncoder(volID)
+	if err != nil {
+		return nil, err
+	}
+	return e.encodeTemplex(enc, data)
+	*/
+	return e.encodeIsal(data)
+}
+
+func (e *erasurer) encodeTemplex(enc *reedsolomon.Rs, data []byte) ([][]byte, error) {
 	chunkSize := e.getChunkSize(len(data))
 
 	encoded := make([][]byte, e.K+e.M)
@@ -47,7 +65,8 @@ func (e *erasurer) encodeTemplex(data []byte) ([][]byte, error) {
 	for i := 0; i < e.K; i++ {
 		copy(encoded[i], data[i*chunkSize:(i+1)*chunkSize])
 	}
-	err = enc.Encode(encoded)
+
+	err := enc.Encode(encoded)
 	return encoded, err
 
 }

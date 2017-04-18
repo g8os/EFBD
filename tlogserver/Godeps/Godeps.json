@@ -25,6 +25,10 @@
 			"Rev": "553a641470496b2327abcac10b36396bd98e45c9"
 		},
 		{
+			"ImportPath": "github.com/iwanbk/reedsolomon",
+			"Rev": "ec88a3a5efa03b612fc9beb1dd0ca280db5a7f82"
+		},
+		{
 			"ImportPath": "github.com/klauspost/cpuid",
 			"Comment": "v1.0",
 			"Rev": "09cded8978dc9e80714c4d85b0322337b0a1e5e0"
