@@ -52,27 +52,40 @@ func (e *erasurer) encode(volID uint32, data []byte) ([][]byte, error) {
 	}
 	return e.encodeTemplex(enc, data)
 	*/
+
 	return e.encodeIsal(data)
 }
 
 func (e *erasurer) encodeTemplex(enc *reedsolomon.Rs, data []byte) ([][]byte, error) {
-	chunkSize := e.getChunkSize(len(data))
-
-	encoded := make([][]byte, e.K+e.M)
-	for i := 0; i < e.K+e.M; i++ {
-		encoded[i] = make([]byte, chunkSize)
-	}
-	for i := 0; i < e.K; i++ {
-		copy(encoded[i], data[i*chunkSize:(i+1)*chunkSize])
-	}
+	encoded := e.allocateEncodedBlocks(data[:])
 
 	err := enc.Encode(encoded)
 	return encoded, err
-
 }
 
 func (e *erasurer) encodeIsal(data []byte) ([][]byte, error) {
 	chunkSize := e.getChunkSize(len(data))
+
+	encoded := e.allocateEncodedBlocks(data[:])
+	ptrs := make([]*byte, e.K+e.M)
+
+	// create pointers  blocks
+	for i := 0; i < e.K+e.M; i++ {
+		ptrs[i] = &encoded[i][0]
+	}
+
+	C.ec_encode_data(C.int(chunkSize), C.int(e.K), C.int(e.M),
+		(*C.uchar)(unsafe.Pointer(&e.encodeTab[0])),
+		(**C.uchar)(unsafe.Pointer(&ptrs[:e.K][0])), // Pointers to data blocks
+		(**C.uchar)(unsafe.Pointer(&ptrs[e.K:][0]))) // Pointers to parity blocks
+
+	return encoded, nil
+}
+
+func (e *erasurer) allocateEncodedBlocks(data []byte) [][]byte {
+	chunkSize := e.getChunkSize(len(data))
+
+	encoded := make([][]byte, e.K+e.M)
 	encodedLen := chunkSize * e.K
 
 	// check if we need to pad the data
@@ -81,32 +94,16 @@ func (e *erasurer) encodeIsal(data []byte) ([][]byte, error) {
 		data = append(data, padding...)
 	}
 
-	// extend daata buffer to accomodate coded blocks
-	{
-		codedBlocks := make([]byte, chunkSize*e.M)
-		data = append(data, codedBlocks...)
-	}
-
-	encodedBlocks := make([][]byte, e.K+e.M)
-	encodedBlocksPtr := make([]*byte, e.K+e.M)
-
 	// copy data blocks
 	for i := 0; i < e.K; i++ {
-		encodedBlocks[i] = data[i*chunkSize : (i+1)*chunkSize]
-		encodedBlocksPtr[i] = &encodedBlocks[i][0]
+		encoded[i] = data[i*chunkSize : (i+1)*chunkSize]
 	}
-	// copy coding block
+
+	// allocate coding block
 	for i := e.K; i < e.K+e.M; i++ {
-		encodedBlocks[i] = make([]byte, chunkSize)
-		encodedBlocksPtr[i] = &encodedBlocks[i][0]
+		encoded[i] = make([]byte, chunkSize)
 	}
-
-	C.ec_encode_data(C.int(chunkSize), C.int(e.K), C.int(e.M),
-		(*C.uchar)(unsafe.Pointer(&e.encodeTab[0])),
-		(**C.uchar)(unsafe.Pointer(&encodedBlocksPtr[:e.K][0])), // Pointers to data blocks
-		(**C.uchar)(unsafe.Pointer(&encodedBlocksPtr[e.K:][0]))) // Pointers to parity blocks
-
-	return encodedBlocks, nil
+	return encoded
 }
 
 func (e *erasurer) getChunkSize(dataLen int) int {

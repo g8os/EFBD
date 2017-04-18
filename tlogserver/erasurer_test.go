@@ -28,7 +28,7 @@ func benchmarkIsalErasure(b *testing.B, k, m int, length int) {
 
 	b.SetBytes(int64(length))
 	for i := 0; i < b.N; i++ {
-		er.encodeIsal(data)
+		er.encodeIsal(data[:])
 	}
 }
 
@@ -39,6 +39,6 @@ func benchmarkReedsolomonErasure(b *testing.B, k, m int, length int) {
 
 	b.SetBytes(int64(length))
 	for i := 0; i < b.N; i++ {
-		er.encodeTemplex(enc, data)
+		er.encodeTemplex(enc, data[:])
 	}
 }
