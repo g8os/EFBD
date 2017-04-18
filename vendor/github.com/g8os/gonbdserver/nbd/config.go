@@ -8,6 +8,7 @@ import (
 	"log/syslog"
 	"net/http"
 	// registers profiling HTTP Handlers
+	"context"
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
@@ -23,7 +24,6 @@ import (
 	log "github.com/glendc/go-mini-log"
 
 	"github.com/sevlyar/go-daemon"
-	"golang.org/x/net/context"
 	"gopkg.in/yaml.v2"
 )
 

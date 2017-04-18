@@ -1,7 +1,7 @@
 package ardb
 
 import (
-	"golang.org/x/net/context"
+	"context"
 
 	"github.com/g8os/blockstor/storagecluster"
 	"github.com/g8os/gonbdserver/nbd"

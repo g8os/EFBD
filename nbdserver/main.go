@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net/http"
@@ -19,7 +20,6 @@ import (
 	"github.com/g8os/blockstor/redisstub"
 	"github.com/g8os/blockstor/storagecluster"
 	"github.com/g8os/gonbdserver/nbd"
-	"golang.org/x/net/context"
 )
 
 func main() {

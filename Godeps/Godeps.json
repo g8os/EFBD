@@ -34,7 +34,7 @@
 		},
 		{
 			"ImportPath": "github.com/g8os/gonbdserver/nbd",
-			"Rev": "12141ac5bd54edb6ea371d6a1d0ef0a1632bf07d"
+			"Rev": "585d2378301579044ed1d2bac176b5ba431d56f3"
 		},
 		{
 			"ImportPath": "github.com/garyburd/redigo/internal",
@@ -45,6 +45,10 @@
 			"Rev": "d8dbe4d94f15fe89232e0402c6e8a0ddf21af3ab"
 		},
 		{
+			"ImportPath": "github.com/glendc/go-mini-log",
+			"Rev": "854132bc73fb56a32008220cfbc269fa5814204a"
+		},
+		{
 			"ImportPath": "github.com/glendc/gopher-json",
 			"Comment": "0.1.0",
 			"Rev": "dc4743023d0c166c1b844da8fc688e57ec65fe0b"
@@ -52,10 +56,6 @@
 		{
 			"ImportPath": "github.com/golang/snappy",
 			"Rev": "553a641470496b2327abcac10b36396bd98e45c9"
-		},
-		{
-			"ImportPath": "github.com/glendc/go-mini-log",
-			"Rev": "854132bc73fb56a32008220cfbc269fa5814204a"
 		},
 		{
 			"ImportPath": "github.com/gorilla/mux",
@@ -240,7 +240,7 @@
 		},
 		{
 			"ImportPath": "golang.org/x/net/context",
-			"Rev": "61557ac0112b576429a0df080e1c2cef5dfbb642"
+			"Rev": "ffcf1bedda3b04ebb15a168a59800a73d6dc0f4d"
 		},
 		{
 			"ImportPath": "gopkg.in/validator.v2",

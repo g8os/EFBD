@@ -1,6 +1,7 @@
 package storagecluster
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/signal"
@@ -11,7 +12,6 @@ import (
 	log "github.com/glendc/go-mini-log"
 
 	gridapi "github.com/g8os/blockstor/gridapi/gridapiclient"
-	"golang.org/x/net/context"
 )
 
 // NewClusterConfigFactory creates a ClusterConfigFactory.

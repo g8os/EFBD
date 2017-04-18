@@ -2,6 +2,7 @@ package nbd
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/binary"
 	"errors"
@@ -16,8 +17,6 @@ import (
 	"time"
 
 	log "github.com/glendc/go-mini-log"
-
-	"golang.org/x/net/context"
 )
 
 // Map of configuration text to TLS versions

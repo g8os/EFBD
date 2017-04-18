@@ -1,11 +1,10 @@
 package nbd
 
 import (
+	"context"
 	"errors"
 	"os"
 	"strconv"
-
-	"golang.org/x/net/context"
 )
 
 // FileBackend implements Backend

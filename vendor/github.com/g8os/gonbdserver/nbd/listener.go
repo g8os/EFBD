@@ -1,6 +1,7 @@
 package nbd
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -14,8 +15,6 @@ import (
 	"time"
 
 	log "github.com/glendc/go-mini-log"
-
-	"golang.org/x/net/context"
 )
 
 // ExportConfigManager is the interface,
