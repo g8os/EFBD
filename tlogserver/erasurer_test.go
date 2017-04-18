@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/iwanbk/reedsolomon"
+	"github.com/templexxx/reedsolomon"
 )
 
 func BenchmarkReedsolomonErasure16_4_4k(b *testing.B) {

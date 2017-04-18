@@ -7,7 +7,7 @@ import "C"
 import (
 	"unsafe"
 
-	"github.com/iwanbk/reedsolomon"
+	"github.com/templexxx/reedsolomon"
 )
 
 type erasurer struct {
