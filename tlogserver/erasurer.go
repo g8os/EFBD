@@ -5,9 +5,10 @@ package main
 // #cgo LDFLAGS: -lisal
 import "C"
 import (
+	"fmt"
 	"unsafe"
 
-	"github.com/klauspost/reedsolomon"
+	"github.com/templexxx/reedsolomon"
 )
 
 type erasurer struct {
@@ -27,7 +28,11 @@ func newErasurer(k, m int) *erasurer {
 	}
 }
 
-func (e *erasurer) encodeKlauspost(data []byte) ([][]byte, error) {
+func (e *erasurer) encode(data []byte) ([][]byte, error) {
+	return e.encodeTemplex(data)
+}
+
+func (e *erasurer) encodeTemplex(data []byte) ([][]byte, error) {
 	enc, err := reedsolomon.New(e.K, e.M)
 	if err != nil {
 		return nil, err
@@ -44,7 +49,9 @@ func (e *erasurer) encodeKlauspost(data []byte) ([][]byte, error) {
 	}
 	err = enc.Encode(encoded)
 	return encoded, err
+
 }
+
 func (e *erasurer) encodeIsal(data []byte) ([][]byte, error) {
 	chunkSize := e.getChunkSize(len(data))
 	encodedLen := chunkSize * e.K

@@ -39,6 +39,10 @@
 			"Rev": "3f5f724cb5b182a5c278d6d3d55b40e7f8c2efb4"
 		},
 		{
+			"ImportPath": "github.com/templexxx/reedsolomon",
+			"Rev": "d57f0948c85c9746c30ca021128e2531bc8493c7"
+		},
+		{
 			"ImportPath": "golang.org/x/net/context",
 			"Rev": "5602c733f70afc6dcec6766be0d5034d4c4f14de"
 		},
