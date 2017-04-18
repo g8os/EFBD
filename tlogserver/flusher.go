@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -180,21 +181,40 @@ func (f *flusher) encrypt(data []byte) []byte {
 }
 
 func (f *flusher) storeEncoded(volID uint32, key [32]byte, encoded [][]byte) error {
+	var wg sync.WaitGroup
+
+	wg.Add(f.k + f.m + 1)
+
+	var errGlob error
 	// store encoded data
 	for i := 0; i < f.k+f.m; i++ {
-		blocks := encoded[i]
-		rc := f.redisPools[i+1].Get()
-		_, err := rc.Do("SET", key, blocks)
-		if err != nil {
-			return err
-		}
+		go func(idx int) {
+			defer wg.Done()
+
+			blocks := encoded[idx]
+			rc := f.redisPools[idx+1].Get()
+			_, err := rc.Do("SET", key, blocks)
+			if err != nil {
+				log.Printf("[ERROR] flush idx:%v, err:%v", idx, err)
+				errGlob = err
+			}
+		}(i)
 	}
 
 	// store last hash name
-	lastHashKey := fmt.Sprintf("last_hash_%v", volID)
-	rc := f.redisPools[0].Get()
-	_, err := rc.Do("SET", lastHashKey, key)
-	return err
+	go func() {
+		defer wg.Done()
+		lastHashKey := fmt.Sprintf("last_hash_%v", volID)
+		rc := f.redisPools[0].Get()
+		_, err := rc.Do("SET", lastHashKey, key)
+		if err != nil {
+			log.Printf("[ERROR] set last hash name err:%v", err)
+			errGlob = err
+		}
+	}()
+
+	wg.Wait()
+	return errGlob
 }
 
 func (f *flusher) encodeCapnp(volID uint32, blocks []*TlogBlock) ([]byte, error) {
