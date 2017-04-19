@@ -129,7 +129,8 @@ func main() {
 	redisPool := ardb.NewRedisPool(poolDial)
 	defer redisPool.Close()
 
-	storageClusterCfgFactory, err := storagecluster.NewClusterConfigFactory(gridapiaddress)
+	storageClusterCfgFactory, err := storagecluster.NewClusterConfigFactory(
+		gridapiaddress, log.New(os.Stderr, "storagecluster:", log.Flags()))
 	if err != nil {
 		log.Fatal(err)
 	}

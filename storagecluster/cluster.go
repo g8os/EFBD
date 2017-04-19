@@ -15,15 +15,19 @@ import (
 )
 
 // NewClusterConfigFactory creates a ClusterConfigFactory.
-func NewClusterConfigFactory(gridapiaddress string) (*ClusterConfigFactory, error) {
+func NewClusterConfigFactory(gridapiaddress string, logger log.Logger) (*ClusterConfigFactory, error) {
 	if gridapiaddress == "" {
 		return nil, errors.New("NewClusterConfigFactory requires a non-empty gridapiaddress")
+	}
+	if logger == nil {
+		logger = log.New(os.Stderr, "", log.LstdFlags)
 	}
 
 	return &ClusterConfigFactory{
 		gridapiaddress: gridapiaddress,
 		requestCh:      make(chan string),
 		responseCh:     make(chan clusterConfigResponse),
+		logger:         logger,
 	}, nil
 }
 
@@ -32,6 +36,7 @@ type ClusterConfigFactory struct {
 	gridapiaddress string
 	requestCh      chan string
 	responseCh     chan clusterConfigResponse
+	logger         log.Logger
 }
 
 // NewConfig returns a new ClusterConfig.
@@ -55,9 +60,10 @@ func (f *ClusterConfigFactory) Listen(ctx context.Context) {
 		select {
 		// wait for a request
 		case volumeID := <-f.requestCh:
-			cfg, err := newClusterConfig(
+			cfg, err := NewClusterConfig(
 				f.gridapiaddress,
 				volumeID,
+				f.logger,
 			)
 			if err != nil {
 				// couldn't create cfg, early exit
@@ -83,14 +89,19 @@ type clusterConfigResponse struct {
 	Error  error
 }
 
-// newClusterConfig creates a new cluster config
-func newClusterConfig(gridapiaddress, volumeID string) (*ClusterConfig, error) {
+// NewClusterConfig creates a new cluster config
+func NewClusterConfig(gridapiaddress, volumeID string, logger log.Logger) (*ClusterConfig, error) {
 	client := gridapi.NewG8OSStatelessGRID()
 	client.BaseURI = gridapiaddress
+
+	if logger == nil {
+		logger = log.New(os.Stderr, "", log.LstdFlags)
+	}
 
 	cfg := &ClusterConfig{
 		client:   client,
 		volumeID: volumeID,
+		logger:   logger,
 		done:     make(chan struct{}, 1),
 	}
 
@@ -106,6 +117,9 @@ func newClusterConfig(gridapiaddress, volumeID string) (*ClusterConfig, error) {
 type ClusterConfig struct {
 	client   *gridapi.G8OSStatelessGRID
 	volumeID string
+
+	// used to log
+	logger log.Logger
 
 	// keep type, such that we can check this,
 	// when reloading the configuration
@@ -170,7 +184,7 @@ func (cfg *ClusterConfig) Close() {
 // listen to incoming signals,
 // and reload configuration when receiving a SIGHUP signal.
 func (cfg *ClusterConfig) listen(ctx context.Context) {
-	log.Info("ready to reload StorageClusterConfig upon SIGHUP receival for:", cfg.volumeID)
+	cfg.logger.Info("ready to reload StorageClusterConfig upon SIGHUP receival for:", cfg.volumeID)
 
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGHUP)
@@ -181,22 +195,26 @@ func (cfg *ClusterConfig) listen(ctx context.Context) {
 		case s := <-ch:
 			switch s {
 			case syscall.SIGHUP:
-				log.Infof("%q received SIGHUP Signal", cfg.volumeID)
+				cfg.logger.Infof("%q received SIGHUP Signal", cfg.volumeID)
 				func() {
 					cfg.mux.Lock()
 					defer cfg.mux.Unlock()
 					cfg.loadConfig()
 				}()
 			default:
-				log.Info("received unsupported signal", s)
+				cfg.logger.Info("received unsupported signal", s)
 			}
 
 		case <-cfg.done:
-			log.Info("exit listener for StorageClusterConfig for volume:", cfg.volumeID)
+			cfg.logger.Info(
+				"exit listener for StorageClusterConfig for volume:",
+				cfg.volumeID)
 			return
 
 		case <-ctx.Done():
-			log.Info("abort listener for StorageClusterConfig for volume:", cfg.volumeID)
+			cfg.logger.Info(
+				"abort listener for StorageClusterConfig for volume:",
+				cfg.volumeID)
 			return
 		}
 	}
@@ -205,18 +223,18 @@ func (cfg *ClusterConfig) listen(ctx context.Context) {
 func (cfg *ClusterConfig) loadConfig() bool {
 	cfg.loaded = false
 
-	log.Info("loading storage cluster config")
+	cfg.logger.Info("loading storage cluster config")
 
 	// get volume info
 	volumeInfo, _, err := cfg.client.Volumes.GetVolumeInfo(cfg.volumeID, nil, nil)
 	if err != nil {
-		log.Infof("couldn't get volumeInfo: %s", err.Error())
+		cfg.logger.Infof("couldn't get volumeInfo: %s", err.Error())
 		return false
 	}
 
 	// check volumeType, and sure it's the same one as last time
 	if cfg.volumeType != "" && cfg.volumeType != volumeInfo.Volumetype {
-		log.Infof("wrong type for volume %q, expected %q, while received %q",
+		cfg.logger.Infof("wrong type for volume %q, expected %q, while received %q",
 			cfg.volumeID, cfg.volumeType, volumeInfo.Volumetype)
 		return false
 	}
@@ -225,7 +243,7 @@ func (cfg *ClusterConfig) loadConfig() bool {
 	//Get information about the backend storage nodes
 	storageClusterInfo, _, err := cfg.client.Storageclusters.GetClusterInfo(volumeInfo.Storagecluster, nil, nil)
 	if err != nil {
-		log.Infof("couldn't get storage cluster info: %s", err.Error())
+		cfg.logger.Infof("couldn't get storage cluster info: %s", err.Error())
 		return false
 	}
 
@@ -233,13 +251,14 @@ func (cfg *ClusterConfig) loadConfig() bool {
 	cfg.servers = storageClusterInfo.DataStorage
 	cfg.numberOfServers = len(cfg.servers)
 	if cfg.numberOfServers < 1 {
-		log.Info("received no storageBackendController, while at least 1 is required")
+		cfg.logger.Info(
+			"received no storageBackendController, while at least 1 is required")
 		return false
 	}
 
 	// used to store metadata
 	if len(storageClusterInfo.MetadataStorage) < 1 {
-		log.Infof("No metadata servers available in storagecluster %s", volumeInfo.Storagecluster)
+		cfg.logger.Infof("No metadata servers available in storagecluster %s", volumeInfo.Storagecluster)
 		return false
 	}
 	cfg.metaConnectionString = connectionStringFromHAStorageServer(storageClusterInfo.MetadataStorage[0])
