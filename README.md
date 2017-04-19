@@ -11,7 +11,8 @@ Components:
     A Network Block Device server to expose the volumes to virtual machines.
 * [TLOG Server](tlogserver/readme.md)
     A Transaction log server to record block changes
-
+* [CopyVolume CLI](cmd/copyvolume/readme.md)
+    A CLI to copy the metadata of a deduped volume
 
 # Build for g8os
 - Clone the code to your GOPATH and `go get` the dependencies:
