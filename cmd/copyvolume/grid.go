@@ -7,7 +7,8 @@ import (
 )
 
 func getConnectionsFromGrid(logger log.Logger, input *userInput) (connA, connB redis.Conn, err error) {
-	cfgA, err := storagecluster.NewClusterConfig(input.Source.URL, input.Source.Volume, logger)
+	cfgA, err := storagecluster.NewClusterConfig(
+		input.Source.URL, input.Source.Volume, flagSourceStorageCluster, logger)
 	if err != nil {
 		return
 	}
@@ -20,7 +21,8 @@ func getConnectionsFromGrid(logger log.Logger, input *userInput) (connA, connB r
 		return
 	}
 
-	cfgB, err := storagecluster.NewClusterConfig(input.Target.URL, input.Target.Volume, logger)
+	cfgB, err := storagecluster.NewClusterConfig(
+		input.Target.URL, input.Target.Volume, flagTargetStorageCluster, logger)
 	if err != nil {
 		return
 	}

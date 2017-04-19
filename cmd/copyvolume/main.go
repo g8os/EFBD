@@ -26,7 +26,7 @@ func main() {
 	var logger log.Logger
 	if flagVerbose {
 		// log info to stderr
-		logger = log.New(os.Stderr, "", log.LstdFlags)
+		logger = log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile)
 	} else {
 		// discard all logs
 		logger = log.New(ioutil.Discard, "", 0)
@@ -72,6 +72,10 @@ func init() {
 	// register flags
 	flag.Var(&flagURLType, "t", "type of the given url(s); the gridapi url's or the direct metadataserver connectionstrings")
 	flag.BoolVar(&flagVerbose, "v", false, "log to stderr")
+	flag.StringVar(&flagSourceStorageCluster, "sourcesc", "",
+		"combined with api type it allows you to predefine the source's storageCluster name")
+	flag.StringVar(&flagTargetStorageCluster, "targetsc", "",
+		"combined with api type it allows you to predefine the target's storageCluster name")
 
 	// custom usage function
 	flag.Usage = printUsage
@@ -136,8 +140,10 @@ type userInput struct {
 
 // optional flags
 var (
-	flagURLType = urlType(urlTypeGrid)
-	flagVerbose bool
+	flagURLType              = urlType(urlTypeGrid)
+	flagVerbose              bool
+	flagTargetStorageCluster string
+	flagSourceStorageCluster string
 )
 
 // usage string
@@ -147,9 +153,9 @@ const (
 copy the metadata of a deduped volume
 
 usage:
-  %[1]s [-v] [-t %[2]s|%[3]s] source_volume target_volume source_url [target_url]
+  %[1]s [-v] [-t %[2]s|%[3]s] [-sourcesc name] [-targetsc name] source_volume target_volume source_url [target_url]
 
-  When no target_url is given, the target metadataserver is the same as the source metadataserver.
+  When no target_url is given, the target_url is the same as the source_url.
 `
 )
 

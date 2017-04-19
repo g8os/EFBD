@@ -11,8 +11,13 @@ func copySameConnection(logger log.Logger, input *userInput, conn redis.Conn) (e
 	logger.Infof("dumping volume %q and restoring it as volume %q",
 		input.Source.Volume, input.Target.Volume)
 
-	_, err = copySameScript.Do(conn,
-		input.Source.Volume, input.Target.Volume)
+	indexCount, err := redis.Int64(copySameScript.Do(conn,
+		input.Source.Volume, input.Target.Volume))
+	if err == nil {
+		logger.Infof("copied %d meta indices to volume %q",
+			indexCount, input.Target.Volume)
+	}
+
 	return
 }
 
@@ -41,5 +46,6 @@ if redis.call("EXISTS", destination) == 1 then
 end
 
 redis.call("RESTORE", destination, 0, redis.call("DUMP", source))
-return "OK"
+
+return redis.call("HLEN", destination)
 `
