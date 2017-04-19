@@ -70,7 +70,7 @@ func main() {
 
 func init() {
 	// register flags
-	flag.Var(&flagURLType, "t", "type of the given url(s)")
+	flag.Var(&flagURLType, "t", "type of the given url(s); the gridapi url's or the direct metadataserver connectionstrings")
 	flag.BoolVar(&flagVerbose, "v", false, "log to stderr")
 
 	// custom usage function
@@ -147,8 +147,9 @@ const (
 copy the metadata of a deduped volume
 
 usage:
-  %[1]s [-v] [-t %[2]s|%[3]s] source_volume target_volume source_url
-  %[1]s [-v] [-t %[2]s|%[3]s] source_volume target_volume source_url target_url
+  %[1]s [-v] [-t %[2]s|%[3]s] source_volume target_volume source_url [target_url]
+
+  When no target_url is given, the target metadataserver is the same as the source metadataserver.
 `
 )
 
@@ -156,8 +157,8 @@ type urlType string
 
 // url types
 const (
-	urlTypeGrid       = "grid"
-	urlTypeMetaServer = "meta"
+	urlTypeGrid       = "api"
+	urlTypeMetaServer = "direct"
 )
 
 // String implements flag.Value.String

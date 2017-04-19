@@ -19,9 +19,10 @@ Requires `Go 1.8` or above.
 $ copyvolume -h
 
 usage:
-  copyvolume [-v] [-t grid|meta] source_volume target_volume source_url
-  copyvolume [-v] [-t grid|meta] source_volume target_volume source_url target_url
+  copyvolume [-v] [-t api|direct] source_volume target_volume source_url [target_url]
 ```
 
+  When no target_url is given, the target metadataserver is the same as the source metadataserver.
+
 + `[-v]`: log all (progress) info to STDERR;
-+ `[-t grid|meta]`: define the type of the given url(s);
++ `[-t api|direct]`: define the type of the given url(s); the gridapi url's or the direct metadataserver connectionstrings.
