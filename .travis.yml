@@ -3,6 +3,9 @@ language: go
 go:
   - 1.8
 
+install:
+  - go get -u github.com/Jumpscale/go-raml
+
 script:
   - go test $(go list ./... | grep -v vendor)
   - ./scripts/codegeneration.sh
