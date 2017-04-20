@@ -21,9 +21,6 @@ func main() {
 		http.ServeFile(w, r, "index.html")
 	})
 
-	// apidocs
-	r.PathPrefix("/apidocs/").Handler(http.StripPrefix("/apidocs/", http.FileServer(http.Dir("./apidocs/"))))
-
 	NodesInterfaceRoutes(r, NodesAPI{})
 
 	StorageclustersInterfaceRoutes(r, StorageclustersAPI{})
