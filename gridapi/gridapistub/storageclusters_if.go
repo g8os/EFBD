@@ -9,24 +9,24 @@ import (
 )
 
 // StorageclustersInterface is interface for /storageclusters root endpoint
-type StorageclustersInterface interface { // ListAllClusters is the handler for GET /storageclusters
+type StorageclustersInterface interface { // KillCluster is the handler for DELETE /storageclusters/{label}
+	// Kill cluster
+	KillCluster(http.ResponseWriter, *http.Request)
+	// GetClusterInfo is the handler for GET /storageclusters/{label}
+	// Get full Information about specific cluster
+	GetClusterInfo(http.ResponseWriter, *http.Request)
+	// ListAllClusters is the handler for GET /storageclusters
 	// List all running clusters
 	ListAllClusters(http.ResponseWriter, *http.Request)
 	// DeployNewCluster is the handler for POST /storageclusters
 	// Deploy New Cluster
 	DeployNewCluster(http.ResponseWriter, *http.Request)
-	// GetClusterInfo is the handler for GET /storageclusters/{label}
-	// Get full Information about specific cluster
-	GetClusterInfo(http.ResponseWriter, *http.Request)
-	// KillCluster is the handler for DELETE /storageclusters/{label}
-	// Kill cluster
-	KillCluster(http.ResponseWriter, *http.Request)
 }
 
 // StorageclustersInterfaceRoutes is routing for /storageclusters root endpoint
 func StorageclustersInterfaceRoutes(r *mux.Router, i StorageclustersInterface) {
+	r.HandleFunc("/storageclusters/{label}", i.KillCluster).Methods("DELETE")
+	r.HandleFunc("/storageclusters/{label}", i.GetClusterInfo).Methods("GET")
 	r.HandleFunc("/storageclusters", i.ListAllClusters).Methods("GET")
 	r.HandleFunc("/storageclusters", i.DeployNewCluster).Methods("POST")
-	r.HandleFunc("/storageclusters/{label}", i.GetClusterInfo).Methods("GET")
-	r.HandleFunc("/storageclusters/{label}", i.KillCluster).Methods("DELETE")
 }
