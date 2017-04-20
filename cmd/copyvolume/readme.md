@@ -25,4 +25,6 @@ usage:
   When no target_url is given, the target metadataserver is the same as the source metadataserver.
 
 + `[-v]`: log all (progress) info to STDERR;
-+ `[-t api|direct]`: define the type of the given url(s); the gridapi url's or the direct metadataserver connectionstrings.
++ `[-t api|direct]`: define the type of the given url(s), the gridapi url's or the direct metadataserver connectionstrings;
++ `[-sourcesc name]`: combined with api type it allows you to predefine the source's storageCluster name;
++ `[-targetsc name]`: combined with api type it allows you to predefine the target's storageCluster name;

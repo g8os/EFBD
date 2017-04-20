@@ -27,6 +27,21 @@ func copyDifferentConnections(logger log.Logger, input *userInput, connA, connB 
 	logger.Infof("collected %d meta indices from source volume %q",
 		len(data), input.Source.Volume)
 
+	// ensure the volume isn't touched while we're creating it
+	if err = connB.Send("WATCH", input.Target.Volume); err != nil {
+		return
+	}
+
+	// start the copy transaction
+	if err = connB.Send("MULTI"); err != nil {
+		return
+	}
+
+	// delete any existing volume
+	if err = connB.Send("DEL", input.Target.Volume); err != nil {
+		return
+	}
+
 	// buffer all data on target connection
 	logger.Infof("buffering %d meta indices for target volume %q...",
 		len(data), input.Target.Volume)
@@ -40,8 +55,14 @@ func copyDifferentConnections(logger log.Logger, input *userInput, connA, connB 
 		connB.Send("HSET", input.Target.Volume, index, []byte(hash))
 	}
 
-	// send all data to target connection
+	// send all data to target connection (execute the transaction)
 	logger.Infof("flushing buffered metadata for target volume %q...", input.Target.Volume)
-	err = connB.Flush()
+	response, err := connB.Do("EXEC")
+	if err == nil && response == nil {
+		// if response == <nil> the transaction has failed
+		// more info: https://redis.io/topics/transactions
+		err = fmt.Errorf("volume %q was busy and couldn't be modified", input.Target.Volume)
+	}
+
 	return
 }

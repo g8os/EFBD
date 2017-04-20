@@ -63,6 +63,7 @@ func (f *ClusterConfigFactory) Listen(ctx context.Context) {
 			cfg, err := NewClusterConfig(
 				f.gridapiaddress,
 				volumeID,
+				"", // storageClusterName is retreived via the volume (volumeID)
 				f.logger,
 			)
 			if err != nil {
@@ -90,7 +91,7 @@ type clusterConfigResponse struct {
 }
 
 // NewClusterConfig creates a new cluster config
-func NewClusterConfig(gridapiaddress, volumeID string, logger log.Logger) (*ClusterConfig, error) {
+func NewClusterConfig(gridapiaddress, volumeID, storageClusterName string, logger log.Logger) (*ClusterConfig, error) {
 	client := gridapi.NewG8OSStatelessGRID()
 	client.BaseURI = gridapiaddress
 
@@ -99,10 +100,11 @@ func NewClusterConfig(gridapiaddress, volumeID string, logger log.Logger) (*Clus
 	}
 
 	cfg := &ClusterConfig{
-		client:   client,
-		volumeID: volumeID,
-		logger:   logger,
-		done:     make(chan struct{}, 1),
+		client:             client,
+		volumeID:           volumeID,
+		storageClusterName: storageClusterName,
+		logger:             logger,
+		done:               make(chan struct{}, 1),
 	}
 
 	if !cfg.loadConfig() {
@@ -115,8 +117,11 @@ func NewClusterConfig(gridapiaddress, volumeID string, logger log.Logger) (*Clus
 // ClusterConfig contains the cluster configuration,
 // which gets reloaded based on incoming SIGHUP signals.
 type ClusterConfig struct {
-	client   *gridapi.G8OSStatelessGRID
-	volumeID string
+	client *gridapi.G8OSStatelessGRID
+
+	// when storageClusterName is given,
+	// volumeID isn't needed and thus not used
+	volumeID, storageClusterName string
 
 	// used to log
 	logger log.Logger
@@ -225,23 +230,38 @@ func (cfg *ClusterConfig) loadConfig() bool {
 
 	cfg.logger.Info("loading storage cluster config")
 
-	// get volume info
-	volumeInfo, _, err := cfg.client.Volumes.GetVolumeInfo(cfg.volumeID, nil, nil)
-	if err != nil {
-		cfg.logger.Infof("couldn't get volumeInfo: %s", err.Error())
-		return false
-	}
+	var storageClusterName string
 
-	// check volumeType, and sure it's the same one as last time
-	if cfg.volumeType != "" && cfg.volumeType != volumeInfo.Volumetype {
-		cfg.logger.Infof("wrong type for volume %q, expected %q, while received %q",
-			cfg.volumeID, cfg.volumeType, volumeInfo.Volumetype)
+	if cfg.storageClusterName == "" && cfg.volumeID != "" {
+		// get volume info
+		volumeInfo, _, err := cfg.client.Volumes.GetVolumeInfo(cfg.volumeID, nil, nil)
+		if err != nil {
+			cfg.logger.Infof("couldn't get volumeInfo: %s", err.Error())
+			return false
+		}
+
+		// check volumeType, and sure it's the same one as last time
+		if cfg.volumeType != "" && cfg.volumeType != volumeInfo.Volumetype {
+			cfg.logger.Infof("wrong type for volume %q, expected %q, while received %q",
+				cfg.volumeID, cfg.volumeType, volumeInfo.Volumetype)
+			return false
+		}
+		cfg.volumeType = volumeInfo.Volumetype
+
+		storageClusterName = volumeInfo.Storagecluster
+	} else if cfg.storageClusterName != "" {
+		cfg.logger.Infof(
+			"skipping fetching volumeInfo because storage cluster name (%s) is already given",
+			cfg.storageClusterName)
+		storageClusterName = cfg.storageClusterName
+	} else {
+		cfg.logger.Info("couldn't load config: either the volumeID or the storageClusterName has to be defined")
 		return false
 	}
-	cfg.volumeType = volumeInfo.Volumetype
 
 	//Get information about the backend storage nodes
-	storageClusterInfo, _, err := cfg.client.Storageclusters.GetClusterInfo(volumeInfo.Storagecluster, nil, nil)
+	storageClusterInfo, _, err :=
+		cfg.client.Storageclusters.GetClusterInfo(storageClusterName, nil, nil)
 	if err != nil {
 		cfg.logger.Infof("couldn't get storage cluster info: %s", err.Error())
 		return false
@@ -258,7 +278,7 @@ func (cfg *ClusterConfig) loadConfig() bool {
 
 	// used to store metadata
 	if len(storageClusterInfo.MetadataStorage) < 1 {
-		cfg.logger.Infof("No metadata servers available in storagecluster %s", volumeInfo.Storagecluster)
+		cfg.logger.Infof("No metadata servers available in storagecluster %s", storageClusterName)
 		return false
 	}
 	cfg.metaConnectionString = connectionStringFromHAStorageServer(storageClusterInfo.MetadataStorage[0])
