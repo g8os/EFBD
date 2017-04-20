@@ -15,11 +15,17 @@ CPUInfo:
   type: object
   description: Information about physical CPUs
   properties:
-    cacheSize: integer
-    cores: integer
+    cacheSize:
+      type: number
+      format: int32
+    cores:
+      type: number
+      format: int32
     family: string
     flags: string[]
-    mhz: integer
+    mhz:
+      type: number
+      format: float
 
 MemInfo:
   type: object
@@ -40,14 +46,20 @@ OSInfo:
   type: object
   description: Information on the operating system
   properties:
-    bootTime: integer
+    bootTime:
+      type: number
+      format: int64
     hostname: string
     os: string
     platform: string
     platformFamily: string
     platformVersion: string
-    procs: integer
-    uptime: integer
+    procs:
+      type: number
+      format: int64
+    uptime:
+      type: number
+      format: int64
     virtualizationRole: string
     virtualizationSystem: string
 
@@ -105,7 +117,7 @@ BridgeCreate:
     nat:
       description: If true, SNAT will be enabled on this bridge.
       type: boolean
-    settings:
+    setting:
       type: BridgeCreateSetting
 
 BridgeCreateSetting:
@@ -182,17 +194,65 @@ DeleteFile:
       displayName: Path on the target system where the file should be written
       type: string
 
+CPUStats:
+  description: cpu time stats of all cpus combined
+  type: object
+  properties:
+    user:
+      description: The time the process spent running in user space
+      type: number
+      format: float
+    system:
+      description: The time the process spent running in kernel
+      type: number
+      format: float
+    idle:
+      description: The time the process spent idle
+      type: number
+      format: float
+    nice:
+      description: The time the niced process spent running in user space
+      type: number
+      format: float
+    ioWait:
+      description: The time the process spent idle waiting for I/O operation to complete
+      type: number
+      format: float
+    irq:
+      description: The time the process spent servicing hardware interrupts
+      type: number
+      format: float
+    softIrq:
+      description: The time the process spent servicing software interrupts
+      type: number
+      format: float
+    steal:
+      type: number
+      format: float
+    guestNice:
+      type: number
+      format: float
+    stolen:
+      type: number
+      format: float
+
 Process:
   type: object
   properties:
-    cmd: Job
-    pid: integer
-    name: string
-    cpu: number
-    debug: string
-    rss: number
-    swap: number
-    vms: number
+    cmdline: string
+    cpu: CPUStats
+    pid:
+      type: number
+      format: int64
+    rss:
+      type: number
+      format: int64
+    swap:
+      type: number
+      format: int64
+    vms:
+      type: number
+      format: int64
 
 ProcessSignal:
   type: object
@@ -221,16 +281,12 @@ VDiskLink:
   type: object
   description: Definition of a virtual disk
   properties:
+    vdiskid:
+      type: string
+      description: Id of the vdisk
     maxIOps:
       description: Maximum amount of iops the virtual disk should deliver
       type: integer
-    storageclusterid:
-      type: string
-      description: Id of the storage cluster of the volume
-    volumeid:
-      type: string
-      description: Id of the volume
-
 
 VMListItem:
   type: object
@@ -238,8 +294,7 @@ VMListItem:
   properties:
     id:
       description: Unique id of the virtual machine
-      type: integer
-    name: string
+      type: string
     status:
       enum: [running, halted, paused]
       description: Status of the VM
@@ -250,7 +305,6 @@ VM:
     id:
       description: Unique identifier of the vm
       type: string
-    name: string
     status:
       enum: [running, halted, paused, halting, migrating]
       description: Status of the VM
@@ -260,29 +314,29 @@ VM:
     cpu:
       description: Number of virtual CUPs
       type: integer
-    nic:
+    nics:
       description: List of nic specifications.
       type: NicLink[]
-    disk:
+    disks:
       description: List of virtual disks
       type: VDiskLink[]
 
 VMCreate:
   type: object
   properties:
-    name: string
+    id: string
     memory:
       description: Amount of memory in MiB
       type: integer
     cpu:
       description: Number of virtual CUPs
       type: integer
-    nic:
+    nics:
       description: List of nic specifications.
       type: NicLink[]
-    disk:
+    disks:
       description: List of virtual disks
-      type: VDiskLink[]
+      type: string[]
     userCloudInit:
       description: Userlevel cloudinit configuration
       type: object
@@ -290,13 +344,30 @@ VMCreate:
       description: Systemlevel cloudinit configuration
       type: object
 
+VMUpdate:
+  type: object
+  properties:
+    memory:
+      description: Amount of memory in MiB
+      type: integer
+    cpu:
+      description: Number of virtual CUPs
+      type: integer
+    nics:
+      description: List of nic specifications.
+      type: NicLink[]
+    disks:
+      description: List of virtual disks
+      type: VDiskLink[]
+
+
 Bridge:
   type: object
   properties:
     name:
       description: Name of the bridge
       type: string
-    config:
+    setting:
       description: |
         '' or 'none':
           no IP is gonna be set on the link
@@ -337,9 +408,9 @@ ContainerNIC:
            type: string
            description: Gateway for the the container
            required: false
-         nameservers:
+         dns:
            type: string[]
-           description: Nameservers to be used
+           description: List of dns to be used
            required: false
       description: Optional IPAddress configuration for this interface, only allowed for interfaces of type vxlan and vlan
     status:
@@ -365,9 +436,9 @@ ContainerListItem:
 Container:
   type: object
   properties:
-    id:
-      description: identifier
-      type: string
+    containerId:
+      description: The container id given to the container by g8os
+      type: integer
     status:
       enum: [running, halted]
       description: Status of the container
@@ -388,9 +459,9 @@ Container:
         /fs/<<storagepool>>/<<filesystem>>
       example: ['pool1:fs1', 'pool2:fs2']
       type: string[]
-    bridges:
+    nics:
       type: ContainerNIC[]
-      description: Bridge mapping
+      description: List of container nics
     hostNetworking:
       type: boolean
       description: Make host networking available to the guest. If true means that the container will be able participate in the networks available in the host operating system.
@@ -403,6 +474,51 @@ Container:
       type: string
       description: A Url to the ardb storage to use to mount the root plist
 
+
+CreateContainer:
+  type: object
+  properties:
+    id:
+      description: unique identifier
+      type: string
+    hostname:
+      description: Hostname for the Container
+      type: string
+    flist:
+      type: string
+      description: Url to the root filesystem flist
+    initProcesses:
+      type: CoreSystem[]
+      description: Definition of the processes to start in the container
+      required: false
+    filesystems:
+      description: |
+        List of filesystems that will be exposed to the container
+        format: <<storagepool>>:<<filesystem>>
+        filesystems are mounted in the container filesystem as follows:
+        /fs/<<storagepool>>/<<filesystem>>
+      example: ['pool1:fs1', 'pool2:fs2']
+      type: string[]
+      required: false
+    nics:
+      type: ContainerNIC[]
+      description: List of container nics
+      required: false
+    hostNetworking:
+      type: boolean
+      description: Make host networking available to the guest. If true means that the container will be able participate in the networks available in the host operating system.
+    ports:
+      type: string[]
+      description: |
+        List of node to container post mappings.
+      example: ['10022:22', '8080:80']
+      required: false
+      default: []
+    storage:
+      type: string
+      required: false
+      description: A Url to the ardb storage to use to mount the root plist
+
 JobListItem:
   type: object
   description: Result object of a job
@@ -410,9 +526,10 @@ JobListItem:
     id:
       description: The unique identifier for the job
       type: string
-    starttime:
+    startTime:
       description: Epoch timestamp when the job was started
-      type: integer
+      type: number
+      format: int64
 
 JobResult:
   type: object
@@ -433,10 +550,11 @@ JobResult:
              'btrfs.subvol_create', 'btrfs.subvol_list', 'btrfs.subvol_delete']
     level:
       description: 20 means that the data is json serialized object
-      type: string
-    starttime:
-      description: Epoch timestamp when the job was started
       type: integer
+    startTime:
+      description: Epoch timestamp when the job was started
+      type: number
+      format: int64
     stdout:
       type: string
       description: Stdout of process/job
@@ -456,10 +574,17 @@ CoreStateResult:
   properties:
     cpu:
       description: percentage cpu used in a node
-      type: integer
-    rss: integer
-    vms: integer
-    swap: integer
+      type: number
+      format: float
+    rss:
+      type: number
+      format: int64
+    vms:
+      type: number
+      format: int64
+    swap:
+      type: number
+      format: int64
 
 ZerotierRoute:
   type: object
@@ -650,6 +775,10 @@ FilesystemCreate:
     quota:
       description: Amount of MiB that can be written to the filesystem. 0 means no quota is set.
       type: integer
+    readOnly:
+      type: boolean
+      default: false
+      description: set the filesystem to read only mode
 
 Snapshot:
   type: object
@@ -682,7 +811,7 @@ VMDiskInfo:
       description: Average amount of MiB's written per second over the last 5 minutes
       type: integer
 
-VMNetInfo:
+VMNicInfo:
   type: object
   properties:
     receivedPackets:
@@ -702,8 +831,8 @@ VMInfo:
   type: object
   description: Statistical information about a vm
   properties:
-    disk: VMDiskInfo[]
-    net: VMNetInfo[]
+    disks: VMDiskInfo[]
+    nics: VMNicInfo[]
     cpu:
       description: Average number of cpu utilisation in cpu seconds / second over the last 5 minutes per vcpu
       type: number[]
@@ -781,21 +910,25 @@ Cluster:
       type: HAStorageServer[]
       description: List of metadata storage servers in the cluster
 
-# Volumes API
-VolumeCreate:
+# Vdisks API
+VdiskCreate:
   properties:
+    id:
+      type: string
+      description: name of the vdisk. need to be unique
+      required: true
     size:
       type: integer
-      description: Size of the volume in GiB
+      description: Size of the vdisk in GiB
     blocksize:
       type: integer
       description: blocksize in bytes
       default: 4096
-    volumetype:
+    type:
       enum: [boot, db, cache, tmp]
-      description: The type of volume.
+      description: The type of vdisk.
       required: true
-    templatevolume:
+    templatevdisk:
       type: string
       required: false
     readOnly:
@@ -804,49 +937,61 @@ VolumeCreate:
       default: false
     storagecluster:
       type: string
-      description: the storagecluster used for this volume's main storage.
+      description: the storagecluster used for this vdisk's main storage.
       required: false
     tlogStoragecluster:
       type: string
-      description: the storagecluster used for this volume's transaction logs
+      description: the storagecluster used for this vdisk's transaction logs
       required: false
 
-Volume:
+Vdisk:
   properties:
     id: string
     status:
       enum: [running, halted, rollingback]
-      description: Status of the volume
+      description: Status of the vdisk
     size:
       type: integer
-      description: Size of the volume in GiB
+      description: Size of the vdisk in GiB
     blocksize:
       type: integer
       description: blocksize in bytes
       default: 4096
-    volumetype:
+    type:
       enum: [boot, db, cache, tmp]
-      description: The type of volume.
+      description: The type of vdisk.
     readOnly:
       type: boolean
       default: false
       required: false
     storagecluster:
       type: string
-      description: the storagecluster used for this volume's main storage.
+      description: the storagecluster used for this vdisk's main storage.
     tlogStoragecluster:
       type: string
-      description: the storagecluster used for this volume's transaction logs
+      description: the storagecluster used for this vdisk's transaction logs
 
+VdiskListItem:
+  properties:
+    id: string
+    status:
+      enum: [running, halted, rollingback]
+      description: Status of the vdisk
+    type:
+      enum: [boot, db, cache, tmp]
+      description: The type of vdisk.
+    storagecluster:
+      type: string
+      description: the storagecluster used for this vdisk's main storage.
 
-VolumeResize:
+VdiskResize:
   properties:
     newSize:
       type: integer
       description: New size in Gib, need to be bigger then the current size.
 
-VolumeRollback:
+VdiskRollback:
   properties:
     epoch:
       type: integer
-      description: Epoch to which we want to rollback the volume
+      description: Epoch to which we want to rollback the vdisk

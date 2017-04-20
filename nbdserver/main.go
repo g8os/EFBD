@@ -41,7 +41,7 @@ func main() {
 	flag.StringVar(&protocol, "protocol", "unix", "Protocol to listen on, 'tcp' or 'unix'")
 	flag.StringVar(&address, "address", "/tmp/nbd-socket", "Address to listen on, unix socket or tcp address, ':6666' for example")
 	flag.StringVar(&gridapiaddress, "gridapi", "", "Address of the grid api REST API, leave empty to use the embedded stub")
-	flag.StringVar(&nonDedupedExports, "nondeduped", "", "when using the embedded volumecontroller, comma seperated list of exports that should not be deduped")
+	flag.StringVar(&nonDedupedExports, "nondeduped", "", "when using the embedded gridapi, comma seperated list of exports that should not be deduped")
 	flag.StringVar(&testArdbConnectionSrings, "testardbs", "localhost:16379,localhost:16379", "Comma seperated list of ardb connection strings returned by the embedded backend controller, first one is the metadataserver")
 	flag.StringVar(&exports, "export", "default", "comma seperated list of exports to list and use")
 	flag.Int64Var(&lbacachelimit, "lbacachelimit", ardb.DefaultLBACacheLimit,
@@ -160,7 +160,7 @@ func main() {
 
 	// set export config controller,
 	// so we can generate the ExportConfig,
-	// dynamically based on the given volume
+	// dynamically based on the given vdisk
 	l.SetExportConfigManager(exportController)
 
 	// listen to requests

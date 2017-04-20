@@ -9,10 +9,10 @@ import (
 )
 
 // newDedupedStorage returns the deduped backendStorage implementation
-func newDedupedStorage(volumeID string, blockSize int64, provider *redisProvider, vlba *lba.LBA) backendStorage {
+func newDedupedStorage(vdiskID string, blockSize int64, provider *redisProvider, vlba *lba.LBA) backendStorage {
 	return &dedupedStorage{
 		blockSize:       blockSize,
-		volumeID:        volumeID,
+		vdiskID:         vdiskID,
 		zeroContentHash: lba.HashBytes(make([]byte, blockSize)),
 		provider:        provider,
 		lba:             vlba,
@@ -21,10 +21,10 @@ func newDedupedStorage(volumeID string, blockSize int64, provider *redisProvider
 
 // dedupedStorage is a backendStorage implementation,
 // that stores the content based on a hash unique to that content,
-// all hashes are linked to the volume using lba.LBA
+// all hashes are linked to the vdisk using lba.LBA
 type dedupedStorage struct {
 	blockSize       int64
-	volumeID        string
+	vdiskID         string
 	zeroContentHash lba.Hash
 	provider        *redisProvider
 	lba             *lba.LBA

@@ -7,20 +7,20 @@ import (
 )
 
 // newNonDedupedStorage returns the non deduped backendStorage implementation
-func newNonDedupedStorage(volumeID string, blockSize int64, provider *redisProvider) backendStorage {
+func newNonDedupedStorage(vdiskID string, blockSize int64, provider *redisProvider) backendStorage {
 	return &nonDedupedStorage{
 		blockSize: blockSize,
-		volumeID:  volumeID,
+		vdiskID:   vdiskID,
 		provider:  provider,
 	}
 }
 
 // nonDedupedStorage is a backendStorage implementation,
 // that simply stores each block in redis using
-// a unique key based on the volumeID and blockIndex
+// a unique key based on the vdiskID and blockIndex
 type nonDedupedStorage struct {
 	blockSize int64
-	volumeID  string
+	vdiskID   string
 	provider  *redisProvider
 }
 
@@ -114,10 +114,10 @@ func (ss *nonDedupedStorage) Flush() (err error) {
 }
 
 // get the unique key for a block,
-// based on its index and the shared volumeID
+// based on its index and the shared vdiskID
 func (ss *nonDedupedStorage) getKey(blockIndex int64) string {
 	//Is twice as fast as fmt.Sprintf
-	return ss.volumeID + ":" + strconv.Itoa(int(blockIndex))
+	return ss.vdiskID + ":" + strconv.Itoa(int(blockIndex))
 }
 
 // isZeroContent detects if a given content buffer is completely filled with 0s
