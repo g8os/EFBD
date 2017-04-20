@@ -1,6 +1,6 @@
 #%RAML 1.0
 title: G8OS Stateless GRID
-version: v0.2.0
+version: v1.1.0-alpha
 mediaType:  application/json
 
 annotationTypes:
@@ -162,7 +162,7 @@ types:
              body:
                application/json:
                  type: Process[]
-       /{proccessid}:
+       /{processid}:
          get:
            (DirectAccess):
            displayName: GetNodeProcess
@@ -222,7 +222,7 @@ types:
     /storagepools:
       get:
         (AYSBased):
-        displayName: GetStoragePools
+        displayName: ListStoragePools
         description: List storage pools present in the node
         responses:
           200:
@@ -354,7 +354,7 @@ types:
               post:
                 (AYSBased):
                 displayName: CreateSnapshot
-                description: Create a new readonly filesystem of the current state of the volume
+                description: Create a new readonly filesystem of the current state of the vdisk
                 body:
                   application/json:
                     description: |
@@ -449,7 +449,7 @@ types:
         description: Create a new Container
         body:
           application/json:
-            type: Container
+            type: CreateContainer
         responses:
           201:
             description: Container created successfully
@@ -473,6 +473,22 @@ types:
               body:
                 application/json:
                   type: Container
+        /start:
+          post:
+            (AYSBased):
+            displayName: StartContainer
+            description: Start Container instance
+            responses:
+              201:
+                description: Container started successfully
+        /stop:
+          post:
+            (AYSBased):
+            displayName: StopContainer
+            description: Stop Container instance
+            responses:
+              204:
+                description: Container stopped successfully
         /filesystem:
           post:
             (DirectAccess):
@@ -529,13 +545,6 @@ types:
             responses:
               204:
                 description: Jobs killed successfully
-          post:
-            (DirectAccess):
-            displayName: SendSignalToJob
-            description: Send signal to the job
-            body:
-              application/json:
-                type: ProcessSignal
           /{jobid}:
             get:
               (DirectAccess):
@@ -546,6 +555,13 @@ types:
                   body:
                     application/json:
                       type: JobResult
+            post:
+              (DirectAccess):
+              displayName: SendSignalToJob
+              description: Send signal to the job
+              body:
+                application/json:
+                  type: ProcessSignal
             delete:
               (DirectAccess):
               displayName: KillContainerJob
@@ -606,7 +622,7 @@ types:
                  headers:
                    Location:
                      description: Url to the job object handling this request
-           /{proccessid}:
+           /{processid}:
              get:
                (DirectAccess):
                displayName: GetContainerProcess
@@ -648,11 +664,11 @@ types:
           application/json:
             type: VMCreate
         responses:
-          200:
-            body:
-              application/json:
-                description: Runtime id of the virtual machine (process id)
-                type: integer
+          201:
+            description: VM created successfully
+            headers:
+              Location:
+                description: Url to the created vm resource
       /{vmid}:
         delete:
           (AYSBased):
@@ -670,6 +686,15 @@ types:
               body:
                 application/json:
                   type: VM
+        put:
+          displayName: UpdateVM
+          description: updates the VM
+          body:
+            application/json:
+              type: VMUpdate
+          responses:
+            204:
+              description: VM updated successfully
         /info:
           get:
             (DirectAccess):
@@ -772,61 +797,72 @@ types:
       responses:
         204:
           description: Cluster destroyed
-/volumes:
+/vdisks:
+  get:
+    (AYSBased):
+    displayName: ListVdisks
+    description: List vdisks
+    responses:
+      200:
+        body:
+          application/json:
+            type: VdiskListItem[]
   post:
     (AYSBased):
-    displayName: CreateNewVolume
-    description: Create a new volume, can be a copy from an existing volume
+    displayName: CreateNewVdisk
+    description: Create a new vdisk, can be a copy from an existing vdisk
     body:
       application/json:
-        type: VolumeCreate
+        type: VdiskCreate
     responses:
       201:
         headers:
           Location:
-            description: Url to the created volume resource
+            description: Url to the created vdisk resource
       404:
-        description: The template volume or storagecluster do not exist
-  /{volumeid}:
+        description: The template vdisk or storagecluster do not exist
+      409:
+        description: A vdisk with this ID already exists
+  /{vdiskid}:
     get:
       (AYSBased):
-      displayName: GetVolumeInfo
-      description: Get volume information
+      displayName: GetVdiskInfo
+      description: Get vdisk information
       responses:
         200:
           body:
             application/json:
-              type: Volume
+              type: Vdisk
         404:
-          description: The volume does not exist
+          description: The vdisk does not exist
     delete:
       (AYSBased):
-      displayName: DeleteVolume
-      description: Delete Volume
+      displayName: DeleteVdisk
+      description: Delete Vdisk
       responses:
         204:
           description: Deleted
         404:
-          description: The volume does not exist
+          description: The vdisk does not exist
     /resize:
       post:
         (AYSBased):
-        displayName: ResizeVolume
-        description: Resize Volume
+        displayName: ResizeVdisk
+        description: Resize Vdisk
         body:
           application/json:
-            type: VolumeResize
+            type: VdiskResize
         responses:
           204:
-            description: Volume Resized
+            description: Vdisk Resized
     /rollback:
       post:
         (AYSBased):
-        displayName: RollbackVolume
-        description: Rollback a volume to a previous state
+        displayName: RollbackVdisk
+        description: Rollback a vdisk to a previous state
         body:
           application/json:
-            type: VolumeRollback
+            type: VdiskRollback
         responses:
           204:
             description: Rollback started successfully

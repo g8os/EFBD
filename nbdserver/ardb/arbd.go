@@ -18,7 +18,7 @@ import (
 const (
 	// DefaultLBACacheLimit defines the default cache limit
 	DefaultLBACacheLimit = 20 * mebibyteAsBytes // 20 MiB
-	// to convert the volume size returned from the GridAPI,
+	// to convert the vdisk size returned from the GridAPI,
 	// from GiB to Bytes
 	gibibyteAsBytes int64 = 1024 * 1024 * 1024
 	mebibyteAsBytes int64 = 1024 * 1024
@@ -57,11 +57,11 @@ type BackendFactory struct {
 
 //NewBackend generates a new ardb backend
 func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (backend nbd.Backend, err error) {
-	volumeID := ec.Name
+	vdiskID := ec.Name
 
 	// create storage cluster config,
 	// which is used to dynamically reload the configuration
-	storageClusterCfg, err := f.scConfigFactory.NewConfig(volumeID)
+	storageClusterCfg, err := f.scConfigFactory.NewConfig(vdiskID)
 	if err != nil {
 		log.Infof("couldn't get storage cluster info: %s", err.Error())
 		return
@@ -69,39 +69,39 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 
 	redisProvider, err := newRedisProvider(f.backendPool, storageClusterCfg)
 
-	//Get information about the volume
+	//Get information about the vdisk
 	g8osClient := gridapi.NewG8OSStatelessGRID()
 	g8osClient.BaseURI = f.gridAPIAddress
-	log.Info("starting volume", volumeID)
-	volumeInfo, _, err := g8osClient.Volumes.GetVolumeInfo(volumeID, nil, nil)
+	log.Info("starting vdisk", vdiskID)
+	vdiskInfo, _, err := g8osClient.Vdisks.GetVdiskInfo(vdiskID, nil, nil)
 	if err != nil {
-		log.Infof("couldn't get volune info: %s", err.Error())
+		log.Infof("couldn't get vdisk info: %s", err.Error())
 		return
 	}
 
 	var storage backendStorage
-	blockSize := int64(volumeInfo.Blocksize)
+	blockSize := int64(vdiskInfo.Blocksize)
 
-	// GridAPI returns the volume size in GiB
-	volumeSize := int64(volumeInfo.Size) * gibibyteAsBytes
+	// GridAPI returns the vdisk size in GiB
+	vdiskSize := int64(vdiskInfo.Size) * gibibyteAsBytes
 
-	switch volumeInfo.Volumetype {
-	case gridapi.EnumVolumeVolumetypedb, gridapi.EnumVolumeVolumetypecache:
-		storage = newNonDedupedStorage(volumeID, blockSize, redisProvider)
-	case gridapi.EnumVolumeVolumetypeboot:
+	switch vdiskInfo.Type {
+	case gridapi.EnumVdiskTypedb, gridapi.EnumVdiskTypecache:
+		storage = newNonDedupedStorage(vdiskID, blockSize, redisProvider)
+	case gridapi.EnumVdiskTypeboot:
 		cacheLimit := f.lbaCacheLimit
 		if cacheLimit < lba.BytesPerShard {
 			cacheLimit = DefaultLBACacheLimit
 		}
 
-		blockCount := volumeSize / blockSize
-		if volumeSize%blockSize > 0 {
+		blockCount := vdiskSize / blockSize
+		if vdiskSize%blockSize > 0 {
 			blockCount++
 		}
 
 		var vlba *lba.LBA
 		vlba, err = lba.NewLBA(
-			volumeID,
+			vdiskID,
 			blockCount,
 			cacheLimit,
 			redisProvider,
@@ -111,14 +111,14 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 			return
 		}
 
-		storage = newDedupedStorage(volumeID, blockSize, redisProvider, vlba)
+		storage = newDedupedStorage(vdiskID, blockSize, redisProvider, vlba)
 	default:
-		err = fmt.Errorf("Unsupported volume type: %s", volumeInfo.Volumetype)
+		err = fmt.Errorf("Unsupported vdisk type: %s", vdiskInfo.Type)
 	}
 
 	backend = &Backend{
 		blockSize:         blockSize,
-		size:              uint64(volumeSize),
+		size:              uint64(vdiskSize),
 		storage:           storage,
 		storageClusterCfg: storageClusterCfg,
 	}

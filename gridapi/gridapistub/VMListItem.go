@@ -6,8 +6,7 @@ import (
 
 // Virtual machine list item
 type VMListItem struct {
-	Id     int                  `json:"id" validate:"nonzero"`
-	Name   string               `json:"name" validate:"nonzero"`
+	Id     string               `json:"id" validate:"nonzero"`
 	Status EnumVMListItemStatus `json:"status" validate:"nonzero"`
 }
 

@@ -6,9 +6,8 @@ import (
 
 // Definition of a virtual disk
 type VDiskLink struct {
-	MaxIOps          int    `json:"maxIOps" validate:"nonzero"`
-	Storageclusterid string `json:"storageclusterid" validate:"nonzero"`
-	Volumeid         string `json:"volumeid" validate:"nonzero"`
+	MaxIOps int    `json:"maxIOps" validate:"nonzero"`
+	Vdiskid string `json:"vdiskid" validate:"nonzero"`
 }
 
 func (s VDiskLink) Validate() error {

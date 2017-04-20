@@ -17,7 +17,7 @@ type MetaRedisProvider interface {
 }
 
 //NewLBA creates a new LBA
-func NewLBA(volumeID string, blockCount, cacheLimitInBytes int64, provider MetaRedisProvider) (lba *LBA, err error) {
+func NewLBA(vdiskID string, blockCount, cacheLimitInBytes int64, provider MetaRedisProvider) (lba *LBA, err error) {
 	if provider == nil {
 		return nil, errors.New("NewLBA requires a non-nil MetaRedisProvider")
 	}
@@ -29,7 +29,7 @@ func NewLBA(volumeID string, blockCount, cacheLimitInBytes int64, provider MetaR
 
 	lba = &LBA{
 		provider: provider,
-		volumeID: volumeID,
+		vdiskID:  vdiskID,
 		shardMux: make([]sync.Mutex, muxCount),
 	}
 
@@ -52,7 +52,7 @@ type LBA struct {
 	shardMux []sync.Mutex
 
 	provider MetaRedisProvider
-	volumeID string
+	vdiskID  string
 }
 
 //Set the content hash for a specific block.
@@ -171,7 +171,7 @@ func (lba *LBA) getShardFromExternalStorage(index int64) (shard *shard, err erro
 		return
 	}
 	defer conn.Close()
-	reply, err := conn.Do("HGET", lba.volumeID, index)
+	reply, err := conn.Do("HGET", lba.vdiskID, index)
 	if err != nil || reply == nil {
 		return
 	}
@@ -194,9 +194,9 @@ func (lba *LBA) storeCacheInExternalStorage() (err error) {
 
 	lba.cache.Serialize(func(index int64, bytes []byte) (err error) {
 		if bytes != nil {
-			err = conn.Send("HSET", lba.volumeID, index, bytes)
+			err = conn.Send("HSET", lba.vdiskID, index, bytes)
 		} else {
-			err = conn.Send("HDEL", lba.volumeID, index)
+			err = conn.Send("HDEL", lba.vdiskID, index)
 		}
 		return
 	})
@@ -229,7 +229,7 @@ func (lba *LBA) storeShardInExternalStorage(index int64, shard *shard) (err erro
 	}
 	defer conn.Close()
 
-	_, err = conn.Do("HSET", lba.volumeID, index, buffer.Bytes())
+	_, err = conn.Do("HSET", lba.vdiskID, index, buffer.Bytes())
 	if err != nil {
 		shard.UnsetDirty()
 	}
@@ -244,7 +244,7 @@ func (lba *LBA) deleteShardFromExternalStorage(index int64) (err error) {
 	}
 	defer conn.Close()
 
-	_, err = conn.Do("HDEL", lba.volumeID, index)
+	_, err = conn.Do("HDEL", lba.vdiskID, index)
 
 	return
 }
