@@ -19,10 +19,10 @@ Requires `Go 1.8` or above.
 $ copyvdisk -h
 
 usage:
-  copyvdisk [-v] [-t api|direct] source_vdisk target_vdisk source_url [target_url]
+  copyvdisk [-v] [-t api|direct] [-sourcesc name] [-targetsc name] source_vdisk target_vdisk source_url [target_url]
 ```
 
-  When no target_url is given, the target metadataserver is the same as the source metadataserver.
+  When no target_url is given, the target_url is the same as the source_url.
 
 + `[-v]`: log all (progress) info to STDERR;
 + `[-t api|direct]`: define the type of the given url(s), the gridapi url's or the direct metadataserver connectionstrings;
