@@ -31,7 +31,8 @@ func main() {
 	var protocol string
 	var address string
 	var gridapiaddress string
-	var testArdbConnectionSrings string
+	var rootArdbConnectionString string
+	var testArdbConnectionStrings string
 	var exports string
 	var nonDedupedExports string
 	flag.BoolVar(&verbose, "v", false, "when false, only log warnings and errors")
@@ -41,8 +42,9 @@ func main() {
 	flag.StringVar(&protocol, "protocol", "unix", "Protocol to listen on, 'tcp' or 'unix'")
 	flag.StringVar(&address, "address", "/tmp/nbd-socket", "Address to listen on, unix socket or tcp address, ':6666' for example")
 	flag.StringVar(&gridapiaddress, "gridapi", "", "Address of the grid api REST API, leave empty to use the embedded stub")
+	flag.StringVar(&rootArdbConnectionString, "rootardb", "", "Address of the root ardb connection string, used in case content can't be found in local storage")
 	flag.StringVar(&nonDedupedExports, "nondeduped", "", "when using the embedded gridapi, comma seperated list of exports that should not be deduped")
-	flag.StringVar(&testArdbConnectionSrings, "testardbs", "localhost:16379,localhost:16379", "Comma seperated list of ardb connection strings returned by the embedded backend controller, first one is the metadataserver")
+	flag.StringVar(&testArdbConnectionStrings, "testardbs", "localhost:16379,localhost:16379", "Comma seperated list of ardb connection strings returned by the embedded backend controller, first one is the metadataserver")
 	flag.StringVar(&exports, "export", "default", "comma seperated list of exports to list and use")
 	flag.Int64Var(&lbacachelimit, "lbacachelimit", ardb.DefaultLBACacheLimit,
 		fmt.Sprintf("Cache limit of LBA in bytes, needs to be higher then %d (bytes in 1 shard)", lba.BytesPerShard))
@@ -55,13 +57,14 @@ func main() {
 	}
 
 	log.SetFlags(logFlags)
-	log.Debugf("flags parsed: memorystorage=%t tslonly=%t profileaddress=%q protocol=%q address=%q gridapi=%q nondeduped=%q testardbs=%q export=%q lbacachelimit=%d",
+	log.Debugf("flags parsed: memorystorage=%t tslonly=%t profileaddress=%q protocol=%q address=%q gridapi=%q nondeduped=%q rootardb=%q testardbs=%q export=%q lbacachelimit=%d",
 		inMemoryStorage, tslonly,
 		profileAddress,
 		protocol, address,
 		gridapiaddress,
 		nonDedupedExports,
-		testArdbConnectionSrings,
+		rootArdbConnectionString,
+		testArdbConnectionStrings,
 		exports,
 		lbacachelimit)
 
@@ -84,7 +87,7 @@ func main() {
 		log.Info("Starting embedded grid api")
 		var s *httptest.Server
 		var err error
-		s, gridapiaddress, err = gridapi.NewGridAPIServer(testArdbConnectionSrings, strings.Split(nonDedupedExports, ","))
+		s, gridapiaddress, err = gridapi.NewGridAPIServer(testArdbConnectionStrings, strings.Split(nonDedupedExports, ","))
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -129,7 +132,7 @@ func main() {
 	redisPool := ardb.NewRedisPool(poolDial)
 	defer redisPool.Close()
 
-	storageClusterCfgFactory, err := storagecluster.NewClusterConfigFactory(
+	storageClusterClientFactory, err := storagecluster.NewClusterClientFactory(
 		gridapiaddress, log.New(os.Stderr, "storagecluster:", log.Flags()))
 	if err != nil {
 		log.Fatal(err)
@@ -138,14 +141,15 @@ func main() {
 	// listens to incoming requests to create a dynamic StorageClusterConfig,
 	// this is run on a goroutine, such that it can create
 	// internal listeners as a goroutine
-	go storageClusterCfgFactory.Listen(configCtx)
+	go storageClusterClientFactory.Listen(configCtx)
 
-	backendFactory, err := ardb.NewBackendFactory(
-		redisPool,
-		storageClusterCfgFactory,
-		gridapiaddress,
-		lbacachelimit,
-	)
+	backendFactory, err := ardb.NewBackendFactory(ardb.BackendFactoryConfig{
+		Pool:                     redisPool,
+		SCClientFactory:          storageClusterClientFactory,
+		GridAPIAddress:           gridapiaddress,
+		RootARDBConnectionString: rootArdbConnectionString,
+		LBACacheLimit:            lbacachelimit,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
