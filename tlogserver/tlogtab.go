@@ -12,7 +12,7 @@ type tlogTab struct {
 	lock      sync.RWMutex
 }
 
-func newTlogTab(volID uint32) *tlogTab {
+func newTlogTab(volID string) *tlogTab {
 	return &tlogTab{
 		tlogs:     []*TlogBlock{},
 		lastFlush: time.Now(),
