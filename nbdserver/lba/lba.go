@@ -203,7 +203,7 @@ func (lba *LBA) storeCacheInExternalStorage() (err error) {
 
 	// Write all sets in output buffer to Redis at once
 	err = conn.Flush()
-	if err != nil {
+	if err == nil {
 		// no need to evict, already serialized them
 		evict := false
 		// clear cache, as we serialized them all
