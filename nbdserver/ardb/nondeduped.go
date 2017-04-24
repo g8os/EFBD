@@ -7,7 +7,7 @@ import (
 )
 
 // newNonDedupedStorage returns the non deduped backendStorage implementation
-func newNonDedupedStorage(vdiskID string, blockSize int64, provider *redisProvider) backendStorage {
+func newNonDedupedStorage(vdiskID string, blockSize int64, provider redisConnectionProvider) backendStorage {
 	return &nonDedupedStorage{
 		blockSize: blockSize,
 		vdiskID:   vdiskID,
@@ -21,14 +21,14 @@ func newNonDedupedStorage(vdiskID string, blockSize int64, provider *redisProvid
 type nonDedupedStorage struct {
 	blockSize int64
 	vdiskID   string
-	provider  *redisProvider
+	provider  redisConnectionProvider
 }
 
 // Set implements backendStorage.Set
 func (ss *nonDedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 	key := ss.getKey(blockIndex)
 
-	conn, err := ss.provider.RedisConnection(int(blockIndex))
+	conn, err := ss.provider.RedisConnection(blockIndex)
 	if err != nil {
 		return
 	}
@@ -50,7 +50,7 @@ func (ss *nonDedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 func (ss *nonDedupedStorage) Merge(blockIndex, offset int64, content []byte) (err error) {
 	key := ss.getKey(blockIndex)
 
-	conn, err := ss.provider.RedisConnection(int(blockIndex))
+	conn, err := ss.provider.RedisConnection(blockIndex)
 	if err != nil {
 		return
 	}
@@ -77,7 +77,7 @@ func (ss *nonDedupedStorage) Merge(blockIndex, offset int64, content []byte) (er
 func (ss *nonDedupedStorage) Get(blockIndex int64) (content []byte, err error) {
 	key := ss.getKey(blockIndex)
 
-	conn, err := ss.provider.RedisConnection(int(blockIndex))
+	conn, err := ss.provider.RedisConnection(blockIndex)
 	if err != nil {
 		return
 	}
@@ -96,7 +96,7 @@ func (ss *nonDedupedStorage) Get(blockIndex int64) (content []byte, err error) {
 
 // Delete implements backendStorage.Delete
 func (ss *nonDedupedStorage) Delete(blockIndex int64) (err error) {
-	conn, err := ss.provider.RedisConnection(int(blockIndex))
+	conn, err := ss.provider.RedisConnection(blockIndex)
 	if err != nil {
 		return
 	}
@@ -117,7 +117,7 @@ func (ss *nonDedupedStorage) Flush() (err error) {
 // based on its index and the shared vdiskID
 func (ss *nonDedupedStorage) getKey(blockIndex int64) string {
 	//Is twice as fast as fmt.Sprintf
-	return ss.vdiskID + ":" + strconv.Itoa(int(blockIndex))
+	return ss.vdiskID + ":" + strconv.FormatInt(blockIndex, 10)
 }
 
 // isZeroContent detects if a given content buffer is completely filled with 0s

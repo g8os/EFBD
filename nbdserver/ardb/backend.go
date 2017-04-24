@@ -9,10 +9,10 @@ import (
 
 //Backend is a nbd.Backend implementation on top of ARDB
 type Backend struct {
-	blockSize         int64
-	size              uint64
-	storage           backendStorage
-	storageClusterCfg *storagecluster.ClusterConfig
+	blockSize            int64
+	size                 uint64
+	storage              backendStorage
+	storageClusterClient *storagecluster.ClusterClient
 }
 
 //WriteAt implements nbd.Backend.WriteAt
@@ -151,7 +151,7 @@ func (ab *Backend) Flush(ctx context.Context) (err error) {
 
 //Close implements nbd.Backend.Close
 func (ab *Backend) Close(ctx context.Context) (err error) {
-	ab.storageClusterCfg.Close()
+	ab.storageClusterClient.Close()
 	return
 }
 

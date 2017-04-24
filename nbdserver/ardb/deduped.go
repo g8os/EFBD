@@ -4,12 +4,13 @@ import (
 	"fmt"
 
 	"github.com/garyburd/redigo/redis"
+	log "github.com/glendc/go-mini-log"
 
 	"github.com/g8os/blockstor/nbdserver/lba"
 )
 
 // newDedupedStorage returns the deduped backendStorage implementation
-func newDedupedStorage(vdiskID string, blockSize int64, provider *redisProvider, vlba *lba.LBA) backendStorage {
+func newDedupedStorage(vdiskID string, blockSize int64, provider redisConnectionProvider, vlba *lba.LBA) backendStorage {
 	return &dedupedStorage{
 		blockSize:       blockSize,
 		vdiskID:         vdiskID,
@@ -26,7 +27,7 @@ type dedupedStorage struct {
 	blockSize       int64
 	vdiskID         string
 	zeroContentHash lba.Hash
-	provider        *redisProvider
+	provider        redisConnectionProvider
 	lba             *lba.LBA
 }
 
@@ -73,7 +74,7 @@ func (ds *dedupedStorage) Merge(blockIndex, offset int64, content []byte) (err e
 
 	var mergedContent []byte
 
-	if hash != nil {
+	if hash != nil && !hash.Equals(lba.NilHash) {
 		mergedContent, err = ds.getContent(hash)
 		if err != nil {
 			err = fmt.Errorf("LBA hash refered to non-existing content: %s", err)
@@ -97,12 +98,10 @@ func (ds *dedupedStorage) Merge(blockIndex, offset int64, content []byte) (err e
 
 // Get implements backendStorage.Get
 func (ds *dedupedStorage) Get(blockIndex int64) (content []byte, err error) {
-	contentHash, err := ds.lba.Get(blockIndex)
-	if err != nil || contentHash == nil {
-		return
+	hash, err := ds.lba.Get(blockIndex)
+	if err == nil && hash != nil && !hash.Equals(lba.NilHash) {
+		content, err = ds.getContent(hash)
 	}
-
-	content, err = ds.getContent(contentHash)
 	return
 }
 
@@ -119,23 +118,77 @@ func (ds *dedupedStorage) Flush() (err error) {
 }
 
 func (ds *dedupedStorage) getRedisConnection(hash lba.Hash) (redis.Conn, error) {
-	return ds.provider.RedisConnection(int(hash[0]))
+	return ds.provider.RedisConnection(int64(hash[0]))
 }
 
+func (ds *dedupedStorage) getFallbackRedisConnection(hash lba.Hash) (redis.Conn, error) {
+	return ds.provider.FallbackRedisConnection(int64(hash[0]))
+}
+
+// getContent from the local storage,
+// if the content can't be found locally, we'll try to fetch it from the root (remote) storage.
+// if the content is available in the remote storage,
+// we'll also try to store it in the local storage before returning that content
 func (ds *dedupedStorage) getContent(hash lba.Hash) (content []byte, err error) {
-	conn, err := ds.getRedisConnection(hash)
-	if err != nil {
+	// try to fetch it from the local storage
+	content, err = func() (content []byte, err error) {
+		conn, err := ds.getRedisConnection(hash)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		content, err = redisBytes(conn.Do("GET", hash))
 		return
-	}
-	defer conn.Close()
-
-	content, err = redis.Bytes(conn.Do("GET", hash))
-	// This could happen in case the block doesn't exist,
-	// or in case the block is a nullblock.
-	// in both cases we want to simply return it as a null block.
-	if err == redis.ErrNil {
-		err = nil
+	}()
+	if err != nil || content != nil {
+		return // critical err, or content is found
 	}
 
+	// try to fetch it from the remote storage if available
+	content = func() (content []byte) {
+		conn, err := ds.getFallbackRedisConnection(hash)
+		if err != nil {
+			log.Debugf(
+				"no local content available for %v and no remote storage available: %s",
+				hash, err.Error())
+			return
+		}
+		defer conn.Close()
+
+		content, err = redis.Bytes(conn.Do("GET", hash))
+		if err != nil {
+			log.Debugf(
+				"content for %v not available in local-, nor in remote storage: %s",
+				hash, err.Error())
+		}
+
+		return
+	}()
+
+	if content != nil {
+		// store remote content in local storage asynchronously
+		go func() {
+			log.Debugf(
+				"storing remote content for %v in local storage (asynchronously)",
+				hash)
+			conn, err := ds.getRedisConnection(hash)
+			if err != nil {
+				return
+			}
+
+			_, err = conn.Do("SET", hash, content)
+			if err != nil {
+				// we won't return error however, but just log it
+				log.Infof("couldn't store remote content in local storage: %s", err.Error())
+			}
+		}()
+
+		log.Debugf(
+			"no local content available for %v, but did find it as remote content",
+			hash)
+	}
+
+	// err = nil, content = ?
 	return
 }
