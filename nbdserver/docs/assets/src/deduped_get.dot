@@ -1,0 +1,22 @@
+digraph {
+    label="(*dedupedStorage).Get Logic";
+ 
+    node[shape="box", style="rounded"]
+       start; content; nil;
+    node[shape="parallelogram", style=""]
+       lba_get; get_local; get_remote; store_async;
+    node[shape="diamond", style=""]
+       if_hash; has_root;
+ 
+    start -> lba_get;
+    lba_get -> if_hash;
+    if_hash -> nil[label="error or nil-hash"];
+    if_hash -> get_local[label="found the metadata, can the data itself be fetched?"];
+    get_local -> content[label="return local content"];
+    get_local -> has_root[label="content not locally available"];
+    has_root -> nil[label="no root storage available"];
+    has_root -> get_remote[label="root storage available"];
+    get_remote -> nil[label="content not available in root storage"];
+    get_remote -> store_async[label="store remote content (async) in local storage"];
+    get_remote -> content[label="return remote content"];
+}
