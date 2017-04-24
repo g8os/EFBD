@@ -152,6 +152,7 @@ func (ab *Backend) Flush(ctx context.Context) (err error) {
 //Close implements nbd.Backend.Close
 func (ab *Backend) Close(ctx context.Context) (err error) {
 	ab.storageClusterClient.Close()
+	err = ab.storage.Close()
 	return
 }
 
@@ -175,4 +176,10 @@ func (ab *Backend) HasFua(ctx context.Context) bool {
 // Yes, we support flush
 func (ab *Backend) HasFlush(ctx context.Context) bool {
 	return true
+}
+
+// GoBackground implements Backend.GoBackground
+// and the actual work is delegated to the underlying storage
+func (ab *Backend) GoBackground(ctx context.Context) {
+	ab.storage.GoBackground(ctx)
 }

@@ -34,7 +34,7 @@
 		},
 		{
 			"ImportPath": "github.com/g8os/gonbdserver/nbd",
-			"Rev": "585d2378301579044ed1d2bac176b5ba431d56f3"
+			"Rev": "b6a81a628665689535d04401b61a5773dc0fd836"
 		},
 		{
 			"ImportPath": "github.com/garyburd/redigo/internal",
@@ -118,48 +118,48 @@
 		},
 		{
 			"ImportPath": "github.com/siddontang/ledisdb/config",
-			"Comment": "v0.5-79-g80ea7b8",
-			"Rev": "80ea7b8bca787181baa810e8e032cf7e10206143"
+			"Comment": "v0.5-80-g5835ab9",
+			"Rev": "5835ab9b2b80e1e3f7dd31b7526836c4a0cbf8b2"
 		},
 		{
 			"ImportPath": "github.com/siddontang/ledisdb/ledis",
-			"Comment": "v0.5-79-g80ea7b8",
-			"Rev": "80ea7b8bca787181baa810e8e032cf7e10206143"
+			"Comment": "v0.5-80-g5835ab9",
+			"Rev": "5835ab9b2b80e1e3f7dd31b7526836c4a0cbf8b2"
 		},
 		{
 			"ImportPath": "github.com/siddontang/ledisdb/rpl",
-			"Comment": "v0.5-79-g80ea7b8",
-			"Rev": "80ea7b8bca787181baa810e8e032cf7e10206143"
+			"Comment": "v0.5-80-g5835ab9",
+			"Rev": "5835ab9b2b80e1e3f7dd31b7526836c4a0cbf8b2"
 		},
 		{
 			"ImportPath": "github.com/siddontang/ledisdb/server",
-			"Comment": "v0.5-79-g80ea7b8",
-			"Rev": "80ea7b8bca787181baa810e8e032cf7e10206143"
+			"Comment": "v0.5-80-g5835ab9",
+			"Rev": "5835ab9b2b80e1e3f7dd31b7526836c4a0cbf8b2"
 		},
 		{
 			"ImportPath": "github.com/siddontang/ledisdb/store",
-			"Comment": "v0.5-79-g80ea7b8",
-			"Rev": "80ea7b8bca787181baa810e8e032cf7e10206143"
+			"Comment": "v0.5-80-g5835ab9",
+			"Rev": "5835ab9b2b80e1e3f7dd31b7526836c4a0cbf8b2"
 		},
 		{
 			"ImportPath": "github.com/siddontang/ledisdb/store/driver",
-			"Comment": "v0.5-79-g80ea7b8",
-			"Rev": "80ea7b8bca787181baa810e8e032cf7e10206143"
+			"Comment": "v0.5-80-g5835ab9",
+			"Rev": "5835ab9b2b80e1e3f7dd31b7526836c4a0cbf8b2"
 		},
 		{
 			"ImportPath": "github.com/siddontang/ledisdb/store/goleveldb",
-			"Comment": "v0.5-79-g80ea7b8",
-			"Rev": "80ea7b8bca787181baa810e8e032cf7e10206143"
+			"Comment": "v0.5-80-g5835ab9",
+			"Rev": "5835ab9b2b80e1e3f7dd31b7526836c4a0cbf8b2"
 		},
 		{
 			"ImportPath": "github.com/siddontang/ledisdb/store/leveldb",
-			"Comment": "v0.5-79-g80ea7b8",
-			"Rev": "80ea7b8bca787181baa810e8e032cf7e10206143"
+			"Comment": "v0.5-80-g5835ab9",
+			"Rev": "5835ab9b2b80e1e3f7dd31b7526836c4a0cbf8b2"
 		},
 		{
 			"ImportPath": "github.com/siddontang/ledisdb/store/rocksdb",
-			"Comment": "v0.5-79-g80ea7b8",
-			"Rev": "80ea7b8bca787181baa810e8e032cf7e10206143"
+			"Comment": "v0.5-80-g5835ab9",
+			"Rev": "5835ab9b2b80e1e3f7dd31b7526836c4a0cbf8b2"
 		},
 		{
 			"ImportPath": "github.com/siddontang/rdb",

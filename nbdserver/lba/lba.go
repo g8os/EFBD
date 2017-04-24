@@ -115,6 +115,9 @@ func (lba *LBA) Get(blockIndex int64) (h Hash, err error) {
 	// get the hash
 	hashIndex := blockIndex % NumberOfRecordsPerLBAShard
 	h = shard.Get(hashIndex)
+	if h.Equals(NilHash) {
+		h = nil
+	}
 
 	return
 }

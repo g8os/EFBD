@@ -1,6 +1,10 @@
 package ardb
 
-import "github.com/garyburd/redigo/redis"
+import (
+	"context"
+
+	"github.com/garyburd/redigo/redis"
+)
 
 // backendStorage defines the interface for the actual storage implementation,
 // used by ArbdBackend for a particular vdisk
@@ -10,6 +14,20 @@ type backendStorage interface {
 	Get(blockIndex int64) (content []byte, err error)
 	Delete(blockIndex int64) (err error)
 	Flush() (err error)
+	Close() error // close any resources and background thread
+	GoBackground(ctx context.Context)
+}
+
+// redisSendNow is a utitlity function used by backendStorage functions,
+// and is similar to redis.Conn.Do, except that we don't read the reply
+func redisSendNow(conn redis.Conn, cmd string, args ...interface{}) (err error) {
+	err = conn.Send(cmd, args...)
+	if err != nil {
+		return
+	}
+
+	err = conn.Flush()
+	return
 }
 
 // redisBytes is a utility function used by backendStorage functions,
