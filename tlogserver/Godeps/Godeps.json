@@ -7,6 +7,10 @@
 	],
 	"Deps": [
 		{
+			"ImportPath": "github.com/g8os/tlog/client",
+			"Rev": "3ea7874ecb1b2c9f01122446a508c1980d4a5d9a"
+		},
+		{
 			"ImportPath": "github.com/garyburd/redigo/internal",
 			"Comment": "v1.0.0-21-g0d253a6",
 			"Rev": "0d253a66e6e1349f4581d6d2b300ee434ee2da9f"

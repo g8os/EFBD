@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/g8os/tlog/client"
 	"zombiezen.com/go/capnproto2"
 )
 
@@ -24,7 +25,7 @@ func (r *response) toCapnp() (*capnp.Message, error) {
 		return nil, err
 	}
 
-	resp, err := NewTlogResponse(seg)
+	resp, err := client.NewTlogResponse(seg)
 	if err != nil {
 		return nil, err
 	}
@@ -50,10 +51,7 @@ func (r *response) write(w io.Writer) error {
 		return err
 	}
 
-	bufByte := make([]byte, r.capnpSize())
-	buf := bytes.NewBuffer(bufByte)
-
-	buf.Truncate(0)
+	buf := new(bytes.Buffer)
 
 	if err := capnp.NewEncoder(buf).Encode(msg); err != nil {
 		return err

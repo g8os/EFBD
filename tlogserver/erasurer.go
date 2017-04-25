@@ -14,7 +14,7 @@ type erasurer struct {
 	K          int
 	M          int
 	encodeTab  []byte                     // isa-l encode table
-	rsEncoders map[uint32]*reedsolomon.Rs // templexxx/reedsolomon encoders
+	rsEncoders map[string]*reedsolomon.Rs // templexxx/reedsolomon encoders
 }
 
 func newErasurer(k, m int) *erasurer {
@@ -25,12 +25,12 @@ func newErasurer(k, m int) *erasurer {
 		K:          k,
 		M:          m,
 		encodeTab:  encodeTab,
-		rsEncoders: map[uint32]*reedsolomon.Rs{},
+		rsEncoders: map[string]*reedsolomon.Rs{},
 	}
 }
 
 // get reedsolomon encoder object
-func (e *erasurer) getRsEncoder(volID uint32) (*reedsolomon.Rs, error) {
+func (e *erasurer) getRsEncoder(volID string) (*reedsolomon.Rs, error) {
 	rs, ok := e.rsEncoders[volID]
 	if ok {
 		return rs, nil
@@ -45,7 +45,7 @@ func (e *erasurer) getRsEncoder(volID uint32) (*reedsolomon.Rs, error) {
 	return rs, nil
 }
 
-func (e *erasurer) encode(volID uint32, data []byte) ([][]byte, error) {
+func (e *erasurer) encode(volID string, data []byte) ([][]byte, error) {
 	/*enc, err := e.getRsEncoder(volID)
 	if err != nil {
 		return nil, err

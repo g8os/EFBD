@@ -13,6 +13,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/g8os/tlog/client"
 	"github.com/garyburd/redigo/redis"
 	"github.com/golang/snappy"
 	"github.com/minio/blake2b-simd"
@@ -29,7 +30,7 @@ type flusher struct {
 
 	redisPools map[int]*redis.Pool
 	erasure    *erasurer
-	tlogs      map[uint32]*tlogTab
+	tlogs      map[string]*tlogTab
 }
 
 func newFlusher(conf *config) *flusher {
@@ -53,13 +54,13 @@ func newFlusher(conf *config) *flusher {
 		packetSize: conf.bufSize,
 		redisPools: pools,
 		erasure:    newErasurer(conf.K, conf.M),
-		tlogs:      map[uint32]*tlogTab{},
+		tlogs:      map[string]*tlogTab{},
 	}
 	go f.periodicFlush()
 	return f
 }
 
-func (f *flusher) getTlogTab(volID uint32) *tlogTab {
+func (f *flusher) getTlogTab(volID string) *tlogTab {
 	tab, ok := f.tlogs[volID]
 	if !ok {
 		tab = newTlogTab(volID)
@@ -78,13 +79,13 @@ func (f *flusher) periodicFlush() {
 }
 
 // store a tlog message and check if we can flush.
-func (f *flusher) store(tlb *TlogBlock) *response {
+func (f *flusher) store(tlb *client.TlogBlock, volID string) *response {
 	// add blocks to tlog table
-	tab := f.getTlogTab(tlb.VolumeId())
+	tab := f.getTlogTab(volID)
 	tab.Add(tlb)
 
 	// check if we can do flush and do it
-	seqs, err := f.checkDoFlush(tlb.VolumeId(), tab, false)
+	seqs, err := f.checkDoFlush(volID, tab, false)
 	if err != nil {
 		return &response{
 			Status: -1,
@@ -104,7 +105,7 @@ func (f *flusher) store(tlb *TlogBlock) *response {
 }
 
 // check if we can flush and do it
-func (f *flusher) checkDoFlush(volID uint32, tab *tlogTab, periodic bool) ([]uint64, error) {
+func (f *flusher) checkDoFlush(volID string, tab *tlogTab, periodic bool) ([]uint64, error) {
 	blocks, needFlush := tab.Pick(f.flushSize, f.flushTime, periodic)
 	if !needFlush {
 		return []uint64{}, nil
@@ -113,7 +114,7 @@ func (f *flusher) checkDoFlush(volID uint32, tab *tlogTab, periodic bool) ([]uin
 	return f.flush(volID, blocks[:])
 }
 
-func (f *flusher) flush(volID uint32, blocks []*TlogBlock) ([]uint64, error) {
+func (f *flusher) flush(volID string, blocks []*client.TlogBlock) ([]uint64, error) {
 	log.Printf("flush @ vol id: %v, size:%v\n", volID, len(blocks))
 
 	// capnp -> byte
@@ -180,7 +181,7 @@ func (f *flusher) encrypt(data []byte) []byte {
 	return encrypted[:]
 }
 
-func (f *flusher) storeEncoded(volID uint32, key [32]byte, encoded [][]byte) error {
+func (f *flusher) storeEncoded(volID string, key [32]byte, encoded [][]byte) error {
 	var wg sync.WaitGroup
 
 	wg.Add(f.k + f.m + 1)
@@ -217,19 +218,20 @@ func (f *flusher) storeEncoded(volID uint32, key [32]byte, encoded [][]byte) err
 	return errGlob
 }
 
-func (f *flusher) encodeCapnp(volID uint32, blocks []*TlogBlock) ([]byte, error) {
+func (f *flusher) encodeCapnp(volID string, blocks []*client.TlogBlock) ([]byte, error) {
 	// create capnp aggregation
 	msg, seg, err := capnp.NewMessage(capnp.MultiSegment(nil))
 	if err != nil {
 		return nil, err
 	}
-	agg, err := NewRootTlogAggregation(seg)
+	agg, err := client.NewRootTlogAggregation(seg)
 	if err != nil {
 		return nil, err
 	}
 
 	agg.SetName("The Go Tlog")
 	agg.SetSize(uint64(len(blocks)))
+
 	blockList, err := agg.NewBlocks(int32(len(blocks)))
 	if err != nil {
 		return nil, err
@@ -240,12 +242,9 @@ func (f *flusher) encodeCapnp(volID uint32, blocks []*TlogBlock) ([]byte, error)
 		blockList.Set(i, *blocks[i])
 	}
 
-	// create buffer
-	dataSize := (f.flushSize * f.packetSize) + 200 // TODO:make it precise
-	data := make([]byte, dataSize)
-	buf := bytes.NewBuffer(data)
-	buf.Truncate(0)
+	buf := new(bytes.Buffer)
 
 	err = capnp.NewEncoder(buf).Encode(msg)
+
 	return buf.Bytes(), err
 }

@@ -3,18 +3,20 @@ package main
 import (
 	"sync"
 	"time"
+
+	"github.com/g8os/tlog/client"
 )
 
 // tlog table
 type tlogTab struct {
-	tlogs     []*TlogBlock
+	tlogs     []*client.TlogBlock
 	lastFlush time.Time
 	lock      sync.RWMutex
 }
 
-func newTlogTab(volID uint32) *tlogTab {
+func newTlogTab(volID string) *tlogTab {
 	return &tlogTab{
-		tlogs:     []*TlogBlock{},
+		tlogs:     []*client.TlogBlock{},
 		lastFlush: time.Now(),
 	}
 }
@@ -37,7 +39,7 @@ func (t *tlogTab) needFlush(flushSize, flushTime int, periodic bool) bool {
 }
 
 // pick tlogs to be flushed, if possible
-func (t *tlogTab) Pick(flushSize, flushTime int, periodic bool) ([]*TlogBlock, bool) {
+func (t *tlogTab) Pick(flushSize, flushTime int, periodic bool) ([]*client.TlogBlock, bool) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
@@ -64,7 +66,7 @@ func (t *tlogTab) Pick(flushSize, flushTime int, periodic bool) ([]*TlogBlock, b
 }
 
 // Add adds tlog to tlog table
-func (t *tlogTab) Add(tlb *TlogBlock) {
+func (t *tlogTab) Add(tlb *client.TlogBlock) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
