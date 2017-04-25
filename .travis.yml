@@ -11,4 +11,5 @@ install:
 
 script:
   - go test $(go list ./... | grep -v vendor)
+  - go test -tags 'isal' $(go list ./... | grep -v vendor)
   - ./scripts/codegeneration.sh
