@@ -16,7 +16,7 @@ type G8OSStatelessGRID struct {
 
 	Nodes           *NodesService
 	Storageclusters *StorageclustersService
-	Volumes         *VolumesService
+	Vdisks          *VdisksService
 }
 
 type service struct {
@@ -32,7 +32,7 @@ func NewG8OSStatelessGRID() *G8OSStatelessGRID {
 
 	c.Nodes = (*NodesService)(&c.common)
 	c.Storageclusters = (*StorageclustersService)(&c.common)
-	c.Volumes = (*VolumesService)(&c.common)
+	c.Vdisks = (*VdisksService)(&c.common)
 
 	return c
 }

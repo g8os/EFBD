@@ -21,9 +21,9 @@ func (s *StorageclustersService) ListAllClusters(headers, queryParams map[string
 }
 
 // Deploy New Cluster
-func (s *StorageclustersService) DeployNewCluster(clustercreate ClusterCreate, headers, queryParams map[string]interface{}) (*http.Response, error) {
+func (s *StorageclustersService) DeployNewCluster(body ClusterCreate, headers, queryParams map[string]interface{}) (*http.Response, error) {
 
-	resp, err := s.client.doReqWithBody("POST", s.client.BaseURI+"/storageclusters", &clustercreate, headers, queryParams)
+	resp, err := s.client.doReqWithBody("POST", s.client.BaseURI+"/storageclusters", &body, headers, queryParams)
 	if err != nil {
 		return nil, err
 	}

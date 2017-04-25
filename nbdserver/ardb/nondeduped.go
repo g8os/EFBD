@@ -1,34 +1,35 @@
 package ardb
 
 import (
+	"context"
 	"strconv"
 
 	"github.com/garyburd/redigo/redis"
 )
 
 // newNonDedupedStorage returns the non deduped backendStorage implementation
-func newNonDedupedStorage(volumeID string, blockSize int64, provider *redisProvider) backendStorage {
+func newNonDedupedStorage(vdiskID string, blockSize int64, provider redisConnectionProvider) backendStorage {
 	return &nonDedupedStorage{
 		blockSize: blockSize,
-		volumeID:  volumeID,
+		vdiskID:   vdiskID,
 		provider:  provider,
 	}
 }
 
 // nonDedupedStorage is a backendStorage implementation,
 // that simply stores each block in redis using
-// a unique key based on the volumeID and blockIndex
+// a unique key based on the vdiskID and blockIndex
 type nonDedupedStorage struct {
 	blockSize int64
-	volumeID  string
-	provider  *redisProvider
+	vdiskID   string
+	provider  redisConnectionProvider
 }
 
 // Set implements backendStorage.Set
 func (ss *nonDedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 	key := ss.getKey(blockIndex)
 
-	conn, err := ss.provider.RedisConnection(int(blockIndex))
+	conn, err := ss.provider.RedisConnection(blockIndex)
 	if err != nil {
 		return
 	}
@@ -37,12 +38,12 @@ func (ss *nonDedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 	// don't store zero blocks,
 	// and delete existing ones if they already existed
 	if ss.isZeroContent(content) {
-		_, err = conn.Do("DEL", key)
+		err = redisSendNow(conn, "DEL", key)
 		return
 	}
 
 	// content is not zero, so let's (over)write it
-	_, err = conn.Do("SET", key, content)
+	err = redisSendNow(conn, "SET", key, content)
 	return
 }
 
@@ -50,7 +51,7 @@ func (ss *nonDedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 func (ss *nonDedupedStorage) Merge(blockIndex, offset int64, content []byte) (err error) {
 	key := ss.getKey(blockIndex)
 
-	conn, err := ss.provider.RedisConnection(int(blockIndex))
+	conn, err := ss.provider.RedisConnection(blockIndex)
 	if err != nil {
 		return
 	}
@@ -69,7 +70,7 @@ func (ss *nonDedupedStorage) Merge(blockIndex, offset int64, content []byte) (er
 	copy(origContent[offset:], content)
 
 	// store new content, as the merged version is non-zero
-	_, err = conn.Do("SET", key, origContent)
+	err = redisSendNow(conn, "SET", key, origContent)
 	return
 }
 
@@ -77,26 +78,19 @@ func (ss *nonDedupedStorage) Merge(blockIndex, offset int64, content []byte) (er
 func (ss *nonDedupedStorage) Get(blockIndex int64) (content []byte, err error) {
 	key := ss.getKey(blockIndex)
 
-	conn, err := ss.provider.RedisConnection(int(blockIndex))
+	conn, err := ss.provider.RedisConnection(blockIndex)
 	if err != nil {
 		return
 	}
 	defer conn.Close()
 
-	content, err = redis.Bytes(conn.Do("GET", key))
-	// This could happen in case the block doesn't exist,
-	// or in case the block is a nullblock.
-	// in both cases we want to simply return it as a null block.
-	if err == redis.ErrNil {
-		err = nil
-	}
-
+	content, err = redisBytes(conn.Do("GET", key))
 	return
 }
 
 // Delete implements backendStorage.Delete
 func (ss *nonDedupedStorage) Delete(blockIndex int64) (err error) {
-	conn, err := ss.provider.RedisConnection(int(blockIndex))
+	conn, err := ss.provider.RedisConnection(blockIndex)
 	if err != nil {
 		return
 	}
@@ -113,11 +107,21 @@ func (ss *nonDedupedStorage) Flush() (err error) {
 	return
 }
 
+// Close implements backendStorage.Close
+func (ss *nonDedupedStorage) Close() error {
+	return nil // nothing to close
+}
+
+// GoBackground implements backendStorage.GoBackground
+func (ss *nonDedupedStorage) GoBackground(ctx context.Context) {
+	// no background thread needed
+}
+
 // get the unique key for a block,
-// based on its index and the shared volumeID
+// based on its index and the shared vdiskID
 func (ss *nonDedupedStorage) getKey(blockIndex int64) string {
 	//Is twice as fast as fmt.Sprintf
-	return ss.volumeID + ":" + strconv.Itoa(int(blockIndex))
+	return ss.vdiskID + ":" + strconv.FormatInt(blockIndex, 10)
 }
 
 // isZeroContent detects if a given content buffer is completely filled with 0s

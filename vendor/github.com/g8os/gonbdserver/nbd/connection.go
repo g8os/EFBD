@@ -2,12 +2,12 @@ package nbd
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"sort"
 	"strconv"
@@ -16,7 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/net/context"
+	log "github.com/glendc/go-mini-log"
 )
 
 // Map of configuration text to TLS versions
@@ -47,7 +47,7 @@ type Connection struct {
 	conn               net.Conn              // the connection that is used as the NBD transport
 	plainConn          net.Conn              // the unencrypted (original) connection
 	tlsConn            net.Conn              // the TLS encrypted connection
-	logger             *log.Logger           // a logger
+	logger             log.Logger            // a logger
 	listener           *Listener             // the listener than invoked us
 	export             *Export               // a pointer to the export
 	backend            Backend               // the backend implementation
@@ -73,6 +73,7 @@ type Backend interface {
 	Geometry(ctx context.Context) (Geometry, error)                                   // size, minimum BS, preferred BS, maximum BS
 	HasFua(ctx context.Context) bool                                                  // does the driver support FUA?
 	HasFlush(ctx context.Context) bool                                                // does the driver support flush?
+	GoBackground(ctx context.Context)                                                 // optional background thread
 }
 
 // BackendGenerator is a generator function type that generates a backend
@@ -111,7 +112,11 @@ type Reply struct {
 }
 
 // NewConnection returns a new Connection object
-func NewConnection(listener *Listener, logger *log.Logger, conn net.Conn) (*Connection, error) {
+func NewConnection(listener *Listener, logger log.Logger, conn net.Conn) (*Connection, error) {
+	if logger == nil {
+		return nil, errors.New("NewConnection requires a non-nil logger")
+	}
+
 	params := &ConnectionParameters{
 		ConnectionTimeout: time.Second * 5,
 	}
@@ -157,7 +162,7 @@ func (c *Connection) nbdReplyToBytes(rep *nbdReply) (payload []byte, err error) 
 func (c *Connection) sendHeader(ctx context.Context, rep *nbdReply) bool {
 	payload, err := c.nbdReplyToBytes(rep)
 	if err != nil {
-		c.logger.Printf("[ERROR] Client %s couldn't send reply", c.name)
+		c.logger.Infof("Client %s couldn't send reply", c.name)
 		return false
 	}
 
@@ -180,7 +185,7 @@ func (c *Connection) sendPayload(ctx context.Context, payload []byte) bool {
 // done async over a goroutine
 func (c *Connection) reply(ctx context.Context) {
 	defer func() {
-		c.logger.Printf("[INFO] Replyer exiting for %s", c.name)
+		c.logger.Infof("Replyer exiting for %s", c.name)
 		c.kill(ctx)
 		c.wg.Done()
 	}()
@@ -196,13 +201,13 @@ func (c *Connection) reply(ctx context.Context) {
 
 			n, err := c.conn.Write(payload)
 			if err != nil {
-				c.logger.Printf(
-					"[ERROR] Client %s cannot write reply: %s", c.name, err)
+				c.logger.Infof(
+					"Client %s cannot write reply: %s", c.name, err)
 				return
 			}
 			if en := len(payload); en != n {
-				c.logger.Printf(
-					"[ERROR] Client %s cannot write reply: written %d instead of %d bytes",
+				c.logger.Infof(
+					"Client %s cannot write reply: written %d instead of %d bytes",
 					c.name, n, en)
 				return
 			}
@@ -216,7 +221,7 @@ func (c *Connection) reply(ctx context.Context) {
 // dispatch the replies to be sent over another goroutine
 func (c *Connection) receive(ctx context.Context) {
 	defer func() {
-		c.logger.Printf("[INFO] Receiver exiting for %s", c.name)
+		c.logger.Infof("Receiver exiting for %s", c.name)
 		c.kill(ctx)
 		c.wg.Done()
 	}()
@@ -227,7 +232,7 @@ func (c *Connection) receive(ctx context.Context) {
 		if err := binary.Read(c.conn, binary.BigEndian, &req); err != nil {
 			if nerr, ok := err.(net.Error); ok {
 				if nerr.Timeout() {
-					c.logger.Printf("[INFO] Client %s timeout, closing connection", c.name)
+					c.logger.Infof("Client %s timeout, closing connection", c.name)
 					return
 				}
 			}
@@ -236,23 +241,23 @@ func (c *Connection) receive(ctx context.Context) {
 				return
 			}
 			if err == io.EOF {
-				c.logger.Printf("[WARN] Client %s closed connection abruptly", c.name)
+				c.logger.Infof("Client %s closed connection abruptly", c.name)
 			} else {
-				c.logger.Printf("[ERROR] Client %s could not read request: %s", c.name, err)
+				c.logger.Infof("Client %s could not read request: %s", c.name, err)
 			}
 			return
 		}
 
 		if req.NbdRequestMagic != NBD_REQUEST_MAGIC {
-			c.logger.Printf("[ERROR] Client %s had bad magic number in request", c.name)
+			c.logger.Infof("Client %s had bad magic number in request", c.name)
 			return
 		}
 
 		// handle req flags
 		flags, ok := CmdTypeMap[int(req.NbdCommandType)]
 		if !ok {
-			c.logger.Printf(
-				"[ERROR] Client %s unknown command %d",
+			c.logger.Infof(
+				"Client %s unknown command %d",
 				c.name, req.NbdCommandType)
 			return
 		}
@@ -267,12 +272,12 @@ func (c *Connection) receive(ctx context.Context) {
 		if flags&CMDT_CHECK_LENGTH_OFFSET != 0 {
 			length := uint64(req.NbdLength)
 			if length <= 0 || length+req.NbdOffset > c.export.size {
-				c.logger.Printf("[ERROR] Client %s gave bad offset or length", c.name)
+				c.logger.Infof("Client %s gave bad offset or length", c.name)
 				return
 			}
 
 			if length&(c.export.minimumBlockSize-1) != 0 || req.NbdOffset&(c.export.minimumBlockSize-1) != 0 || length > c.export.maximumBlockSize {
-				c.logger.Printf("[ERROR] Client %s gave offset or length outside blocksize paramaters cmd=%d (len=%08x,off=%08x,minbs=%08x,maxbs=%08x)", c.name, req.NbdCommandType, req.NbdLength, req.NbdOffset, c.export.minimumBlockSize, c.export.maximumBlockSize)
+				c.logger.Infof("Client %s gave offset or length outside blocksize paramaters cmd=%d (len=%08x,off=%08x,minbs=%08x,maxbs=%08x)", c.name, req.NbdCommandType, req.NbdLength, req.NbdOffset, c.export.minimumBlockSize, c.export.maximumBlockSize)
 				return
 			}
 		}
@@ -284,7 +289,7 @@ func (c *Connection) receive(ctx context.Context) {
 				NbdError:      NBD_EPERM,
 			})
 			if err != nil {
-				c.logger.Printf("[ERROR] Client %s couldn't send error (NBD_EPERM) reply", c.name)
+				c.logger.Infof("Client %s couldn't send error (NBD_EPERM) reply", c.name)
 				return
 			}
 
@@ -344,11 +349,11 @@ func (c *Connection) receive(ctx context.Context) {
 				go func(out chan []byte, offset int64, blocklen int64) {
 					payload, err := c.backend.ReadAt(ctx, offset, blocklen)
 					if err != nil {
-						c.logger.Printf("[WARN] Client %s got read I/O error: %s", c.name, err)
+						c.logger.Infof("Client %s got read I/O error: %s", c.name, err)
 						out <- nil
 						return
 					} else if actualLength := int64(len(payload)); actualLength != blocklen {
-						c.logger.Printf("[WARN] Client %s got incomplete read (%d != %d) at offset %d", c.name, actualLength, blocklen, offset)
+						c.logger.Infof("Client %s got incomplete read (%d != %d) at offset %d", c.name, actualLength, blocklen, offset)
 						out <- nil
 						return
 					}
@@ -390,12 +395,12 @@ func (c *Connection) receive(ctx context.Context) {
 						return
 					}
 
-					c.logger.Printf("[ERROR] Client %s cannot read data to write: %s", c.name, err)
+					c.logger.Infof("Client %s cannot read data to write: %s", c.name, err)
 					return
 				}
 
 				if uint64(cn) != blocklen {
-					c.logger.Printf("[ERROR] Client %s cannot read all data to write: %d != %d", c.name, cn, blocklen)
+					c.logger.Infof("Client %s cannot read all data to write: %d != %d", c.name, cn, blocklen)
 					return
 
 				}
@@ -405,10 +410,10 @@ func (c *Connection) receive(ctx context.Context) {
 					// WARNING: potential overflow (blocklen, offset)
 					bn, err := c.backend.WriteAt(ctx, wBuffer, offset, fua)
 					if err != nil {
-						c.logger.Printf("[WARN] Client %s got write I/O error: %s", c.name, err)
+						c.logger.Infof("Client %s got write I/O error: %s", c.name, err)
 						nbdRep.NbdError = errorCodeFromGolangError(err)
 					} else if uint64(bn) != blocklen {
-						c.logger.Printf("[WARN] Client %s got incomplete write (%d != %d) at offset %d", c.name, bn, blocklen, offset)
+						c.logger.Infof("Client %s got incomplete write (%d != %d) at offset %d", c.name, bn, blocklen, offset)
 						nbdRep.NbdError = NBD_EIO
 					}
 				}(wBuffer, int64(offset), blocklen, fua && blocklen == length)
@@ -435,10 +440,10 @@ func (c *Connection) receive(ctx context.Context) {
 					defer wg.Done()
 					n, err = c.backend.WriteZeroesAt(ctx, offset, blocklen, fua)
 					if err != nil {
-						c.logger.Printf("[WARN] Client %s got write I/O error: %s", c.name, err)
+						c.logger.Infof("Client %s got write I/O error: %s", c.name, err)
 						nbdRep.NbdError = errorCodeFromGolangError(err)
 					} else if int64(n) != blocklen {
-						c.logger.Printf("[WARN] Client %s got incomplete write (%d != %d) at offset %d", c.name, n, blocklen, offset)
+						c.logger.Infof("Client %s got incomplete write (%d != %d) at offset %d", c.name, n, blocklen, offset)
 						nbdRep.NbdError = NBD_EIO
 					}
 				}(int64(offset), int64(blocklen), fua && blocklen == length)
@@ -456,7 +461,7 @@ func (c *Connection) receive(ctx context.Context) {
 
 		case NBD_CMD_FLUSH:
 			if err := c.backend.Flush(ctx); err != nil {
-				c.logger.Printf("[WARN] Client %s got flush I/O error: %s", c.name, err)
+				c.logger.Infof("Client %s got flush I/O error: %s", c.name, err)
 				nbdRep.NbdError = errorCodeFromGolangError(err)
 			}
 
@@ -472,10 +477,10 @@ func (c *Connection) receive(ctx context.Context) {
 					defer wg.Done()
 					n, err = c.backend.TrimAt(ctx, offset, blocklen)
 					if err != nil {
-						c.logger.Printf("[WARN] Client %s got trim I/O error: %s", c.name, err)
+						c.logger.Infof("Client %s got trim I/O error: %s", c.name, err)
 						nbdRep.NbdError = errorCodeFromGolangError(err)
 					} else if int64(n) != blocklen {
-						c.logger.Printf("[WARN] Client %s got incomplete trim (%d != %d) at offset %d", c.name, n, blocklen, offset)
+						c.logger.Infof("Client %s got incomplete trim (%d != %d) at offset %d", c.name, n, blocklen, offset)
 						nbdRep.NbdError = NBD_EIO
 					}
 				}(int64(offset), int64(blocklen))
@@ -493,14 +498,14 @@ func (c *Connection) receive(ctx context.Context) {
 
 		case NBD_CMD_DISC:
 			c.waitForInflight(ctx, 1) // this request is itself in flight, so 1 is permissible
-			c.logger.Printf("[INFO] Client %s requested disconnect\n", c.name)
+			c.logger.Infof("Client %s requested disconnect\n", c.name)
 			if err := c.backend.Flush(ctx); err != nil {
-				c.logger.Printf("[ERROR] Client %s cannot flush backend: %s\n", c.name, err)
+				c.logger.Infof("Client %s cannot flush backend: %s\n", c.name, err)
 			}
 			return
 
 		default:
-			c.logger.Printf("[ERROR] Client %s sent unknown command %d\n",
+			c.logger.Infof("Client %s sent unknown command %d\n",
 				c.name, req.NbdCommandType)
 			return
 		}
@@ -535,7 +540,7 @@ func (c *Connection) kill(ctx context.Context) {
 }
 
 func (c *Connection) waitForInflight(ctx context.Context, limit int64) {
-	c.logger.Printf("[INFO] Client %s waiting for inflight requests prior to disconnect", c.name)
+	c.logger.Infof("Client %s waiting for inflight requests prior to disconnect", c.name)
 	for {
 		if atomic.LoadInt64(&c.numInflight) <= limit {
 			return
@@ -578,18 +583,29 @@ func (c *Connection) Serve(parentCtx context.Context) {
 		c.wg.Wait()
 		close(c.repCh)
 
-		c.logger.Printf("[INFO] Closed connection from %s", c.name)
+		c.logger.Infof("Closed connection from %s", c.name)
 	}()
 
 	// Phase #1: Negotiation
 	if err := c.negotiate(ctx); err != nil {
-		c.logger.Printf("[INFO] Negotiation failed with %s: %v", c.name, err)
+		c.logger.Infof("Negotiation failed with %s: %v", c.name, err)
 		return
 	}
 
 	c.name = fmt.Sprintf("%s/%s", c.name, c.export.name)
 
-	c.logger.Printf("[INFO] Negotiation succeeded with %s", c.name)
+	c.logger.Infof("Negotiation succeeded with %s", c.name)
+
+	// start backend's background thread
+	c.wg.Add(1)
+	go func() {
+		defer func() {
+			c.wg.Done()
+			c.logger.Infof("Backend background thread exiting for %s", c.name)
+		}()
+
+		c.backend.GoBackground(ctx)
+	}()
 
 	// Phase #2: Transmition
 
@@ -601,9 +617,9 @@ func (c *Connection) Serve(parentCtx context.Context) {
 	// workers dies
 	select {
 	case <-c.killCh:
-		c.logger.Printf("[INFO] Worker forced close for %s", c.name)
+		c.logger.Infof("Worker forced close for %s", c.name)
 	case <-ctx.Done():
-		c.logger.Printf("[INFO] Parent forced close for %s", c.name)
+		c.logger.Infof("Parent forced close for %s", c.name)
 	}
 }
 
@@ -738,7 +754,7 @@ func (c *Connection) negotiate(ctx context.Context) error {
 				if opt.NbdOptID == NBD_OPT_EXPORT_NAME {
 					return err
 				}
-				c.logger.Printf("[INFO] Could not connect client %s to %s: %v", c.name, string(name), err)
+				c.logger.Infof("Could not connect client %s to %s: %v", c.name, string(name), err)
 				or := nbdOptReply{
 					NbdOptReplyMagic:  NBD_REP_MAGIC,
 					NbdOptID:          opt.NbdOptID,
@@ -913,7 +929,7 @@ func (c *Connection) negotiate(ctx context.Context) error {
 		case NBD_OPT_STARTTLS:
 			if c.listener.tlsconfig == nil || c.tlsConn != nil {
 				// say it's unsuppported
-				c.logger.Printf("[INFO] Rejecting upgrade of connection with %s to TLS", c.name)
+				c.logger.Infof("Rejecting upgrade of connection with %s to TLS", c.name)
 				or := nbdOptReply{
 					NbdOptReplyMagic:  NBD_REP_MAGIC,
 					NbdOptID:          opt.NbdOptID,
@@ -936,7 +952,7 @@ func (c *Connection) negotiate(ctx context.Context) error {
 				if err := binary.Write(c.conn, binary.BigEndian, or); err != nil {
 					return errors.New("Cannot send TLS ack")
 				}
-				c.logger.Printf("[INFO] Upgrading connection with %s to TLS", c.name)
+				c.logger.Infof("Upgrading connection with %s to TLS", c.name)
 				// switch over to TLS
 				tls := tls.Server(c.conn, c.listener.tlsconfig)
 				c.tlsConn = tls

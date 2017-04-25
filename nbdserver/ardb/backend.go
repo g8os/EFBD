@@ -1,7 +1,7 @@
 package ardb
 
 import (
-	"golang.org/x/net/context"
+	"context"
 
 	"github.com/g8os/blockstor/storagecluster"
 	"github.com/g8os/gonbdserver/nbd"
@@ -9,10 +9,10 @@ import (
 
 //Backend is a nbd.Backend implementation on top of ARDB
 type Backend struct {
-	blockSize         int64
-	size              uint64
-	storage           backendStorage
-	storageClusterCfg *storagecluster.ClusterConfig
+	blockSize            int64
+	size                 uint64
+	storage              backendStorage
+	storageClusterClient *storagecluster.ClusterClient
 }
 
 //WriteAt implements nbd.Backend.WriteAt
@@ -151,7 +151,8 @@ func (ab *Backend) Flush(ctx context.Context) (err error) {
 
 //Close implements nbd.Backend.Close
 func (ab *Backend) Close(ctx context.Context) (err error) {
-	ab.storageClusterCfg.Close()
+	ab.storageClusterClient.Close()
+	err = ab.storage.Close()
 	return
 }
 
@@ -175,4 +176,10 @@ func (ab *Backend) HasFua(ctx context.Context) bool {
 // Yes, we support flush
 func (ab *Backend) HasFlush(ctx context.Context) bool {
 	return true
+}
+
+// GoBackground implements Backend.GoBackground
+// and the actual work is delegated to the underlying storage
+func (ab *Backend) GoBackground(ctx context.Context) {
+	ab.storage.GoBackground(ctx)
 }

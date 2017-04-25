@@ -7,7 +7,7 @@ import (
 // Result object of a job
 type JobListItem struct {
 	Id        string `json:"id" validate:"nonzero"`
-	Starttime int    `json:"starttime" validate:"nonzero"`
+	StartTime int64  `json:"startTime" validate:"nonzero"`
 }
 
 func (s JobListItem) Validate() error {
