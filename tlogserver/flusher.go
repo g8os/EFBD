@@ -21,16 +21,17 @@ import (
 )
 
 type flusher struct {
-	k          int
-	m          int
-	flushSize  int
-	flushTime  int
-	privKey    string
-	packetSize int
+	k         int
+	m         int
+	flushSize int
+	flushTime int
 
-	redisPools map[int]*redis.Pool
+	redisPools map[int]*redis.Pool // pools of redis connection
 	erasure    *erasurer
 	tlogs      map[string]*tlogTab
+
+	encIv  []byte // encryption input vector
+	encKey []byte // encryption key
 }
 
 func newFlusher(conf *config) *flusher {
@@ -45,16 +46,30 @@ func newFlusher(conf *config) *flusher {
 		}
 	}
 
+	// create encryption key and input vector
+	// TODO : looks for another encryption method
+	iv := make([]byte, 16)
+	for i := 0; i < len(iv); i++ {
+		iv[i] = '0'
+	}
+	encKey := make([]byte, 256)
+	decKey := make([]byte, 256)
+	bPrivKey := []byte(conf.privKey)
+
+	C.aes_keyexp_256((*C.uint8_t)(unsafe.Pointer(&bPrivKey[0])),
+		(*C.uint8_t)(unsafe.Pointer(&encKey[0])),
+		(*C.uint8_t)(unsafe.Pointer(&decKey[0])))
+
 	f := &flusher{
 		k:          conf.K,
 		m:          conf.M,
 		flushSize:  conf.flushSize,
 		flushTime:  conf.flushTime,
-		privKey:    conf.privKey,
-		packetSize: conf.bufSize,
 		redisPools: pools,
 		erasure:    newErasurer(conf.K, conf.M),
 		tlogs:      map[string]*tlogTab{},
+		encIv:      iv,
+		encKey:     encKey,
 	}
 	go f.periodicFlush()
 	return f
@@ -149,19 +164,6 @@ func (f *flusher) flush(volID string, blocks []*client.TlogBlock) ([]uint64, err
 }
 
 func (f *flusher) encrypt(data []byte) []byte {
-	// TODO : this initialization should be moved to somewhere else
-	iv := make([]byte, 16)
-	for i := 0; i < len(iv); i++ {
-		iv[i] = '0'
-	}
-	encKey := make([]byte, 256)
-	decKey := make([]byte, 256)
-	bPrivKey := []byte(f.privKey)
-
-	C.aes_keyexp_256((*C.uint8_t)(unsafe.Pointer(&bPrivKey[0])),
-		(*C.uint8_t)(unsafe.Pointer(&encKey[0])),
-		(*C.uint8_t)(unsafe.Pointer(&decKey[0])))
-
 	// alignment
 	alignSize := 16 - (len(data) % 16)
 	if alignSize > 0 {
@@ -173,8 +175,8 @@ func (f *flusher) encrypt(data []byte) []byte {
 
 	// call the devil!!
 	C.aes_cbc_enc_256((unsafe.Pointer(&data[0])),
-		(*C.uint8_t)(unsafe.Pointer(&iv[0])),
-		(*C.uint8_t)(unsafe.Pointer(&encKey[0])),
+		(*C.uint8_t)(unsafe.Pointer(&f.encIv[0])),
+		(*C.uint8_t)(unsafe.Pointer(&f.encKey[0])),
 		(unsafe.Pointer(&encrypted[0])),
 		(C.uint64_t)(len(data)))
 
