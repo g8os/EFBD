@@ -1,4 +1,4 @@
-package lba
+package blockstor
 
 import (
 	"bytes"

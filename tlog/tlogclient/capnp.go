@@ -21,7 +21,7 @@ func decodeResponse(data []byte) (*TlogResponse, error) {
 	return &tr, err
 }
 
-func buildCapnp(volID string, seq uint64, crc uint32,
+func buildCapnp(volID string, seq uint64, hash []byte,
 	lba, timestamp uint64, data []byte) ([]byte, error) {
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
 	if err != nil {
@@ -45,7 +45,7 @@ func buildCapnp(volID string, seq uint64, crc uint32,
 	block.SetVolumeId(volID)
 	block.SetSequence(seq)
 	block.SetLba(lba)
-	block.SetCrc32(crc)
+	block.SetHash(hash)
 	block.SetTimestamp(timestamp)
 	block.SetSize(uint32(len(data)))
 	block.SetData(data)
