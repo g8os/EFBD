@@ -13,6 +13,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/g8os/blockstor/tlogserver/erasure"
 	"github.com/g8os/tlog/client"
 	"github.com/garyburd/redigo/redis"
 	"github.com/golang/snappy"
@@ -27,7 +28,7 @@ type flusher struct {
 	flushTime int
 
 	redisPools map[int]*redis.Pool // pools of redis connection
-	erasure    *erasurer
+	erasure    erasure.Erasurer
 	tlogs      map[string]*tlogTab
 
 	encIv  []byte // encryption input vector
@@ -66,7 +67,7 @@ func newFlusher(conf *config) *flusher {
 		flushSize:  conf.flushSize,
 		flushTime:  conf.flushTime,
 		redisPools: pools,
-		erasure:    newErasurer(conf.K, conf.M),
+		erasure:    erasure.NewErasurer(conf.K, conf.M),
 		tlogs:      map[string]*tlogTab{},
 		encIv:      iv,
 		encKey:     encKey,
