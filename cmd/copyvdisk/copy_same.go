@@ -5,7 +5,7 @@ import (
 	log "github.com/glendc/go-mini-log"
 )
 
-func copySameConnection(logger log.Logger, input *userInput, conn redis.Conn) (err error) {
+func copySameConnection(logger log.Logger, input *userInputPair, conn redis.Conn) (err error) {
 	defer conn.Close()
 
 	logger.Infof("dumping vdisk %q and restoring it as vdisk %q",

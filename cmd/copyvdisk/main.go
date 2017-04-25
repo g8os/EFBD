@@ -9,19 +9,10 @@ import (
 	"path"
 	"strings"
 
-	"github.com/garyburd/redigo/redis"
 	log "github.com/glendc/go-mini-log"
 )
 
 func main() {
-	// parse user input
-	input, err := parseUserInput()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "invalid user input: %s\n", err.Error())
-		printUsage()
-		os.Exit(2)
-	}
-
 	// create logger
 	var logger log.Logger
 	if flagVerbose {
@@ -32,15 +23,33 @@ func main() {
 		logger = log.New(ioutil.Discard, "", 0)
 	}
 
+	// parse user input
+	input, err := parseUserInput(logger)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "invalid user input: %s\n", err.Error())
+		printUsage()
+		os.Exit(2)
+	}
+
+	// user feedback based on wrong flag pairing
+	if flagSourceURLType == urlTypeMetaServer && flagSourceStorageCluster != "" {
+		// defining storage cluster name is useless when the url type is direct
+		logger.Infof(
+			"-%s is defined as %q but will be ignored as -%s is of type %q",
+			flagSourceStorageClusterTag, flagSourceStorageCluster,
+			flagSourceURLTypeTag, flagSourceURLType)
+	}
+	if flagTargetURLType == urlTypeMetaServer && flagTargetStorageCluster != "" {
+		// defining storage cluster name is useless when the url type is direct
+		logger.Infof(
+			"-%s is defined as %q but will be ignored as -%s is of type %q",
+			flagTargetStorageClusterTag, flagTargetStorageCluster,
+			flagTargetURLTypeTag, flagTargetURLType)
+	}
+
 	logger.Info("get the redis connection(s)...")
 
-	var connA, connB redis.Conn
-	switch flagURLType {
-	case urlTypeGrid:
-		connA, connB, err = getConnectionsFromGrid(logger, input)
-	case urlTypeMetaServer:
-		connA, connB, err = getConnectionsFromMetaServer(logger, input)
-	}
+	connA, connB, err := getARDBConnections(logger, input)
 	if err != nil {
 		fmt.Fprintf(os.Stderr,
 			"couldn't get the redis connection(s): %s\n", err.Error())
@@ -68,14 +77,21 @@ func main() {
 		input.Source.VdiskID, input.Target.VdiskID)
 }
 
+const (
+	flagSourceURLTypeTag        = "sourcetype"
+	flagTargetURLTypeTag        = "targettype"
+	flagVerboseTag              = "v"
+	flagSourceStorageClusterTag = "sourcesc"
+	flagTargetStorageClusterTag = "targetsc"
+)
+
 func init() {
 	// register flags
-	flag.Var(&flagURLType, "t", "type of the given url(s); the gridapi url's or the direct metadataserver connectionstrings")
-	flag.BoolVar(&flagVerbose, "v", false, "log to stderr")
-	flag.StringVar(&flagSourceStorageCluster, "sourcesc", "",
-		"combined with api type it allows you to predefine the source's storageCluster name")
-	flag.StringVar(&flagTargetStorageCluster, "targetsc", "",
-		"combined with api type it allows you to predefine the target's storageCluster name")
+	flag.BoolVar(&flagVerbose, flagVerboseTag, false, "")
+	flag.Var(&flagSourceURLType, flagSourceURLTypeTag, "")
+	flag.Var(&flagTargetURLType, flagTargetURLTypeTag, "")
+	flag.StringVar(&flagSourceStorageCluster, flagSourceStorageClusterTag, "", "")
+	flag.StringVar(&flagTargetStorageCluster, flagTargetStorageClusterTag, "", "")
 
 	// custom usage function
 	flag.Usage = printUsage
@@ -86,7 +102,7 @@ func init() {
 
 // parse user input from the positional arguments
 // given by the user when calling this command line utility
-func parseUserInput() (input *userInput, err error) {
+func parseUserInput(logger log.Logger) (input *userInputPair, err error) {
 	args := flag.Args()
 	argn := len(args)
 
@@ -99,7 +115,7 @@ func parseUserInput() (input *userInput, err error) {
 		return
 	}
 
-	input = new(userInput)
+	input = new(userInputPair)
 
 	// store required args
 	input.Source.VdiskID = args[0]
@@ -114,6 +130,13 @@ func parseUserInput() (input *userInput, err error) {
 		// it is assumed that the same url
 		// for both source and target is to be used
 		input.Target.URL = args[2]
+		// in which case we'll also assume -targettype == -soucetype
+		if flagTargetURLType != flagSourceURLType {
+			logger.Infof(
+				"-%s is defined as %q but will be defaulted to %q (-%s), as only 1 url is specified",
+				flagTargetURLTypeTag, flagTargetURLType, flagSourceURLType, flagSourceURLTypeTag)
+		}
+		flagTargetURLType = flagSourceURLType
 	}
 
 	return
@@ -123,24 +146,28 @@ func parseUserInput() (input *userInput, err error) {
 // and usage strings for this command line utility
 func printUsage() {
 	exe := path.Base(os.Args[0])
-	fmt.Fprintf(os.Stderr, usage, exe, urlTypeGrid, urlTypeMetaServer)
+	fmt.Fprintf(os.Stderr,
+		usage, exe,
+		flagSourceURLTypeTag, flagTargetURLTypeTag, urlTypeGrid, urlTypeMetaServer,
+		flagSourceStorageClusterTag, flagTargetStorageClusterTag,
+		flagVerboseTag)
 }
 
-// userInput is parsed from the positional arguments
 type userInput struct {
-	Source struct {
-		VdiskID string
-		URL     string
-	}
-	Target struct {
-		VdiskID string
-		URL     string
-	}
+	VdiskID string
+	URL     string
+}
+
+// userInputPair is parsed from the positional arguments
+type userInputPair struct {
+	Source userInput
+	Target userInput
 }
 
 // optional flags
 var (
-	flagURLType              = urlType(urlTypeGrid)
+	flagSourceURLType        = urlType(urlTypeGrid)
+	flagTargetURLType        = urlType(urlTypeGrid)
 	flagVerbose              bool
 	flagTargetStorageCluster string
 	flagSourceStorageCluster string
@@ -153,9 +180,31 @@ const (
 copy the metadata of a deduped vdisk
 
 usage:
-  %[1]s [-v] [-t %[2]s|%[3]s] [-sourcesc name] [-targetsc name] source_vdisk target_vdisk source_url [target_url]
+  %[1]s [-%[8]s] \
+    [-%[2]s %[4]s|%[5]s] [-%[3]s %[4]s|%[5]s] \
+    [-%[6]s name] [-%[7]s name] \
+    source_vdisk target_vdisk source_url [target_url]
 
-  When no target_url is given, the target_url is the same as the source_url.
+  -%[2]s, -%[3]s:
+    types of the given url(s), default="%[4]s", options:
+      => "%[4]s": specify an url to use the GridAPI for the source/target;
+      => "%[5]s": specify a connection string to use an ARDB directly;
+
+  -%[6]s, -%[7]s:
+    combined with the "%[2]s and/or %[3]s" flag(s),
+    it allows you to predefine the source's and/or target's storageCluster name,
+    instead of fetching it automatically from the GridAPI's vdisk info
+
+  -%[8]s:
+    log all available info to the STDERR
+
+  -h, --help:
+    print this usage message
+
+  When no target_url is given,
+  the target_url is the same as the source_url
+  and the type of target_url (-%[3]s)
+  will be the same as the type of source_url (-%[2]s).
 `
 )
 

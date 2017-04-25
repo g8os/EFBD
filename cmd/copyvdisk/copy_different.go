@@ -8,7 +8,7 @@ import (
 	log "github.com/glendc/go-mini-log"
 )
 
-func copyDifferentConnections(logger log.Logger, input *userInput, connA, connB redis.Conn) (err error) {
+func copyDifferentConnections(logger log.Logger, input *userInputPair, connA, connB redis.Conn) (err error) {
 	defer func() {
 		connA.Close()
 		connB.Close()
