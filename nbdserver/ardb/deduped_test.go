@@ -3,7 +3,6 @@ package ardb
 import (
 	"bytes"
 	"context"
-	"errors"
 	"runtime/debug"
 	"strconv"
 	"testing"
@@ -13,27 +12,6 @@ import (
 	"github.com/g8os/blockstor/redisstub"
 	"github.com/garyburd/redigo/redis"
 )
-
-type testRedisProvider struct {
-	memRedis     *redisstub.MemoryRedis
-	rootMemRedis *redisstub.MemoryRedis
-}
-
-func (trp *testRedisProvider) RedisConnection(index int64) (redis.Conn, error) {
-	return trp.memRedis.Dial("")
-}
-
-func (trp *testRedisProvider) FallbackRedisConnection(index int64) (redis.Conn, error) {
-	if trp.rootMemRedis == nil {
-		return nil, errors.New("no root memredis available")
-	}
-
-	return trp.rootMemRedis.Dial("")
-}
-
-func (trp *testRedisProvider) MetaRedisConnection() (redis.Conn, error) {
-	return trp.memRedis.Dial("")
-}
 
 // simplified algorithm based on `cmd/copyvdisk/copy_different.go`
 func copyTestMetaData(t *testing.T, vdiskIDA, vdiskIDB string, providerA, providerB lba.MetaRedisProvider) {
@@ -90,9 +68,9 @@ func createTestDedupedStorage(t *testing.T, vdiskID string, blockSize, blockCoun
 	return newDedupedStorage(vdiskID, blockSize, provider, lba).(*dedupedStorage)
 }
 
-// testContentExists tests if
+// testDedupContentExists tests if
 // the given content exists in the database
-func testContentExists(t *testing.T, memRedis *redisstub.MemoryRedis, content []byte) {
+func testDedupContentExists(t *testing.T, memRedis *redisstub.MemoryRedis, content []byte) {
 	time.Sleep(time.Millisecond * 100) // give background thread time
 	conn, err := memRedis.Dial("")
 	if err != nil {
@@ -116,9 +94,9 @@ func testContentExists(t *testing.T, memRedis *redisstub.MemoryRedis, content []
 	}
 }
 
-// testContentDoesNotExist tests if
+// testDedupContentDoesNotExist tests if
 // the given content does not exist in the database
-func testContentDoesNotExist(t *testing.T, memRedis *redisstub.MemoryRedis, content []byte) {
+func testDedupContentDoesNotExist(t *testing.T, memRedis *redisstub.MemoryRedis, content []byte) {
 	time.Sleep(time.Millisecond * 100) // give background thread time
 	conn, err := memRedis.Dial("")
 	if err != nil {
@@ -131,9 +109,11 @@ func testContentDoesNotExist(t *testing.T, memRedis *redisstub.MemoryRedis, cont
 
 	exists, err := redis.Bool(conn.Do("EXISTS", hash.Bytes()))
 	if err != nil {
+		debug.PrintStack()
 		t.Fatal(err)
 	}
 	if exists {
+		debug.PrintStack()
 		t.Fatalf(
 			"content found (%v), while it shouldn't exist", content)
 	}
@@ -166,6 +146,30 @@ func testReferenceCount(t *testing.T, memRedis *redisstub.MemoryRedis, content [
 	}
 }
 
+func TestDedupedContent(t *testing.T) {
+	memRedis := redisstub.NewMemoryRedis()
+	go memRedis.Listen()
+	defer memRedis.Close()
+
+	const (
+		vdiskID = "a"
+	)
+
+	var (
+		ctx = context.Background()
+	)
+
+	redisProvider := &testRedisProvider{memRedis, nil} // root = nil
+	storage := createTestDedupedStorage(t, vdiskID, 8, 8, redisProvider)
+	if storage == nil {
+		t.Fatal("storage is nil")
+	}
+	defer storage.Close()
+	go storage.GoBackground(ctx)
+
+	testBackendStorage(t, storage)
+}
+
 // test if content linked to local (copied) metadata,
 // is available only on the remote (root) storage,
 // while not yet on the local storage
@@ -180,11 +184,17 @@ func TestGetDedupedRootContent(t *testing.T) {
 		vdiskIDB = "b"
 	)
 
+	var (
+		ctx = context.Background()
+	)
+
 	redisProviderA := &testRedisProvider{memRedisA, nil} // root = nil
 	storageA := createTestDedupedStorage(t, vdiskIDA, 8, 8, redisProviderA)
 	if storageA == nil {
 		t.Fatal("storageA is nil")
 	}
+	defer storageA.Close()
+	go storageA.GoBackground(ctx)
 
 	// create storageB, with storageA as its fallback/root
 	memRedisB := redisstub.NewMemoryRedis()
@@ -196,12 +206,14 @@ func TestGetDedupedRootContent(t *testing.T) {
 	if storageB == nil {
 		t.Fatal("storageB is nil")
 	}
+	defer storageB.Close()
+	go storageB.GoBackground(ctx)
 
 	testContent := []byte{4, 2}
 
 	// content shouldn't exist in either of the 2 volumes
-	testContentDoesNotExist(t, memRedisA, testContent)
-	testContentDoesNotExist(t, memRedisB, testContent)
+	testDedupContentDoesNotExist(t, memRedisA, testContent)
+	testDedupContentDoesNotExist(t, memRedisB, testContent)
 
 	var testBlockIndex int64 // 0
 
@@ -211,8 +223,8 @@ func TestGetDedupedRootContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	// content should now exist in storageA, but not yet in storageB
-	testContentExists(t, memRedisA, testContent)
-	testContentDoesNotExist(t, memRedisB, testContent)
+	testDedupContentExists(t, memRedisA, testContent)
+	testDedupContentDoesNotExist(t, memRedisB, testContent)
 
 	// let's flush to ensure metadata is written to external storage
 	err = storageA.Flush()
@@ -241,8 +253,8 @@ func TestGetDedupedRootContent(t *testing.T) {
 		t.Fatalf("content shouldn't exist yet, while received: %v", content)
 	}
 	// content should still only exist in storageA
-	testContentExists(t, memRedisA, testContent)
-	testContentDoesNotExist(t, memRedisB, testContent)
+	testDedupContentExists(t, memRedisA, testContent)
+	testDedupContentDoesNotExist(t, memRedisB, testContent)
 
 	// flush metadata of storageB first,
 	// so it's reloaded next time fresh from externalStorage,
@@ -271,8 +283,8 @@ func TestGetDedupedRootContent(t *testing.T) {
 
 	// content should now be in both storages
 	// as the remote get should have also stored the content locally
-	testContentExists(t, memRedisA, testContent)
-	testContentExists(t, memRedisB, testContent)
+	testDedupContentExists(t, memRedisA, testContent)
+	testDedupContentExists(t, memRedisB, testContent)
 
 	// let's store some new content in storageB
 	testContent = []byte{9, 2}
@@ -283,8 +295,8 @@ func TestGetDedupedRootContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	// content should now exist in storageB, but not yet in storageA
-	testContentExists(t, memRedisB, testContent)
-	testContentDoesNotExist(t, memRedisA, testContent)
+	testDedupContentExists(t, memRedisB, testContent)
+	testDedupContentDoesNotExist(t, memRedisA, testContent)
 
 	// let's flush to ensure metadata is written to external storage
 	err = storageB.Flush()
@@ -330,8 +342,8 @@ func TestGetDedupedRootContent(t *testing.T) {
 
 	// and we can also do our direct test to ensure the content
 	// only exists in storageB
-	testContentExists(t, memRedisB, testContent)
-	testContentDoesNotExist(t, memRedisA, testContent)
+	testDedupContentExists(t, memRedisB, testContent)
+	testDedupContentDoesNotExist(t, memRedisA, testContent)
 
 	// if we now make sure storageA, has storageB as its root,
 	// our previous Get attempt /will/ work, as we already have the metadata
@@ -349,8 +361,8 @@ func TestGetDedupedRootContent(t *testing.T) {
 
 	// and also our direct test should show that
 	// the content now exists in both storages
-	testContentExists(t, memRedisB, testContent)
-	testContentExists(t, memRedisA, testContent)
+	testDedupContentExists(t, memRedisB, testContent)
+	testDedupContentExists(t, memRedisA, testContent)
 }
 
 // this test only runs when the `redis` flag is specified
@@ -381,7 +393,7 @@ func TestDedupedStorageReferenceCount(t *testing.T) {
 	}
 	// reference Count should now be 1
 	testReferenceCount(t, memoryRedis, contentA, 1)
-	testContentExists(t, memoryRedis, contentA)
+	testDedupContentExists(t, memoryRedis, contentA)
 
 	storageB := createTestDedupedStorage(t, "b", 8, 8, redisProvider)
 	defer storageB.Close()
@@ -393,7 +405,7 @@ func TestDedupedStorageReferenceCount(t *testing.T) {
 	}
 	// reference Count should now be 2
 	testReferenceCount(t, memoryRedis, contentA, 2)
-	testContentExists(t, memoryRedis, contentA)
+	testDedupContentExists(t, memoryRedis, contentA)
 
 	// adding the content to a vdiskID that already has it,
 	// should not increase the reference count
@@ -404,7 +416,7 @@ func TestDedupedStorageReferenceCount(t *testing.T) {
 		}
 		// reference Count should still be 2
 		testReferenceCount(t, memoryRedis, contentA, 2)
-		testContentExists(t, memoryRedis, contentA)
+		testDedupContentExists(t, memoryRedis, contentA)
 	}
 
 	blockIndexB := int64(2)
@@ -417,7 +429,7 @@ func TestDedupedStorageReferenceCount(t *testing.T) {
 	}
 	// reference Count should be 3 now
 	testReferenceCount(t, memoryRedis, contentA, 3)
-	testContentExists(t, memoryRedis, contentA)
+	testDedupContentExists(t, memoryRedis, contentA)
 
 	contentB := []byte{1, 2, 3}
 
@@ -428,10 +440,10 @@ func TestDedupedStorageReferenceCount(t *testing.T) {
 	}
 	// reference Count of contentB should be 1, as it is new
 	testReferenceCount(t, memoryRedis, contentB, 1)
-	testContentExists(t, memoryRedis, contentB)
+	testDedupContentExists(t, memoryRedis, contentB)
 	// reference Count of contentA should still be 3, as it shouldn't have been touched
 	testReferenceCount(t, memoryRedis, contentA, 3)
-	testContentExists(t, memoryRedis, contentA)
+	testDedupContentExists(t, memoryRedis, contentA)
 
 	// overwrite block with new content
 	err = storageA.Set(blockIndexA, contentB)
@@ -440,10 +452,10 @@ func TestDedupedStorageReferenceCount(t *testing.T) {
 	}
 	// reference Count of contentB should be 2 now, as both vdisks reference it
 	testReferenceCount(t, memoryRedis, contentB, 2)
-	testContentExists(t, memoryRedis, contentB)
+	testDedupContentExists(t, memoryRedis, contentB)
 	// reference Count of contentA should now be 2, as storageA, no longer references it twice
 	testReferenceCount(t, memoryRedis, contentA, 2)
-	testContentExists(t, memoryRedis, contentA)
+	testDedupContentExists(t, memoryRedis, contentA)
 
 	err = storageA.Delete(blockIndexA)
 	if err != nil {
@@ -451,7 +463,7 @@ func TestDedupedStorageReferenceCount(t *testing.T) {
 	}
 	// reference Count of contentB should be 1 now, as only storage A references it
 	testReferenceCount(t, memoryRedis, contentB, 1)
-	testContentExists(t, memoryRedis, contentB)
+	testDedupContentExists(t, memoryRedis, contentB)
 
 	contentC := []byte{3, 2, 1}
 	// merge contentA with contentC
@@ -470,14 +482,14 @@ func TestDedupedStorageReferenceCount(t *testing.T) {
 		t.Fatal("contentAPlusC is not correct", contentAPlusC)
 	}
 	testReferenceCount(t, memoryRedis, contentA, 1)
-	testContentExists(t, memoryRedis, contentA)
+	testDedupContentExists(t, memoryRedis, contentA)
 
 	testReferenceCount(t, memoryRedis, contentB, 1)
-	testContentExists(t, memoryRedis, contentB)
+	testDedupContentExists(t, memoryRedis, contentB)
 
 	testReferenceCount(t, memoryRedis, contentC, 0)
-	testContentDoesNotExist(t, memoryRedis, contentC)
+	testDedupContentDoesNotExist(t, memoryRedis, contentC)
 
 	testReferenceCount(t, memoryRedis, contentAPlusC, 1)
-	testContentExists(t, memoryRedis, contentAPlusC)
+	testDedupContentExists(t, memoryRedis, contentAPlusC)
 }
