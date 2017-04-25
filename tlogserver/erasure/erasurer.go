@@ -10,8 +10,8 @@ type EraruseCoder interface {
 	Encode(volID string, data []byte) ([][]byte, error)
 }
 
-//NewEraruser is the factory method for creating ErasureCoder instances
-var NewEraruser = newErasurer
+//NewErasuser is the factory method for creating ErasureCoder instances
+var NewErasuser = newErasurer
 
 type erasurer struct {
 	K          int

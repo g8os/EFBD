@@ -8,23 +8,22 @@ package erasure
 import "C"
 import (
 	"unsafe"
-
 )
 
 type isalErasurer struct {
-	K          int
-	M          int
-	encodeTab  []byte                     // isa-l encode table
+	K         int
+	M         int
+	encodeTab []byte // isa-l encode table
 }
 
-func newIsalErasurer(k, m int) *EraruseCoder {
+func newIsalErasurer(k, m int) EraruseCoder {
 	encodeTab := make([]byte, 32*k*(k+m))
 
 	C.init_encode_tab(C.int(k), C.int(m), (*C.uchar)(unsafe.Pointer(&encodeTab[0])))
 	return &isalErasurer{
-		K:          k,
-		M:          m,
-		encodeTab:  encodeTab
+		K:         k,
+		M:         m,
+		encodeTab: encodeTab,
 	}
 }
 
@@ -83,6 +82,6 @@ func (e *isalErasurer) getChunkSize(dataLen int) int {
 	return size
 }
 
-func init(){
-	NewEraruser = newIsalErasurer
+func init() {
+	NewErasuser = newIsalErasurer
 }

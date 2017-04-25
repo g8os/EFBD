@@ -28,7 +28,7 @@ type flusher struct {
 	flushTime int
 
 	redisPools map[int]*redis.Pool // pools of redis connection
-	erasure    erasure.Erasurer
+	erasure    erasure.EraruseCoder
 	tlogs      map[string]*tlogTab
 
 	encIv  []byte // encryption input vector
@@ -67,7 +67,7 @@ func newFlusher(conf *config) *flusher {
 		flushSize:  conf.flushSize,
 		flushTime:  conf.flushTime,
 		redisPools: pools,
-		erasure:    erasure.NewErasurer(conf.K, conf.M),
+		erasure:    erasure.NewErasuser(conf.K, conf.M),
 		tlogs:      map[string]*tlogTab{},
 		encIv:      iv,
 		encKey:     encKey,
@@ -146,7 +146,7 @@ func (f *flusher) flush(volID string, blocks []*client.TlogBlock) ([]uint64, err
 	encrypted := f.encrypt(compressed)
 
 	// erasure
-	erEncoded, err := f.erasure.encode(volID, encrypted[:])
+	erEncoded, err := f.erasure.Encode(volID, encrypted[:])
 	if err != nil {
 		return nil, err
 	}
