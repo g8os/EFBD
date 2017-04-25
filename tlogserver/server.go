@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"unsafe"
 
+	"github.com/g8os/tlog/client"
 	"zombiezen.com/go/capnproto2"
 )
 
@@ -85,13 +86,13 @@ func (s *Server) handle(conn net.Conn) error {
 }
 
 // decode tlog message from client
-func (s *Server) decode(r io.Reader) (*TlogBlock, error) {
+func (s *Server) decode(r io.Reader) (*client.TlogBlock, error) {
 	msg, err := capnp.NewDecoder(r).Decode()
 	if err != nil {
 		return nil, err
 	}
 
-	tlb, err := ReadRootTlogBlock(msg)
+	tlb, err := client.ReadRootTlogBlock(msg)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +100,7 @@ func (s *Server) decode(r io.Reader) (*TlogBlock, error) {
 	return &tlb, nil
 }
 
-func (s *Server) crc(tlb *TlogBlock, volID string) error {
+func (s *Server) crc(tlb *client.TlogBlock, volID string) error {
 	data, err := tlb.Data()
 	if err != nil {
 		return err
