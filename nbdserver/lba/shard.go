@@ -4,13 +4,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+
+	"github.com/g8os/blockstor"
 )
 
 const (
 	//NumberOfRecordsPerLBAShard is the fixed length of the LBAShards
 	NumberOfRecordsPerLBAShard = 128
 	// BytesPerShard defines how many bytes each shards requires
-	BytesPerShard = NumberOfRecordsPerLBAShard * HashSize
+	BytesPerShard = NumberOfRecordsPerLBAShard * blockstor.HashSize
 )
 
 var (
@@ -49,21 +51,21 @@ func (s *shard) UnsetDirty() {
 	s.dirty = false
 }
 
-func (s *shard) Set(hashIndex int64, hash Hash) {
-	offset := hashIndex * HashSize
+func (s *shard) Set(hashIndex int64, hash blockstor.Hash) {
+	offset := hashIndex * blockstor.HashSize
 
 	if hash == nil {
-		hash = NilHash
+		hash = blockstor.NilHash
 	}
 
-	copy(s.hashes[offset:offset+HashSize], hash)
+	copy(s.hashes[offset:offset+blockstor.HashSize], hash)
 	s.dirty = true
 	return
 }
 
-func (s *shard) Get(hashIndex int64) (hash Hash) {
-	hash = NewHash()
-	offset := hashIndex * HashSize
+func (s *shard) Get(hashIndex int64) (hash blockstor.Hash) {
+	hash = blockstor.NewHash()
+	offset := hashIndex * blockstor.HashSize
 	copy(hash[:], s.hashes[offset:])
 	return
 }

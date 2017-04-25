@@ -1,21 +1,16 @@
 package main
 
-// #include <isa-l_crypto/aes_cbc.h>
-// #include <isa-l_crypto/aes_keyexp.h>
-// #cgo LDFLAGS: -lisal_crypto
-import "C"
-
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"sync"
 	"time"
-	"unsafe"
 
+	"github.com/g8os/blockstor/tlog"
 	client "github.com/g8os/blockstor/tlog/tlogclient"
 	"github.com/g8os/blockstor/tlog/tlogserver/erasure"
 	"github.com/garyburd/redigo/redis"
+	log "github.com/glendc/go-mini-log"
 	"github.com/golang/snappy"
 	"github.com/minio/blake2b-simd"
 	"zombiezen.com/go/capnproto2"
@@ -28,14 +23,14 @@ type flusher struct {
 	flushTime int
 
 	redisPools map[int]*redis.Pool // pools of redis connection
-	erasure    erasure.EraruseCoder
 	tlogs      map[string]*tlogTab
 
-	encIv  []byte // encryption input vector
-	encKey []byte // encryption key
+	// platform-dependent interfaces
+	erasure   erasure.EraruseCoder
+	encrypter tlog.AESEncrypter
 }
 
-func newFlusher(conf *config) *flusher {
+func newFlusher(conf *config) (*flusher, error) {
 	// create redis pool
 	pools := make(map[int]*redis.Pool, 1+conf.K+conf.M)
 	for i := 0; i < conf.K+conf.M+1; i++ {
@@ -47,19 +42,10 @@ func newFlusher(conf *config) *flusher {
 		}
 	}
 
-	// create encryption key and input vector
-	// TODO : looks for another encryption method
-	iv := make([]byte, 16)
-	for i := 0; i < len(iv); i++ {
-		iv[i] = '0'
+	encrypter, err := tlog.NewAESEncrypter(conf.privKey, conf.nonce)
+	if err != nil {
+		return nil, err
 	}
-	encKey := make([]byte, 256)
-	decKey := make([]byte, 256)
-	bPrivKey := []byte(conf.privKey)
-
-	C.aes_keyexp_256((*C.uint8_t)(unsafe.Pointer(&bPrivKey[0])),
-		(*C.uint8_t)(unsafe.Pointer(&encKey[0])),
-		(*C.uint8_t)(unsafe.Pointer(&decKey[0])))
 
 	f := &flusher{
 		k:          conf.K,
@@ -67,13 +53,13 @@ func newFlusher(conf *config) *flusher {
 		flushSize:  conf.flushSize,
 		flushTime:  conf.flushTime,
 		redisPools: pools,
-		erasure:    erasure.NewErasurer(conf.K, conf.M),
 		tlogs:      map[string]*tlogTab{},
-		encIv:      iv,
-		encKey:     encKey,
+		erasure:    erasure.NewErasurer(conf.K, conf.M),
+		encrypter:  encrypter,
 	}
+
 	go f.periodicFlush()
-	return f
+	return f, nil
 }
 
 func (f *flusher) getTlogTab(volID string) *tlogTab {
@@ -131,7 +117,7 @@ func (f *flusher) checkDoFlush(volID string, tab *tlogTab, periodic bool) ([]uin
 }
 
 func (f *flusher) flush(volID string, blocks []*client.TlogBlock) ([]uint64, error) {
-	log.Printf("flush @ vol id: %v, size:%v\n", volID, len(blocks))
+	log.Debugf("flush @ vol id: %v, size:%v\n", volID, len(blocks))
 
 	// capnp -> byte
 	data, err := f.encodeCapnp(volID, blocks[:])
@@ -143,7 +129,8 @@ func (f *flusher) flush(volID string, blocks []*client.TlogBlock) ([]uint64, err
 	compressed := make([]byte, snappy.MaxEncodedLen(len(data)))
 	compressed = snappy.Encode(compressed[:], data[:])
 
-	encrypted := f.encrypt(compressed)
+	// encrypt
+	encrypted := f.encrypter.Encrypt(compressed)
 
 	// erasure
 	erEncoded, err := f.erasure.Encode(volID, encrypted[:])
@@ -164,26 +151,6 @@ func (f *flusher) flush(volID string, blocks []*client.TlogBlock) ([]uint64, err
 	return seqs[:], nil
 }
 
-func (f *flusher) encrypt(data []byte) []byte {
-	// alignment
-	alignSize := 16 - (len(data) % 16)
-	if alignSize > 0 {
-		pad := make([]byte, alignSize)
-		data = append(data, pad...)
-	}
-
-	encrypted := make([]byte, len(data))
-
-	// call the devil!!
-	C.aes_cbc_enc_256((unsafe.Pointer(&data[0])),
-		(*C.uint8_t)(unsafe.Pointer(&f.encIv[0])),
-		(*C.uint8_t)(unsafe.Pointer(&f.encKey[0])),
-		(unsafe.Pointer(&encrypted[0])),
-		(C.uint64_t)(len(data)))
-
-	return encrypted[:]
-}
-
 func (f *flusher) storeEncoded(volID string, key [32]byte, encoded [][]byte) error {
 	var wg sync.WaitGroup
 
@@ -199,7 +166,7 @@ func (f *flusher) storeEncoded(volID string, key [32]byte, encoded [][]byte) err
 			rc := f.redisPools[idx+1].Get()
 			_, err := rc.Do("SET", key, blocks)
 			if err != nil {
-				log.Printf("[ERROR] flush idx:%v, err:%v", idx, err)
+				log.Debugf("error during flush idx %v:%v", idx, err)
 				errGlob = err
 			}
 		}(i)
@@ -212,7 +179,7 @@ func (f *flusher) storeEncoded(volID string, key [32]byte, encoded [][]byte) err
 		rc := f.redisPools[0].Get()
 		_, err := rc.Do("SET", lastHashKey, key)
 		if err != nil {
-			log.Printf("[ERROR] set last hash name err:%v", err)
+			log.Debugf("error when setting last hash name:%v", err)
 			errGlob = err
 		}
 	}()

@@ -8,6 +8,7 @@ import (
 	"github.com/garyburd/redigo/redis"
 	log "github.com/glendc/go-mini-log"
 
+	"github.com/g8os/blockstor"
 	"github.com/g8os/blockstor/nbdserver/lba"
 )
 
@@ -16,7 +17,7 @@ func newDedupedStorage(vdiskID string, blockSize int64, provider redisConnection
 	storage := &dedupedStorage{
 		blockSize:       blockSize,
 		vdiskID:         vdiskID,
-		zeroContentHash: lba.HashBytes(make([]byte, blockSize)),
+		zeroContentHash: blockstor.HashBytes(make([]byte, blockSize)),
 		provider:        provider,
 		lba:             vlba,
 		cancelChan:      make(chan struct{}, 1),
@@ -35,7 +36,7 @@ func newDedupedStorage(vdiskID string, blockSize int64, provider redisConnection
 type dedupedStorage struct {
 	blockSize       int64
 	vdiskID         string
-	zeroContentHash lba.Hash
+	zeroContentHash blockstor.Hash
 	provider        redisConnectionProvider
 	lba             *lba.LBA
 
@@ -46,7 +47,7 @@ type dedupedStorage struct {
 
 // Set implements backendStorage.Set
 func (ds *dedupedStorage) Set(blockIndex int64, content []byte) (err error) {
-	hash := lba.HashBytes(content)
+	hash := blockstor.HashBytes(content)
 	if ds.zeroContentHash.Equals(hash) {
 		err = ds.lba.Delete(blockIndex)
 		return
@@ -71,7 +72,7 @@ func (ds *dedupedStorage) Merge(blockIndex, offset int64, content []byte) (err e
 
 	var mergedContent []byte
 
-	if hash != nil && !hash.Equals(lba.NilHash) {
+	if hash != nil && !hash.Equals(blockstor.NilHash) {
 		mergedContent, err = ds.getContent(hash)
 		if err != nil {
 			err = fmt.Errorf("LBA hash refered to non-existing content: %s", err)
@@ -98,7 +99,7 @@ func (ds *dedupedStorage) Merge(blockIndex, offset int64, content []byte) (err e
 // Get implements backendStorage.Get
 func (ds *dedupedStorage) Get(blockIndex int64) (content []byte, err error) {
 	hash, err := ds.lba.Get(blockIndex)
-	if err == nil && hash != nil && !hash.Equals(lba.NilHash) {
+	if err == nil && hash != nil && !hash.Equals(blockstor.NilHash) {
 		content, err = ds.getContent(hash)
 	}
 	return
@@ -193,11 +194,11 @@ func (ds *dedupedStorage) goBackgroundWorker(ctx context.Context, workerID int) 
 	}
 }
 
-func (ds *dedupedStorage) getRedisConnection(hash lba.Hash) (redis.Conn, error) {
+func (ds *dedupedStorage) getRedisConnection(hash blockstor.Hash) (redis.Conn, error) {
 	return ds.provider.RedisConnection(int64(hash[0]))
 }
 
-func (ds *dedupedStorage) getFallbackRedisConnection(hash lba.Hash) (redis.Conn, error) {
+func (ds *dedupedStorage) getFallbackRedisConnection(hash blockstor.Hash) (redis.Conn, error) {
 	return ds.provider.FallbackRedisConnection(int64(hash[0]))
 }
 
@@ -205,7 +206,7 @@ func (ds *dedupedStorage) getFallbackRedisConnection(hash lba.Hash) (redis.Conn,
 // if the content can't be found locally, we'll try to fetch it from the root (remote) storage.
 // if the content is available in the remote storage,
 // we'll also try to store it in the local storage before returning that content
-func (ds *dedupedStorage) getContent(hash lba.Hash) (content []byte, err error) {
+func (ds *dedupedStorage) getContent(hash blockstor.Hash) (content []byte, err error) {
 	// try to fetch it from the local storage
 	content, err = func() (content []byte, err error) {
 		conn, err := ds.getRedisConnection(hash)
@@ -271,7 +272,7 @@ func (ds *dedupedStorage) getContent(hash lba.Hash) (content []byte, err error) 
 
 // setContent if it doesn't exist yet,
 // and increase the reference counter, by adding this vdiskID
-func (ds *dedupedStorage) setContent(prevHash, curHash lba.Hash, content []byte) (err error) {
+func (ds *dedupedStorage) setContent(prevHash, curHash blockstor.Hash, content []byte) (err error) {
 	err = func() (err error) {
 		conn, err := ds.getRedisConnection(curHash)
 		if err != nil {
@@ -301,7 +302,7 @@ func (ds *dedupedStorage) setContent(prevHash, curHash lba.Hash, content []byte)
 }
 
 // sender of the reference content action
-func (ds *dedupedStorage) referenceContent(hash lba.Hash) {
+func (ds *dedupedStorage) referenceContent(hash blockstor.Hash) {
 	workerID := dsWorkerID(hash)
 	ds.rcActionChannels[workerID] <- rcAction{
 		Type: rcIncrease,
@@ -310,7 +311,7 @@ func (ds *dedupedStorage) referenceContent(hash lba.Hash) {
 }
 
 // receiver of the reference content action
-func (ds *dedupedStorage) goReferenceContent(hash lba.Hash) (err error) {
+func (ds *dedupedStorage) goReferenceContent(hash blockstor.Hash) (err error) {
 	key := dsReferenceKey(hash)
 
 	conn, err := ds.getRedisConnection(hash)
@@ -324,7 +325,7 @@ func (ds *dedupedStorage) goReferenceContent(hash lba.Hash) (err error) {
 }
 
 // sender of the dereference content action
-func (ds *dedupedStorage) dereferenceContent(hash lba.Hash) {
+func (ds *dedupedStorage) dereferenceContent(hash blockstor.Hash) {
 	workerID := dsWorkerID(hash)
 	ds.rcActionChannels[workerID] <- rcAction{
 		Type: rcDecrease,
@@ -333,7 +334,7 @@ func (ds *dedupedStorage) dereferenceContent(hash lba.Hash) {
 }
 
 // receiver of the dereference content action
-func (ds *dedupedStorage) goDereferenceContent(hash lba.Hash) (err error) {
+func (ds *dedupedStorage) goDereferenceContent(hash blockstor.Hash) (err error) {
 	key := dsReferenceKey(hash)
 
 	conn, err := ds.getRedisConnection(hash)
@@ -351,12 +352,12 @@ func (ds *dedupedStorage) goDereferenceContent(hash lba.Hash) (err error) {
 	return
 }
 
-func dsWorkerID(hash lba.Hash) int {
+func dsWorkerID(hash blockstor.Hash) int {
 	return int(hash[0]) % dedupBackgroundWorkerCount
 }
 
-func dsReferenceKey(hash lba.Hash) (key []byte) {
-	key = make([]byte, rcKeyPrefixLength+lba.HashSize)
+func dsReferenceKey(hash blockstor.Hash) (key []byte) {
+	key = make([]byte, rcKeyPrefixLength+blockstor.HashSize)
 	copy(key, rcKeyPrefix[:])
 	copy(key[rcKeyPrefixLength:], hash[:])
 	return
@@ -376,7 +377,7 @@ type rcAction struct {
 	// Type of action
 	Type rcActionType
 	// Hash the actions applies on
-	Hash lba.Hash
+	Hash blockstor.Hash
 }
 
 type rcActionType int
