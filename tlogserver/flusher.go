@@ -222,7 +222,7 @@ func (f *flusher) storeEncoded(volID string, key [32]byte, encoded [][]byte) err
 
 func (f *flusher) encodeCapnp(volID string, blocks []*client.TlogBlock) ([]byte, error) {
 	// create capnp aggregation
-	msg, seg, err := capnp.NewMessage(capnp.MultiSegment(nil))
+	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
 	if err != nil {
 		return nil, err
 	}
