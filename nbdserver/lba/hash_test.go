@@ -12,11 +12,11 @@ func TestHashBytes(t *testing.T) {
 	rand.Read(data)
 	h := HashBytes(data)
 	if assert.NotNil(t, h, "Nil hash returned from the hashfunction") {
-		assert.False(t, h.Equals(nilHash), "empty has returned")
+		assert.False(t, h.Equals(NilHash), "empty has returned")
 	}
 }
 
 func TestNilHash(t *testing.T) {
-	assert.Len(t, nilHash, HashSize)
-	assert.True(t, NewHash().Equals(nilHash))
+	assert.Len(t, NilHash, HashSize)
+	assert.True(t, NewHash().Equals(NilHash))
 }

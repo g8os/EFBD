@@ -23,14 +23,16 @@ func newShard() *shard {
 	return shard
 }
 
-func shardFromBytes(bytes []byte) (shard *shard, err error) {
-	if len(bytes) < BytesPerShard {
-		err = fmt.Errorf("raw shard is too small, expected %d bytes", BytesPerShard)
+func shardFromBytes(bytes []byte) (s *shard, err error) {
+	if length := len(bytes); length != BytesPerShard {
+		err = fmt.Errorf(
+			"raw shard contains %d bytes, while expected %d bytes",
+			length, BytesPerShard)
 		return
 	}
 
-	shard = newShard()
-	shard.hashes = bytes
+	s = new(shard)
+	s.hashes = bytes
 	return
 }
 
@@ -49,17 +51,21 @@ func (s *shard) UnsetDirty() {
 
 func (s *shard) Set(hashIndex int64, hash Hash) {
 	offset := hashIndex * HashSize
+
 	if hash == nil {
-		hash = nilHash
+		hash = NilHash
 	}
 
 	copy(s.hashes[offset:offset+HashSize], hash)
 	s.dirty = true
+	return
 }
 
-func (s *shard) Get(hashIndex int64) Hash {
+func (s *shard) Get(hashIndex int64) (hash Hash) {
+	hash = NewHash()
 	offset := hashIndex * HashSize
-	return Hash(s.hashes[offset : offset+HashSize])
+	copy(hash[:], s.hashes[offset:])
+	return
 }
 
 func (s *shard) IsNil() bool {
