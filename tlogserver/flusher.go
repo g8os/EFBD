@@ -67,7 +67,7 @@ func newFlusher(conf *config) *flusher {
 		flushSize:  conf.flushSize,
 		flushTime:  conf.flushTime,
 		redisPools: pools,
-		erasure:    erasure.NewErasuser(conf.K, conf.M),
+		erasure:    erasure.NewErasurer(conf.K, conf.M),
 		tlogs:      map[string]*tlogTab{},
 		encIv:      iv,
 		encKey:     encKey,

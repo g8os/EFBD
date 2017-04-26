@@ -83,5 +83,5 @@ func (e *isalErasurer) getChunkSize(dataLen int) int {
 }
 
 func init() {
-	NewErasuser = newIsalErasurer
+	NewErasurer = newIsalErasurer
 }
