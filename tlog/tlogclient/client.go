@@ -176,7 +176,7 @@ func (c *Client) Send(volID string, seq uint64,
 		return err
 	}
 
-	prefix = uint32(len(b))
+	prefix = uint32(len(b) / 8)
 	if err := binary.Write(buf, binary.LittleEndian, prefix); err != nil {
 		return err
 	}

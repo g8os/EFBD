@@ -88,6 +88,7 @@ func (s *Server) handle(conn net.Conn) error {
 }
 func (s *Server) readData(conn net.Conn) ([]byte, error) {
 	// read length prefix
+	// as described in https://capnproto.org/encoding.html#serialization-over-a-stream
 	var segmentNum, length uint32
 
 	if err := binary.Read(conn, binary.LittleEndian, &segmentNum); err != nil {
@@ -98,7 +99,7 @@ func (s *Server) readData(conn net.Conn) ([]byte, error) {
 		return nil, err
 	}
 
-	data := make([]byte, length)
+	data := make([]byte, length*8)
 	_, err := io.ReadFull(conn, data)
 	return data, err
 }
