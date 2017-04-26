@@ -33,12 +33,14 @@ func buildCapnp(volID string, seq uint64, crc uint32,
 		return nil, fmt.Errorf("create block:%v", err)
 	}
 
+	// We don't need it anymore, left it undeleted
+	// because it is needed by the C++ version.
 	// we pad the volume ID to get fixed length volume ID
-	if len(volID) < volIDLen {
+	/*if len(volID) < volIDLen {
 		pad := make([]byte, volIDLen-len(volID))
 		b := append([]byte(volID), pad...)
 		volID = string(b)
-	}
+	}*/
 
 	block.SetVolumeId(volID)
 	block.SetSequence(seq)
