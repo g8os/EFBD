@@ -7,7 +7,7 @@ go:
 
 install:
   - go get -u github.com/Jumpscale/go-raml
-  - ./tlogserver/install_dependencies.sh
+  - ./tlog/tlogserver/install_dependencies.sh
 
 script:
   - go test $(go list ./... | grep -v vendor)
