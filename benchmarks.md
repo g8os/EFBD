@@ -1,7 +1,7 @@
 # Benchmarks
 
 Test setup:
-* 1 vm with 1 cpu and 2GB memory on a deduped volume
+* 1 vm with 1 cpu and 2GB memory on a deduped vdisk
 * Host = g8os with nbdserver on the same Host
 * Storagecluster on a different host (g8os) running 8 storage ardb's on ssd and 1 metadata ardb on nvme
 

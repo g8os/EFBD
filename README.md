@@ -1,16 +1,18 @@
 # G8OS Block Storage [![Build Status](https://travis-ci.org/g8os/blockstor.svg?branch=master)](https://travis-ci.org/g8os/blockstor)
 
-The G8OS block storage allows to create and use block devices (volumes) on top of the [G80S object storage](https://github.com/g8os/objstor).
+The G8OS block storage allows to create and use block devices (vdisks) on top of the [G80S object storage](https://github.com/g8os/objstor).
 
-A volume can be deduped, have various blocksizes and depending on the underlying objectstor cluster used, have different speed characteristics.
+A vdisk can be deduped, have various blocksizes and depending on the underlying storage cluster used, have different speed characteristics.
 
-Make sure tot have Golang version 1.6 or above installed!
+Make sure tot have Golang version 1.8 or above installed!
 
 Components:
-* [Volume Controller](volumecontroller/readme.md)
-    AYS to manage volumes. A rest api allows easy access from external systems.
 * [NBD Server](nbdserver/readme.md)
-    A Network Block Device server to expose the volumes to virtual machines.
+    A Network Block Device server to expose the vdisks to virtual machines.
+* [TLOG Server](tlogserver/readme.md)
+    A Transaction log server to record block changes
+* [CopyVdisk CLI](cmd/copyvdisk/readme.md)
+    A CLI to copy the metadata of a deduped vdisk
 
 # Build for g8os
 - Clone the code to your GOPATH and `go get` the dependencies:

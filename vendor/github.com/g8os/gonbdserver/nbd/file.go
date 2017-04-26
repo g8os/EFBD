@@ -1,11 +1,10 @@
 package nbd
 
 import (
+	"context"
 	"errors"
 	"os"
 	"strconv"
-
-	"golang.org/x/net/context"
 )
 
 // FileBackend implements Backend
@@ -81,6 +80,11 @@ func (fb *FileBackend) HasFua(ctx context.Context) bool {
 // HasFlush implements Backend.HasFlush
 func (fb *FileBackend) HasFlush(ctx context.Context) bool {
 	return true
+}
+
+// GoBackground implements Backend.GoBackground
+func (fb *FileBackend) GoBackground(ctx context.Context) {
+	// No background thread needed
 }
 
 // NewFileBackend generates a new file backend

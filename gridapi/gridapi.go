@@ -13,7 +13,7 @@ import (
 
 //NewGridAPIServer starts an HTTP server listening on a system-chosen port on the local loopback interface, for use in tests without an external grid api service.
 // When finished, Close() should be called on the returned server
-func NewGridAPIServer(arbdConnectionStrings string, nonDedupedVolumes []string) (s *httptest.Server, url string, err error) {
+func NewGridAPIServer(arbdConnectionStrings string, nonDedupedVdisks []string) (s *httptest.Server, url string, err error) {
 
 	connectionStrings := strings.Split(arbdConnectionStrings, ",")
 	if len(connectionStrings) < 2 {
@@ -37,8 +37,8 @@ func NewGridAPIServer(arbdConnectionStrings string, nonDedupedVolumes []string) 
 
 	gridapistub.StorageclustersInterfaceRoutes(r, a)
 
-	gridapistub.VolumesInterfaceRoutes(r, gridapistub.VolumesAPI{
-		NonDedupedVolumes: nonDedupedVolumes,
+	gridapistub.VdisksInterfaceRoutes(r, gridapistub.VdisksAPI{
+		NonDedupedVdisks: nonDedupedVdisks,
 	})
 
 	s = httptest.NewServer(r)
