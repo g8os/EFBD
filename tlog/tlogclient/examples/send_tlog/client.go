@@ -20,7 +20,7 @@ func main() {
 
 	flag.Parse()
 
-	volID := "12345678901234567890123456789012"
+	volID := "1234567890"
 
 	clients := make([]*client.Client, numClient)
 	clientReady := make(chan int, numClient)
