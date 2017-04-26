@@ -6,6 +6,8 @@ import "C"
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -17,10 +19,11 @@ import (
 )
 
 var (
-	ErrInvalidDataLen = errors.New("data length must be 16384 bytes")
-	ErrClosed         = errors.New("connection closed")
+	// ErrClosed happens when tlog server-client connection is closed.
+	ErrClosed = errors.New("connection closed")
 )
 
+// Response defines a response from tlog server
 type Response struct {
 	Status    int8     // status of the call, negatif means failed
 	Sequences []uint64 // flushed sequences number, if any
@@ -156,18 +159,29 @@ func createConn(addr string) (*net.TCPConn, error) {
 func (c *Client) Send(volID string, seq uint64,
 	lba, timestamp uint64, data []byte) error {
 
-	if len(data) != 1024*16 {
-		return ErrInvalidDataLen
-	}
-
+	// count crc
 	crc := C.crc32_ieee(0, (*C.uchar)(unsafe.Pointer(&data[0])), (C.uint64_t)(len(data)))
 
+	// build capnp message block
 	b, err := buildCapnp(volID, seq, uint32(crc), lba, timestamp, data)
 	if err != nil {
 		return err
 	}
 
-	_, err = c.sendAll(b)
+	// build capnp prefix as described at https://capnproto.org/encoding.html#serialization-over-a-stream
+	buf := new(bytes.Buffer)
+
+	var prefix uint32
+	if err := binary.Write(buf, binary.LittleEndian, prefix); err != nil {
+		return err
+	}
+
+	prefix = uint32(len(b))
+	if err := binary.Write(buf, binary.LittleEndian, prefix); err != nil {
+		return err
+	}
+
+	_, err = c.sendAll(append(buf.Bytes(), b...))
 	return err
 }
 
