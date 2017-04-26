@@ -3,10 +3,10 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
 
 	gridapi "github.com/g8os/blockstor/gridapi/gridapiclient"
 	"github.com/g8os/gonbdserver/nbd"
+	log "github.com/glendc/go-mini-log"
 )
 
 // NewExportController creates a new export config manager.
@@ -26,7 +26,7 @@ func NewExportController(gridapiaddress string, tslOnly bool, exports []string) 
 }
 
 // ExportController implements nbd.ExportConfigManager
-// using the VolumeController client internally
+// using the GridAPI stateless client internally
 type ExportController struct {
 	gridapi *gridapi.G8OSStatelessGRID
 	exports []string
@@ -40,21 +40,21 @@ func (c *ExportController) ListConfigNames() []string {
 
 // GetConfig implements nbd.ExportConfigManager.GetConfig
 func (c *ExportController) GetConfig(name string) (*nbd.ExportConfig, error) {
-	log.Printf("[INFO] Getting volume %q", name)
-	volumeInfo, _, err := c.gridapi.Volumes.GetVolumeInfo(
-		name, // volumeID
+	log.Infof("Getting vdisk %q", name)
+	vdiskInfo, _, err := c.gridapi.Vdisks.GetVdiskInfo(
+		name, // vdiskID
 		nil,  // headers
 		nil,  // queryParams
 	)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't get volume %s: %s", name, err)
+		return nil, fmt.Errorf("couldn't get vdisk %s: %s", name, err)
 	}
 
 	return &nbd.ExportConfig{
 		Name:               name,
 		Description:        "Deduped g8os blockstor",
 		Driver:             "ardb",
-		ReadOnly:           volumeInfo.ReadOnly,
+		ReadOnly:           vdiskInfo.ReadOnly,
 		TLSOnly:            c.tslOnly,
 		MinimumBlockSize:   0, // use size given by ArdbBackend.Geometry
 		PreferredBlockSize: 0, // use size given by ArdbBackend.Geometry

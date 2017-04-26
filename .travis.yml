@@ -3,10 +3,10 @@ dist: trusty
 language: go
 
 go:
-  - 1.7
   - 1.8
 
 install:
+  - go get -u github.com/Jumpscale/go-raml
   - ./tlogserver/install_dependencies.sh
 
 script:
