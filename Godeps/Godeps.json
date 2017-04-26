@@ -54,6 +54,10 @@
 			"Rev": "dc4743023d0c166c1b844da8fc688e57ec65fe0b"
 		},
 		{
+			"ImportPath": "github.com/glycerine/rbtree",
+			"Rev": "cd7940bb26b149ce2faf398e7c63fff01aa7b394"
+		},
+		{
 			"ImportPath": "github.com/golang/snappy",
 			"Rev": "553a641470496b2327abcac10b36396bd98e45c9"
 		},
@@ -219,6 +223,10 @@
 			"Rev": "8c81ea47d4c41a385645e133e15510fc6a2a74b4"
 		},
 		{
+			"ImportPath": "github.com/templexxx/reedsolomon",
+			"Rev": "6eae58016bcb4849555a17005eacbec8545d1135"
+		},
+		{
 			"ImportPath": "github.com/ugorji/go/codec",
 			"Rev": "9c7f9b7a2bc3a520f7c7b30b34b7f85f47fe27b6"
 		},
@@ -249,6 +257,36 @@
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
 			"Rev": "14227de293ca979cf205cd88769fe71ed96a97e2"
+		},
+		{
+			"ImportPath": "zombiezen.com/go/capnproto2",
+			"Comment": "v2.13.0-5-g28f2e70",
+			"Rev": "28f2e70113b36f2cb5b9800929a49550004dbb43"
+		},
+		{
+			"ImportPath": "zombiezen.com/go/capnproto2/encoding/text",
+			"Comment": "v2.13.0-5-g28f2e70",
+			"Rev": "28f2e70113b36f2cb5b9800929a49550004dbb43"
+		},
+		{
+			"ImportPath": "zombiezen.com/go/capnproto2/internal/nodemap",
+			"Comment": "v2.13.0-5-g28f2e70",
+			"Rev": "28f2e70113b36f2cb5b9800929a49550004dbb43"
+		},
+		{
+			"ImportPath": "zombiezen.com/go/capnproto2/internal/packed",
+			"Comment": "v2.13.0-5-g28f2e70",
+			"Rev": "28f2e70113b36f2cb5b9800929a49550004dbb43"
+		},
+		{
+			"ImportPath": "zombiezen.com/go/capnproto2/schemas",
+			"Comment": "v2.13.0-5-g28f2e70",
+			"Rev": "28f2e70113b36f2cb5b9800929a49550004dbb43"
+		},
+		{
+			"ImportPath": "zombiezen.com/go/capnproto2/std/capnp/schema",
+			"Comment": "v2.13.0-5-g28f2e70",
+			"Rev": "28f2e70113b36f2cb5b9800929a49550004dbb43"
 		}
 	]
 }
