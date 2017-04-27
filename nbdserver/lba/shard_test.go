@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/g8os/blockstor"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -30,16 +31,16 @@ func TestCreateShard(t *testing.T) {
 		// getting a shard will keep it clean
 		for i := int64(0); i < NumberOfRecordsPerLBAShard; i++ {
 			h := shard.Get(i) // NOTE: there is no out-of-range protection
-			assert.Equal(t, NilHash, h, "created from bytes, contain all nil hashes")
+			assert.Equal(t, blockstor.NilHash, h, "created from bytes, contain all nil hashes")
 		}
 
 		// setting a shard will make it dirty though
-		shard.Set(0, HashBytes(nil))
+		shard.Set(0, blockstor.HashBytes(nil))
 
 		assert.True(t, shard.Dirty(), "modified shard should be dirty")
 		h := shard.Get(0) // NOTE: there is no out-of-range protection
 		if assert.NotEmpty(t, h, "created from bytes, no hash should be nil") {
-			assert.NotEqual(t, NilHash, h, "should be not equal to the NilHash")
+			assert.NotEqual(t, blockstor.NilHash, h, "should be not equal to the NilHash")
 		}
 
 		// a shard can be marked non-dirty by the user,
@@ -71,7 +72,7 @@ func TestCreateShard(t *testing.T) {
 				// getting a shard will keep it clean
 				for i := int64(1); i < NumberOfRecordsPerLBAShard; i++ {
 					h := shard.Get(i) // NOTE: there is no out-of-range protection
-					assert.Equal(t, NilHash, h, "created from bytes, contain all nil hashes")
+					assert.Equal(t, blockstor.NilHash, h, "created from bytes, contain all nil hashes")
 				}
 			}
 		}

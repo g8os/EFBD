@@ -13,7 +13,7 @@ struct TlogBlock {
 	sequence @1 :UInt64;
 	lba @2 :UInt64;
 	size @3 :UInt32;
-	crc32  @4 :UInt32;
+	hash  @4 :Data;
 	data @5 :Data;
 	timestamp @6 :UInt64;
 }

@@ -7,9 +7,9 @@ go:
 
 install:
   - go get -u github.com/Jumpscale/go-raml
-  - ./tlog/tlogserver/install_dependencies.sh
+  - ./tlog/install_dependencies.sh
 
 script:
-  - go test $(go list ./... | grep -v vendor)
+  - go test $(go list ./... | grep -v vendor | grep -v tlogclient/examples)
   - go test -tags 'isal' $(go list ./... | grep -v vendor)
   - ./scripts/codegeneration.sh
