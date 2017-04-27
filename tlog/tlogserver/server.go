@@ -11,7 +11,7 @@ import (
 	log "github.com/glendc/go-mini-log"
 
 	"github.com/g8os/blockstor"
-	client "github.com/g8os/blockstor/tlog/tlogclient"
+	"github.com/g8os/blockstor/tlog/schema"
 	"zombiezen.com/go/capnproto2"
 )
 
@@ -107,13 +107,13 @@ func (s *Server) readData(conn net.Conn) ([]byte, error) {
 }
 
 // decode tlog message from client
-func (s *Server) decode(r io.Reader) (*client.TlogBlock, error) {
+func (s *Server) decode(r io.Reader) (*schema.TlogBlock, error) {
 	msg, err := capnp.NewDecoder(r).Decode()
 	if err != nil {
 		return nil, err
 	}
 
-	tlb, err := client.ReadRootTlogBlock(msg)
+	tlb, err := schema.ReadRootTlogBlock(msg)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +122,7 @@ func (s *Server) decode(r io.Reader) (*client.TlogBlock, error) {
 }
 
 // hash tlog data and check against given hash from client
-func (s *Server) hash(tlb *client.TlogBlock, volID string) (err error) {
+func (s *Server) hash(tlb *schema.TlogBlock, volID string) (err error) {
 	data, err := tlb.Data()
 	if err != nil {
 		return

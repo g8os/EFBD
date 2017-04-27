@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/g8os/blockstor/tlog"
-	client "github.com/g8os/blockstor/tlog/tlogclient"
+	"github.com/g8os/blockstor/tlog/schema"
 	"github.com/g8os/blockstor/tlog/tlogserver/erasure"
 	"github.com/garyburd/redigo/redis"
 	log "github.com/glendc/go-mini-log"
@@ -81,7 +81,7 @@ func (f *flusher) periodicFlush() {
 }
 
 // store a tlog message and check if we can flush.
-func (f *flusher) store(tlb *client.TlogBlock, volID string) *response {
+func (f *flusher) store(tlb *schema.TlogBlock, volID string) *response {
 	// add blocks to tlog table
 	tab := f.getTlogTab(volID)
 	tab.Add(tlb)
@@ -116,7 +116,7 @@ func (f *flusher) checkDoFlush(volID string, tab *tlogTab, periodic bool) ([]uin
 	return f.flush(volID, blocks[:])
 }
 
-func (f *flusher) flush(volID string, blocks []*client.TlogBlock) ([]uint64, error) {
+func (f *flusher) flush(volID string, blocks []*schema.TlogBlock) ([]uint64, error) {
 	log.Debugf("flush @ vol id: %v, size:%v\n", volID, len(blocks))
 
 	// capnp -> byte
@@ -188,13 +188,13 @@ func (f *flusher) storeEncoded(volID string, key [32]byte, encoded [][]byte) err
 	return errGlob
 }
 
-func (f *flusher) encodeCapnp(volID string, blocks []*client.TlogBlock) ([]byte, error) {
+func (f *flusher) encodeCapnp(volID string, blocks []*schema.TlogBlock) ([]byte, error) {
 	// create capnp aggregation
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
 	if err != nil {
 		return nil, err
 	}
-	agg, err := client.NewRootTlogAggregation(seg)
+	agg, err := schema.NewRootTlogAggregation(seg)
 	if err != nil {
 		return nil, err
 	}

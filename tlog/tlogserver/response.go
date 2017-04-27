@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"io"
 
-	client "github.com/g8os/blockstor/tlog/tlogclient"
+	"github.com/g8os/blockstor/tlog/schema"
+
 	"zombiezen.com/go/capnproto2"
 )
 
@@ -25,7 +26,7 @@ func (r *response) toCapnp() (*capnp.Message, error) {
 		return nil, err
 	}
 
-	resp, err := client.NewTlogResponse(seg)
+	resp, err := schema.NewTlogResponse(seg)
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,6 @@
 using Go = import "/go.capnp";
 @0xf4533cbae6e08506;
-$Go.package("tlogclient");
+$Go.package("schema");
 $Go.import("github.com/g8os/blockstor/tlog/tlogclient");
 
 struct TlogResponse {

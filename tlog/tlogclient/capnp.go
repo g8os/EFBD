@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 
+	"github.com/g8os/blockstor/tlog/schema"
 	"zombiezen.com/go/capnproto2"
 )
 
@@ -11,13 +12,13 @@ const (
 	volIDLen = 32
 )
 
-func decodeResponse(data []byte) (*TlogResponse, error) {
+func decodeResponse(data []byte) (*schema.TlogResponse, error) {
 	msg, err := capnp.NewDecoder(bytes.NewBuffer(data)).Decode()
 	if err != nil {
 		return nil, err
 	}
 
-	tr, err := ReadRootTlogResponse(msg)
+	tr, err := schema.ReadRootTlogResponse(msg)
 	return &tr, err
 }
 
@@ -28,7 +29,7 @@ func buildCapnp(volID string, seq uint64, hash []byte,
 		return nil, fmt.Errorf("build capnp:%v", err)
 	}
 
-	block, err := NewRootTlogBlock(seg)
+	block, err := schema.NewRootTlogBlock(seg)
 	if err != nil {
 		return nil, fmt.Errorf("create block:%v", err)
 	}
