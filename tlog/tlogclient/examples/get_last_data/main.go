@@ -15,7 +15,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/g8os/blockstor/tlog/tlogclient"
+	"github.com/g8os/blockstor/tlog/schema"
 	"github.com/garyburd/redigo/redis"
 	"github.com/golang/snappy"
 	"zombiezen.com/go/capnproto2"
@@ -31,7 +31,7 @@ type config struct {
 	firstObjStorPort int
 	firstObjStorAddr string
 	privKey          string
-	volID            string
+	vdiskID          string
 }
 
 func main() {
@@ -43,7 +43,7 @@ func main() {
 	flag.StringVar(&conf.firstObjStorAddr, "first-objstor-addr", "127.0.0.1", "first objstor addr")
 	flag.IntVar(&conf.firstObjStorPort, "first-objstor-port", 16379, "first objstor port")
 	flag.StringVar(&conf.privKey, "priv-key", "12345678901234567890123456789012", "priv key")
-	flag.StringVar(&conf.volID, "vol-id", "1234567890", "vol id")
+	flag.StringVar(&conf.vdiskID, "vdiskid", "1234567890", "virtual disk ID")
 	flag.BoolVar(&dumpContent, "dump-content", false, "dump content")
 
 	flag.Parse()
@@ -125,7 +125,7 @@ func getAllPieces(conf *config) []byte {
 
 	// get last key
 	rc := pools[0].Get()
-	key, err := redis.Bytes(rc.Do("GET", "last_hash_"+conf.volID))
+	key, err := redis.Bytes(rc.Do("GET", "last_hash_"+conf.vdiskID))
 	if err != nil {
 		log.Fatalf("failed to get last key:%v", err)
 	}
@@ -151,7 +151,7 @@ func decodeCapnp(r io.Reader) {
 		log.Fatalf("failed to decode capnp : %v", err)
 	}
 
-	agg, err := tlogclient.ReadRootTlogAggregation(msg)
+	agg, err := schema.ReadRootTlogAggregation(msg)
 	if err != nil {
 		log.Fatalf("failed to read root tlog : %v", err)
 	}

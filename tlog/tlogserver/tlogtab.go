@@ -14,14 +14,14 @@ type tlogTab struct {
 	lock      sync.RWMutex
 }
 
-func newTlogTab(volID string) *tlogTab {
+func newTlogTab(vdiskID string) *tlogTab {
 	return &tlogTab{
 		tlogs:     []*schema.TlogBlock{},
 		lastFlush: time.Now(),
 	}
 }
 
-// check if this volume ID need to be flushed
+// check if this vdisk need to be flushed
 func (t *tlogTab) needFlush(flushSize, flushTime int, periodic bool) bool {
 	if !periodic && len(t.tlogs) < flushSize {
 		return false
