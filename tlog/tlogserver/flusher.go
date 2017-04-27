@@ -62,11 +62,11 @@ func newFlusher(conf *config) (*flusher, error) {
 	return f, nil
 }
 
-func (f *flusher) getTlogTab(volID string) *tlogTab {
-	tab, ok := f.tlogs[volID]
+func (f *flusher) getTlogTab(vdiskID string) *tlogTab {
+	tab, ok := f.tlogs[vdiskID]
 	if !ok {
-		tab = newTlogTab(volID)
-		f.tlogs[volID] = tab
+		tab = newTlogTab(vdiskID)
+		f.tlogs[vdiskID] = tab
 	}
 	return tab
 }
@@ -74,20 +74,20 @@ func (f *flusher) getTlogTab(volID string) *tlogTab {
 func (f *flusher) periodicFlush() {
 	tick := time.Tick(2 * time.Second)
 	for range tick {
-		for volID, tab := range f.tlogs {
-			f.checkDoFlush(volID, tab, true)
+		for vdiskID, tab := range f.tlogs {
+			f.checkDoFlush(vdiskID, tab, true)
 		}
 	}
 }
 
 // store a tlog message and check if we can flush.
-func (f *flusher) store(tlb *schema.TlogBlock, volID string) *response {
+func (f *flusher) store(tlb *schema.TlogBlock, vdiskID string) *response {
 	// add blocks to tlog table
-	tab := f.getTlogTab(volID)
+	tab := f.getTlogTab(vdiskID)
 	tab.Add(tlb)
 
 	// check if we can do flush and do it
-	seqs, err := f.checkDoFlush(volID, tab, false)
+	seqs, err := f.checkDoFlush(vdiskID, tab, false)
 	if err != nil {
 		return &response{
 			Status: -1,
@@ -107,20 +107,20 @@ func (f *flusher) store(tlb *schema.TlogBlock, volID string) *response {
 }
 
 // check if we can flush and do it
-func (f *flusher) checkDoFlush(volID string, tab *tlogTab, periodic bool) ([]uint64, error) {
+func (f *flusher) checkDoFlush(vdiskID string, tab *tlogTab, periodic bool) ([]uint64, error) {
 	blocks, needFlush := tab.Pick(f.flushSize, f.flushTime, periodic)
 	if !needFlush {
 		return []uint64{}, nil
 	}
 
-	return f.flush(volID, blocks[:])
+	return f.flush(vdiskID, blocks[:])
 }
 
-func (f *flusher) flush(volID string, blocks []*schema.TlogBlock) ([]uint64, error) {
-	log.Debugf("flush @ vol id: %v, size:%v\n", volID, len(blocks))
+func (f *flusher) flush(vdiskID string, blocks []*schema.TlogBlock) ([]uint64, error) {
+	log.Debugf("flush @ vdiskID: %v, size:%v\n", vdiskID, len(blocks))
 
 	// capnp -> byte
-	data, err := f.encodeCapnp(volID, blocks[:])
+	data, err := f.encodeCapnp(vdiskID, blocks[:])
 	if err != nil {
 		return nil, err
 	}
@@ -133,13 +133,13 @@ func (f *flusher) flush(volID string, blocks []*schema.TlogBlock) ([]uint64, err
 	encrypted := f.encrypter.Encrypt(compressed)
 
 	// erasure
-	erEncoded, err := f.erasure.Encode(volID, encrypted[:])
+	erEncoded, err := f.erasure.Encode(vdiskID, encrypted[:])
 	if err != nil {
 		return nil, err
 	}
 
 	// store to ardb
-	if err := f.storeEncoded(volID, blake2b.Sum256(encrypted), erEncoded); err != nil {
+	if err := f.storeEncoded(vdiskID, blake2b.Sum256(encrypted), erEncoded); err != nil {
 		return nil, err
 	}
 
@@ -151,7 +151,7 @@ func (f *flusher) flush(volID string, blocks []*schema.TlogBlock) ([]uint64, err
 	return seqs[:], nil
 }
 
-func (f *flusher) storeEncoded(volID string, key [32]byte, encoded [][]byte) error {
+func (f *flusher) storeEncoded(vdiskID string, key [32]byte, encoded [][]byte) error {
 	var wg sync.WaitGroup
 
 	wg.Add(f.k + f.m + 1)
@@ -175,7 +175,7 @@ func (f *flusher) storeEncoded(volID string, key [32]byte, encoded [][]byte) err
 	// store last hash name
 	go func() {
 		defer wg.Done()
-		lastHashKey := fmt.Sprintf("last_hash_%v", volID)
+		lastHashKey := fmt.Sprintf("last_hash_%v", vdiskID)
 		rc := f.redisPools[0].Get()
 		_, err := rc.Do("SET", lastHashKey, key)
 		if err != nil {
@@ -188,7 +188,7 @@ func (f *flusher) storeEncoded(volID string, key [32]byte, encoded [][]byte) err
 	return errGlob
 }
 
-func (f *flusher) encodeCapnp(volID string, blocks []*schema.TlogBlock) ([]byte, error) {
+func (f *flusher) encodeCapnp(vdiskID string, blocks []*schema.TlogBlock) ([]byte, error) {
 	// create capnp aggregation
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
 	if err != nil {

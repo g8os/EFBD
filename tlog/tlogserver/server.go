@@ -68,20 +68,20 @@ func (s *Server) handle(conn net.Conn) error {
 			return err
 		}
 
-		volID, err := tlb.VolumeId()
+		vdiskID, err := tlb.VdiskID()
 		if err != nil {
-			log.Debugf("failed to get volume ID: %v", err)
+			log.Debugf("failed to get vdisk ID: %v", err)
 			return err
 		}
 
 		// check hash
-		if err := s.hash(tlb, volID); err != nil {
+		if err := s.hash(tlb, vdiskID); err != nil {
 			log.Debugf("hash check failed:%v\n", err)
 			return err
 		}
 
 		// store
-		resp := s.f.store(tlb, volID)
+		resp := s.f.store(tlb, vdiskID)
 
 		if err := resp.write(conn); err != nil {
 			return err
@@ -122,7 +122,7 @@ func (s *Server) decode(r io.Reader) (*schema.TlogBlock, error) {
 }
 
 // hash tlog data and check against given hash from client
-func (s *Server) hash(tlb *schema.TlogBlock, volID string) (err error) {
+func (s *Server) hash(tlb *schema.TlogBlock, vdiskID string) (err error) {
 	data, err := tlb.Data()
 	if err != nil {
 		return

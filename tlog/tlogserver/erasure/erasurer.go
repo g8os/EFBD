@@ -7,7 +7,7 @@ import (
 //EraruseCoder reedsolomon encodes
 type EraruseCoder interface {
 	//Encode actually encodes
-	Encode(volID string, data []byte) ([][]byte, error)
+	Encode(vdiskID string, data []byte) ([][]byte, error)
 }
 
 //NewErasurer is the factory method for creating ErasureCoder instances
@@ -28,8 +28,8 @@ func newErasurer(k, m int) EraruseCoder {
 }
 
 // get reedsolomon encoder object
-func (e *erasurer) getRsEncoder(volID string) (*reedsolomon.RS, error) {
-	rs, ok := e.rsEncoders[volID]
+func (e *erasurer) getRsEncoder(vdiskID string) (*reedsolomon.RS, error) {
+	rs, ok := e.rsEncoders[vdiskID]
 	if ok {
 		return rs, nil
 	}
@@ -39,12 +39,12 @@ func (e *erasurer) getRsEncoder(volID string) (*reedsolomon.RS, error) {
 		return nil, err
 	}
 
-	e.rsEncoders[volID] = rs
+	e.rsEncoders[vdiskID] = rs
 	return rs, nil
 }
 
-func (e *erasurer) Encode(volID string, data []byte) ([][]byte, error) {
-	enc, err := e.getRsEncoder(volID)
+func (e *erasurer) Encode(vdiskID string, data []byte) ([][]byte, error) {
+	enc, err := e.getRsEncoder(vdiskID)
 	if err != nil {
 		return nil, err
 	}
