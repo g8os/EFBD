@@ -1,7 +1,7 @@
 package main
 
 type block struct {
-	volumeID  uint32
+	vdiskID   uint32
 	sequence  uint64
 	lba       uint64
 	size      uint32

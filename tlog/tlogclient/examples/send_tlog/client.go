@@ -20,7 +20,9 @@ func main() {
 
 	flag.Parse()
 
-	volID := "1234567890"
+	const (
+		vdiskID = "1234567890"
+	)
 
 	clients := make([]*client.Client, numClient)
 	clientReady := make(chan int, numClient)
@@ -54,7 +56,7 @@ func main() {
 			client := clients[int(j)%numClient]
 
 			log.Infof("j=%v\n", j)
-			err := client.Send(volID, j, j, j, data)
+			err := client.Send(vdiskID, j, j, j, data)
 			if err != nil {
 				log.Infof("client %v died\n", idx)
 				return

@@ -27,7 +27,7 @@ func newIsalErasurer(k, m int) EraruseCoder {
 	}
 }
 
-func (e *isalErasurer) Encode(volID string, data []byte) ([][]byte, error) {
+func (e *isalErasurer) Encode(vdiskID string, data []byte) ([][]byte, error) {
 	return e.encodeIsal(data)
 }
 
