@@ -1,9 +1,5 @@
 package tlogclient
 
-// #include <isa-l/crc.h>
-// #cgo LDFLAGS: -lisal
-import "C"
-
 import (
 	"bufio"
 	"bytes"
@@ -15,7 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unsafe"
+
+	"github.com/g8os/blockstor"
 )
 
 var (
@@ -158,12 +155,9 @@ func createConn(addr string) (*net.TCPConn, error) {
 // shouldn't be used anymore
 func (c *Client) Send(volID string, seq uint64,
 	lba, timestamp uint64, data []byte) error {
+	hash := blockstor.HashBytes(data)
 
-	// count crc
-	crc := C.crc32_ieee(0, (*C.uchar)(unsafe.Pointer(&data[0])), (C.uint64_t)(len(data)))
-
-	// build capnp message block
-	b, err := buildCapnp(volID, seq, uint32(crc), lba, timestamp, data)
+	b, err := buildCapnp(volID, seq, hash[:], lba, timestamp, data)
 	if err != nil {
 		return err
 	}

@@ -2,9 +2,9 @@ package main
 
 import (
 	"flag"
-	"log"
 
 	client "github.com/g8os/blockstor/tlog/tlogclient"
+	log "github.com/glendc/go-mini-log"
 )
 
 var (
@@ -53,10 +53,10 @@ func main() {
 		func(j uint64, idx int) {
 			client := clients[int(j)%numClient]
 
-			log.Printf("j=%v\n", j)
+			log.Infof("j=%v\n", j)
 			err := client.Send(volID, j, j, j, data)
 			if err != nil {
-				log.Printf("client %v died\n", idx)
+				log.Infof("client %v died\n", idx)
 				return
 			}
 			tr, err := client.RecvOne()
@@ -64,7 +64,7 @@ func main() {
 				log.Fatalf("client %v failed to recv:%v\n", idx, err)
 			}
 			if printResp {
-				log.Printf("status=%v, seqs=%v\n", tr.Status, tr.Sequences)
+				log.Infof("status=%v, seqs=%v\n", tr.Status, tr.Sequences)
 			}
 			clientReady <- idx
 		}(seq, idx)

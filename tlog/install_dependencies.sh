@@ -5,7 +5,7 @@ rm -rf $BUILD_DIR
 mkdir $BUILD_DIR
 
 
-sudo apt-get install build-essential  autoconf automake nasm yasm libsnappy-dev
+sudo apt-get install build-essential autoconf automake nasm yasm libsnappy-dev
 
 # install isa-l
 cd $BUILD_DIR
