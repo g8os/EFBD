@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"sync"
 	"time"
@@ -21,6 +22,7 @@ type flusher struct {
 	m         int
 	flushSize int
 	flushTime int
+	privKey   []byte
 
 	redisPools map[int]*redis.Pool // pools of redis connection
 	tlogs      map[string]*tlogTab
@@ -52,6 +54,7 @@ func newFlusher(conf *config) (*flusher, error) {
 		m:          conf.M,
 		flushSize:  conf.flushSize,
 		flushTime:  conf.flushTime,
+		privKey:    []byte(conf.privKey),
 		redisPools: pools,
 		tlogs:      map[string]*tlogTab{},
 		erasure:    erasure.NewErasurer(conf.K, conf.M),
@@ -113,14 +116,30 @@ func (f *flusher) checkDoFlush(vdiskID string, tab *tlogTab, periodic bool) ([]u
 		return []uint64{}, nil
 	}
 
-	return f.flush(vdiskID, blocks[:])
+	seqs, err := f.flush(vdiskID, blocks[:], tab)
+	if err != nil {
+		log.Infof("flush failed vor vdisk ID:%v, err:%v", vdiskID, err)
+	}
+	return seqs, err
 }
 
-func (f *flusher) flush(vdiskID string, blocks []*schema.TlogBlock) ([]uint64, error) {
+func (f *flusher) flush(vdiskID string, blocks []*schema.TlogBlock, tab *tlogTab) ([]uint64, error) {
 	log.Debugf("flush @ vdiskID: %v, size:%v\n", vdiskID, len(blocks))
 
+	// get last hash
+	lastHash, err := tab.getLastHash(f.redisPools[0].Get())
+	if err != nil && err != redis.ErrNil {
+		return nil, err
+	}
+
+	// if this is first aggregation, use priv key as last hash value
+	// TODO : check with @robvanmieghem.
+	if err == redis.ErrNil {
+		lastHash = f.privKey
+	}
+
 	// capnp -> byte
-	data, err := f.encodeCapnp(vdiskID, blocks[:])
+	data, err := f.encodeCapnp(vdiskID, blocks[:], lastHash)
 	if err != nil {
 		return nil, err
 	}
@@ -129,28 +148,28 @@ func (f *flusher) flush(vdiskID string, blocks []*schema.TlogBlock) ([]uint64, e
 	compressed := make([]byte, snappy.MaxEncodedLen(len(data)))
 	compressed = snappy.Encode(compressed[:], data[:])
 
-	// align it
-	// We need to align it because erasure encode need the pieces to be
-	// in same length.
-	// We need to do it before encryption because otherwise the decrypter
-	// will get different message than the original.
-	alignLen := f.k - (len(compressed) % f.k)
-	if alignLen > 0 {
-		pad := make([]byte, alignLen)
-		compressed = append(compressed, pad...)
-	}
-
 	// encrypt
 	encrypted := f.encrypter.Encrypt(compressed)
 
+	// add info about the original length of the message.
+	// we do it because erasure encoder will append some data
+	// to the message to make it aligned.
+	buf := new(bytes.Buffer)
+	if err := binary.Write(buf, binary.LittleEndian, uint64(len(encrypted))); err != nil {
+		return nil, err
+	}
+
+	finalData := append(buf.Bytes(), encrypted...)
+
 	// erasure
-	erEncoded, err := f.erasure.Encode(vdiskID, encrypted[:])
+	erEncoded, err := f.erasure.Encode(vdiskID, finalData[:])
 	if err != nil {
 		return nil, err
 	}
 
+	hash := blake2b.Sum256(encrypted)
 	// store to ardb
-	if err := f.storeEncoded(vdiskID, blake2b.Sum256(encrypted), erEncoded); err != nil {
+	if err := f.storeEncoded(vdiskID, hash[:], erEncoded, tab); err != nil {
 		return nil, err
 	}
 
@@ -162,7 +181,7 @@ func (f *flusher) flush(vdiskID string, blocks []*schema.TlogBlock) ([]uint64, e
 	return seqs[:], nil
 }
 
-func (f *flusher) storeEncoded(vdiskID string, key [32]byte, encoded [][]byte) error {
+func (f *flusher) storeEncoded(vdiskID string, key []byte, encoded [][]byte, tab *tlogTab) error {
 	var wg sync.WaitGroup
 
 	wg.Add(f.k + f.m + 1)
@@ -186,9 +205,8 @@ func (f *flusher) storeEncoded(vdiskID string, key [32]byte, encoded [][]byte) e
 	// store last hash name
 	go func() {
 		defer wg.Done()
-		lastHashKey := fmt.Sprintf("last_hash_%v", vdiskID)
 		rc := f.redisPools[0].Get()
-		_, err := rc.Do("SET", lastHashKey, key)
+		err := tab.storeLastHash(rc, key)
 		if err != nil {
 			log.Debugf("error when setting last hash name:%v", err)
 			errGlob = err
@@ -199,7 +217,7 @@ func (f *flusher) storeEncoded(vdiskID string, key [32]byte, encoded [][]byte) e
 	return errGlob
 }
 
-func (f *flusher) encodeCapnp(vdiskID string, blocks []*schema.TlogBlock) ([]byte, error) {
+func (f *flusher) encodeCapnp(vdiskID string, blocks []*schema.TlogBlock, lastHash []byte) ([]byte, error) {
 	// create capnp aggregation
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
 	if err != nil {
@@ -212,6 +230,8 @@ func (f *flusher) encodeCapnp(vdiskID string, blocks []*schema.TlogBlock) ([]byt
 
 	agg.SetName("The Go Tlog")
 	agg.SetSize(uint64(len(blocks)))
+	agg.SetTimestamp(uint64(time.Now().UnixNano()))
+	agg.SetPrev(lastHash)
 
 	blockList, err := agg.NewBlocks(int32(len(blocks)))
 	if err != nil {
