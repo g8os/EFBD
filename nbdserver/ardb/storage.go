@@ -18,18 +18,6 @@ type backendStorage interface {
 	GoBackground(ctx context.Context)
 }
 
-// redisSendNow is a utitlity function used by backendStorage functions,
-// and is similar to redis.Conn.Do, except that we don't read the reply
-func redisSendNow(conn redis.Conn, cmd string, args ...interface{}) (err error) {
-	err = conn.Send(cmd, args...)
-	if err != nil {
-		return
-	}
-
-	err = conn.Flush()
-	return
-}
-
 // redisBytes is a utility function used by backendStorage functions,
 // where we don't want to trigger an error for non-existent (or null) content.
 func redisBytes(reply interface{}, replyErr error) (content []byte, err error) {
