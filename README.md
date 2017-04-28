@@ -4,7 +4,7 @@ The G8OS block storage allows to create and use block devices (vdisks) on top of
 
 A vdisk can be deduped, have various blocksizes and depending on the underlying storage cluster used, have different speed characteristics.
 
-Make sure tot have Golang version 1.8 or above installed!
+Make sure to have Golang version 1.8 or above installed!
 
 Components:
 * [NBD Server](nbdserver/readme.md)
@@ -15,7 +15,7 @@ Components:
     A CLI to copy the metadata of a deduped vdisk
 
 # Build for g8os
-- Clone the code to your GOPATH and `go get` the dependencies:
+- Clone the code to your GOPATH:
 ```
 go get -d github.com/g8os/blockstor
 cd $GOPATH/src/github.com/g8os/blockstor/nbdserver
