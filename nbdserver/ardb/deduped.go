@@ -253,7 +253,7 @@ func (ds *dedupedStorage) getContent(hash lba.Hash) (content []byte, err error) 
 				return
 			}
 
-			err = redisSendNow(conn, "SET", hash.Bytes(), content)
+			_, err = conn.Do("SET", hash.Bytes(), content)
 			if err != nil {
 				// we won't return error however, but just log it
 				log.Infof("couldn't store remote content in local storage: %s", err.Error())
@@ -281,7 +281,7 @@ func (ds *dedupedStorage) setContent(prevHash, curHash lba.Hash, content []byte)
 
 		exists, err := redis.Bool(conn.Do("EXISTS", curHash.Bytes()))
 		if err == nil && !exists {
-			err = redisSendNow(conn, "SET", curHash.Bytes(), content)
+			_, err = conn.Do("SET", curHash.Bytes(), content)
 		}
 
 		return
@@ -319,7 +319,7 @@ func (ds *dedupedStorage) goReferenceContent(hash lba.Hash) (err error) {
 	}
 	defer conn.Close()
 
-	err = redisSendNow(conn, "INCR", key)
+	_, err = conn.Do("INCR", key)
 	return
 }
 
@@ -347,7 +347,7 @@ func (ds *dedupedStorage) goDereferenceContent(hash lba.Hash) (err error) {
 		return
 	}
 
-	err = redisSendNow(conn, "DEL", hash.Bytes(), key)
+	_, err = conn.Do("DEL", hash.Bytes(), key)
 	return
 }
 
