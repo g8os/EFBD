@@ -71,7 +71,6 @@ func createTestDedupedStorage(t *testing.T, vdiskID string, blockSize, blockCoun
 // testDedupContentExists tests if
 // the given content exists in the database
 func testDedupContentExists(t *testing.T, memRedis *redisstub.MemoryRedis, content []byte) {
-	time.Sleep(time.Millisecond * 200) // give background thread time
 	conn, err := memRedis.Dial("")
 	if err != nil {
 		debug.PrintStack()
@@ -97,7 +96,6 @@ func testDedupContentExists(t *testing.T, memRedis *redisstub.MemoryRedis, conte
 // testDedupContentDoesNotExist tests if
 // the given content does not exist in the database
 func testDedupContentDoesNotExist(t *testing.T, memRedis *redisstub.MemoryRedis, content []byte) {
-	time.Sleep(time.Millisecond * 200) // give background thread time
 	conn, err := memRedis.Dial("")
 	if err != nil {
 		debug.PrintStack()
@@ -278,8 +276,6 @@ func TestGetDedupedRootContent(t *testing.T) {
 	if content == nil {
 		t.Fatal("content should exist now, while received nil-content")
 	}
-	// give database some time to process the async storing
-	time.Sleep(time.Millisecond * 200)
 
 	// content should now be in both storages
 	// as the remote get should have also stored the content locally
@@ -314,8 +310,6 @@ func TestGetDedupedRootContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// give database some time to process the flush
-	time.Sleep(time.Millisecond * 200)
 
 	// let's copy the metadata from storageB to storageA
 	copyTestMetaData(t, vdiskIDB, vdiskIDA, redisProviderB, redisProviderA)
@@ -356,8 +350,6 @@ func TestGetDedupedRootContent(t *testing.T) {
 	if content == nil {
 		t.Fatal("content should exist now, while received nil-content")
 	}
-	// give database some time to process the async storing
-	time.Sleep(time.Millisecond * 200)
 
 	// and also our direct test should show that
 	// the content now exists in both storages
