@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/g8os/blockstor/redisstub"
 	"github.com/garyburd/redigo/redis"
@@ -69,8 +68,6 @@ func testBackendStorage(t *testing.T, storage backendStorage) {
 			t.Fatal(err)
 		}
 	}
-	// give any async processes time to process
-	time.Sleep(time.Millisecond * 200)
 
 	// getting this content should now be possible
 	content, err = storage.Get(testBlockIndexA)
@@ -86,8 +83,6 @@ func testBackendStorage(t *testing.T, storage backendStorage) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// give any async processes time to process
-	time.Sleep(time.Millisecond * 200)
 	// getting the content should now fail
 	content, err = storage.Get(testBlockIndexB)
 	if err != nil {
@@ -102,8 +97,6 @@ func testBackendStorage(t *testing.T, storage backendStorage) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// give any async processes time to process
-	time.Sleep(time.Millisecond * 200)
 	// getting the content should be fine
 	content, err = storage.Get(testBlockIndexB)
 	if err != nil {
@@ -118,8 +111,6 @@ func testBackendStorage(t *testing.T, storage backendStorage) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// give any async processes time to process
-	time.Sleep(time.Millisecond * 200)
 	// getting the content should be fine
 	content, err = storage.Get(testBlockIndexB)
 	if err != nil {
@@ -134,8 +125,7 @@ func testBackendStorage(t *testing.T, storage backendStorage) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// give any async processes time to process
-	time.Sleep(time.Millisecond * 200)
+
 	// content should now be nil
 	content, err = storage.Get(testBlockIndexA)
 	if err != nil {
@@ -148,8 +138,7 @@ func testBackendStorage(t *testing.T, storage backendStorage) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// give any async processes time to process
-	time.Sleep(time.Millisecond * 200)
+
 	// content should be merged
 	content, err = storage.Get(testBlockIndexA)
 	if err != nil {
@@ -164,8 +153,7 @@ func testBackendStorage(t *testing.T, storage backendStorage) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// give any async processes time to process
-	time.Sleep(time.Millisecond * 200)
+
 	// content should now be nil
 	content, err = storage.Get(testBlockIndexB)
 	if err != nil {

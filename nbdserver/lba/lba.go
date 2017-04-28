@@ -196,23 +196,43 @@ func (lba *LBA) storeCacheInExternalStorage() (err error) {
 	}
 	defer conn.Close()
 
+	var cmdCount int64
 	lba.cache.Serialize(func(index int64, bytes []byte) (err error) {
 		if bytes != nil {
 			err = conn.Send("HSET", lba.vdiskID, index, bytes)
 		} else {
 			err = conn.Send("HDEL", lba.vdiskID, index)
 		}
+
+		cmdCount++
 		return
 	})
 
 	// Write all sets in output buffer to Redis at once
 	err = conn.Flush()
-	if err == nil {
-		// no need to evict, already serialized them
-		evict := false
-		// clear cache, as we serialized them all
-		lba.cache.Clear(evict)
+	if err != nil {
+		return
 	}
+
+	// read all responses
+	var errors flushError
+	for i := int64(0); i < cmdCount; i++ {
+		_, err = conn.Receive()
+		if err != nil {
+			errors = append(errors, err)
+		}
+	}
+	if len(errors) > 0 {
+		err = errors // return 1+ errors in case we received any
+		return
+	}
+
+	// no need to evict, already serialized them
+	evict := false
+	// clear cache, as we serialized them all
+	lba.cache.Clear(evict)
+
+	// return with no errors, all good
 	return
 }
 
@@ -250,5 +270,18 @@ func (lba *LBA) deleteShardFromExternalStorage(index int64) (err error) {
 
 	_, err = conn.Do("HDEL", lba.vdiskID, index)
 
+	return
+}
+
+// flushError is a collection of errors received,
+// send by the server as a reply on the commands that got flushed to it
+type flushError []error
+
+// Error implements Error.Error
+func (e flushError) Error() (s string) {
+	s = fmt.Sprintf("flush failed because of %d commands: ", len(e))
+	for _, err := range e {
+		s += `"` + err.Error() + `";`
+	}
 	return
 }

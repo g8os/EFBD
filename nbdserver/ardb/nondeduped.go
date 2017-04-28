@@ -38,12 +38,12 @@ func (ss *nonDedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 	// don't store zero blocks,
 	// and delete existing ones if they already existed
 	if ss.isZeroContent(content) {
-		err = redisSendNow(conn, "DEL", key)
+		_, err = conn.Do("DEL", key)
 		return
 	}
 
 	// content is not zero, so let's (over)write it
-	err = redisSendNow(conn, "SET", key, content)
+	_, err = conn.Do("SET", key, content)
 	return
 }
 
@@ -70,7 +70,7 @@ func (ss *nonDedupedStorage) Merge(blockIndex, offset int64, content []byte) (er
 	copy(origContent[offset:], content)
 
 	// store new content, as the merged version is non-zero
-	err = redisSendNow(conn, "SET", key, origContent)
+	_, err = conn.Do("SET", key, origContent)
 	return
 }
 
