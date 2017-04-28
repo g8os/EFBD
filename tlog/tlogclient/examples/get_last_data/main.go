@@ -1,9 +1,7 @@
 package main
 
-// #include <isa-l_crypto/aes_cbc.h>
-// #include <isa-l_crypto/aes_keyexp.h>
 // #include "snappy.h"
-// #cgo LDFLAGS: -lisal_crypto -lsnappy
+// #cgo LDFLAGS: -lsnappy
 import "C"
 import (
 	"bytes"
@@ -15,6 +13,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/g8os/blockstor/tlog"
 	"github.com/g8os/blockstor/tlog/schema"
 	"github.com/garyburd/redigo/redis"
 	"github.com/golang/snappy"
@@ -32,6 +31,7 @@ type config struct {
 	firstObjStorAddr string
 	privKey          string
 	vdiskID          string
+	nonce            string // encryption nonce
 }
 
 func main() {
@@ -44,6 +44,7 @@ func main() {
 	flag.IntVar(&conf.firstObjStorPort, "first-objstor-port", 16379, "first objstor port")
 	flag.StringVar(&conf.privKey, "priv-key", "12345678901234567890123456789012", "priv key")
 	flag.StringVar(&conf.vdiskID, "vdiskid", "1234567890", "virtual disk ID")
+	flag.StringVar(&conf.nonce, "nonce", "37b8e8a308c354048d245f6d", "encryption nonce")
 	flag.BoolVar(&dumpContent, "dump-content", false, "dump content")
 
 	flag.Parse()
@@ -58,7 +59,7 @@ func main() {
 	merged := getAllPieces(&conf)
 
 	// decrypt
-	decrypted := decrypt(merged, conf.privKey)
+	decrypted := decrypt(merged, conf.privKey, conf.nonce)
 
 	if dumpContent {
 		if err := ioutil.WriteFile("go_decrypted", decrypted, 0666); err != nil {
@@ -79,45 +80,36 @@ func main() {
 	// TODO : check the return value
 	// we don't check it now because the return value indicate an error
 	// but in fact it can be uncompressed correctly.
-	// there might be something wrong.
+	// there might be something wrong in how we use it because we don't
+	// get this issue in C in how we use it because we don't
+	// get this issue in C+++
 	log.Printf("unc len = %vres = %v\n", uncLen, res)
 
 	//uncompressed = uncompressed[:res]
 
-	/*uncompressed, _ = snappy.Decode(uncompressed, decrypted)
+	/**
+	* don't use this pure Go version because it doesn't work.
+	uncompressed, err = snappy.Decode(uncompressed, decrypted)
 	if err != nil {
 		log.Fatalf("failed to decode:%v, decrypted len:%v", err, len(decrypted))
-	}*/
+	}
+	*/
 
 	// decode capnp
 	decodeCapnp(bytes.NewBuffer(uncompressed))
 }
 
-func decrypt(encrypted []byte, privKey string) []byte {
-
-	// input vector
-	iv := make([]byte, 16)
-	for i := 0; i < len(iv); i++ {
-		iv[i] = '0'
+func decrypt(encrypted []byte, privKey, nonce string) []byte {
+	decrypter, err := tlog.NewAESDecrypter(privKey, nonce)
+	if err != nil {
+		log.Fatalf("failed to create aes decrypter:%v", err)
 	}
-	encKey := make([]byte, 256)
-	decKey := make([]byte, 256)
-	bPrivKey := []byte(privKey)
 
-	C.aes_keyexp_256((*C.uint8_t)(unsafe.Pointer(&bPrivKey[0])),
-		(*C.uint8_t)(unsafe.Pointer(&encKey[0])),
-		(*C.uint8_t)(unsafe.Pointer(&decKey[0])))
-
-	dataLen := len(encrypted)
-	unencrypted := make([]byte, dataLen)
-
-	C.aes_cbc_dec_256((unsafe.Pointer(&encrypted[0])),
-		(*C.uint8_t)(unsafe.Pointer(&iv[0])),
-		(*C.uint8_t)(unsafe.Pointer(&decKey[0])),
-		(unsafe.Pointer(&unencrypted[0])),
-		(C.uint64_t)(dataLen))
-
-	return unencrypted
+	plain, err := decrypter.Decrypt(encrypted)
+	if err != nil {
+		log.Fatalf("failed to decrypt:%v", err)
+	}
+	return plain
 }
 
 func getAllPieces(conf *config) []byte {
