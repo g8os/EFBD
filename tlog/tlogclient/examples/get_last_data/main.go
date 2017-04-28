@@ -152,8 +152,12 @@ func decodeCapnp(r io.Reader) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	prevHash, err := agg.Prev()
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	fmt.Printf("name=%v", name)
+	log.Printf("name=%v, timestamp=%v, prevHash=%v", name, agg.Timestamp(), prevHash)
 
 	blocks, err := agg.Blocks()
 	if err != nil {

@@ -4,13 +4,21 @@ import (
 	"sync"
 	"time"
 
+	"github.com/garyburd/redigo/redis"
+
 	"github.com/g8os/blockstor/tlog/schema"
+)
+
+const (
+	lastHashPrefix = "last_hash_"
 )
 
 // tlog table
 type tlogTab struct {
 	tlogs     []*schema.TlogBlock
 	lastFlush time.Time
+	lastHash  []byte
+	vdiskID   string
 	lock      sync.RWMutex
 }
 
@@ -18,6 +26,7 @@ func newTlogTab(vdiskID string) *tlogTab {
 	return &tlogTab{
 		tlogs:     []*schema.TlogBlock{},
 		lastFlush: time.Now(),
+		vdiskID:   vdiskID,
 	}
 }
 
@@ -71,4 +80,25 @@ func (t *tlogTab) Add(tlb *schema.TlogBlock) {
 	defer t.lock.Unlock()
 
 	t.tlogs = append(t.tlogs, tlb)
+}
+
+func (t *tlogTab) storeLastHash(rc redis.Conn, lastHash []byte) error {
+	// store in memory
+	t.lastHash = lastHash
+
+	_, err := rc.Do("SET", t.lastHashKey(), t.lastHash)
+	return err
+}
+func (t *tlogTab) getLastHash(rc redis.Conn) ([]byte, error) {
+	// try to get from memory
+	if len(t.lastHash) > 0 {
+		return t.lastHash, nil
+	}
+
+	// get it from the store
+	return redis.Bytes(rc.Do("GET", t.lastHashKey()))
+}
+
+func (t *tlogTab) lastHashKey() string {
+	return lastHashPrefix + t.vdiskID
 }
