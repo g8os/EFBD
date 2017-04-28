@@ -129,6 +129,17 @@ func (f *flusher) flush(vdiskID string, blocks []*schema.TlogBlock) ([]uint64, e
 	compressed := make([]byte, snappy.MaxEncodedLen(len(data)))
 	compressed = snappy.Encode(compressed[:], data[:])
 
+	// align it
+	// We need to align it because erasure encode need the pieces to be
+	// in same length.
+	// We need to do it before encryption because otherwise the decrypter
+	// will get different message than the original.
+	alignLen := f.k - (len(compressed) % f.k)
+	if alignLen > 0 {
+		pad := make([]byte, alignLen)
+		compressed = append(compressed, pad...)
+	}
+
 	// encrypt
 	encrypted := f.encrypter.Encrypt(compressed)
 
