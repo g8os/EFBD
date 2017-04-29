@@ -17,7 +17,7 @@ Components:
 # Build for g8os
 - Clone the code to your GOPATH:
 ```
-go get -d github.com/g8os/blockstor
+go get -d github.com/g8os/blockstor/nbdserver
 cd $GOPATH/src/github.com/g8os/blockstor/nbdserver
 ```
 

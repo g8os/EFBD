@@ -46,7 +46,7 @@
 		},
 		{
 			"ImportPath": "github.com/glendc/go-mini-log",
-			"Rev": "854132bc73fb56a32008220cfbc269fa5814204a"
+			"Rev": "e52b0f9eb69c62005ccce4de0daa3c74adb83814"
 		},
 		{
 			"ImportPath": "github.com/glendc/gopher-json",
