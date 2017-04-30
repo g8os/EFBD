@@ -59,3 +59,8 @@ func (mr *MemoryRedis) Close() {
 	os.Remove(mr.datadir)
 	mr.app.Close()
 }
+
+// Address returns the tcp (local) address of this MemoryRedis server
+func (mr *MemoryRedis) Address() string {
+	return mr.addr
+}
