@@ -3,7 +3,6 @@ package ardb
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	"github.com/garyburd/redigo/redis"
 	log "github.com/glendc/go-mini-log"
@@ -13,20 +12,13 @@ import (
 
 // newDedupedStorage returns the deduped backendStorage implementation
 func newDedupedStorage(vdiskID string, blockSize int64, provider redisConnectionProvider, vlba *lba.LBA) backendStorage {
-	storage := &dedupedStorage{
+	return &dedupedStorage{
 		blockSize:       blockSize,
 		vdiskID:         vdiskID,
 		zeroContentHash: lba.HashBytes(make([]byte, blockSize)),
 		provider:        provider,
 		lba:             vlba,
-		cancelChan:      make(chan struct{}, 1),
 	}
-
-	for i := 0; i < dedupBackgroundWorkerCount; i++ {
-		storage.rcActionChannels[i] = make(chan rcAction, dedupBackgroundWorkerBufferSize)
-	}
-
-	return storage
 }
 
 // dedupedStorage is a backendStorage implementation,
@@ -38,10 +30,6 @@ type dedupedStorage struct {
 	zeroContentHash lba.Hash
 	provider        redisConnectionProvider
 	lba             *lba.LBA
-
-	// used for background thread
-	cancelChan       chan struct{}
-	rcActionChannels [dedupBackgroundWorkerCount]chan rcAction
 }
 
 // Set implements backendStorage.Set
@@ -114,16 +102,8 @@ func (ds *dedupedStorage) Delete(blockIndex int64) (err error) {
 		return
 	}
 
-	// delete the actual hash from the LBA first
+	// delete the actual hash from the LBA
 	err = ds.lba.Delete(blockIndex)
-	if err != nil {
-		return
-	}
-
-	// only if the hash was succesfully deleted from the vdisk's LBA,
-	// we should dereference the content,
-	// and delete the content if the new reference count < 1
-	ds.dereferenceContent(hash)
 	return
 }
 
@@ -135,62 +115,12 @@ func (ds *dedupedStorage) Flush() (err error) {
 
 // Close implements backendStorage.Close
 func (ds *dedupedStorage) Close() error {
-	ds.cancelChan <- struct{}{}
 	return nil
 }
 
 // GoBackground implements backendStorage.GoBackground
 func (ds *dedupedStorage) GoBackground(ctx context.Context) {
-	var wg sync.WaitGroup
-
-	for i := range ds.rcActionChannels {
-		wg.Add(1)
-		workerID := i
-		go func() {
-			defer wg.Done()
-			ds.goBackgroundWorker(ctx, workerID)
-		}()
-	}
-
-	wg.Wait()
-}
-
-func (ds *dedupedStorage) goBackgroundWorker(ctx context.Context, workerID int) {
-	log.Debugf("starting deduped background worker #%d", workerID+1)
-	ch := ds.rcActionChannels[workerID]
-	for {
-		select {
-		case action := <-ch:
-			var err error
-
-			switch action.Type {
-			case rcIncrease:
-				err = ds.goReferenceContent(action.Hash)
-			case rcDecrease:
-				err = ds.goDereferenceContent(action.Hash)
-			default:
-				err = fmt.Errorf(
-					"background rc action %d for %v not recognized",
-					action.Type, action.Hash)
-			}
-
-			if err != nil {
-				log.Infof(
-					"worker #%d: error during content (de)referencing: %s",
-					workerID+1, err.Error())
-			}
-
-		case <-ds.cancelChan:
-			log.Debugf("close dedupedStorage %q's background worker #%d",
-				ds.vdiskID, workerID+1)
-			return
-
-		case <-ctx.Done():
-			log.Debugf("forcefully exit dedupedStorage %q's background worker #%d",
-				ds.vdiskID, workerID+1)
-			return
-		}
-	}
+	// no background thread needed
 }
 
 func (ds *dedupedStorage) getRedisConnection(hash lba.Hash) (redis.Conn, error) {
@@ -272,116 +202,16 @@ func (ds *dedupedStorage) getContent(hash lba.Hash) (content []byte, err error) 
 // setContent if it doesn't exist yet,
 // and increase the reference counter, by adding this vdiskID
 func (ds *dedupedStorage) setContent(prevHash, curHash lba.Hash, content []byte) (err error) {
-	err = func() (err error) {
-		conn, err := ds.getRedisConnection(curHash)
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-
-		exists, err := redis.Bool(conn.Do("EXISTS", curHash.Bytes()))
-		if err == nil && !exists {
-			_, err = conn.Do("SET", curHash.Bytes(), content)
-		}
-
-		return
-	}()
-	if err != nil {
-		return
-	}
-
-	// reference currentHash
-	ds.referenceContent(curHash)
-	if prevHash != nil {
-		// dereference previousHash
-		ds.dereferenceContent(prevHash)
-	}
-
-	return nil
-}
-
-// sender of the reference content action
-func (ds *dedupedStorage) referenceContent(hash lba.Hash) {
-	workerID := dsWorkerID(hash)
-	ds.rcActionChannels[workerID] <- rcAction{
-		Type: rcIncrease,
-		Hash: hash,
-	}
-}
-
-// receiver of the reference content action
-func (ds *dedupedStorage) goReferenceContent(hash lba.Hash) (err error) {
-	key := dsReferenceKey(hash)
-
-	conn, err := ds.getRedisConnection(hash)
+	conn, err := ds.getRedisConnection(curHash)
 	if err != nil {
 		return
 	}
 	defer conn.Close()
 
-	_, err = conn.Do("INCR", key)
-	return
-}
-
-// sender of the dereference content action
-func (ds *dedupedStorage) dereferenceContent(hash lba.Hash) {
-	workerID := dsWorkerID(hash)
-	ds.rcActionChannels[workerID] <- rcAction{
-		Type: rcDecrease,
-		Hash: hash,
-	}
-}
-
-// receiver of the dereference content action
-func (ds *dedupedStorage) goDereferenceContent(hash lba.Hash) (err error) {
-	key := dsReferenceKey(hash)
-
-	conn, err := ds.getRedisConnection(hash)
-	if err != nil {
-		return
-	}
-	defer conn.Close()
-
-	count, err := redis.Int64(conn.Do("DECR", key))
-	if err != nil || count > 0 {
-		return
+	exists, err := redis.Bool(conn.Do("EXISTS", curHash.Bytes()))
+	if err == nil && !exists {
+		_, err = conn.Do("SET", curHash.Bytes(), content)
 	}
 
-	_, err = conn.Do("DEL", hash.Bytes(), key)
 	return
 }
-
-func dsWorkerID(hash lba.Hash) int {
-	return int(hash[0]) % dedupBackgroundWorkerCount
-}
-
-func dsReferenceKey(hash lba.Hash) (key []byte) {
-	key = make([]byte, rcKeyPrefixLength+lba.HashSize)
-	copy(key, rcKeyPrefix[:])
-	copy(key[rcKeyPrefixLength:], hash[:])
-	return
-}
-
-const (
-	rcKeyPrefix       = "rc:"
-	rcKeyPrefixLength = len(rcKeyPrefix)
-)
-
-const (
-	dedupBackgroundWorkerCount      = 8
-	dedupBackgroundWorkerBufferSize = 32
-)
-
-type rcAction struct {
-	// Type of action
-	Type rcActionType
-	// Hash the actions applies on
-	Hash lba.Hash
-}
-
-type rcActionType int
-
-const (
-	rcIncrease rcActionType = iota
-	rcDecrease
-)
