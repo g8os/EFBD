@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"sync"
 	"time"
 
@@ -33,10 +32,15 @@ type flusher struct {
 }
 
 func newFlusher(conf *config) (*flusher, error) {
+	addresses, err := conf.ObjStoreServerAddress()
+	if err != nil {
+		return nil, err
+	}
+
 	// create redis pool
-	pools := make(map[int]*redis.Pool, 1+conf.K+conf.M)
-	for i := 0; i < conf.K+conf.M+1; i++ {
-		addr := fmt.Sprintf("%v:%v", conf.firstObjStorAddr, conf.firstObjStorPort+i)
+	pools := make(map[int]*redis.Pool, len(addresses))
+
+	for i, addr := range addresses {
 		pools[i] = &redis.Pool{
 			MaxIdle:     3,
 			IdleTimeout: 240 * time.Second,

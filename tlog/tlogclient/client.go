@@ -22,8 +22,8 @@ var (
 
 // Response defines a response from tlog server
 type Response struct {
-	Status    int8     // status of the call, negatif means failed
-	Sequences []uint64 // flushed sequences number, if any
+	Status    int8     // status of the call, negative means failed
+	Sequences []uint64 // flushed sequences number (optional)
 }
 
 // Client defines a Tlog Client.
