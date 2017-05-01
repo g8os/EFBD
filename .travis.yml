@@ -7,5 +7,5 @@ install:
   - go get -u github.com/Jumpscale/go-raml
 
 script:
-  - go test $(go list ./... | grep -v vendor)
+  - go test -timeout 5m $(go list ./... | grep -v vendor)
   - ./scripts/codegeneration.sh
