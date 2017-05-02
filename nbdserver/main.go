@@ -19,6 +19,7 @@ import (
 	"github.com/g8os/blockstor/nbdserver/lba"
 	"github.com/g8os/blockstor/redisstub"
 	"github.com/g8os/blockstor/storagecluster"
+	"github.com/g8os/blockstor/tlog/tlogserver"
 	"github.com/g8os/gonbdserver/nbd"
 )
 
@@ -32,6 +33,7 @@ func main() {
 	var address string
 	var vdiskSize int
 	var gridapiaddress string
+	var tlogrpcaddress string
 	var rootArdbConnectionString string
 	var testArdbConnectionStrings string
 	var exports string
@@ -43,6 +45,7 @@ func main() {
 	flag.StringVar(&protocol, "protocol", "unix", "Protocol to listen on, 'tcp' or 'unix'")
 	flag.StringVar(&address, "address", "/tmp/nbd-socket", "Address to listen on, unix socket or tcp address, ':6666' for example")
 	flag.StringVar(&gridapiaddress, "gridapi", "", "Address of the grid api REST API, leave empty to use the embedded stub")
+	flag.StringVar(&tlogrpcaddress, "tlogrpc", "", "Address of the tlog RPC, leave empty to use the inmemory version (test/dev only)")
 	flag.StringVar(&rootArdbConnectionString, "rootardb", "", "Address of the root ardb connection string, used in case content can't be found in local storage")
 	flag.StringVar(&nonDedupedExports, "nondeduped", "", "when using the embedded gridapi, comma seperated list of exports that should not be deduped")
 	flag.StringVar(&testArdbConnectionStrings, "testardbs", "localhost:16379,localhost:16379", "Comma seperated list of ardb connection strings returned by the embedded backend controller, first one is the metadataserver")
@@ -59,11 +62,12 @@ func main() {
 	}
 
 	log.SetFlags(logFlags)
-	log.Debugf("flags parsed: memorystorage=%t tslonly=%t profileaddress=%q protocol=%q address=%q gridapi=%q nondeduped=%q rootardb=%q testardbs=%q vdisksize=%d export=%q lbacachelimit=%d",
+	log.Debugf("flags parsed: memorystorage=%t tslonly=%t profileaddress=%q protocol=%q address=%q gridapi=%q tlogrpc=%q nondeduped=%q rootardb=%q testardbs=%q vdisksize=%d export=%q lbacachelimit=%d",
 		inMemoryStorage, tslonly,
 		profileAddress,
 		protocol, address,
 		gridapiaddress,
+		tlogrpcaddress,
 		nonDedupedExports,
 		rootArdbConnectionString,
 		testArdbConnectionStrings,
@@ -87,17 +91,42 @@ func main() {
 		}()
 	}
 
+	// create embedded grid api if needed
 	if gridapiaddress == "" {
 		log.Info("Starting embedded grid api")
+
 		var s *httptest.Server
 		var err error
-		s, gridapiaddress, err = gridapi.NewGridAPIServer(testArdbConnectionStrings, strings.Split(nonDedupedExports, ","), vdiskSize)
+		s, gridapiaddress, err = gridapi.NewGridAPIServer(
+			testArdbConnectionStrings,
+			strings.Split(nonDedupedExports, ","), vdiskSize)
 		if err != nil {
 			log.Fatal(err)
 		}
 		defer s.Close()
 	}
 	log.Info("Using grid api at", gridapiaddress)
+
+	// create embedded tlog api if needed
+	if tlogrpcaddress == "" {
+		log.Info("Starting embedded (in-memory) tlogserver")
+		config := tlogserver.DefaultConfig()
+
+		// create embedded obj store servers (used to store tlogs)
+		config.ValidateAndCreateObjStoreAddresses(true)
+
+		// create server
+		server, err := tlogserver.NewServer(config)
+		if err != nil {
+			log.Fatalf("couldn't create embedded tlogserver: %v", err)
+		}
+
+		tlogrpcaddress = server.ListenAddr()
+
+		log.Debug("embedded (in-memory) tlogserver up and running")
+		go server.Listen()
+	}
+	log.Info("Using tlog rpc at", tlogrpcaddress)
 
 	exportController, err := NewExportController(
 		gridapiaddress,
@@ -151,6 +180,7 @@ func main() {
 		Pool:                     redisPool,
 		SCClientFactory:          storageClusterClientFactory,
 		GridAPIAddress:           gridapiaddress,
+		TLogRPCAddress:           tlogrpcaddress,
 		RootARDBConnectionString: rootArdbConnectionString,
 		LBACacheLimit:            lbacachelimit,
 	})

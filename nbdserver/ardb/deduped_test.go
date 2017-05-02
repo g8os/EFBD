@@ -2,7 +2,6 @@ package ardb
 
 import (
 	"bytes"
-	"context"
 	"crypto/rand"
 	"runtime/debug"
 	"strconv"
@@ -172,17 +171,11 @@ func TestGetDedupedRootContent(t *testing.T) {
 		vdiskIDB = "b"
 	)
 
-	var (
-		ctx = context.Background()
-	)
-
 	redisProviderA := newTestRedisProvider(memRedisA, nil) // root = nil
 	storageA := createTestDedupedStorage(t, vdiskIDA, 8, 8, redisProviderA)
 	if storageA == nil {
 		t.Fatal("storageA is nil")
 	}
-	defer storageA.Close()
-	go storageA.GoBackground(ctx)
 
 	// create storageB, with storageA as its fallback/root
 	memRedisB := redisstub.NewMemoryRedis()
@@ -194,8 +187,6 @@ func TestGetDedupedRootContent(t *testing.T) {
 	if storageB == nil {
 		t.Fatal("storageB is nil")
 	}
-	defer storageB.Close()
-	go storageB.GoBackground(ctx)
 
 	testContent := []byte{4, 2}
 
@@ -362,7 +353,6 @@ func TestGetDedupedRootContentDeadlock(t *testing.T) {
 	)
 
 	var (
-		ctx = context.Background()
 		err error
 	)
 
@@ -371,8 +361,6 @@ func TestGetDedupedRootContentDeadlock(t *testing.T) {
 	if storageA == nil {
 		t.Fatal("storageA is nil")
 	}
-	defer storageA.Close()
-	go storageA.GoBackground(ctx)
 
 	// create storageB, with storageA as its fallback/root
 	memRedisB := redisstub.NewMemoryRedis()
@@ -384,8 +372,6 @@ func TestGetDedupedRootContentDeadlock(t *testing.T) {
 	if storageB == nil {
 		t.Fatal("storageB is nil")
 	}
-	defer storageB.Close()
-	go storageB.GoBackground(ctx)
 
 	var contentArray [blockCount][]byte
 

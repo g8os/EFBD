@@ -1,4 +1,4 @@
-package main
+package tlogserver
 
 import (
 	"bytes"
@@ -25,29 +25,42 @@ type Server struct {
 }
 
 // NewServer creates a new tlog server
-func NewServer(conf *config) (*Server, error) {
+func NewServer(conf *Config) (*Server, error) {
 	f, err := newFlusher(conf)
 	if err != nil {
 		return nil, err
 	}
 
-	objstorAddrs, err := conf.ObjStoreServerAddress()
+	objstorAddrs, err := conf.ObjStoreServerAddresses()
 	if err != nil {
 		return nil, err
 	}
 
-	l, err := net.Listen("tcp", conf.listenAddr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to listen to %v: %v", conf.listenAddr, err)
+	var listener net.Listener
+	if conf.ListenAddr != "" {
+		// listen for tcp requests on given address
+		listener, err = net.Listen("tcp", conf.ListenAddr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to listen to %v: %v", conf.ListenAddr, err)
+		}
+	} else {
+		// listen for tcp requests on localhost using any available port
+		listener, err = net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			if listener, err = net.Listen("tcp6", "[::1]:0"); err != nil {
+				return nil, fmt.Errorf("failed to listen on localhost, port: %v", err)
+			}
+		}
 	}
 
 	return &Server{
 		f:                f,
 		ObjStorAddresses: objstorAddrs,
-		listener:         l,
+		listener:         listener,
 	}, nil
 }
 
+// Listen to incoming (tcp) Requests
 func (s *Server) Listen() {
 	defer s.listener.Close()
 
@@ -61,6 +74,7 @@ func (s *Server) Listen() {
 	}
 }
 
+// ListenAddr returns the address the (tcp) server is listening on
 func (s *Server) ListenAddr() string {
 	return s.listener.Addr().String()
 }

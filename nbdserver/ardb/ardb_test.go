@@ -2,7 +2,6 @@ package ardb
 
 import (
 	"bytes"
-	"context"
 	"crypto/rand"
 	"errors"
 	"sync"
@@ -71,9 +70,6 @@ func (trp *testRedisProvider) FallbackRedisConnection(index int64) (redis.Conn, 
 // this gives us some confidence that all storages behave the same
 // from an end-user perspective
 func testBackendStorage(t *testing.T, storage backendStorage) {
-	defer storage.Close()
-	go storage.GoBackground(context.Background())
-
 	var (
 		testContentA = []byte{4, 2}
 		testContentB = []byte{9, 2}
@@ -132,9 +128,12 @@ func testBackendStorage(t *testing.T, storage backendStorage) {
 	}
 
 	// Merging new content with non existing content is fine
-	err = storage.Merge(testBlockIndexB, 0, testContentB)
+	content, err = storage.Merge(testBlockIndexB, 0, testContentB)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(content) < 2 || bytes.Compare(testContentB, content[:2]) != 0 {
+		t.Fatalf("unexpected content found: %v", content)
 	}
 	// getting the content should be fine
 	content, err = storage.Get(testBlockIndexB)
@@ -146,9 +145,12 @@ func testBackendStorage(t *testing.T, storage backendStorage) {
 	}
 
 	// Merging existing content is fine as well
-	err = storage.Merge(testBlockIndexB, 1, testContentA)
+	content, err = storage.Merge(testBlockIndexB, 1, testContentA)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if bytes.Compare([]byte{9, 4, 2, 0, 0, 0, 0, 0}, content) != 0 {
+		t.Fatalf("unexpected content found: %v", content)
 	}
 	// getting the content should be fine
 	content, err = storage.Get(testBlockIndexB)
@@ -173,9 +175,12 @@ func testBackendStorage(t *testing.T, storage backendStorage) {
 	if content != nil {
 		t.Fatalf("found content %v, while expected nil-content", content)
 	}
-	err = storage.Merge(testBlockIndexA, 0, testContentA)
+	content, err = storage.Merge(testBlockIndexA, 0, testContentA)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if bytes.Compare([]byte{4, 2, 0, 0, 0, 0, 0, 0}, content) != 0 {
+		t.Fatalf("unexpected content found: %v", content)
 	}
 
 	// content should be merged
@@ -208,10 +213,6 @@ func testBackendStorage(t *testing.T, storage backendStorage) {
 // test in a response to https://github.com/g8os/blockstor/issues/89
 func testBackendStorageDeadlock(t *testing.T, blockSize, blockCount int64, storage backendStorage) {
 	var err error
-
-	// close & run its thread in background
-	defer storage.Close()
-	go storage.GoBackground(context.Background())
 
 	// store random content eight times
 	// each time we do all storage async at once,
@@ -278,7 +279,7 @@ func testBackendStorageDeadlock(t *testing.T, blockSize, blockCount int64, stora
 				// merge it
 				offset := 2 + time
 				blockIndex = (blockIndex + 1) % blockCount
-				err = storage.Merge(blockIndex, offset, preContent)
+				_, err = storage.Merge(blockIndex, offset, preContent)
 				if err != nil {
 					t.Fatal(time, blockIndex, err)
 				}

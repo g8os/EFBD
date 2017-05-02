@@ -1,8 +1,6 @@
 package ardb
 
 import (
-	"context"
-
 	"github.com/garyburd/redigo/redis"
 )
 
@@ -10,12 +8,10 @@ import (
 // used by ArbdBackend for a particular vdisk
 type backendStorage interface {
 	Set(blockIndex int64, content []byte) (err error)
-	Merge(blockIndex, offset int64, content []byte) (err error)
+	Merge(blockIndex, offset int64, content []byte) (mergedContent []byte, err error)
 	Get(blockIndex int64) (content []byte, err error)
 	Delete(blockIndex int64) (err error)
 	Flush() (err error)
-	Close() error // close any resources and background thread
-	GoBackground(ctx context.Context)
 }
 
 // redisBytes is a utility function used by backendStorage functions,

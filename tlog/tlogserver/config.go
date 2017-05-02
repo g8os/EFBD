@@ -1,57 +1,72 @@
-package main
+package tlogserver
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
-	"strings"
 
 	"github.com/g8os/blockstor/redisstub"
+	"github.com/g8os/blockstor/tlog"
 	log "github.com/glendc/go-mini-log"
 )
 
-type config struct {
+// DefaultConfig creates a new config, using sane defaults
+func DefaultConfig() *Config {
+	privKey := make([]byte, tlog.KeySize)
+	rand.Read(privKey)
+
+	nonce := make([]byte, tlog.NonceSize)
+	rand.Read(nonce)
+	hexNonce := hex.EncodeToString(nonce)
+
+	return &Config{
+		K:          4,
+		M:          2,
+		ListenAddr: "", // allocate dynamically
+		FlushSize:  25,
+		FlushTime:  25,
+		PrivKey:    string(privKey),
+		HexNonce:   hexNonce,
+	}
+}
+
+// Config used for creating the tlogserver
+type Config struct {
 	K                 int
 	M                 int
-	listenAddr        string
-	flushSize         int
-	flushTime         int
-	privKey           string
-	nonce             string
-	objStoreAddresses []string
+	ListenAddr        string
+	FlushSize         int
+	FlushTime         int
+	PrivKey           string
+	HexNonce          string
+	ObjStoreAddresses []string
 }
 
-// ObjStorServerCount returns the amount of
-// Object Store Servers are required/available/expected.
-func (cfg *config) ObjStorServerCount() int {
-	return cfg.K + cfg.M + 1
-}
-
-func (cfg *config) ObjStoreServerAddress() ([]string, error) {
-	if expected := cfg.ObjStorServerCount(); len(cfg.objStoreAddresses) != expected {
-		return nil, fmt.Errorf(
-			"expected %d objstor servers to be available, while %d servers are available",
-			expected, len(cfg.objStoreAddresses))
-	}
-
-	return cfg.objStoreAddresses, nil
-}
-
-func (cfg *config) initObjStoreAddress(objstoraddresses string) {
-	if objstoraddresses != "" {
-		cfg.objStoreAddresses = strings.Split(objstoraddresses, ",")
-	}
-	length := len(cfg.objStoreAddresses)
+// ValidateAndCreateObjStoreAddresses checks if the config
+// contains exactly as many object store server addresses as expected.
+// If more are given, an error is returned.
+// If none are given, memorystubs can be created if `allowInMemoryStubs` is true, otherwise an error is returned.
+// If less are given, the missing addresses are generated, using consecutive ports,
+// starting with the port following the port of the last given object store server address
+func (cfg *Config) ValidateAndCreateObjStoreAddresses(allowInMemoryStubs bool) error {
+	length := len(cfg.ObjStoreAddresses)
 	expectedLength := cfg.ObjStorServerCount()
 
 	if length == 0 {
+		if !allowInMemoryStubs {
+			return errors.New("no objstore servers available, and inmemory stubs aren't allowed")
+		}
+
 		// create in-memory ledisdb servers
 		// if no object store address is given
-		cfg.objStoreAddresses = make([]string, expectedLength)
-		for i := range cfg.objStoreAddresses {
+		cfg.ObjStoreAddresses = make([]string, expectedLength)
+		for i := range cfg.ObjStoreAddresses {
 			// create in-memory redis
 			objstor := redisstub.NewMemoryRedis()
-			cfg.objStoreAddresses[i] = objstor.Address()
+			cfg.ObjStoreAddresses[i] = objstor.Address()
 
 			// listen to in-memory redis on new goroutine
 			//defer objstor.Close()
@@ -59,14 +74,14 @@ func (cfg *config) initObjStoreAddress(objstoraddresses string) {
 		}
 	} else if length < expectedLength {
 		// parse last given address's host and port
-		lastAddr := cfg.objStoreAddresses[length-1]
+		lastAddr := cfg.ObjStoreAddresses[length-1]
 		host, rawPort, err := net.SplitHostPort(lastAddr)
 		if err != nil {
-			log.Fatalf("objstor address %s is illegal: %v", lastAddr, err)
+			return fmt.Errorf("objstor address %s is illegal: %v", lastAddr, err)
 		}
 		port, err := strconv.Atoi(rawPort)
 		if err != nil {
-			log.Fatalf("objstor address %s is illegal: %v", lastAddr, err)
+			return fmt.Errorf("objstor address %s is illegal: %v", lastAddr, err)
 		}
 		// add the missing servers dynamically
 		// (it is assumed that the missing servers are live on the ports
@@ -76,12 +91,31 @@ func (cfg *config) initObjStoreAddress(objstoraddresses string) {
 		for ; port < portBound; port++ {
 			addr := net.JoinHostPort(host, strconv.Itoa(port))
 			log.Debug("add missing objstor server address:", addr)
-			cfg.objStoreAddresses = append(cfg.objStoreAddresses, addr)
+			cfg.ObjStoreAddresses = append(cfg.ObjStoreAddresses, addr)
 		}
 	} else if length > expectedLength {
-		log.Fatalf(
+		return fmt.Errorf(
 			"too many objstor servers given, only %d are required",
 			expectedLength)
 	}
 
+	return nil
+}
+
+// ObjStorServerCount returns the amount of
+// Object Store Servers are required/available/expected.
+func (cfg *Config) ObjStorServerCount() int {
+	return cfg.K + cfg.M + 1
+}
+
+// ObjStoreServerAddresses returns the objstore server addresses,
+// iff the config defines exactly as many of the expected server addresses
+func (cfg *Config) ObjStoreServerAddresses() ([]string, error) {
+	if expected := cfg.ObjStorServerCount(); len(cfg.ObjStoreAddresses) != expected {
+		return nil, fmt.Errorf(
+			"expected %d objstor servers to be available, while %d servers are available",
+			expected, len(cfg.ObjStoreAddresses))
+	}
+
+	return cfg.ObjStoreAddresses, nil
 }

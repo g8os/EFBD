@@ -1,4 +1,4 @@
-package main
+package tlogserver
 
 import (
 	"testing"
@@ -11,16 +11,17 @@ import (
 
 func TestEndToEnd(t *testing.T) {
 	// create server
-	conf := &config{
+	conf := &Config{
 		K:          4,
 		M:          2,
-		listenAddr: "127.0.0.1:0",
-		flushSize:  25,
-		flushTime:  25,
-		privKey:    "12345678901234567890123456789012",
-		nonce:      "37b8e8a308c354048d245f6d",
+		ListenAddr: "127.0.0.1:0",
+		FlushSize:  25,
+		FlushTime:  25,
+		PrivKey:    "12345678901234567890123456789012",
+		HexNonce:   "37b8e8a308c354048d245f6d",
 	}
-	conf.initObjStoreAddress("")
+	err := conf.ValidateAndCreateObjStoreAddresses(true)
+	assert.Nil(t, err)
 
 	s, err := NewServer(conf)
 	assert.Nil(t, err)
@@ -47,7 +48,7 @@ func TestEndToEnd(t *testing.T) {
 	expectedVdiskID := "1234567890"
 	numFlush := 5
 
-	for i := 0; i < conf.flushSize*numFlush; i++ {
+	for i := 0; i < conf.FlushSize*numFlush; i++ {
 		x := uint64(i)
 		// check we can send it without error
 		err := client.Send(expectedVdiskID, x, x, x, data)
@@ -60,7 +61,7 @@ func TestEndToEnd(t *testing.T) {
 	}
 
 	// decode the message
-	dec, err := decoder.New(s.ObjStorAddresses, conf.K, conf.M, expectedVdiskID, conf.privKey, conf.nonce)
+	dec, err := decoder.New(s.ObjStorAddresses, conf.K, conf.M, expectedVdiskID, conf.PrivKey, conf.HexNonce)
 	assert.Nil(t, err)
 
 	aggChan := dec.Decode(0)
@@ -74,7 +75,7 @@ func TestEndToEnd(t *testing.T) {
 		assert.Nil(t, da.Err)
 
 		agg := da.Agg
-		assert.Equal(t, uint64(conf.flushSize), agg.Size())
+		assert.Equal(t, uint64(conf.FlushSize), agg.Size())
 
 		vdiskID, err := agg.VdiskID()
 		assert.Nil(t, err)
