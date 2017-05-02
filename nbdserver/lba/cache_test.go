@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/g8os/blockstor"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -68,11 +69,11 @@ func TestCreateSingletonCache(t *testing.T) {
 
 func TestSerializeAndClearCache(t *testing.T) {
 	shard1 := newShard()
-	hash1 := HashBytes([]byte{4, 2})
+	hash1 := blockstor.HashBytes([]byte{4, 2})
 	shard1.Set(1, hash1)
 
 	shard2 := newShard()
-	hash2 := HashBytes([]byte{2, 4})
+	hash2 := blockstor.HashBytes([]byte{2, 4})
 	shard2.Set(2, hash2)
 
 	cache, err := newShardCache(BytesPerShard*2, nil)
@@ -97,7 +98,7 @@ func TestSerializeAndClearCache(t *testing.T) {
 	assert.NoError(t, cache.Serialize(func(index int64, raw []byte) error {
 		assert.Equal(t, int64(1), index)
 		assert.Len(t, raw, BytesPerShard)
-		h1 := raw[HashSize : HashSize*2]
+		h1 := raw[blockstor.HashSize : blockstor.HashSize*2]
 		assert.Equal(t, 0, bytes.Compare(hash1, h1))
 		return nil
 	}), "no error thrown")
@@ -151,21 +152,21 @@ func TestSerializeAndClearCache(t *testing.T) {
 	s := shard1
 	hash := hash1
 	si := int64(3)
-	offset := HashSize
+	offset := blockstor.HashSize
 
 	// should serialize shard1 first, as it's last added on index 3, and then shard2,
 	// as that's the current order
 	assert.NoError(t, cache.Serialize(func(index int64, raw []byte) error {
 		assert.Equal(t, si, index)
 		assert.Len(t, raw, BytesPerShard)
-		h := raw[offset : offset+HashSize]
+		h := raw[offset : offset+blockstor.HashSize]
 		assert.Equal(t, 0, bytes.Compare(hash, h))
 
 		// set for next serialize call
 		s = shard2
 		hash = hash2
 		si = int64(2)
-		offset = HashSize * 2
+		offset = blockstor.HashSize * 2
 		return nil
 	}), "no error thrown")
 
@@ -178,14 +179,14 @@ func TestSerializeAndClearCache(t *testing.T) {
 	assert.NoError(t, cache.Serialize(func(index int64, raw []byte) error {
 		assert.Equal(t, si, index)
 		assert.Len(t, raw, BytesPerShard)
-		h := raw[offset : offset+HashSize]
+		h := raw[offset : offset+blockstor.HashSize]
 		assert.Equal(t, 0, bytes.Compare(hash, h))
 
 		// set for next serialize call
 		s = shard1
 		hash = hash1
 		si = int64(3)
-		offset = HashSize
+		offset = blockstor.HashSize
 		return nil
 	}), "no error thrown")
 

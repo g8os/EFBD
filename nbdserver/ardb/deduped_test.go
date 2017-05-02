@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/g8os/blockstor"
 	"github.com/g8os/blockstor/nbdserver/lba"
 	"github.com/g8os/blockstor/redisstub"
 	"github.com/garyburd/redigo/redis"
@@ -79,7 +80,7 @@ func testDedupContentExists(t *testing.T, memRedis *redisstub.MemoryRedis, conte
 	}
 	defer conn.Close()
 
-	hash := lba.HashBytes(content)
+	hash := blockstor.HashBytes(content)
 
 	contentReceived, err := redis.Bytes(conn.Do("GET", hash.Bytes()))
 	if err != nil {
@@ -104,7 +105,7 @@ func testDedupContentDoesNotExist(t *testing.T, memRedis *redisstub.MemoryRedis,
 	}
 	defer conn.Close()
 
-	hash := lba.HashBytes(content)
+	hash := blockstor.HashBytes(content)
 
 	exists, err := redis.Bool(conn.Do("EXISTS", hash.Bytes()))
 	if err != nil {

@@ -1,3 +1,5 @@
+sudo: required
+dist: trusty
 language: go
 
 go:
@@ -5,7 +7,9 @@ go:
 
 install:
   - go get -u github.com/Jumpscale/go-raml
+  - ./tlog/install_dependencies.sh
 
 script:
-  - go test -timeout 5m $(go list ./... | grep -v vendor)
+  - go test -timeout 5m $(go list ./... | grep -v vendor | grep -v tlogclient/examples)
+  - go test -timeout 5m -tags 'isal' $(go list ./... | grep -v vendor)
   - ./scripts/codegeneration.sh

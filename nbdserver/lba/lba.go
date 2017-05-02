@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/g8os/blockstor"
 	"github.com/garyburd/redigo/redis"
 	log "github.com/glendc/go-mini-log"
 )
@@ -58,7 +59,7 @@ type LBA struct {
 //Set the content hash for a specific block.
 // When a key is updated, the shard containing this blockindex is marked as dirty and will be
 // stored in the external metadataserver when Flush is called.
-func (lba *LBA) Set(blockIndex int64, h Hash) (err error) {
+func (lba *LBA) Set(blockIndex int64, h blockstor.Hash) (err error) {
 	//Fetch the appropriate shard
 	shard, err := func(shardIndex int64) (shard *shard, err error) {
 		lba.shardMux[shardIndex].Lock()
@@ -100,7 +101,7 @@ func (lba *LBA) Delete(blockIndex int64) (err error) {
 
 //Get returns the hash for a block, nil if no hash registered
 // If the shard containing this blockindex is not present, it is fetched from the external metadaserver
-func (lba *LBA) Get(blockIndex int64) (h Hash, err error) {
+func (lba *LBA) Get(blockIndex int64) (h blockstor.Hash, err error) {
 	shard, err := func(shardIndex int64) (*shard, error) {
 		lba.shardMux[shardIndex].Lock()
 		defer lba.shardMux[shardIndex].Unlock()
@@ -115,7 +116,7 @@ func (lba *LBA) Get(blockIndex int64) (h Hash, err error) {
 	// get the hash
 	hashIndex := blockIndex % NumberOfRecordsPerLBAShard
 	h = shard.Get(hashIndex)
-	if h.Equals(NilHash) {
+	if h.Equals(blockstor.NilHash) {
 		h = nil
 	}
 
