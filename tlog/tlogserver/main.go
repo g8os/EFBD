@@ -37,6 +37,55 @@ func (cfg *config) ObjStoreServerAddress() ([]string, error) {
 	return cfg.objStoreAddresses, nil
 }
 
+func (cfg *config) initObjStoreAddress(objstoraddresses string) {
+	if objstoraddresses != "" {
+		cfg.objStoreAddresses = strings.Split(objstoraddresses, ",")
+	}
+	length := len(cfg.objStoreAddresses)
+	expectedLength := cfg.ObjStorServerCount()
+
+	if length == 0 {
+		// create in-memory ledisdb servers
+		// if no object store address is given
+		cfg.objStoreAddresses = make([]string, expectedLength)
+		for i := range cfg.objStoreAddresses {
+			// create in-memory redis
+			objstor := redisstub.NewMemoryRedis()
+			cfg.objStoreAddresses[i] = objstor.Address()
+
+			// listen to in-memory redis on new goroutine
+			//defer objstor.Close()
+			go objstor.Listen()
+		}
+	} else if length < expectedLength {
+		// parse last given address's host and port
+		lastAddr := cfg.objStoreAddresses[length-1]
+		host, rawPort, err := net.SplitHostPort(lastAddr)
+		if err != nil {
+			log.Fatalf("objstor address %s is illegal: %v", lastAddr, err)
+		}
+		port, err := strconv.Atoi(rawPort)
+		if err != nil {
+			log.Fatalf("objstor address %s is illegal: %v", lastAddr, err)
+		}
+		// add the missing servers dynamically
+		// (it is assumed that the missing servers are live on the ports
+		//  following the last server's port)
+		port++
+		portBound := port + (expectedLength - length)
+		for ; port < portBound; port++ {
+			addr := net.JoinHostPort(host, strconv.Itoa(port))
+			log.Debug("add missing objstor server address:", addr)
+			cfg.objStoreAddresses = append(cfg.objStoreAddresses, addr)
+		}
+	} else if length > expectedLength {
+		log.Fatalf(
+			"too many objstor servers given, only %d are required",
+			expectedLength)
+	}
+
+}
+
 func main() {
 	var port int
 
@@ -68,51 +117,7 @@ func main() {
 	log.Debugf("port=%v\n", port)
 	log.Debugf("k=%v, m=%v\n", conf.K, conf.M)
 
-	if objstoraddresses != "" {
-		conf.objStoreAddresses = strings.Split(objstoraddresses, ",")
-	}
-	length := len(conf.objStoreAddresses)
-	expectedLength := conf.ObjStorServerCount()
-
-	if length == 0 {
-		// create in-memory ledisdb servers
-		// if no object store address is given
-		conf.objStoreAddresses = make([]string, expectedLength)
-		for i := range conf.objStoreAddresses {
-			// create in-memory redis
-			objstor := redisstub.NewMemoryRedis()
-			conf.objStoreAddresses[i] = objstor.Address()
-
-			// listen to in-memory redis on new goroutine
-			defer objstor.Close()
-			go objstor.Listen()
-		}
-	} else if length < expectedLength {
-		// parse last given address's host and port
-		lastAddr := conf.objStoreAddresses[length-1]
-		host, rawPort, err := net.SplitHostPort(lastAddr)
-		if err != nil {
-			log.Fatalf("objstor address %s is illegal: %v", lastAddr, err)
-		}
-		port, err := strconv.Atoi(rawPort)
-		if err != nil {
-			log.Fatalf("objstor address %s is illegal: %v", lastAddr, err)
-		}
-		// add the missing servers dynamically
-		// (it is assumed that the missing servers are live on the ports
-		//  following the last server's port)
-		port++
-		portBound := port + (expectedLength - length)
-		for ; port < portBound; port++ {
-			addr := net.JoinHostPort(host, strconv.Itoa(port))
-			log.Debug("add missing objstor server address:", addr)
-			conf.objStoreAddresses = append(conf.objStoreAddresses, addr)
-		}
-	} else if length > expectedLength {
-		log.Fatalf(
-			"too many objstor servers given, only %d are required",
-			expectedLength)
-	}
+	conf.initObjStoreAddress(objstoraddresses)
 
 	// create server
 	server, err := NewServer(port, &conf)

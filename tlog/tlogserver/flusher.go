@@ -240,6 +240,7 @@ func (f *flusher) encodeCapnp(vdiskID string, blocks []*schema.TlogBlock, lastHa
 	agg.SetSize(uint64(len(blocks)))
 	agg.SetTimestamp(uint64(time.Now().UnixNano()))
 	agg.SetPrev(lastHash)
+	agg.SetVdiskID(vdiskID)
 
 	blockList, err := agg.NewBlocks(int32(len(blocks)))
 	if err != nil {

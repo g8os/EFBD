@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"strconv"
@@ -15,39 +16,55 @@ import (
 	"zombiezen.com/go/capnproto2"
 )
 
+// Server defines a tlog server
 type Server struct {
-	port    int
-	bufSize int
-	f       *flusher
+	port             int
+	bufSize          int
+	f                *flusher
+	ObjStorAddresses []string
+	listener         net.Listener
 }
 
+// NewServer creates a new tlog server
 func NewServer(port int, conf *config) (*Server, error) {
 	f, err := newFlusher(conf)
 	if err != nil {
 		return nil, err
 	}
 
+	objstorAddrs, err := conf.ObjStoreServerAddress()
+	if err != nil {
+		return nil, err
+	}
+
+	l, err := net.Listen("tcp", ":"+strconv.Itoa(port))
+	if err != nil {
+		return nil, fmt.Errorf("failed to listen to port %v: %v", port, err)
+	}
+
 	return &Server{
-		port: port,
-		f:    f,
+		port:             port,
+		f:                f,
+		ObjStorAddresses: objstorAddrs,
+		listener:         l,
 	}, nil
 }
 
 func (s *Server) Listen() {
-	l, err := net.Listen("tcp", ":"+strconv.Itoa(s.port))
-	if err != nil {
-		log.Infof("failed to listen to port %v: %v", s.port, err)
-	}
-	defer l.Close()
+	defer s.listener.Close()
 
 	for {
-		conn, err := l.Accept()
+		conn, err := s.listener.Accept()
 		if err != nil {
 			log.Infof("couldn't accept connection: %v", err)
 			continue
 		}
 		go s.handle(conn)
 	}
+}
+
+func (s *Server) ListenAddr() string {
+	return s.listener.Addr().String()
 }
 
 func (s *Server) handle(conn net.Conn) error {

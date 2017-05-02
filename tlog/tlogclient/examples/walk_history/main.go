@@ -48,10 +48,30 @@ func main() {
 	for !finished {
 		select {
 		case agg := <-aggChan:
+			log.Info("================================")
 			log.Infof("agg timestamp=%v, size=%v", agg.Timestamp(), agg.Size())
+			blocks, err := agg.Blocks()
+			exitOnErr(err)
+
+			for i := 0; i < blocks.Len(); i++ {
+				block := blocks.At(i)
+				vdiskID, err := block.VdiskID()
+				exitOnErr(err)
+
+				data, err := block.Data()
+				exitOnErr(err)
+
+				log.Infof("block %v , vdiskID=%v, data=%v", i, vdiskID, string(data[:3]))
+			}
 		case err := <-errChan:
 			log.Infof("err=%v", err)
 			finished = true
 		}
+	}
+}
+
+func exitOnErr(err error) {
+	if err != nil {
+		log.Fatal(err)
 	}
 }
