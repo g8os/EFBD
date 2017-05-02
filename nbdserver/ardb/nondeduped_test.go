@@ -1,7 +1,6 @@
 package ardb
 
 import (
-	"context"
 	"testing"
 
 	"github.com/g8os/blockstor/redisstub"
@@ -30,17 +29,32 @@ func TestNondedupedContent(t *testing.T) {
 		vdiskID = "a"
 	)
 
-	var (
-		ctx = context.Background()
-	)
-
-	redisProvider := &testRedisProvider{memRedis, nil} // root = nil
+	redisProvider := newTestRedisProvider(memRedis, nil) // root = nil
 	storage := createTestNondedupedStorage(t, vdiskID, 8, redisProvider)
 	if storage == nil {
 		t.Fatal("storage is nil")
 	}
-	defer storage.Close()
-	go storage.GoBackground(ctx)
 
 	testBackendStorage(t, storage)
+}
+
+// test in a response to https://github.com/g8os/blockstor/issues/89
+func TestNonDedupedDeadlock(t *testing.T) {
+	memRedis := redisstub.NewMemoryRedis()
+	go memRedis.Listen()
+	defer memRedis.Close()
+
+	const (
+		vdiskID    = "a"
+		blockSize  = 128
+		blockCount = 512
+	)
+
+	redisProvider := newTestRedisProvider(memRedis, nil) // root = nil
+	storage := createTestNondedupedStorage(t, vdiskID, blockSize, redisProvider)
+	if storage == nil {
+		t.Fatal("storage is nil")
+	}
+
+	testBackendStorageDeadlock(t, blockSize, blockCount, storage)
 }
