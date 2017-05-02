@@ -1,14 +1,11 @@
 package decoder
 
-// #include "snappy.h"
-// #cgo LDFLAGS: -lsnappy
-import "C"
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"time"
-	"unsafe"
 
 	"github.com/garyburd/redigo/redis"
 	"github.com/golang/snappy"
@@ -79,6 +76,8 @@ func New(objstorAddr []string, k, m int, vdiskID, privKey, nonce string) (*Decod
 	}, nil
 }
 
+// Decode decodes the tlog with timestamp >= startTs.
+// This func ends when the ErrDecodeFinished received from error channel.
 func (d *Decoder) Decode(startTs uint64) (<-chan *schema.TlogAggregation, <-chan error) {
 	aggChan := make(chan *schema.TlogAggregation, 1)
 	errChan := make(chan error, 1)
@@ -90,6 +89,7 @@ func (d *Decoder) Decode(startTs uint64) (<-chan *schema.TlogAggregation, <-chan
 			errChan <- err
 			return
 		}
+		fmt.Printf("len keys=%v\n", len(keys))
 
 		// get the aggregations
 		for i := len(keys) - 1; i >= 0; i-- {
@@ -145,42 +145,33 @@ func (d *Decoder) getKeysAfter(startTs uint64) ([][]byte, error) {
 	return keys, ErrDecodeLost
 }
 
+// get tlog aggregation by it's key
 func (d *Decoder) get(key []byte) (*schema.TlogAggregation, error) {
 	merged, err := d.getAllPieces(key)
 	if err != nil {
 		return nil, err
 	}
 
+	// get the real len
+	var realLen uint64
+	if err := binary.Read(bytes.NewBuffer(merged), binary.LittleEndian, &realLen); err != nil {
+		return nil, err
+	}
+	merged = merged[8 : 8+realLen] /* 8 is the size of uint64 */
+
+	// decrypt
 	decrypted, err := d.decrypt(merged)
 	if err != nil {
 		return nil, err
 	}
 
-	uncompressed, err := d.uncompress(decrypted)
+	//uncompressed, err := d.uncompress(decrypted)
+	uncompressed, err := snappy.Decode(nil, decrypted)
 	if err != nil {
 		return nil, err
 	}
+
 	return d.decodeCapnp(uncompressed)
-}
-
-func (d *Decoder) uncompress(data []byte) ([]byte, error) {
-	uncLen, err := snappy.DecodedLen(data)
-	if err != nil {
-		return nil, err
-	}
-	uncompressed := make([]byte, uncLen)
-
-	// TODO : check the return value
-	// we don't check it now because the return value indicate an error
-	// but in fact it can be uncompressed correctly.
-	// there might be something wrong in how we use it because we don't
-	// get this issue in C in how we use it because we don't
-	// get this issue in C+++
-	C.s_uncompress((*C.char)(unsafe.Pointer(&data[0])),
-		(C.size_t)(len(data)),
-		(*C.char)(unsafe.Pointer(&uncompressed[0])))
-
-	return uncompressed, nil
 }
 
 func (d *Decoder) decrypt(encrypted []byte) ([]byte, error) {

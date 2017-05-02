@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"sync"
 	"time"
@@ -147,22 +148,21 @@ func (f *flusher) flush(vdiskID string, blocks []*schema.TlogBlock, tab *tlogTab
 	compressed := make([]byte, snappy.MaxEncodedLen(len(data)))
 	compressed = snappy.Encode(compressed[:], data[:])
 
-	// align it
-	// We need to align it because erasure encode need the pieces to be
-	// in same length.
-	// We need to do it before encryption because otherwise the decrypter
-	// will get different message than the original.
-	alignLen := f.k - (len(compressed) % f.k)
-	if alignLen > 0 {
-		pad := make([]byte, alignLen)
-		compressed = append(compressed, pad...)
-	}
-
 	// encrypt
 	encrypted := f.encrypter.Encrypt(compressed)
 
+	// add info about the original length of the message.
+	// we do it because erasure encoder will append some data
+	// to the message to make it aligned.
+	buf := new(bytes.Buffer)
+	if err := binary.Write(buf, binary.LittleEndian, uint64(len(encrypted))); err != nil {
+		return nil, err
+	}
+
+	finalData := append(buf.Bytes(), encrypted...)
+
 	// erasure
-	erEncoded, err := f.erasure.Encode(vdiskID, encrypted[:])
+	erEncoded, err := f.erasure.Encode(vdiskID, finalData[:])
 	if err != nil {
 		return nil, err
 	}

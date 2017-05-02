@@ -43,12 +43,15 @@ func main() {
 		log.Fatalf("tlog decoder creation failed:%v", err)
 	}
 	aggChan, errChan := dec.Decode(0)
-	for {
+
+	finished := false
+	for !finished {
 		select {
 		case agg := <-aggChan:
 			log.Infof("agg timestamp=%v, size=%v", agg.Timestamp(), agg.Size())
 		case err := <-errChan:
 			log.Infof("err=%v", err)
+			finished = true
 		}
 	}
 }
