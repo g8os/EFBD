@@ -40,12 +40,9 @@ func (ds *dedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 		return
 	}
 
-	// Get Previous Hash
-	prevHash, _ := ds.lba.Get(blockIndex)
-
 	// reference the content to this vdisk,
 	// and set the content itself, if it didn't exist yet
-	err = ds.setContent(prevHash, hash, content)
+	_, err = ds.setContent(hash, content)
 	if err != nil {
 		return
 	}
@@ -175,18 +172,14 @@ func (ds *dedupedStorage) getContent(hash lba.Hash) (content []byte, err error) 
 	if content != nil {
 		// store remote content in local storage asynchronously
 		go func() {
-			log.Debugf(
-				"storing remote content for %v in local storage (asynchronously)",
-				hash)
-			conn, err := ds.getRedisConnection(hash)
-			if err != nil {
-				return
-			}
-
-			_, err = conn.Do("SET", hash.Bytes(), content)
+			success, err := ds.setContent(hash, content)
 			if err != nil {
 				// we won't return error however, but just log it
 				log.Infof("couldn't store remote content in local storage: %s", err.Error())
+			} else if success {
+				log.Debugf(
+					"stored remote content for %v in local storage (asynchronously)",
+					hash)
 			}
 		}()
 
@@ -201,16 +194,17 @@ func (ds *dedupedStorage) getContent(hash lba.Hash) (content []byte, err error) 
 
 // setContent if it doesn't exist yet,
 // and increase the reference counter, by adding this vdiskID
-func (ds *dedupedStorage) setContent(prevHash, curHash lba.Hash, content []byte) (err error) {
-	conn, err := ds.getRedisConnection(curHash)
+func (ds *dedupedStorage) setContent(hash lba.Hash, content []byte) (success bool, err error) {
+	conn, err := ds.getRedisConnection(hash)
 	if err != nil {
 		return
 	}
 	defer conn.Close()
 
-	exists, err := redis.Bool(conn.Do("EXISTS", curHash.Bytes()))
+	exists, err := redis.Bool(conn.Do("EXISTS", hash.Bytes()))
 	if err == nil && !exists {
-		_, err = conn.Do("SET", curHash.Bytes(), content)
+		_, err = conn.Do("SET", hash.Bytes(), content)
+		success = err == nil
 	}
 
 	return

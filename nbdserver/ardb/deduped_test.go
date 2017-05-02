@@ -3,6 +3,7 @@ package ardb
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"runtime/debug"
 	"strconv"
 	"testing"
@@ -126,19 +127,34 @@ func TestDedupedContent(t *testing.T) {
 		vdiskID = "a"
 	)
 
-	var (
-		ctx = context.Background()
-	)
-
-	redisProvider := &testRedisProvider{memRedis, nil} // root = nil
+	redisProvider := newTestRedisProvider(memRedis, nil) // root = nil
 	storage := createTestDedupedStorage(t, vdiskID, 8, 8, redisProvider)
 	if storage == nil {
 		t.Fatal("storage is nil")
 	}
-	defer storage.Close()
-	go storage.GoBackground(ctx)
 
 	testBackendStorage(t, storage)
+}
+
+// test in a response to https://github.com/g8os/blockstor/issues/89
+func TestDedupedDeadlock(t *testing.T) {
+	memRedis := redisstub.NewMemoryRedis()
+	go memRedis.Listen()
+	defer memRedis.Close()
+
+	const (
+		vdiskID    = "a"
+		blockSize  = 128
+		blockCount = 512
+	)
+
+	redisProvider := newTestRedisProvider(memRedis, nil) // root = nil
+	storage := createTestDedupedStorage(t, vdiskID, blockSize, blockCount, redisProvider)
+	if storage == nil {
+		t.Fatal("storage is nil")
+	}
+
+	testBackendStorageDeadlock(t, blockSize, blockCount, storage)
 }
 
 // test if content linked to local (copied) metadata,
@@ -159,7 +175,7 @@ func TestGetDedupedRootContent(t *testing.T) {
 		ctx = context.Background()
 	)
 
-	redisProviderA := &testRedisProvider{memRedisA, nil} // root = nil
+	redisProviderA := newTestRedisProvider(memRedisA, nil) // root = nil
 	storageA := createTestDedupedStorage(t, vdiskIDA, 8, 8, redisProviderA)
 	if storageA == nil {
 		t.Fatal("storageA is nil")
@@ -172,7 +188,7 @@ func TestGetDedupedRootContent(t *testing.T) {
 	go memRedisB.Listen()
 	defer memRedisB.Close()
 
-	redisProviderB := &testRedisProvider{memRedisB, memRedisA} // root = memRedisA
+	redisProviderB := newTestRedisProvider(memRedisB, memRedisA) // root = memRedisA
 	storageB := createTestDedupedStorage(t, vdiskIDB, 8, 8, redisProviderB)
 	if storageB == nil {
 		t.Fatal("storageB is nil")
@@ -328,4 +344,81 @@ func TestGetDedupedRootContent(t *testing.T) {
 	// wait until the Get method saves the content async
 	time.Sleep(time.Millisecond * 200)
 	testDedupContentExists(t, memRedisA, testContent)
+}
+
+// test in a response to https://github.com/g8os/blockstor/issues/89
+func TestGetDedupedRootContentDeadlock(t *testing.T) {
+	// create storageA
+	memRedisA := redisstub.NewMemoryRedis()
+	go memRedisA.Listen()
+	defer memRedisA.Close()
+
+	const (
+		vdiskIDA   = "a"
+		vdiskIDB   = "b"
+		blockSize  = 128
+		blockCount = 256
+	)
+
+	var (
+		ctx = context.Background()
+		err error
+	)
+
+	redisProviderA := newTestRedisProvider(memRedisA, nil) // root = nil
+	storageA := createTestDedupedStorage(t, vdiskIDA, blockSize, blockCount, redisProviderA)
+	if storageA == nil {
+		t.Fatal("storageA is nil")
+	}
+	defer storageA.Close()
+	go storageA.GoBackground(ctx)
+
+	// create storageB, with storageA as its fallback/root
+	memRedisB := redisstub.NewMemoryRedis()
+	go memRedisB.Listen()
+	defer memRedisB.Close()
+
+	redisProviderB := newTestRedisProvider(memRedisB, memRedisA) // root = memRedisA
+	storageB := createTestDedupedStorage(t, vdiskIDB, blockSize, blockCount, redisProviderB)
+	if storageB == nil {
+		t.Fatal("storageB is nil")
+	}
+	defer storageB.Close()
+	go storageB.GoBackground(ctx)
+
+	var contentArray [blockCount][]byte
+
+	// store a lot of content in storageA
+	for i := int64(0); i < blockCount; i++ {
+		contentArray[i] = make([]byte, blockSize)
+		rand.Read(contentArray[i])
+		err = storageA.Set(i, contentArray[i])
+		if err != nil {
+			t.Fatal(i, err)
+		}
+	}
+
+	// flush metadata of storageA first,
+	// so it's reloaded next time fresh from externalStorage,
+	// this shows that copying metadata to a vdisk which is active,
+	// is only going lead to dissapointment
+	err = storageA.Flush()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// let's copy the metadata from storageA to storageB
+	copyTestMetaData(t, vdiskIDA, vdiskIDB, redisProviderA, redisProviderB)
+
+	// now restore all content
+	// which will test the deadlock of async restoring
+	for i := int64(0); i < blockCount; i++ {
+		content, err := storageB.Get(i)
+		if err != nil {
+			t.Fatal(i, err)
+		}
+		if bytes.Compare(contentArray[i], content) != 0 {
+			t.Fatal(i, "unexpected content")
+		}
+	}
 }
