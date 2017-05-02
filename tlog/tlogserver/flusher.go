@@ -41,10 +41,14 @@ func newFlusher(conf *config) (*flusher, error) {
 	pools := make(map[int]*redis.Pool, len(addresses))
 
 	for i, addr := range addresses {
+		// We need to do it, otherwise the redis.Pool.Dial always
+		// use the last address
+		redisAddr := addr
+
 		pools[i] = &redis.Pool{
 			MaxIdle:     3,
 			IdleTimeout: 240 * time.Second,
-			Dial:        func() (redis.Conn, error) { return redis.Dial("tcp", addr) },
+			Dial:        func() (redis.Conn, error) { return redis.Dial("tcp", redisAddr) },
 		}
 	}
 
