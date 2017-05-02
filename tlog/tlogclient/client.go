@@ -153,8 +153,7 @@ func createConn(addr string) (*net.TCPConn, error) {
 // - failed to send all tlog
 // in case of errors, client is not in valid state,
 // shouldn't be used anymore
-func (c *Client) Send(vdiskID string, seq uint64,
-	lba, timestamp uint64, data []byte) error {
+func (c *Client) Send(vdiskID string, seq uint64, lba, timestamp uint64, data []byte) error {
 	hash := blockstor.HashBytes(data)
 
 	b, err := buildCapnp(vdiskID, seq, hash[:], lba, timestamp, data)

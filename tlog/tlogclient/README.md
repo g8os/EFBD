@@ -5,13 +5,14 @@
 - Communication between client and server use binary capnp stream (no RPC).
 
 ## Data send from the client to server:
+
 ```
 Block:
-  - vdisk ID: uint32
+  - vdiskID: Text
   - sequence : uint64
-  - LBA :uint64
-  - Size :uint64
-  - crc32 :uint32
+  - lba :uint64
+  - size :uint32
+  - hash :Data (32B)
   - data :Data (16K)
   - timestamp :uint64
  ```

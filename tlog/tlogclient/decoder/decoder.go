@@ -159,7 +159,8 @@ func (d *Decoder) get(key []byte) (*schema.TlogAggregation, error) {
 	if err := binary.Read(bytes.NewBuffer(merged), binary.LittleEndian, &realLen); err != nil {
 		return nil, err
 	}
-	merged = merged[8 : 8+realLen] /* 8 is the size of uint64 */
+
+	merged = merged[uint64Size : uint64Size+realLen]
 
 	// decrypt
 	decrypted, err := d.decrypt(merged)
@@ -252,3 +253,7 @@ func (d *Decoder) decodeCapnp(data []byte) (*schema.TlogAggregation, error) {
 	agg, err := schema.ReadRootTlogAggregation(msg)
 	return &agg, err
 }
+
+const (
+	uint64Size = 8
+)
