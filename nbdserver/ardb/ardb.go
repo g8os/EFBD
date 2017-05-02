@@ -10,6 +10,7 @@ import (
 	gridapi "github.com/g8os/blockstor/gridapi/gridapiclient"
 	"github.com/g8os/blockstor/nbdserver/lba"
 	"github.com/g8os/blockstor/storagecluster"
+	"github.com/g8os/blockstor/tlog/tlogclient"
 	"github.com/g8os/gonbdserver/nbd"
 	"github.com/garyburd/redigo/redis"
 )
@@ -29,6 +30,7 @@ type BackendFactoryConfig struct {
 	Pool                     *RedisPool
 	SCClientFactory          *storagecluster.ClusterClientFactory
 	GridAPIAddress           string
+	TLogRPCAddress           string
 	RootARDBConnectionString string
 	LBACacheLimit            int64 // min-capped to LBA.BytesPerShard
 }
@@ -43,6 +45,9 @@ func (cfg *BackendFactoryConfig) Validate() error {
 	}
 	if cfg.GridAPIAddress == "" {
 		return errors.New("BackendFactory requires a non-empty GridAPIAddress")
+	}
+	if cfg.TLogRPCAddress == "" {
+		return errors.New("BackendFactory requires a non-empty TLogRPCAddress")
 	}
 
 	return nil
@@ -60,6 +65,7 @@ func NewBackendFactory(cfg BackendFactoryConfig) (*BackendFactory, error) {
 		backendPool:              cfg.Pool,
 		scClientFactory:          cfg.SCClientFactory,
 		gridAPIAddress:           cfg.GridAPIAddress,
+		tlogRPCAddress:           cfg.TLogRPCAddress,
 		rootArdbConnectionString: cfg.RootARDBConnectionString,
 		lbaCacheLimit:            cfg.LBACacheLimit,
 	}, nil
@@ -72,6 +78,7 @@ type BackendFactory struct {
 	backendPool              *RedisPool
 	scClientFactory          *storagecluster.ClusterClientFactory
 	gridAPIAddress           string
+	tlogRPCAddress           string
 	rootArdbConnectionString string
 	lbaCacheLimit            int64
 }
@@ -139,14 +146,34 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 		storage = newDedupedStorage(vdiskID, blockSize, redisProvider, vlba)
 	default:
 		err = fmt.Errorf("Unsupported vdisk type: %s", vdiskInfo.Type)
+		return
 	}
 
-	backend = &Backend{
-		blockSize:            blockSize,
-		size:                 uint64(vdiskSize),
-		storage:              storage,
-		storageClusterClient: storageClusterClient,
+	var tlogClient *tlogclient.Client
+
+	switch vdiskInfo.Type {
+	case gridapi.EnumVdiskTypedb, gridapi.EnumVdiskTypeboot:
+		log.Debugf("creating tlogclient for backend %v (%v)",
+			vdiskID, vdiskInfo.Type)
+		tlogClient, err = tlogclient.New(f.tlogRPCAddress)
+		if err != nil {
+			log.Infof("couldn't create tlogclient: %s", err.Error())
+			return
+		}
+
+	default:
+		log.Debugf("not creating tlogclient for backend %v (%v)",
+			vdiskID, vdiskInfo.Type)
 	}
+
+	backend = newBackend(
+		vdiskID,
+		blockSize, uint64(vdiskSize),
+		storage,
+		storageClusterClient,
+		tlogClient,
+	)
+
 	return
 }
 

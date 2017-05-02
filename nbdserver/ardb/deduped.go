@@ -1,7 +1,6 @@
 package ardb
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/garyburd/redigo/redis"
@@ -52,10 +51,8 @@ func (ds *dedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 }
 
 // Merge implements backendStorage.Merge
-func (ds *dedupedStorage) Merge(blockIndex, offset int64, content []byte) (err error) {
+func (ds *dedupedStorage) Merge(blockIndex, offset int64, content []byte) (mergedContent []byte, err error) {
 	hash, _ := ds.lba.Get(blockIndex)
-
-	var mergedContent []byte
 
 	if hash != nil && !hash.Equals(blockstor.NilHash) {
 		mergedContent, err = ds.getContent(hash)
@@ -109,16 +106,6 @@ func (ds *dedupedStorage) Delete(blockIndex int64) (err error) {
 func (ds *dedupedStorage) Flush() (err error) {
 	err = ds.lba.Flush()
 	return
-}
-
-// Close implements backendStorage.Close
-func (ds *dedupedStorage) Close() error {
-	return nil
-}
-
-// GoBackground implements backendStorage.GoBackground
-func (ds *dedupedStorage) GoBackground(ctx context.Context) {
-	// no background thread needed
 }
 
 func (ds *dedupedStorage) getRedisConnection(hash blockstor.Hash) (redis.Conn, error) {

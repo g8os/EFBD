@@ -1,6 +1,5 @@
 # Go Tlog server
 
-
 ## Using the isa-l library for erasure coding
 
 **Build**
@@ -14,7 +13,8 @@ When using the C isa-l library for the erasure coding, `-tags isal` needs be pas
 GODEBUG=cgocheck=0 ./tlogserver
 ```
 
-The `GODEBUG=cgocheck=0` is needed because we still have issue with cgo.
+The `GODEBUG=cgocheck=0` is needed because we still have issue with cgo,
+but is only required when the binary was build using the `isal` go build tag.
 
 **benchmark**
 ```

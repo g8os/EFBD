@@ -2,23 +2,58 @@ package ardb
 
 import (
 	"context"
+	"time"
 
 	"github.com/g8os/blockstor/storagecluster"
+	"github.com/g8os/blockstor/tlog/tlogclient"
 	"github.com/g8os/gonbdserver/nbd"
+	"github.com/siddontang/go/log"
 )
+
+func newBackend(vdiskID string, blockSize int64, size uint64, storage backendStorage, storageClusterClient *storagecluster.ClusterClient, tlogClient *tlogclient.Client) (backend *Backend) {
+	backend = &Backend{
+		vdiskID:              vdiskID,
+		blockSize:            blockSize,
+		size:                 size,
+		storage:              storage,
+		storageClusterClient: storageClusterClient,
+	}
+
+	if tlogClient != nil {
+		backend.tlogClient = tlogClient
+		backend.transactionCh = make(chan transaction, transactionChCapacity)
+	}
+
+	return
+}
 
 //Backend is a nbd.Backend implementation on top of ARDB
 type Backend struct {
+	vdiskID              string
 	blockSize            int64
 	size                 uint64
 	storage              backendStorage
 	storageClusterClient *storagecluster.ClusterClient
+	backgroundCancelFn   context.CancelFunc
+
+	// tlog properties
+	tlogClient    *tlogclient.Client
+	tlogCounter   uint64
+	transactionCh chan transaction
+}
+
+type transaction struct {
+	Content    []byte
+	BlockIndex uint64
+	Timestamp  uint64
 }
 
 //WriteAt implements nbd.Backend.WriteAt
 func (ab *Backend) WriteAt(ctx context.Context, b []byte, offset int64, fua bool) (bytesWritten int64, err error) {
 	blockIndex := offset / ab.blockSize
 	offsetInsideBlock := offset % ab.blockSize
+
+	var content []byte
 
 	length := int64(len(b))
 	if offsetInsideBlock == 0 && length == ab.blockSize {
@@ -27,15 +62,21 @@ func (ab *Backend) WriteAt(ctx context.Context, b []byte, offset int64, fua bool
 		// in this option we write without an offset,
 		// and write a full-sized block, thus no merging required
 		err = ab.storage.Set(blockIndex, b)
+		content = b
 	} else {
 		// Option 2.
 		// We need to merge both contents.
 		// the length can't be bigger, as that is guaranteed by gonbdserver
-		err = ab.storage.Merge(blockIndex, offsetInsideBlock, b)
+		content, err = ab.storage.Merge(blockIndex, offsetInsideBlock, b)
 	}
 
 	if err != nil {
 		return
+	}
+
+	// send tlog async
+	if ab.tlogClient != nil {
+		ab.sendTransaction(uint64(blockIndex), content)
 	}
 
 	if fua {
@@ -54,6 +95,8 @@ func (ab *Backend) WriteZeroesAt(ctx context.Context, offset, length int64, fua 
 	blockIndex := offset / ab.blockSize
 	offsetInsideBlock := offset % ab.blockSize
 
+	var content []byte
+
 	if offsetInsideBlock == 0 && length == ab.blockSize {
 		// Option 1.
 		// Which is hopefully the most common option
@@ -64,11 +107,16 @@ func (ab *Backend) WriteZeroesAt(ctx context.Context, offset, length int64, fua 
 		// Option 2.
 		// We need to write zeroes at an offset,
 		// or the zeroes don't cover the entire block
-		err = ab.mergeZeroes(blockIndex, offsetInsideBlock, length)
+		content, err = ab.mergeZeroes(blockIndex, offsetInsideBlock, length)
 	}
 
 	if err != nil {
 		return
+	}
+
+	// send tlog async
+	if ab.tlogClient != nil {
+		ab.sendTransaction(uint64(blockIndex), content)
 	}
 
 	if fua {
@@ -84,23 +132,23 @@ func (ab *Backend) WriteZeroesAt(ctx context.Context, offset, length int64, fua 
 
 // MergeZeroes implements storage.MergeZeroes
 //  The length + offset should not exceed the blocksize
-func (ab *Backend) mergeZeroes(blockIndex, offset, length int64) (err error) {
-
-	content, err := ab.storage.Get(blockIndex)
+func (ab *Backend) mergeZeroes(blockIndex, offset, length int64) (mergedContent []byte, err error) {
+	mergedContent, err = ab.storage.Get(blockIndex)
 	if err != nil {
 		return
 	}
 
 	//If the original content does not exist, no need to fill it with 0's
-	if content == nil {
+	if mergedContent == nil {
 		return
 	}
 	// Assume the length of the original content == blocksize
 	for i := offset; i < offset+length; i++ {
-		content[i] = 0
+		mergedContent[i] = 0
 	}
+
 	// store new content
-	err = ab.storage.Set(blockIndex, content)
+	err = ab.storage.Set(blockIndex, mergedContent)
 	return
 }
 
@@ -152,7 +200,9 @@ func (ab *Backend) Flush(ctx context.Context) (err error) {
 //Close implements nbd.Backend.Close
 func (ab *Backend) Close(ctx context.Context) (err error) {
 	ab.storageClusterClient.Close()
-	err = ab.storage.Close()
+	if ab.backgroundCancelFn != nil {
+		ab.backgroundCancelFn()
+	}
 	return
 }
 
@@ -181,5 +231,66 @@ func (ab *Backend) HasFlush(ctx context.Context) bool {
 // GoBackground implements Backend.GoBackground
 // and the actual work is delegated to the underlying storage
 func (ab *Backend) GoBackground(ctx context.Context) {
-	ab.storage.GoBackground(ctx)
+	if ab.tlogClient == nil {
+		// when no tlog client is defined,
+		// we do not require a background thread
+		return
+	}
+
+	log.Debug(
+		"starting backend background thread for vdisk:",
+		ab.vdiskID)
+
+	ctx, ab.backgroundCancelFn = context.WithCancel(ctx)
+	for {
+		select {
+		case transaction := <-ab.transactionCh:
+			err := ab.tlogClient.Send(
+				ab.vdiskID,
+				ab.tlogCounter,
+				transaction.BlockIndex,
+				transaction.Timestamp,
+				transaction.Content,
+			)
+			if err != nil {
+				log.Infof(
+					"couldn't send tlog for vdisk %s: %v",
+					ab.vdiskID, err)
+				continue
+			}
+
+			tr, err := ab.tlogClient.RecvOne()
+			if err != nil {
+				log.Infof("tlog for vdisk %s failed to recv: %v",
+					ab.vdiskID, err)
+				continue
+			}
+
+			if tr.Status < 0 {
+				log.Infof("tlog call for vdisk %s failed (%d)",
+					ab.vdiskID, tr.Status)
+				continue
+			}
+
+			ab.tlogCounter++
+
+		case <-ctx.Done():
+			log.Debug(
+				"forcefully exit backend background thread for vdisk:",
+				ab.vdiskID)
+			return
+		}
+	}
 }
+
+func (ab *Backend) sendTransaction(blockIndex uint64, content []byte) {
+	ab.transactionCh <- transaction{
+		Content:    content,
+		Timestamp:  uint64(time.Now().Unix()),
+		BlockIndex: blockIndex,
+	}
+}
+
+const (
+	transactionChCapacity = 8
+)

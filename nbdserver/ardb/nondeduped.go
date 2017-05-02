@@ -1,7 +1,6 @@
 package ardb
 
 import (
-	"context"
 	"strconv"
 
 	"github.com/garyburd/redigo/redis"
@@ -48,7 +47,7 @@ func (ss *nonDedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 }
 
 // Merge implements backendStorage.Merge
-func (ss *nonDedupedStorage) Merge(blockIndex, offset int64, content []byte) (err error) {
+func (ss *nonDedupedStorage) Merge(blockIndex, offset int64, content []byte) (mergedContent []byte, err error) {
 	key := ss.getKey(blockIndex)
 
 	conn, err := ss.provider.RedisConnection(blockIndex)
@@ -57,20 +56,20 @@ func (ss *nonDedupedStorage) Merge(blockIndex, offset int64, content []byte) (er
 	}
 	defer conn.Close()
 
-	origContent, _ := redis.Bytes(conn.Do("GET", key))
-	if ocl := int64(len(origContent)); ocl == 0 {
-		origContent = make([]byte, ss.blockSize)
+	mergedContent, _ = redis.Bytes(conn.Do("GET", key))
+	if ocl := int64(len(mergedContent)); ocl == 0 {
+		mergedContent = make([]byte, ss.blockSize)
 	} else if ocl < ss.blockSize {
 		oc := make([]byte, ss.blockSize)
-		copy(oc, origContent)
-		origContent = oc
+		copy(oc, mergedContent)
+		mergedContent = oc
 	}
 
 	// copy in new content
-	copy(origContent[offset:], content)
+	copy(mergedContent[offset:], content)
 
 	// store new content, as the merged version is non-zero
-	_, err = conn.Do("SET", key, origContent)
+	_, err = conn.Do("SET", key, mergedContent)
 	return
 }
 
@@ -105,16 +104,6 @@ func (ss *nonDedupedStorage) Delete(blockIndex int64) (err error) {
 func (ss *nonDedupedStorage) Flush() (err error) {
 	// nothing to do for the nonDeduped backendStorage
 	return
-}
-
-// Close implements backendStorage.Close
-func (ss *nonDedupedStorage) Close() error {
-	return nil // nothing to close
-}
-
-// GoBackground implements backendStorage.GoBackground
-func (ss *nonDedupedStorage) GoBackground(ctx context.Context) {
-	// no background thread needed
 }
 
 // get the unique key for a block,

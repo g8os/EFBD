@@ -1,4 +1,4 @@
-package main
+package tlogserver
 
 import (
 	"bytes"
@@ -31,8 +31,8 @@ type flusher struct {
 	encrypter tlog.AESEncrypter
 }
 
-func newFlusher(conf *config) (*flusher, error) {
-	addresses, err := conf.ObjStoreServerAddress()
+func newFlusher(conf *Config) (*flusher, error) {
+	addresses, err := conf.ObjStoreServerAddresses()
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +52,7 @@ func newFlusher(conf *config) (*flusher, error) {
 		}
 	}
 
-	encrypter, err := tlog.NewAESEncrypter(conf.privKey, conf.nonce)
+	encrypter, err := tlog.NewAESEncrypter(conf.PrivKey, conf.HexNonce)
 	if err != nil {
 		return nil, err
 	}
@@ -60,9 +60,9 @@ func newFlusher(conf *config) (*flusher, error) {
 	f := &flusher{
 		k:          conf.K,
 		m:          conf.M,
-		flushSize:  conf.flushSize,
-		flushTime:  conf.flushTime,
-		privKey:    []byte(conf.privKey),
+		flushSize:  conf.FlushSize,
+		flushTime:  conf.FlushTime,
+		privKey:    []byte(conf.PrivKey),
 		redisPools: pools,
 		tlogs:      map[string]*tlogTab{},
 		erasure:    erasure.NewErasurer(conf.K, conf.M),
@@ -132,8 +132,6 @@ func (f *flusher) checkDoFlush(vdiskID string, tab *tlogTab, periodic bool) ([]u
 }
 
 func (f *flusher) flush(vdiskID string, blocks []*schema.TlogBlock, tab *tlogTab) ([]uint64, error) {
-	log.Debugf("flush @ vdiskID: %v, size:%v\n", vdiskID, len(blocks))
-
 	// get last hash
 	lastHash, err := tab.getLastHash(f.redisPools[0].Get())
 	if err != nil && err != redis.ErrNil {
