@@ -18,8 +18,8 @@ import (
 )
 
 var (
-	ErrDecodeFinished = errors.New("decode finished.")
-	ErrDecodeLost     = errors.New("decode lost in history.")
+	// ErrDecodeFinished is returned by the decoder when it's finished
+	ErrDecodeFinished = errors.New("decoder is finished")
 )
 
 // Decoder defines tlog data decoder
@@ -143,8 +143,6 @@ func (d *Decoder) getKeysAfter(startTs uint64) ([][]byte, error) {
 
 		key = prev
 	}
-
-	return keys, ErrDecodeLost
 }
 
 // get tlog aggregation by it's key

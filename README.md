@@ -9,7 +9,7 @@ Make sure to have Golang version 1.8 or above installed!
 Components:
 * [NBD Server](nbdserver/readme.md)
     A Network Block Device server to expose the vdisks to virtual machines.
-* [TLOG Server](tlogserver/readme.md)
+* [TLOG Server](tlog/tlogserver/README.md)
     A Transaction log server to record block changes
 * [CopyVdisk CLI](cmd/copyvdisk/readme.md)
     A CLI to copy the metadata of a deduped vdisk
