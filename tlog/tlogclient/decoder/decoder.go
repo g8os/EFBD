@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/garyburd/redigo/redis"
+	log "github.com/glendc/go-mini-log"
 	"github.com/golang/snappy"
+	"github.com/templexxx/reedsolomon"
 	"zombiezen.com/go/capnproto2"
 
 	"github.com/g8os/blockstor/tlog"
@@ -178,17 +180,52 @@ func (d *Decoder) decrypt(encrypted []byte) ([]byte, error) {
 	return d.decrypter.Decrypt(encrypted)
 }
 
+// get and merge all pieces of the data
 func (d *Decoder) getAllPieces(key []byte) ([]byte, error) {
-	all := []byte{}
-	for i := 0; i < d.k; i++ {
+	lost := []int{}
+	pieces := make([][]byte, d.k+d.m)
+
+	var pieceSize int
+
+	// get pieces from storage
+	for i := 0; i < d.k+d.m; i++ {
 		rc := d.redisPools[i+1].Get()
 
 		b, err := redis.Bytes(rc.Do("GET", key))
 		if err != nil {
-			return nil, fmt.Errorf("failed to get key:%v, err:%v", key, err)
+			log.Infof("tlog decoder : failed to get piece num:%v, key:%v,err:%v", i, key, err)
+			lost = append(lost, i)
+			continue
 		}
 
-		all = append(all, b...)
+		pieces[i] = b
+		pieceSize = len(b)
+	}
+
+	if len(lost) > d.m {
+		return nil, fmt.Errorf("tlog decoder : too much lost pieces:%v, max:%v", len(lost), d.m)
+	}
+
+	// erasure encoded it
+	if len(lost) > 0 {
+		// fill up the pieces size
+		for _, v := range lost {
+			pieces[v] = make([]byte, pieceSize)
+		}
+
+		rs, err := reedsolomon.New(d.k, d.m)
+		if err != nil {
+			return nil, err
+		}
+		if err := rs.Reconst(pieces, lost, true); err != nil {
+			return nil, err
+		}
+	}
+
+	// merge the pieces
+	all := make([]byte, 0, len(pieces[0])*d.k)
+	for i := 0; i < d.k; i++ {
+		all = append(all, pieces[i]...)
 	}
 	return all, nil
 }
