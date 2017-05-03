@@ -13,16 +13,17 @@ import (
 func TestEndToEnd(t *testing.T) {
 	// create server
 	conf := &config{
-		K:         4,
-		M:         2,
-		flushSize: 25,
-		flushTime: 25,
-		privKey:   "12345678901234567890123456789012",
-		nonce:     "37b8e8a308c354048d245f6d",
+		K:          4,
+		M:          2,
+		listenAddr: "127.0.0.1:0",
+		flushSize:  25,
+		flushTime:  25,
+		privKey:    "12345678901234567890123456789012",
+		nonce:      "37b8e8a308c354048d245f6d",
 	}
 	conf.initObjStoreAddress("")
 
-	s, err := NewServer(0, conf)
+	s, err := NewServer(conf)
 	assert.Nil(t, err)
 
 	go func() {
@@ -33,6 +34,8 @@ func TestEndToEnd(t *testing.T) {
 	// send tlog messages
 	client, err := tlogclient.New(s.ListenAddr())
 	assert.Nil(t, err)
+
+	t.Logf("listen addr=%v", s.ListenAddr())
 
 	dataLen := 4096 * 4
 
@@ -81,8 +84,6 @@ func TestEndToEnd(t *testing.T) {
 				blockData, err := block.Data()
 				assert.Nil(t, err)
 				assert.Equal(t, data, blockData)
-
-				t.Logf("seq=%v", block.Sequence())
 
 				vdiskID, err := block.VdiskID()
 				assert.Nil(t, err)

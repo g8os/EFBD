@@ -91,7 +91,6 @@ func (d *Decoder) Decode(startTs uint64) (<-chan *schema.TlogAggregation, <-chan
 			errChan <- err
 			return
 		}
-		fmt.Printf("len keys=%v\n", len(keys))
 
 		// get the aggregations
 		for i := len(keys) - 1; i >= 0; i-- {

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strconv"
 
 	log "github.com/glendc/go-mini-log"
 
@@ -26,7 +25,7 @@ type Server struct {
 }
 
 // NewServer creates a new tlog server
-func NewServer(port int, conf *config) (*Server, error) {
+func NewServer(conf *config) (*Server, error) {
 	f, err := newFlusher(conf)
 	if err != nil {
 		return nil, err
@@ -37,13 +36,12 @@ func NewServer(port int, conf *config) (*Server, error) {
 		return nil, err
 	}
 
-	l, err := net.Listen("tcp", ":"+strconv.Itoa(port))
+	l, err := net.Listen("tcp", conf.listenAddr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to listen to port %v: %v", port, err)
+		return nil, fmt.Errorf("failed to listen to %v: %v", conf.listenAddr, err)
 	}
 
 	return &Server{
-		port:             port,
 		f:                f,
 		ObjStorAddresses: objstorAddrs,
 		listener:         l,
