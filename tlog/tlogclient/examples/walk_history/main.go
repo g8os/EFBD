@@ -42,16 +42,37 @@ func main() {
 	if err != nil {
 		log.Fatalf("tlog decoder creation failed:%v", err)
 	}
-	aggChan, errChan := dec.Decode(0)
+	aggChan := dec.Decode(0)
 
-	finished := false
-	for !finished {
-		select {
-		case agg := <-aggChan:
-			log.Infof("agg timestamp=%v, size=%v", agg.Timestamp(), agg.Size())
-		case err := <-errChan:
-			log.Infof("err=%v", err)
-			finished = true
+	for {
+		da, more := <-aggChan
+		if !more {
+			break
 		}
+		if err != nil {
+			log.Fatalf("error to decode:%v", err)
+		}
+		agg := da.Agg
+		log.Info("================================")
+		log.Infof("agg timestamp=%v, size=%v", agg.Timestamp(), agg.Size())
+		blocks, err := agg.Blocks()
+		exitOnErr(err)
+
+		for i := 0; i < blocks.Len(); i++ {
+			block := blocks.At(i)
+			vdiskID, err := block.VdiskID()
+			exitOnErr(err)
+
+			data, err := block.Data()
+			exitOnErr(err)
+
+			log.Infof("seq=%v , vdiskID=%v, data=%v", block.Sequence(), vdiskID, string(data[:3]))
+		}
+	}
+}
+
+func exitOnErr(err error) {
+	if err != nil {
+		log.Fatal(err)
 	}
 }
