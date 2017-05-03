@@ -10,6 +10,7 @@ import (
 // VdisksAPI is API implementation of /vdisks root endpoint
 type VdisksAPI struct {
 	NonDedupedVdisks []string
+	VdiskSize        int
 }
 
 // ListVdisks is the handler for GET /vdisks
@@ -53,7 +54,7 @@ func (api VdisksAPI) GetVdiskInfo(w http.ResponseWriter, r *http.Request) {
 	var respBody Vdisk
 	respBody.Blocksize = 4096
 	respBody.Id = vdiskID
-	respBody.Size = 20 // 20 GiB
+	respBody.Size = api.VdiskSize // 20 GiB
 	respBody.Storagecluster = "default"
 	respBody.Type = EnumVdiskTypeboot
 	respBody.ReadOnly = false
