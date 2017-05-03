@@ -30,6 +30,7 @@ func main() {
 	var profileAddress string
 	var protocol string
 	var address string
+	var size int
 	var gridapiaddress string
 	var rootArdbConnectionString string
 	var testArdbConnectionStrings string
@@ -45,6 +46,7 @@ func main() {
 	flag.StringVar(&rootArdbConnectionString, "rootardb", "", "Address of the root ardb connection string, used in case content can't be found in local storage")
 	flag.StringVar(&nonDedupedExports, "nondeduped", "", "when using the embedded gridapi, comma seperated list of exports that should not be deduped")
 	flag.StringVar(&testArdbConnectionStrings, "testardbs", "localhost:16379,localhost:16379", "Comma seperated list of ardb connection strings returned by the embedded backend controller, first one is the metadataserver")
+	flag.IntVar(&size, "size", 20, "Size in GB to be used by nbdserver when using testards")
 	flag.StringVar(&exports, "export", "default", "comma seperated list of exports to list and use")
 	flag.Int64Var(&lbacachelimit, "lbacachelimit", ardb.DefaultLBACacheLimit,
 		fmt.Sprintf("Cache limit of LBA in bytes, needs to be higher then %d (bytes in 1 shard)", lba.BytesPerShard))
@@ -87,7 +89,7 @@ func main() {
 		log.Info("Starting embedded grid api")
 		var s *httptest.Server
 		var err error
-		s, gridapiaddress, err = gridapi.NewGridAPIServer(testArdbConnectionStrings, strings.Split(nonDedupedExports, ","))
+		s, gridapiaddress, err = gridapi.NewGridAPIServer(testArdbConnectionStrings, strings.Split(nonDedupedExports, ","), size)
 		if err != nil {
 			log.Fatal(err)
 		}
