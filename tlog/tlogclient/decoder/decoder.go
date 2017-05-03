@@ -3,7 +3,6 @@ package decoder
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"time"
 
@@ -15,11 +14,6 @@ import (
 
 	"github.com/g8os/blockstor/tlog"
 	"github.com/g8os/blockstor/tlog/schema"
-)
-
-var (
-	// ErrDecodeFinished is returned by the decoder when it's finished
-	ErrDecodeFinished = errors.New("decoder is finished")
 )
 
 // Decoder defines tlog data decoder
@@ -40,6 +34,13 @@ type Decoder struct {
 
 	// pools of redis connection
 	redisPools []*redis.Pool
+}
+
+// DecodedAggregation defines a decoded tlog aggregation
+// from decoder.
+type DecodedAggregation struct {
+	Agg *schema.TlogAggregation
+	Err error
 }
 
 // New creates a tlog decoder
@@ -79,16 +80,20 @@ func New(objstorAddr []string, k, m int, vdiskID, privKey, nonce string) (*Decod
 }
 
 // Decode decodes the tlog with timestamp >= startTs.
-// This func ends when the ErrDecodeFinished received from error channel.
-func (d *Decoder) Decode(startTs uint64) (<-chan *schema.TlogAggregation, <-chan error) {
-	aggChan := make(chan *schema.TlogAggregation, 1)
-	errChan := make(chan error, 1)
+func (d *Decoder) Decode(startTs uint64) <-chan *DecodedAggregation {
+	daChan := make(chan *DecodedAggregation, 1)
 
 	go func() {
+		defer close(daChan)
+
 		// get all keys after the specified timestamp
 		keys, err := d.getKeysAfter(startTs)
 		if err != nil {
-			errChan <- err
+			da := &DecodedAggregation{
+				Agg: nil,
+				Err: err,
+			}
+			daChan <- da
 			return
 		}
 
@@ -96,15 +101,14 @@ func (d *Decoder) Decode(startTs uint64) (<-chan *schema.TlogAggregation, <-chan
 		for i := len(keys) - 1; i >= 0; i-- {
 			key := keys[i]
 			agg, err := d.get(key)
-			if err != nil {
-				errChan <- err
-				return
+			da := &DecodedAggregation{
+				Agg: agg,
+				Err: err,
 			}
-			aggChan <- agg
+			daChan <- da
 		}
-		errChan <- ErrDecodeFinished
 	}()
-	return aggChan, errChan
+	return daChan
 }
 
 // getAllKeys of this vdisk ID after specified timestamp
