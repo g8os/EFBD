@@ -30,7 +30,7 @@ func main() {
 	var profileAddress string
 	var protocol string
 	var address string
-	var size int
+	var vdiskSize int
 	var gridapiaddress string
 	var rootArdbConnectionString string
 	var testArdbConnectionStrings string
@@ -46,7 +46,7 @@ func main() {
 	flag.StringVar(&rootArdbConnectionString, "rootardb", "", "Address of the root ardb connection string, used in case content can't be found in local storage")
 	flag.StringVar(&nonDedupedExports, "nondeduped", "", "when using the embedded gridapi, comma seperated list of exports that should not be deduped")
 	flag.StringVar(&testArdbConnectionStrings, "testardbs", "localhost:16379,localhost:16379", "Comma seperated list of ardb connection strings returned by the embedded backend controller, first one is the metadataserver")
-	flag.IntVar(&size, "size", 20, "Size in GB to be used by nbdserver when using testards")
+	flag.IntVar(&vdiskSize, "vdisksize", 20, "Size in GiB to be used by nbdserver when using testards")
 	flag.StringVar(&exports, "export", "default", "comma seperated list of exports to list and use")
 	flag.Int64Var(&lbacachelimit, "lbacachelimit", ardb.DefaultLBACacheLimit,
 		fmt.Sprintf("Cache limit of LBA in bytes, needs to be higher then %d (bytes in 1 shard)", lba.BytesPerShard))
@@ -59,7 +59,7 @@ func main() {
 	}
 
 	log.SetFlags(logFlags)
-	log.Debugf("flags parsed: memorystorage=%t tslonly=%t profileaddress=%q protocol=%q address=%q gridapi=%q nondeduped=%q rootardb=%q testardbs=%q export=%q lbacachelimit=%d",
+	log.Debugf("flags parsed: memorystorage=%t tslonly=%t profileaddress=%q protocol=%q address=%q gridapi=%q nondeduped=%q rootardb=%q testardbs=%q vdisksize=%d export=%q lbacachelimit=%d",
 		inMemoryStorage, tslonly,
 		profileAddress,
 		protocol, address,
@@ -67,8 +67,10 @@ func main() {
 		nonDedupedExports,
 		rootArdbConnectionString,
 		testArdbConnectionStrings,
+		vdiskSize,
 		exports,
-		lbacachelimit)
+		lbacachelimit,
+	)
 
 	exportArray := strings.Split(exports, ",")
 	if len(exportArray) == 0 {
@@ -89,7 +91,7 @@ func main() {
 		log.Info("Starting embedded grid api")
 		var s *httptest.Server
 		var err error
-		s, gridapiaddress, err = gridapi.NewGridAPIServer(testArdbConnectionStrings, strings.Split(nonDedupedExports, ","), size)
+		s, gridapiaddress, err = gridapi.NewGridAPIServer(testArdbConnectionStrings, strings.Split(nonDedupedExports, ","), vdiskSize)
 		if err != nil {
 			log.Fatal(err)
 		}
