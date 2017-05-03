@@ -1,7 +1,7 @@
 # Go Tlog server
 
 
-## Using the isa-l library for erasure coding and aes encryption
+## Using the isa-l library for erasure coding
 
 **Build**
 
