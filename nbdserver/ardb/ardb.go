@@ -46,9 +46,6 @@ func (cfg *BackendFactoryConfig) Validate() error {
 	if cfg.GridAPIAddress == "" {
 		return errors.New("BackendFactory requires a non-empty GridAPIAddress")
 	}
-	if cfg.TLogRPCAddress == "" {
-		return errors.New("BackendFactory requires a non-empty TLogRPCAddress")
-	}
 
 	return nil
 }
@@ -153,12 +150,14 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 
 	switch vdiskInfo.Type {
 	case gridapi.EnumVdiskTypedb, gridapi.EnumVdiskTypeboot:
-		log.Debugf("creating tlogclient for backend %v (%v)",
-			vdiskID, vdiskInfo.Type)
-		tlogClient, err = tlogclient.New(f.tlogRPCAddress)
-		if err != nil {
-			log.Infof("couldn't create tlogclient: %s", err.Error())
-			return
+		if f.tlogRPCAddress != "" {
+			log.Debugf("creating tlogclient for backend %v (%v)",
+				vdiskID, vdiskInfo.Type)
+			tlogClient, err = tlogclient.New(f.tlogRPCAddress)
+			if err != nil {
+				log.Infof("couldn't create tlogclient: %s", err.Error())
+				return
+			}
 		}
 
 	default:
