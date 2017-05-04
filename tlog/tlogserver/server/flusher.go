@@ -1,4 +1,4 @@
-package tlogserver
+package server
 
 import (
 	"bytes"
@@ -131,7 +131,11 @@ func (f *flusher) checkDoFlush(vdiskID string, tab *tlogTab, periodic bool) ([]u
 	return seqs, err
 }
 
+var numFlush int
+
 func (f *flusher) flush(vdiskID string, blocks []*schema.TlogBlock, tab *tlogTab) ([]uint64, error) {
+	numFlush++
+	log.Debugf("flush %v vdiskID=%v", numFlush, vdiskID)
 	// get last hash
 	lastHash, err := tab.getLastHash(f.redisPools[0].Get())
 	if err != nil && err != redis.ErrNil {

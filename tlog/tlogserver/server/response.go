@@ -1,4 +1,4 @@
-package tlogserver
+package server
 
 import (
 	"bytes"

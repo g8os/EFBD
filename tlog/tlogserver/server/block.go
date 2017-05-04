@@ -1,4 +1,4 @@
-package tlogserver
+package server
 
 type block struct {
 	vdiskID   uint32
