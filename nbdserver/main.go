@@ -19,7 +19,7 @@ import (
 	"github.com/g8os/blockstor/nbdserver/lba"
 	"github.com/g8os/blockstor/redisstub"
 	"github.com/g8os/blockstor/storagecluster"
-	"github.com/g8os/blockstor/tlog/tlogserver"
+	tlogserver "github.com/g8os/blockstor/tlog/tlogserver/server"
 	"github.com/g8os/gonbdserver/nbd"
 )
 

@@ -4,12 +4,12 @@ import (
 	"flag"
 	"strings"
 
-	"github.com/g8os/blockstor/tlog/tlogserver"
+	"github.com/g8os/blockstor/tlog/tlogserver/server"
 	log "github.com/glendc/go-mini-log"
 )
 
 func main() {
-	conf := tlogserver.DefaultConfig()
+	conf := server.DefaultConfig()
 
 	var verbose bool
 	var objstoraddresses string
@@ -52,7 +52,7 @@ func main() {
 	log.Debugf("k=%v, m=%v\n", conf.K, conf.M)
 
 	// create server
-	server, err := tlogserver.NewServer(conf)
+	server, err := server.NewServer(conf)
 	if err != nil {
 		log.Fatalf("failed to create server: %v", err)
 	}
