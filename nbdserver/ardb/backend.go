@@ -43,9 +43,9 @@ type Backend struct {
 }
 
 type transaction struct {
-	Content    []byte
-	BlockIndex uint64
-	Timestamp  uint64
+	Content   []byte
+	Offset    uint64
+	Timestamp uint64
 }
 
 //WriteAt implements nbd.Backend.WriteAt
@@ -76,7 +76,7 @@ func (ab *Backend) WriteAt(ctx context.Context, b []byte, offset int64, fua bool
 
 	// send tlog async
 	if ab.tlogClient != nil {
-		ab.sendTransaction(uint64(blockIndex), content)
+		ab.sendTransaction(uint64(blockIndex*ab.blockSize), content)
 	}
 
 	if fua {
@@ -116,7 +116,7 @@ func (ab *Backend) WriteZeroesAt(ctx context.Context, offset, length int64, fua 
 
 	// send tlog async
 	if ab.tlogClient != nil {
-		ab.sendTransaction(uint64(blockIndex), content)
+		ab.sendTransaction(uint64(blockIndex*ab.blockSize), content)
 	}
 
 	if fua {
@@ -248,7 +248,7 @@ func (ab *Backend) GoBackground(ctx context.Context) {
 			err := ab.tlogClient.Send(
 				ab.vdiskID,
 				ab.tlogCounter,
-				transaction.BlockIndex,
+				transaction.Offset,
 				transaction.Timestamp,
 				transaction.Content,
 			)
@@ -283,11 +283,11 @@ func (ab *Backend) GoBackground(ctx context.Context) {
 	}
 }
 
-func (ab *Backend) sendTransaction(blockIndex uint64, content []byte) {
+func (ab *Backend) sendTransaction(offset uint64, content []byte) {
 	ab.transactionCh <- transaction{
-		Content:    content,
-		Timestamp:  uint64(time.Now().Unix()),
-		BlockIndex: blockIndex,
+		Content:   content,
+		Timestamp: uint64(time.Now().Unix()),
+		Offset:    offset,
 	}
 }
 
