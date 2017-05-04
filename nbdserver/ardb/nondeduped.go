@@ -4,6 +4,8 @@ import (
 	"context"
 	"strconv"
 
+	log "github.com/glendc/go-mini-log"
+
 	"github.com/garyburd/redigo/redis"
 )
 
@@ -38,6 +40,9 @@ func (ss *nonDedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 	// don't store zero blocks,
 	// and delete existing ones if they already existed
 	if ss.isZeroContent(content) {
+		log.Debugf(
+			"deleting content @ %d for vdisk %s as it's an all zeroes block",
+			ss.vdiskID, blockIndex)
 		_, err = conn.Do("DEL", key)
 		return
 	}

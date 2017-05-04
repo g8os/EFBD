@@ -37,6 +37,9 @@ type dedupedStorage struct {
 func (ds *dedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 	hash := blockstor.HashBytes(content)
 	if ds.zeroContentHash.Equals(hash) {
+		log.Debugf(
+			"deleting hash @ %d from LBA for deduped vdisk %s as it's an all zeroes block",
+			ds.vdiskID, blockIndex)
 		err = ds.lba.Delete(blockIndex)
 		return
 	}

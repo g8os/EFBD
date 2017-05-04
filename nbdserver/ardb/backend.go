@@ -3,6 +3,8 @@ package ardb
 import (
 	"context"
 
+	log "github.com/glendc/go-mini-log"
+
 	"github.com/g8os/blockstor/storagecluster"
 	"github.com/g8os/gonbdserver/nbd"
 )
@@ -35,12 +37,16 @@ func (ab *Backend) WriteAt(ctx context.Context, b []byte, offset int64, fua bool
 	}
 
 	if err != nil {
+		log.Debugf(
+			"backend failed to WriteAt %d (offset=%d): %s",
+			blockIndex, offsetInsideBlock, err.Error())
 		return
 	}
 
 	if fua {
 		err = ab.Flush(ctx)
 		if err != nil {
+			log.Debug("failed to force flush:", err)
 			return
 		}
 	}
@@ -68,6 +74,9 @@ func (ab *Backend) WriteZeroesAt(ctx context.Context, offset, length int64, fua 
 	}
 
 	if err != nil {
+		log.Debugf(
+			"backend failed to WriteZeroesAt %d (offset=%d, length=%d): %s",
+			blockIndex, offsetInsideBlock, length, err.Error())
 		return
 	}
 
@@ -85,7 +94,6 @@ func (ab *Backend) WriteZeroesAt(ctx context.Context, offset, length int64, fua 
 // MergeZeroes implements storage.MergeZeroes
 //  The length + offset should not exceed the blocksize
 func (ab *Backend) mergeZeroes(blockIndex, offset, length int64) (err error) {
-
 	content, err := ab.storage.Get(blockIndex)
 	if err != nil {
 		return

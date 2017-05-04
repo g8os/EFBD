@@ -238,6 +238,9 @@ func (lba *LBA) storeCacheInExternalStorage() (err error) {
 
 func (lba *LBA) storeShardInExternalStorage(index int64, shard *shard) (err error) {
 	if !shard.Dirty() {
+		log.Debugf(
+			"LBA shard %d for %s isn't dirty, so nothing to store in external (meta) storage",
+			index, lba.vdiskID)
 		return // only store a dirty shard
 	}
 
