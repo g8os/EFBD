@@ -137,7 +137,13 @@ func (f *flusher) flush(vdiskID string, blocks []*schema.TlogBlock, tab *tlogTab
 	numFlush++
 	log.Debugf("flush %v vdiskID=%v", numFlush, vdiskID)
 	// get last hash
-	lastHash, err := tab.getLastHash(f.redisPools[0].Get())
+
+	lastHash, err := func() ([]byte, error) {
+		rc := f.redisPools[0].Get()
+		defer rc.Close()
+
+		return tab.getLastHash(rc)
+	}()
 	if err != nil && err != redis.ErrNil {
 		return nil, err
 	}
@@ -204,6 +210,8 @@ func (f *flusher) storeEncoded(vdiskID string, key []byte, encoded [][]byte, tab
 
 			blocks := encoded[idx]
 			rc := f.redisPools[idx+1].Get()
+			defer rc.Close()
+
 			_, err := rc.Do("SET", key, blocks)
 			if err != nil {
 				log.Debugf("error during flush idx %v:%v", idx, err)
@@ -215,7 +223,10 @@ func (f *flusher) storeEncoded(vdiskID string, key []byte, encoded [][]byte, tab
 	// store last hash name
 	go func() {
 		defer wg.Done()
+
 		rc := f.redisPools[0].Get()
+		defer rc.Close()
+
 		err := tab.storeLastHash(rc, key)
 		if err != nil {
 			log.Debugf("error when setting last hash name:%v", err)
