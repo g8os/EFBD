@@ -192,6 +192,7 @@ func (d *Decoder) getAllPieces(key []byte) ([]byte, error) {
 	// get pieces from storage
 	for i := 0; i < d.k+d.m; i++ {
 		rc := d.redisPools[i+1].Get()
+		defer rc.Close()
 
 		b, err := redis.Bytes(rc.Do("GET", key))
 		if err != nil {
@@ -234,6 +235,7 @@ func (d *Decoder) getAllPieces(key []byte) ([]byte, error) {
 
 func (d *Decoder) getLastHash() ([]byte, error) {
 	rc := d.redisPools[0].Get()
+	defer rc.Close()
 
 	key := d.lastHashPrefix + d.vdiskID
 	b, err := redis.Bytes(rc.Do("get", key))
