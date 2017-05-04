@@ -586,6 +586,8 @@ func (c *Connection) Serve(parentCtx context.Context) {
 		c.logger.Infof("Closed connection from %s", c.name)
 	}()
 
+	c.logger.Debug("Start negotation with", c.name)
+
 	// Phase #1: Negotiation
 	if err := c.negotiate(ctx); err != nil {
 		c.logger.Infof("Negotiation failed with %s: %v", c.name, err)
@@ -609,6 +611,8 @@ func (c *Connection) Serve(parentCtx context.Context) {
 
 	// Phase #2: Transmition
 
+	c.logger.Debug("Start transmition phase with", c.name)
+
 	c.wg.Add(2)
 	go c.receive(ctx)
 	go c.reply(ctx)
@@ -627,6 +631,8 @@ func (c *Connection) Serve(parentCtx context.Context) {
 func (c *Connection) negotiate(ctx context.Context) error {
 	c.conn.SetDeadline(time.Now().Add(c.params.ConnectionTimeout))
 
+	c.logger.Debug("Sending newstyle header to", c.name)
+
 	// We send a newstyle header
 	nsh := nbdNewStyleHeader{
 		NbdMagic:       NBD_MAGIC,
@@ -639,22 +645,26 @@ func (c *Connection) negotiate(ctx context.Context) error {
 	}
 
 	if err := binary.Write(c.conn, binary.BigEndian, nsh); err != nil {
-		return errors.New("Cannot write magic header")
+		return fmt.Errorf("Cannot write magic header: %s", err.Error())
 	}
+
+	c.logger.Debug("Receiving client flags from", c.name)
 
 	// next they send client flags
 	var clf nbdClientFlags
 
 	if err := binary.Read(c.conn, binary.BigEndian, &clf); err != nil {
-		return errors.New("Cannot read client flags")
+		return fmt.Errorf("Cannot read client flags: %s", err.Error())
 	}
+
+	c.logger.Debug("Receiving options from", c.name)
 
 	done := false
 	// now we get options
 	for !done {
 		var opt nbdClientOpt
 		if err := binary.Read(c.conn, binary.BigEndian, &opt); err != nil {
-			return errors.New("Cannot read option (perhaps client dropped the connection)")
+			return fmt.Errorf("Cannot read option: %s", err.Error())
 		}
 		if opt.NbdOptMagic != NBD_OPTS_MAGIC {
 			return errors.New("Bad option magic")
@@ -662,6 +672,9 @@ func (c *Connection) negotiate(ctx context.Context) error {
 		if opt.NbdOptLen > 65536 {
 			return errors.New("Option is too long")
 		}
+
+		c.logger.Debugf("Received option %d from %s", opt.NbdOptID, c.name)
+
 		switch opt.NbdOptID {
 		case NBD_OPT_EXPORT_NAME, NBD_OPT_INFO, NBD_OPT_GO:
 			var name []byte
@@ -680,12 +693,12 @@ func (c *Connection) negotiate(ctx context.Context) error {
 			} else {
 				var numInfoElements uint16
 				if err := binary.Read(c.conn, binary.BigEndian, &numInfoElements); err != nil {
-					return errors.New("Bad number of info elements")
+					return fmt.Errorf("Bad number of info elements: %s", err.Error())
 				}
 				for i := uint16(0); i < numInfoElements; i++ {
 					var infoElement uint16
 					if err := binary.Read(c.conn, binary.BigEndian, &infoElement); err != nil {
-						return errors.New("Bad number of info elements")
+						return fmt.Errorf("Bad number of info elements: %s", err.Error())
 					}
 					switch infoElement {
 					case NBD_INFO_BLOCK_SIZE:
@@ -694,7 +707,7 @@ func (c *Connection) negotiate(ctx context.Context) error {
 				}
 				var nameLength uint32
 				if err := binary.Read(c.conn, binary.BigEndian, &nameLength); err != nil {
-					return errors.New("Bad export name length")
+					return fmt.Errorf("Bad export name length: %s", err.Error())
 				}
 				if nameLength > 4096 {
 					return errors.New("Name is too long")
@@ -718,11 +731,16 @@ func (c *Connection) negotiate(ctx context.Context) error {
 			}
 
 			if len(name) == 0 {
+				c.logger.Debugf(
+					"no export name received from %s, using default: %s",
+					c.name, c.listener.defaultExport)
 				name = []byte(c.listener.defaultExport)
 			}
 
+			exportName := string(name)
+			c.logger.Debug("getting exportConfig for", exportName)
 			// Next find our export
-			ec, err := c.listener.GetExportConfig(string(name))
+			ec, err := c.listener.GetExportConfig(exportName)
 			if err != nil || (ec.TLSOnly && c.tlsConn == nil) {
 				if opt.NbdOptID == NBD_OPT_EXPORT_NAME {
 					// we have to just abort here
@@ -741,7 +759,7 @@ func (c *Connection) negotiate(ctx context.Context) error {
 					or.NbdOptReplyType = NBD_REP_ERR_TLS_REQD
 				}
 				if err := binary.Write(c.conn, binary.BigEndian, or); err != nil {
-					return errors.New("Cannot send info error")
+					return fmt.Errorf("Cannot send info error: %s", err.Error())
 				}
 				break
 			}
@@ -762,7 +780,7 @@ func (c *Connection) negotiate(ctx context.Context) error {
 					NbdOptReplyLength: 0,
 				}
 				if err := binary.Write(c.conn, binary.BigEndian, or); err != nil {
-					return errors.New("Cannot send info error")
+					return fmt.Errorf("Cannot send info error: %s", err.Error())
 				}
 				break
 			}
@@ -778,7 +796,7 @@ func (c *Connection) negotiate(ctx context.Context) error {
 					NbdExportFlags: export.exportFlags,
 				}
 				if err := binary.Write(c.conn, binary.BigEndian, ed); err != nil {
-					return errors.New("Cannot write export details")
+					return fmt.Errorf("cannot write export details: %s", err.Error())
 				}
 			} else {
 				// Send NBD_INFO_EXPORT
@@ -789,7 +807,7 @@ func (c *Connection) negotiate(ctx context.Context) error {
 					NbdOptReplyLength: 12,
 				}
 				if err := binary.Write(c.conn, binary.BigEndian, or); err != nil {
-					return errors.New("Cannot write info export pt1")
+					return fmt.Errorf("cannot write info export pt1: %s", err.Error())
 				}
 				ir := nbdInfoExport{
 					NbdInfoType:          NBD_INFO_EXPORT,
@@ -797,7 +815,7 @@ func (c *Connection) negotiate(ctx context.Context) error {
 					NbdTransmissionFlags: export.exportFlags,
 				}
 				if err := binary.Write(c.conn, binary.BigEndian, ir); err != nil {
-					return errors.New("Cannot write info export pt2")
+					return fmt.Errorf("cannot write info export pt2: %s", err.Error())
 				}
 
 				// Send NBD_INFO_NAME
@@ -808,13 +826,13 @@ func (c *Connection) negotiate(ctx context.Context) error {
 					NbdOptReplyLength: uint32(2 + len(name)),
 				}
 				if err := binary.Write(c.conn, binary.BigEndian, or); err != nil {
-					return errors.New("Cannot write info name pt1")
+					return fmt.Errorf("cannot write info name pt1: %s", err.Error())
 				}
 				if err := binary.Write(c.conn, binary.BigEndian, uint16(NBD_INFO_NAME)); err != nil {
-					return errors.New("Cannot write name id")
+					return fmt.Errorf("cannot write name id: %s", err.Error())
 				}
 				if err := binary.Write(c.conn, binary.BigEndian, name); err != nil {
-					return errors.New("Cannot write name")
+					return fmt.Errorf("cannot write name: %s", err.Error())
 				}
 
 				// Send NBD_INFO_DESCRIPTION
@@ -825,13 +843,13 @@ func (c *Connection) negotiate(ctx context.Context) error {
 					NbdOptReplyLength: uint32(2 + len(description)),
 				}
 				if err := binary.Write(c.conn, binary.BigEndian, or); err != nil {
-					return errors.New("Cannot write info description pt1")
+					return fmt.Errorf("Cannot write info description pt1: %s", err.Error())
 				}
 				if err := binary.Write(c.conn, binary.BigEndian, uint16(NBD_INFO_DESCRIPTION)); err != nil {
-					return errors.New("Cannot write description id")
+					return fmt.Errorf("Cannot write description id: %s", err.Error())
 				}
 				if err := binary.Write(c.conn, binary.BigEndian, description); err != nil {
-					return errors.New("Cannot write description")
+					return fmt.Errorf("Cannot write description: %s", err.Error())
 				}
 
 				// Send NBD_INFO_BLOCK_SIZE
@@ -842,7 +860,7 @@ func (c *Connection) negotiate(ctx context.Context) error {
 					NbdOptReplyLength: 14,
 				}
 				if err := binary.Write(c.conn, binary.BigEndian, or); err != nil {
-					return errors.New("Cannot write info block size pt1")
+					return fmt.Errorf("Cannot write info block size pt1: %s", err.Error())
 				}
 				ir2 := nbdInfoBlockSize{
 					NbdInfoType:           NBD_INFO_BLOCK_SIZE,
@@ -851,7 +869,7 @@ func (c *Connection) negotiate(ctx context.Context) error {
 					NbdMaximumBlockSize:   uint32(export.maximumBlockSize),
 				}
 				if err := binary.Write(c.conn, binary.BigEndian, ir2); err != nil {
-					return errors.New("Cannot write info block size pt2")
+					return fmt.Errorf("Cannot write info block size pt2: %s", err.Error())
 				}
 
 				replyType := NBD_REP_ACK
@@ -868,7 +886,7 @@ func (c *Connection) negotiate(ctx context.Context) error {
 					NbdOptReplyLength: 0,
 				}
 				if err := binary.Write(c.conn, binary.BigEndian, or); err != nil {
-					return errors.New("Cannot info ack")
+					return fmt.Errorf("Cannot info ack: %s", err.Error())
 				}
 				if opt.NbdOptID == NBD_OPT_INFO || or.NbdOptReplyType&NBD_REP_FLAG_ERROR != 0 {
 					// Disassociate the backend as we are not closing
@@ -882,7 +900,7 @@ func (c *Connection) negotiate(ctx context.Context) error {
 				// send 124 bytes of zeroes.
 				zeroes := make([]byte, 124, 124)
 				if err := binary.Write(c.conn, binary.BigEndian, zeroes); err != nil {
-					return errors.New("Cannot write zeroes")
+					return fmt.Errorf("Cannot write zeroes: %s", err.Error())
 				}
 			}
 			c.export = export
@@ -905,14 +923,14 @@ func (c *Connection) negotiate(ctx context.Context) error {
 					NbdOptReplyLength: uint32(len(name) + 4),
 				}
 				if err := binary.Write(c.conn, binary.BigEndian, or); err != nil {
-					return errors.New("Cannot send list item")
+					return fmt.Errorf("Cannot send list item: %s", err.Error())
 				}
 				l := uint32(len(name))
 				if err := binary.Write(c.conn, binary.BigEndian, l); err != nil {
-					return errors.New("Cannot send list name length")
+					return fmt.Errorf("Cannot send list name length: %s", err.Error())
 				}
 				if n, err := c.conn.Write([]byte(name)); err != nil || n != len(name) {
-					return errors.New("Cannot send list name")
+					return fmt.Errorf("Cannot send list name: %s", err.Error())
 				}
 
 				dedupMap[name] = true
@@ -924,7 +942,7 @@ func (c *Connection) negotiate(ctx context.Context) error {
 				NbdOptReplyLength: 0,
 			}
 			if err := binary.Write(c.conn, binary.BigEndian, or); err != nil {
-				return errors.New("Cannot send list ack")
+				return fmt.Errorf("Cannot send list ack: %s", err.Error())
 			}
 		case NBD_OPT_STARTTLS:
 			if c.listener.tlsconfig == nil || c.tlsConn != nil {
@@ -940,7 +958,7 @@ func (c *Connection) negotiate(ctx context.Context) error {
 					or.NbdOptReplyType = NBD_REP_ERR_INVALID
 				}
 				if err := binary.Write(c.conn, binary.BigEndian, or); err != nil {
-					return errors.New("Cannot reply to unsupported TLS option")
+					return fmt.Errorf("Cannot reply to unsupported TLS option: %s", err.Error())
 				}
 			} else {
 				or := nbdOptReply{
@@ -950,7 +968,7 @@ func (c *Connection) negotiate(ctx context.Context) error {
 					NbdOptReplyLength: 0,
 				}
 				if err := binary.Write(c.conn, binary.BigEndian, or); err != nil {
-					return errors.New("Cannot send TLS ack")
+					return fmt.Errorf("Cannot send TLS ack: %s", err.Error())
 				}
 				c.logger.Infof("Upgrading connection with %s to TLS", c.name)
 				// switch over to TLS
@@ -959,7 +977,7 @@ func (c *Connection) negotiate(ctx context.Context) error {
 				c.conn = tls
 				// explicitly handshake so we get an error here if there is an issue
 				if err := tls.Handshake(); err != nil {
-					return fmt.Errorf("TLS handshake failed: %s", err)
+					return fmt.Errorf("TLS handshake failed: %s", err.Error())
 				}
 			}
 		case NBD_OPT_ABORT:
@@ -970,7 +988,7 @@ func (c *Connection) negotiate(ctx context.Context) error {
 				NbdOptReplyLength: 0,
 			}
 			if err := binary.Write(c.conn, binary.BigEndian, or); err != nil {
-				return errors.New("Cannot send abort ack")
+				return fmt.Errorf("Cannot send abort ack: %s", err.Error())
 			}
 			return errors.New("Connection aborted by client")
 		default:
@@ -986,7 +1004,7 @@ func (c *Connection) negotiate(ctx context.Context) error {
 				NbdOptReplyLength: 0,
 			}
 			if err := binary.Write(c.conn, binary.BigEndian, or); err != nil {
-				return errors.New("Cannot reply to unsupported option")
+				return fmt.Errorf("Cannot reply to unsupported option: %s", err.Error())
 			}
 		}
 	}
@@ -1032,7 +1050,11 @@ func (c *Connection) connectExport(ctx context.Context, ec *ExportConfig) (*Expo
 	forceFlush, _ := strconv.ParseBool(ec.DriverParameters["flush"])
 	forceFua, _ := strconv.ParseBool(ec.DriverParameters["fua"])
 
-	backendgen, ok := backendMap[strings.ToLower(ec.Driver)]
+	driver := strings.ToLower(ec.Driver)
+
+	c.logger.Debugf("generating export using driver %s for %s", driver, c.name)
+
+	backendgen, ok := backendMap[driver]
 	if !ok {
 		return nil, fmt.Errorf("No such driver %s", ec.Driver)
 	}
@@ -1084,6 +1106,8 @@ func (c *Connection) connectExport(ctx context.Context, ec *ExportConfig) (*Expo
 	if backend.HasFlush(ctx) || forceFlush {
 		flags |= NBD_FLAG_SEND_FLUSH
 	}
+
+	c.logger.Debugf("generating backend %s, using %d flags, for %s", driver, flags, c.name)
 
 	gem.Size = gem.Size & ^(gem.MinimumBlockSize - 1)
 	return &Export{
