@@ -1,35 +1,25 @@
 package server
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
 	"strconv"
 
 	"github.com/g8os/blockstor/redisstub"
-	"github.com/g8os/blockstor/tlog"
 	log "github.com/glendc/go-mini-log"
 )
 
 // DefaultConfig creates a new config, using sane defaults
 func DefaultConfig() *Config {
-	privKey := make([]byte, tlog.KeySize)
-	rand.Read(privKey)
-
-	nonce := make([]byte, tlog.NonceSize)
-	rand.Read(nonce)
-	hexNonce := hex.EncodeToString(nonce)
-
 	return &Config{
 		K:          4,
 		M:          2,
-		ListenAddr: "", // allocate dynamically
+		ListenAddr: "0.0.0.0:11211",
 		FlushSize:  25,
 		FlushTime:  25,
-		PrivKey:    string(privKey),
-		HexNonce:   hexNonce,
+		PrivKey:    "12345678901234567890123456789012",
+		HexNonce:   "37b8e8a308c354048d245f6d",
 	}
 }
 
