@@ -5,35 +5,33 @@ import (
 	"errors"
 	"os"
 	"os/signal"
-	"strconv"
 	"sync"
 	"syscall"
 
+	"github.com/g8os/blockstor/nbdserver/config"
 	log "github.com/glendc/go-mini-log"
-
-	gridapi "github.com/g8os/blockstor/gridapi/gridapiclient"
 )
 
 // NewClusterClientFactory creates a ClusterClientFactory.
-func NewClusterClientFactory(gridapiaddress string, logger log.Logger) (*ClusterClientFactory, error) {
-	if gridapiaddress == "" {
-		return nil, errors.New("NewClusterClientFactory requires a non-empty gridapiaddress")
+func NewClusterClientFactory(configPath string, logger log.Logger) (*ClusterClientFactory, error) {
+	if configPath == "" {
+		return nil, errors.New("NewClusterClientFactory requires a non-empty config path")
 	}
 	if logger == nil {
 		logger = log.New(os.Stderr, "", log.LstdFlags)
 	}
 
 	return &ClusterClientFactory{
-		gridapiaddress: gridapiaddress,
-		requestCh:      make(chan string),
-		responseCh:     make(chan clusterClientResponse),
-		logger:         logger,
+		configPath: configPath,
+		requestCh:  make(chan string),
+		responseCh: make(chan clusterClientResponse),
+		logger:     logger,
 	}, nil
 }
 
 // ClusterClientFactory allows for the creation of ClusterClients.
 type ClusterClientFactory struct {
-	gridapiaddress string
+	configPath string
 	// used for creation of storage cluster clients
 	requestCh  chan string
 	responseCh chan clusterClientResponse
@@ -64,8 +62,8 @@ func (f *ClusterClientFactory) Listen(ctx context.Context) {
 		case vdiskID := <-f.requestCh:
 			cc, err := NewClusterClient(
 				ClusterClientConfig{
-					GridAPIAddress: f.gridapiaddress,
-					VdiskID:        vdiskID,
+					ConfigPath: f.configPath,
+					VdiskID:    vdiskID,
 				},
 				f.logger,
 			)
@@ -96,22 +94,19 @@ type clusterClientResponse struct {
 // ClusterClientConfig contains all configurable parameters
 // used when creating a ClusterClient
 type ClusterClientConfig struct {
-	GridAPIAddress     string
+	ConfigPath         string
 	VdiskID            string
 	StorageClusterName string
 }
 
 // NewClusterClient creates a new cluster client
 func NewClusterClient(cfg ClusterClientConfig, logger log.Logger) (*ClusterClient, error) {
-	client := gridapi.NewG8OSStatelessGRID()
-	client.BaseURI = cfg.GridAPIAddress
-
 	if logger == nil {
 		logger = log.New(os.Stderr, "", log.LstdFlags)
 	}
 
 	cc := &ClusterClient{
-		client:             client,
+		configPath:         cfg.ConfigPath,
 		vdiskID:            cfg.VdiskID,
 		storageClusterName: cfg.StorageClusterName,
 		logger:             logger,
@@ -128,7 +123,7 @@ func NewClusterClient(cfg ClusterClientConfig, logger log.Logger) (*ClusterClien
 // ClusterClient contains the cluster configuration,
 // which gets reloaded based on incoming SIGHUP signals.
 type ClusterClient struct {
-	client *gridapi.G8OSStatelessGRID
+	configPath string
 
 	// when storageClusterName is given,
 	// vdiskID isn't needed and thus not used
@@ -139,11 +134,14 @@ type ClusterClient struct {
 
 	// keep type, such that we can check this,
 	// when reloading the configuration
-	vdiskType gridapi.EnumVdiskType
+	vdiskType config.VdiskType
 
 	// used to get a redis connection
-	servers         []gridapi.HAStorageServer
-	numberOfServers int64 //Keep it as a seperate variable since this is constantly needed
+	dataConnectionStrings []string
+	numberOfServers       int64 //Keep it as a seperate variable since this is constantly needed
+
+	// used as a fallback for getting data from a remote server
+	rootDataConnectionString string
 
 	// used to store meta data
 	metaConnectionString string
@@ -170,7 +168,19 @@ func (cc *ClusterClient) ConnectionString(index int64) (string, error) {
 	}
 
 	bcIndex := index % cc.numberOfServers
-	return connectionStringFromHAStorageServer(cc.servers[bcIndex]), nil
+	return cc.dataConnectionStrings[bcIndex], nil
+}
+
+// RootConnectionString returns the root connectionstring, if available
+func (cc *ClusterClient) RootConnectionString() (string, error) {
+	cc.mux.Lock()
+	defer cc.mux.Unlock()
+
+	if !cc.loaded && !cc.loadConfig() {
+		return "", errors.New("couldn't load storage cluster config")
+	}
+
+	return cc.rootDataConnectionString, nil
 }
 
 // MetaConnectionString returns the connectionstring (`<host>:<port>`),
@@ -238,31 +248,35 @@ func (cc *ClusterClient) listen(ctx context.Context) {
 
 func (cc *ClusterClient) loadConfig() bool {
 	cc.loaded = false
-
 	cc.logger.Info("loading storage cluster config")
 
 	var storageClusterName string
 
+	cfg, err := config.ReadConfig(cc.configPath)
+	if err != nil {
+		cc.logger.Infof("couldn't load config at %q: %s", cc.configPath, err)
+		return false
+	}
+
 	if cc.storageClusterName == "" && cc.vdiskID != "" {
-		// get vdisk info
-		vdiskInfo, _, err := cc.client.Vdisks.GetVdiskInfo(cc.vdiskID, nil, nil)
-		if err != nil {
-			cc.logger.Infof("couldn't get vdiskInfo: %s", err.Error())
+		vdisk, ok := cfg.Vdisks[cc.vdiskID]
+		if !ok {
+			cc.logger.Infof("couldn't find a vdisk %s in the loaded config", cc.vdiskID)
 			return false
 		}
 
 		// check vdiskType, and sure it's the same one as last time
-		if cc.vdiskType != "" && cc.vdiskType != vdiskInfo.Type {
+		if cc.vdiskType != config.VdiskTypeNil && cc.vdiskType != vdisk.Type {
 			cc.logger.Infof("wrong type for vdisk %q, expected %q, while received %q",
-				cc.vdiskID, cc.vdiskType, vdiskInfo.Type)
+				cc.vdiskID, cc.vdiskType, vdisk.Type)
 			return false
 		}
-		cc.vdiskType = vdiskInfo.Type
+		cc.vdiskType = vdisk.Type
 
-		storageClusterName = vdiskInfo.Storagecluster
+		storageClusterName = vdisk.Storagecluster
 	} else if cc.storageClusterName != "" {
 		cc.logger.Infof(
-			"skipping fetching vdiskInfo because storage cluster name (%s) is already given",
+			"skipping fetching vdisk config because storage cluster name (%s) is already given",
 			cc.storageClusterName)
 		storageClusterName = cc.storageClusterName
 	} else {
@@ -271,33 +285,31 @@ func (cc *ClusterClient) loadConfig() bool {
 	}
 
 	//Get information about the backend storage nodes
-	storageClusterInfo, _, err :=
-		cc.client.Storageclusters.GetClusterInfo(storageClusterName, nil, nil)
-	if err != nil {
-		cc.logger.Infof("couldn't get storage cluster info: %s", err.Error())
+	storageCluster, ok := cfg.StorageClusters[storageClusterName]
+	if !ok {
+		cc.logger.Infof("couldn't find a storagecluster %s in the loaded config", storageClusterName)
 		return false
 	}
 
 	// store information required for getting redis connections
-	cc.servers = storageClusterInfo.DataStorage
-	cc.numberOfServers = int64(len(cc.servers))
+	cc.dataConnectionStrings = storageCluster.DataStorage
+	cc.numberOfServers = int64(len(cc.dataConnectionStrings))
 	if cc.numberOfServers < 1 {
 		cc.logger.Info(
-			"received no storageBackendController, while at least 1 is required")
+			"received no data storage servers, while at least 1 is required")
 		return false
 	}
 
+	// remote server, used as fallback for getting data
+	cc.rootDataConnectionString = storageCluster.RootDataStorage
+
 	// used to store metadata
-	if len(storageClusterInfo.MetadataStorage) < 1 {
+	if storageCluster.MetaDataStorage == "" {
 		cc.logger.Infof("No metadata servers available in storagecluster %s", storageClusterName)
 		return false
 	}
-	cc.metaConnectionString = connectionStringFromHAStorageServer(storageClusterInfo.MetadataStorage[0])
+	cc.metaConnectionString = storageCluster.MetaDataStorage
 
 	cc.loaded = true
 	return cc.loaded
-}
-
-func connectionStringFromHAStorageServer(server gridapi.HAStorageServer) string {
-	return server.Master.Ip + ":" + strconv.Itoa(server.Master.Port)
 }

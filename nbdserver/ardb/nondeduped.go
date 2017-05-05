@@ -42,7 +42,7 @@ func (ss *nonDedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 	if ss.isZeroContent(content) {
 		log.Debugf(
 			"deleting content @ %d for vdisk %s as it's an all zeroes block",
-			ss.vdiskID, blockIndex)
+			blockIndex, ss.vdiskID)
 		_, err = conn.Do("DEL", key)
 		return
 	}

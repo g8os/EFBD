@@ -7,7 +7,7 @@ import (
 
 	log "github.com/glendc/go-mini-log"
 
-	gridapi "github.com/g8os/blockstor/gridapi/gridapiclient"
+	"github.com/g8os/blockstor/nbdserver/config"
 	"github.com/g8os/blockstor/nbdserver/lba"
 	"github.com/g8os/blockstor/storagecluster"
 	"github.com/g8os/gonbdserver/nbd"
@@ -28,7 +28,7 @@ const (
 type BackendFactoryConfig struct {
 	Pool                     *RedisPool
 	SCClientFactory          *storagecluster.ClusterClientFactory
-	GridAPIAddress           string
+	ConfigPath               string
 	RootARDBConnectionString string
 	LBACacheLimit            int64 // min-capped to LBA.BytesPerShard
 }
@@ -41,8 +41,8 @@ func (cfg *BackendFactoryConfig) Validate() error {
 	if cfg.SCClientFactory == nil {
 		return errors.New("BackendFactory requires a non-nil storage.ClusterConfigFactory")
 	}
-	if cfg.GridAPIAddress == "" {
-		return errors.New("BackendFactory requires a non-empty GridAPIAddress")
+	if cfg.ConfigPath == "" {
+		return errors.New("BackendFactory requires a non-empty ConfigPath")
 	}
 
 	return nil
@@ -57,11 +57,10 @@ func NewBackendFactory(cfg BackendFactoryConfig) (*BackendFactory, error) {
 	}
 
 	return &BackendFactory{
-		backendPool:              cfg.Pool,
-		scClientFactory:          cfg.SCClientFactory,
-		gridAPIAddress:           cfg.GridAPIAddress,
-		rootArdbConnectionString: cfg.RootARDBConnectionString,
-		lbaCacheLimit:            cfg.LBACacheLimit,
+		backendPool:     cfg.Pool,
+		scClientFactory: cfg.SCClientFactory,
+		configPath:      cfg.ConfigPath,
+		lbaCacheLimit:   cfg.LBACacheLimit,
 	}, nil
 }
 
@@ -69,11 +68,10 @@ func NewBackendFactory(cfg BackendFactoryConfig) (*BackendFactory, error) {
 // that can not be passed in the exportconfig like the pool of ardbconnections
 // I hate the factory pattern but I hate global variables even more
 type BackendFactory struct {
-	backendPool              *RedisPool
-	scClientFactory          *storagecluster.ClusterClientFactory
-	gridAPIAddress           string
-	rootArdbConnectionString string
-	lbaCacheLimit            int64
+	backendPool     *RedisPool
+	scClientFactory *storagecluster.ClusterClientFactory
+	configPath      string
+	lbaCacheLimit   int64
 }
 
 //NewBackend generates a new ardb backend
@@ -88,29 +86,32 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 		return
 	}
 
-	redisProvider, err := newRedisProvider(
-		f.backendPool, storageClusterClient, f.rootArdbConnectionString)
-
 	//Get information about the vdisk
-	g8osClient := gridapi.NewG8OSStatelessGRID()
-	g8osClient.BaseURI = f.gridAPIAddress
-	log.Info("starting vdisk", vdiskID)
-	vdiskInfo, _, err := g8osClient.Vdisks.GetVdiskInfo(vdiskID, nil, nil)
+	cfg, err := config.ReadConfig(f.configPath)
 	if err != nil {
-		log.Infof("couldn't get vdisk info: %s", err.Error())
+		log.Infof("couldn't read config %q: %s", f.configPath, err.Error())
 		return
 	}
 
+	vdisk, ok := cfg.Vdisks[vdiskID]
+	if !ok {
+		err = fmt.Errorf("couldn't find vdisk %q in loaded config", vdiskID)
+		log.Infof(err.Error())
+		return
+	}
+
+	redisProvider, err := newRedisProvider(f.backendPool, storageClusterClient)
+
 	var storage backendStorage
-	blockSize := int64(vdiskInfo.Blocksize)
+	blockSize := int64(vdisk.Blocksize)
 
 	// GridAPI returns the vdisk size in GiB
-	vdiskSize := int64(vdiskInfo.Size) * gibibyteAsBytes
+	vdiskSize := int64(vdisk.Size) * gibibyteAsBytes
 
-	switch vdiskInfo.Type {
-	case gridapi.EnumVdiskTypedb, gridapi.EnumVdiskTypecache:
+	switch vdisk.Type {
+	case config.VdiskTypeDB, config.VdiskTypeCache:
 		storage = newNonDedupedStorage(vdiskID, blockSize, redisProvider)
-	case gridapi.EnumVdiskTypeboot:
+	case config.VdiskTypeBoot:
 		cacheLimit := f.lbaCacheLimit
 		if cacheLimit < lba.BytesPerShard {
 			log.Infof(
@@ -138,7 +139,7 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 
 		storage = newDedupedStorage(vdiskID, blockSize, redisProvider, vlba)
 	default:
-		err = fmt.Errorf("Unsupported vdisk type: %s", vdiskInfo.Type)
+		err = fmt.Errorf("unsupported vdisk type %q", vdisk.Type)
 	}
 
 	backend = &Backend{
@@ -151,7 +152,7 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 }
 
 // newRedisProvider creates a new redis provider
-func newRedisProvider(pool *RedisPool, storageClusterClient *storagecluster.ClusterClient, rootArdbConnectionString string) (*redisProvider, error) {
+func newRedisProvider(pool *RedisPool, storageClusterClient *storagecluster.ClusterClient) (*redisProvider, error) {
 	if pool == nil {
 		return nil, errors.New(
 			"no redis pool is given, while one is required")
@@ -162,9 +163,8 @@ func newRedisProvider(pool *RedisPool, storageClusterClient *storagecluster.Clus
 	}
 
 	return &redisProvider{
-		redisPool:                pool,
-		storageClusterClient:     storageClusterClient,
-		rootArdbConnectionString: rootArdbConnectionString,
+		redisPool:            pool,
+		storageClusterClient: storageClusterClient,
 	}, nil
 }
 
@@ -178,9 +178,8 @@ type redisConnectionProvider interface {
 // redisProvider allows you to get a redis connection from a pool
 // using a modulo index
 type redisProvider struct {
-	redisPool                *RedisPool
-	storageClusterClient     *storagecluster.ClusterClient
-	rootArdbConnectionString string
+	redisPool            *RedisPool
+	storageClusterClient *storagecluster.ClusterClient
 }
 
 // RedisConnection gets a redis connection from the underlying pool,
@@ -198,12 +197,12 @@ func (rp *redisProvider) RedisConnection(index int64) (conn redis.Conn, err erro
 // FallbackRedisConnection gets a redis connection from the underlying fallback pool,
 // using a modulo index
 func (rp *redisProvider) FallbackRedisConnection(index int64) (conn redis.Conn, err error) {
-	if rp.rootArdbConnectionString == "" {
-		err = errNoRootAvailable
+	connString, err := rp.storageClusterClient.RootConnectionString()
+	if err != nil {
 		return
 	}
 
-	conn = rp.redisPool.Get(rp.rootArdbConnectionString)
+	conn = rp.redisPool.Get(connString)
 	return
 }
 

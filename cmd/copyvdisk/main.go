@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
-	"strings"
 
 	log "github.com/glendc/go-mini-log"
 )
@@ -29,22 +28,6 @@ func main() {
 		fmt.Fprintf(os.Stderr, "invalid user input: %s\n", err.Error())
 		printUsage()
 		os.Exit(2)
-	}
-
-	// user feedback based on wrong flag pairing
-	if flagSourceURLType == urlTypeMetaServer && flagSourceStorageCluster != "" {
-		// defining storage cluster name is useless when the url type is direct
-		logger.Infof(
-			"-%s is defined as %q but will be ignored as -%s is of type %q",
-			flagSourceStorageClusterTag, flagSourceStorageCluster,
-			flagSourceURLTypeTag, flagSourceURLType)
-	}
-	if flagTargetURLType == urlTypeMetaServer && flagTargetStorageCluster != "" {
-		// defining storage cluster name is useless when the url type is direct
-		logger.Infof(
-			"-%s is defined as %q but will be ignored as -%s is of type %q",
-			flagTargetStorageClusterTag, flagTargetStorageCluster,
-			flagTargetURLTypeTag, flagTargetURLType)
 	}
 
 	logger.Info("get the redis connection(s)...")
@@ -78,20 +61,12 @@ func main() {
 }
 
 const (
-	flagSourceURLTypeTag        = "sourcetype"
-	flagTargetURLTypeTag        = "targettype"
-	flagVerboseTag              = "v"
-	flagSourceStorageClusterTag = "sourcesc"
-	flagTargetStorageClusterTag = "targetsc"
+	flagVerboseTag = "v"
 )
 
 func init() {
 	// register flags
 	flag.BoolVar(&flagVerbose, flagVerboseTag, false, "")
-	flag.Var(&flagSourceURLType, flagSourceURLTypeTag, "")
-	flag.Var(&flagTargetURLType, flagTargetURLTypeTag, "")
-	flag.StringVar(&flagSourceStorageCluster, flagSourceStorageClusterTag, "", "")
-	flag.StringVar(&flagTargetStorageCluster, flagTargetStorageClusterTag, "", "")
 
 	// custom usage function
 	flag.Usage = printUsage
@@ -130,13 +105,6 @@ func parseUserInput(logger log.Logger) (input *userInputPair, err error) {
 		// it is assumed that the same url
 		// for both source and target is to be used
 		input.Target.URL = args[2]
-		// in which case we'll also assume -targettype == -soucetype
-		if flagTargetURLType != flagSourceURLType {
-			logger.Infof(
-				"-%s is defined as %q but will be defaulted to %q (-%s), as only 1 url is specified",
-				flagTargetURLTypeTag, flagTargetURLType, flagSourceURLType, flagSourceURLTypeTag)
-		}
-		flagTargetURLType = flagSourceURLType
 	}
 
 	return
@@ -148,8 +116,6 @@ func printUsage() {
 	exe := path.Base(os.Args[0])
 	fmt.Fprintf(os.Stderr,
 		usage, exe,
-		flagSourceURLTypeTag, flagTargetURLTypeTag, urlTypeGrid, urlTypeMetaServer,
-		flagSourceStorageClusterTag, flagTargetStorageClusterTag,
 		flagVerboseTag)
 }
 
@@ -166,11 +132,7 @@ type userInputPair struct {
 
 // optional flags
 var (
-	flagSourceURLType        = urlType(urlTypeGrid)
-	flagTargetURLType        = urlType(urlTypeGrid)
-	flagVerbose              bool
-	flagTargetStorageCluster string
-	flagSourceStorageCluster string
+	flagVerbose bool
 )
 
 // usage string
@@ -180,22 +142,10 @@ const (
 copy the metadata of a deduped vdisk
 
 usage:
-  %[1]s [-%[8]s] \
-    [-%[2]s %[4]s|%[5]s] [-%[3]s %[4]s|%[5]s] \
-    [-%[6]s name] [-%[7]s name] \
+  %[1]s [-%[2]s] \
     source_vdisk target_vdisk source_url [target_url]
 
-  -%[2]s, -%[3]s:
-    types of the given url(s), default="%[4]s", options:
-      => "%[4]s": specify an url to use the GridAPI for the source/target;
-      => "%[5]s": specify a connection string to use an ARDB directly;
-
-  -%[6]s, -%[7]s:
-    combined with the "%[2]s and/or %[3]s" flag(s),
-    it allows you to predefine the source's and/or target's storageCluster name,
-    instead of fetching it automatically from the GridAPI's vdisk info
-
-  -%[8]s:
+  -%[2]s:
     log all available info to the STDERR
 
   -h, --help:
@@ -203,32 +153,5 @@ usage:
 
   When no target_url is given,
   the target_url is the same as the source_url
-  and the type of target_url (-%[3]s)
-  will be the same as the type of source_url (-%[2]s).
 `
 )
-
-type urlType string
-
-// url types
-const (
-	urlTypeGrid       = "api"
-	urlTypeMetaServer = "direct"
-)
-
-// String implements flag.Value.String
-func (t *urlType) String() string {
-	return string(*t)
-}
-
-// Set implements flag.Value.Set
-func (t *urlType) Set(raw string) (err error) {
-	switch strings.ToLower(raw) {
-	case urlTypeGrid, urlTypeMetaServer:
-		*t = urlType(raw)
-	default:
-		err = fmt.Errorf("%q is not a valid url type", raw)
-	}
-
-	return
-}
