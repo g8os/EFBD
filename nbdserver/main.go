@@ -45,7 +45,7 @@ func main() {
 	flag.StringVar(&protocol, "protocol", "unix", "Protocol to listen on, 'tcp' or 'unix'")
 	flag.StringVar(&address, "address", "/tmp/nbd-socket", "Address to listen on, unix socket or tcp address, ':6666' for example")
 	flag.StringVar(&gridapiaddress, "gridapi", "", "Address of the grid api REST API, leave empty to use the embedded stub")
-	flag.StringVar(&tlogrpcaddress, "tlogrpc", "", "Address of the tlog RPC, leave empty to use the inmemory version (test/dev only)")
+	flag.StringVar(&tlogrpcaddress, "tlogrpc", "", "Address of the tlog RPC, set to 'auto' to use the inmemory version (test/dev only)")
 	flag.StringVar(&rootArdbConnectionString, "rootardb", "", "Address of the root ardb connection string, used in case content can't be found in local storage")
 	flag.StringVar(&nonDedupedExports, "nondeduped", "", "when using the embedded gridapi, comma seperated list of exports that should not be deduped")
 	flag.StringVar(&testArdbConnectionStrings, "testardbs", "localhost:16379,localhost:16379", "Comma seperated list of ardb connection strings returned by the embedded backend controller, first one is the metadataserver")
@@ -108,7 +108,7 @@ func main() {
 	log.Info("Using grid api at", gridapiaddress)
 
 	// create embedded tlog api if needed
-	if tlogrpcaddress == "" {
+	if tlogrpcaddress == "auto" {
 		log.Info("Starting embedded (in-memory) tlogserver")
 		config := tlogserver.DefaultConfig()
 
@@ -126,7 +126,9 @@ func main() {
 		log.Debug("embedded (in-memory) tlogserver up and running")
 		go server.Listen()
 	}
-	log.Info("Using tlog rpc at", tlogrpcaddress)
+	if tlogrpcaddress != "" {
+		log.Info("Using tlog rpc at", tlogrpcaddress)
+	}
 
 	exportController, err := NewExportController(
 		gridapiaddress,
