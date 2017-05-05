@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/g8os/blockstor/tlog/schema"
 	"github.com/g8os/blockstor/tlog/tlogclient"
 	"github.com/g8os/blockstor/tlog/tlogclient/decoder"
 )
@@ -51,7 +52,7 @@ func TestEndToEnd(t *testing.T) {
 	for i := 0; i < conf.FlushSize*numFlush; i++ {
 		x := uint64(i)
 		// check we can send it without error
-		err := client.Send(expectedVdiskID, x, x, x, data)
+		err := client.Send(expectedVdiskID, schema.OpWrite, x, x, x, data, uint64(len(data)))
 		assert.Nil(t, err)
 
 		// check there is no error from server

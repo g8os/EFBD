@@ -12,6 +12,7 @@ import (
 	"github.com/g8os/blockstor/gridapi"
 	"github.com/g8os/blockstor/nbdserver/ardb"
 	"github.com/g8os/blockstor/storagecluster"
+	"github.com/g8os/blockstor/tlog/schema"
 	"github.com/g8os/blockstor/tlog/tlogclient/decoder"
 	"github.com/g8os/gonbdserver/nbd"
 )
@@ -121,11 +122,21 @@ func main() {
 		for i := 0; i < blocks.Len(); i++ {
 			block := blocks.At(i)
 			lba := block.Lba()
-			data, err := block.Data()
-			if err != nil {
-				log.Fatalf("failed to get data block of lba=%v, err=%v", lba, err)
+
+			switch block.Operation() {
+			case schema.OpWrite:
+				data, err := block.Data()
+				if err != nil {
+					log.Fatalf("failed to get data block of lba=%v, err=%v", lba, err)
+				}
+				if _, err := backend.WriteAt(backendCtx, data, int64(lba), false); err != nil {
+					log.Fatalf("failed to WriteAt lba=%v, err=%v", lba, err)
+				}
+			case schema.OpWriteZeroesAt:
+				if _, err := backend.WriteZeroesAt(backendCtx, int64(lba), int64(block.Size()), false); err != nil {
+					log.Fatalf("failed to WriteAt lba=%v, err=%v", lba, err)
+				}
 			}
-			backend.WriteAt(backendCtx, data, int64(lba), false)
 		}
 	}
 }
