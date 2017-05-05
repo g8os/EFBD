@@ -2,6 +2,8 @@ package main
 
 import (
 	"flag"
+	"net/http"
+	_ "net/http/pprof"
 	"strings"
 
 	"github.com/g8os/blockstor/tlog/tlogserver/server"
@@ -12,6 +14,7 @@ func main() {
 	conf := server.DefaultConfig()
 
 	var verbose bool
+	var profileAddr string
 	var objstoraddresses string
 
 	flag.StringVar(&conf.ListenAddr, "listen-addr", conf.ListenAddr, "port to listen")
@@ -21,6 +24,7 @@ func main() {
 	flag.IntVar(&conf.M, "m", conf.M, "M variable of erasure encoding")
 	flag.StringVar(&conf.PrivKey, "priv-key", conf.PrivKey, "private key")
 	flag.StringVar(&conf.HexNonce, "nonce", conf.HexNonce, "hex nonce used for encryption")
+	flag.StringVar(&profileAddr, "profile-addr", "", "profile address")
 
 	flag.StringVar(&objstoraddresses, "objstor-addresses", "",
 		"comma seperated list of objstor addresses, if < k+m+1 addresses are given, the missing addresses are assumed to be on the ports following the last given address")
@@ -29,6 +33,16 @@ func main() {
 
 	// parse flags
 	flag.Parse()
+
+	// profiling
+	if profileAddr != "" {
+		go func() {
+			log.Infof("profiling enabled on %v", profileAddr)
+			if err := http.ListenAndServe(profileAddr, http.DefaultServeMux); err != nil {
+				log.Infof("Failed to enable profiling on %v, err:%v", profileAddr, err)
+			}
+		}()
+	}
 
 	// get objstore addresses
 	if objstoraddresses != "" {
