@@ -12,6 +12,11 @@
 			"Rev": "b26d9c308763d68093482582cea63d69be07a0f0"
 		},
 		{
+			"ImportPath": "github.com/asaskevich/govalidator",
+			"Comment": "v5",
+			"Rev": "7b3beb6df3c42abd3509abfc3bcacc0fbfb7c877"
+		},
+		{
 			"ImportPath": "github.com/cupcake/rdb",
 			"Rev": "43ba34106c765f2111c0dc7b74cdf8ee437411e0"
 		},
@@ -56,6 +61,10 @@
 		{
 			"ImportPath": "github.com/glycerine/rbtree",
 			"Rev": "cd7940bb26b149ce2faf398e7c63fff01aa7b394"
+		},
+		{
+			"ImportPath": "github.com/go-yaml/yaml",
+			"Rev": "cd8b52f8269e0feb286dfeef29f8fe4d5b397e0b"
 		},
 		{
 			"ImportPath": "github.com/golang/snappy",
