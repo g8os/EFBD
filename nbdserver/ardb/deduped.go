@@ -39,7 +39,7 @@ func (ds *dedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 	if ds.zeroContentHash.Equals(hash) {
 		log.Debugf(
 			"deleting hash @ %d from LBA for deduped vdisk %s as it's an all zeroes block",
-			ds.vdiskID, blockIndex)
+			blockIndex, ds.vdiskID)
 		err = ds.lba.Delete(blockIndex)
 		return
 	}
