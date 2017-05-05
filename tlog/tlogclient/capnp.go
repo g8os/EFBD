@@ -18,8 +18,8 @@ func decodeResponse(data []byte) (*schema.TlogResponse, error) {
 	return &tr, err
 }
 
-func buildCapnp(vdiskID string, seq uint64, hash []byte,
-	lba, timestamp uint64, data []byte) ([]byte, error) {
+func buildCapnp(vdiskID string, op uint8, seq uint64, hash []byte,
+	lba, timestamp uint64, data []byte, size uint64) ([]byte, error) {
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
 	if err != nil {
 		return nil, fmt.Errorf("build capnp:%v", err)
@@ -31,11 +31,12 @@ func buildCapnp(vdiskID string, seq uint64, hash []byte,
 	}
 
 	block.SetVdiskID(vdiskID)
+	block.SetOperation(op)
 	block.SetSequence(seq)
 	block.SetLba(lba)
 	block.SetHash(hash)
 	block.SetTimestamp(timestamp)
-	block.SetSize(uint32(len(data)))
+	block.SetSize(size)
 	block.SetData(data)
 
 	buf := new(bytes.Buffer)

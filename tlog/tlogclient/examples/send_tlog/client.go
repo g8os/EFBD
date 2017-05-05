@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 
+	"github.com/g8os/blockstor/tlog/schema"
 	client "github.com/g8os/blockstor/tlog/tlogclient"
 	log "github.com/glendc/go-mini-log"
 )
@@ -56,7 +57,7 @@ func main() {
 			client := clients[int(j)%numClient]
 
 			log.Infof("j=%v\n", j)
-			err := client.Send(vdiskID, j, j, j, data)
+			err := client.Send(vdiskID, schema.OpWrite, j, j, j, data, uint64(len(data)))
 			if err != nil {
 				log.Infof("client %v died\n", idx)
 				return

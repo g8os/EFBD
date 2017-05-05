@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/g8os/blockstor/storagecluster"
+	"github.com/g8os/blockstor/tlog/schema"
 	"github.com/g8os/blockstor/tlog/tlogclient"
 	"github.com/g8os/gonbdserver/nbd"
 	"github.com/siddontang/go/log"
@@ -43,9 +44,11 @@ type Backend struct {
 }
 
 type transaction struct {
-	Content    []byte
-	BlockIndex uint64
-	Timestamp  uint64
+	Operation uint8
+	Content   []byte
+	Offset    uint64
+	Timestamp uint64
+	Size      uint64
 }
 
 //WriteAt implements nbd.Backend.WriteAt
@@ -76,7 +79,7 @@ func (ab *Backend) WriteAt(ctx context.Context, b []byte, offset int64, fua bool
 
 	// send tlog async
 	if ab.tlogClient != nil {
-		ab.sendTransaction(uint64(blockIndex), content)
+		ab.sendTransaction(uint64(blockIndex*ab.blockSize), schema.OpWrite, content, uint64(len(content)))
 	}
 
 	if fua {
@@ -95,8 +98,6 @@ func (ab *Backend) WriteZeroesAt(ctx context.Context, offset, length int64, fua 
 	blockIndex := offset / ab.blockSize
 	offsetInsideBlock := offset % ab.blockSize
 
-	var content []byte
-
 	if offsetInsideBlock == 0 && length == ab.blockSize {
 		// Option 1.
 		// Which is hopefully the most common option
@@ -107,7 +108,7 @@ func (ab *Backend) WriteZeroesAt(ctx context.Context, offset, length int64, fua 
 		// Option 2.
 		// We need to write zeroes at an offset,
 		// or the zeroes don't cover the entire block
-		content, err = ab.mergeZeroes(blockIndex, offsetInsideBlock, length)
+		_, err = ab.mergeZeroes(blockIndex, offsetInsideBlock, length)
 	}
 
 	if err != nil {
@@ -116,7 +117,7 @@ func (ab *Backend) WriteZeroesAt(ctx context.Context, offset, length int64, fua 
 
 	// send tlog async
 	if ab.tlogClient != nil {
-		ab.sendTransaction(uint64(blockIndex), content)
+		ab.sendTransaction(uint64(blockIndex*ab.blockSize), schema.OpWriteZeroesAt, nil, uint64(length))
 	}
 
 	if fua {
@@ -247,10 +248,12 @@ func (ab *Backend) GoBackground(ctx context.Context) {
 		case transaction := <-ab.transactionCh:
 			err := ab.tlogClient.Send(
 				ab.vdiskID,
+				transaction.Operation,
 				ab.tlogCounter,
-				transaction.BlockIndex,
+				transaction.Offset,
 				transaction.Timestamp,
 				transaction.Content,
+				transaction.Size,
 			)
 			if err != nil {
 				log.Infof(
@@ -283,11 +286,13 @@ func (ab *Backend) GoBackground(ctx context.Context) {
 	}
 }
 
-func (ab *Backend) sendTransaction(blockIndex uint64, content []byte) {
+func (ab *Backend) sendTransaction(offset uint64, op uint8, content []byte, length uint64) {
 	ab.transactionCh <- transaction{
-		Content:    content,
-		Timestamp:  uint64(time.Now().Unix()),
-		BlockIndex: blockIndex,
+		Operation: op,
+		Content:   content,
+		Timestamp: uint64(time.Now().Unix()),
+		Offset:    offset,
+		Size:      length,
 	}
 }
 
