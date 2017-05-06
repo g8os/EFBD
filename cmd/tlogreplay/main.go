@@ -29,7 +29,7 @@ func main() {
 	flag.StringVar(&gridapiaddress, "gridapi", "", "Address of the grid api REST API, leave empty to use the embedded stub")
 	flag.StringVar(&nonDedupedExports, "nondeduped", "", "when using the embedded gridapi, comma seperated list of exports that should not be deduped")
 	flag.StringVar(&testArdbConnectionStrings, "testardbs", "localhost:16377,localhost:16378", "Comma seperated list of ardb connection strings returned by the embedded backend controller, first one is the metadataserver")
-	flag.StringVar(&vdiskID, "vdiskid", "default", "vdisk ID")
+	flag.StringVar(&vdiskID, "vdiskid", "", "vdisk ID")
 	flag.StringVar(&tlogObjstorAddrs, "tlog-objstor-addrs",
 		"127.0.0.1:16379,127.0.0.1:16380,127.0.0.1:16381,127.0.0.1:16382,127.0.0.1:16383,127.0.0.1:16384,127.0.0.1:16385",
 		"tlog objstor addrs")
@@ -39,6 +39,10 @@ func main() {
 	flag.StringVar(&hexNonce, "nonce", "37b8e8a308c354048d245f6d", "hex nonce used for encryption")
 
 	flag.Parse()
+
+	if vdiskID == "" {
+		log.Fatal("please specify vdiskID to recover")
+	}
 
 	// gridapiaddress
 	if gridapiaddress == "" {
@@ -91,7 +95,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to create backend:%v", err)
 	}
-	log.Infof("have fun!!!")
 
 	// create tlog decoder
 	addrs := strings.Split(tlogObjstorAddrs, ",")

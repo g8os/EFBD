@@ -56,8 +56,6 @@ func (ab *Backend) WriteAt(ctx context.Context, b []byte, offset int64, fua bool
 	blockIndex := offset / ab.blockSize
 	offsetInsideBlock := offset % ab.blockSize
 
-	var content []byte
-
 	length := int64(len(b))
 	if offsetInsideBlock == 0 && length == ab.blockSize {
 		// Option 1.
@@ -65,12 +63,11 @@ func (ab *Backend) WriteAt(ctx context.Context, b []byte, offset int64, fua bool
 		// in this option we write without an offset,
 		// and write a full-sized block, thus no merging required
 		err = ab.storage.Set(blockIndex, b)
-		content = b
 	} else {
 		// Option 2.
 		// We need to merge both contents.
 		// the length can't be bigger, as that is guaranteed by gonbdserver
-		content, err = ab.storage.Merge(blockIndex, offsetInsideBlock, b)
+		_, err = ab.storage.Merge(blockIndex, offsetInsideBlock, b)
 	}
 
 	if err != nil {
@@ -79,7 +76,7 @@ func (ab *Backend) WriteAt(ctx context.Context, b []byte, offset int64, fua bool
 
 	// send tlog async
 	if ab.tlogClient != nil {
-		ab.sendTransaction(uint64(blockIndex*ab.blockSize), schema.OpWrite, content, uint64(len(content)))
+		ab.sendTransaction(uint64(offset), schema.OpWrite, b, uint64(length))
 	}
 
 	if fua {
@@ -117,7 +114,7 @@ func (ab *Backend) WriteZeroesAt(ctx context.Context, offset, length int64, fua 
 
 	// send tlog async
 	if ab.tlogClient != nil {
-		ab.sendTransaction(uint64(blockIndex*ab.blockSize), schema.OpWriteZeroesAt, nil, uint64(length))
+		ab.sendTransaction(uint64(offset), schema.OpWriteZeroesAt, nil, uint64(length))
 	}
 
 	if fua {
