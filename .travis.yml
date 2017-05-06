@@ -12,3 +12,4 @@ install:
 script:
   - go test -timeout 5m $(go list ./... | grep -v vendor)
   - GODEBUG=cgocheck=0 go test -timeout 5m -tags 'isal' $(go list ./... | grep -v vendor)
+  - ./scripts/codegeneration.sh
