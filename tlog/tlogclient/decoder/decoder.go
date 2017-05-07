@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"time"
 
 	"github.com/garyburd/redigo/redis"
 	log "github.com/glendc/go-mini-log"
@@ -33,7 +32,7 @@ type Decoder struct {
 	lastHashPrefix string
 
 	// pools of redis connection
-	redisPools []*redis.Pool
+	redisPool *tlog.RedisPool
 }
 
 // DecodedAggregation defines a decoded tlog aggregation
@@ -56,15 +55,9 @@ func New(objstorAddr []string, k, m int, vdiskID, privKey, nonce string) (*Decod
 	}
 
 	// create redis pools
-	pools := make([]*redis.Pool, len(objstorAddr))
-
-	for i := 0; i < len(objstorAddr); i++ {
-		addr := objstorAddr[i]
-		pools[i] = &redis.Pool{
-			MaxIdle:     3,
-			IdleTimeout: 240 * time.Second,
-			Dial:        func() (redis.Conn, error) { return redis.Dial("tcp", addr) },
-		}
+	redisPool, err := tlog.NewRedisPool(objstorAddr)
+	if err != nil {
+		return nil, err
 	}
 
 	return &Decoder{
@@ -75,7 +68,7 @@ func New(objstorAddr []string, k, m int, vdiskID, privKey, nonce string) (*Decod
 		decrypter:      decrypter,
 		privKey:        []byte(privKey),
 		lastHashPrefix: "last_hash_",
-		redisPools:     pools,
+		redisPool:      redisPool,
 	}, nil
 }
 
@@ -185,13 +178,14 @@ func (d *Decoder) decrypt(encrypted []byte) ([]byte, error) {
 // get and merge all pieces of the data
 func (d *Decoder) getAllPieces(key []byte) ([]byte, error) {
 	lost := []int{}
-	pieces := make([][]byte, d.k+d.m)
+	length := d.k + d.m
+	pieces := make([][]byte, length)
 
 	var pieceSize int
 
 	// get pieces from storage
-	for i := 0; i < d.k+d.m; i++ {
-		rc := d.redisPools[i+1].Get()
+	for i := 0; i < length; i++ {
+		rc := d.redisPool.Get(i + 1)
 		defer rc.Close()
 
 		b, err := redis.Bytes(rc.Do("GET", key))
@@ -234,7 +228,7 @@ func (d *Decoder) getAllPieces(key []byte) ([]byte, error) {
 }
 
 func (d *Decoder) getLastHash() ([]byte, error) {
-	rc := d.redisPools[0].Get()
+	rc := d.redisPool.Get(0)
 	defer rc.Close()
 
 	key := d.lastHashPrefix + d.vdiskID

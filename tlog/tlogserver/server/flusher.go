@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"sync"
 	"time"
 
@@ -23,8 +24,8 @@ type flusher struct {
 	flushTime int
 	privKey   []byte
 
-	redisPools map[int]*redis.Pool // pools of redis connection
-	tlogs      map[string]*tlogTab
+	redisPool *tlog.RedisPool
+	tlogs     map[string]*tlogTab
 
 	// platform-dependent interfaces
 	erasure   erasure.EraruseCoder
@@ -37,19 +38,9 @@ func newFlusher(conf *Config) (*flusher, error) {
 		return nil, err
 	}
 
-	// create redis pool
-	pools := make(map[int]*redis.Pool, len(addresses))
-
-	for i, addr := range addresses {
-		// We need to do it, otherwise the redis.Pool.Dial always
-		// use the last address
-		redisAddr := addr
-
-		pools[i] = &redis.Pool{
-			MaxIdle:     3,
-			IdleTimeout: 240 * time.Second,
-			Dial:        func() (redis.Conn, error) { return redis.Dial("tcp", redisAddr) },
-		}
+	redisPool, err := tlog.NewRedisPool(addresses)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't create flusher: %s", err.Error())
 	}
 
 	encrypter, err := tlog.NewAESEncrypter(conf.PrivKey, conf.HexNonce)
@@ -58,15 +49,15 @@ func newFlusher(conf *Config) (*flusher, error) {
 	}
 
 	f := &flusher{
-		k:          conf.K,
-		m:          conf.M,
-		flushSize:  conf.FlushSize,
-		flushTime:  conf.FlushTime,
-		privKey:    []byte(conf.PrivKey),
-		redisPools: pools,
-		tlogs:      map[string]*tlogTab{},
-		erasure:    erasure.NewErasurer(conf.K, conf.M),
-		encrypter:  encrypter,
+		k:         conf.K,
+		m:         conf.M,
+		flushSize: conf.FlushSize,
+		flushTime: conf.FlushTime,
+		privKey:   []byte(conf.PrivKey),
+		redisPool: redisPool,
+		tlogs:     map[string]*tlogTab{},
+		erasure:   erasure.NewErasurer(conf.K, conf.M),
+		encrypter: encrypter,
 	}
 
 	go f.periodicFlush()
@@ -139,7 +130,7 @@ func (f *flusher) flush(vdiskID string, blocks []*schema.TlogBlock, tab *tlogTab
 	// get last hash
 
 	lastHash, err := func() ([]byte, error) {
-		rc := f.redisPools[0].Get()
+		rc := f.redisPool.Get(0)
 		defer rc.Close()
 
 		return tab.getLastHash(rc)
@@ -200,21 +191,22 @@ func (f *flusher) flush(vdiskID string, blocks []*schema.TlogBlock, tab *tlogTab
 func (f *flusher) storeEncoded(vdiskID string, key []byte, encoded [][]byte, tab *tlogTab) error {
 	var wg sync.WaitGroup
 
-	wg.Add(f.k + f.m + 1)
+	length := f.k + f.m
+	wg.Add(length + 1)
 
 	var errGlob error
 	// store encoded data
-	for i := 0; i < f.k+f.m; i++ {
+	for i := 0; i < length; i++ {
 		go func(idx int) {
 			defer wg.Done()
 
 			blocks := encoded[idx]
-			rc := f.redisPools[idx+1].Get()
+			rc := f.redisPool.Get(idx + 1)
 			defer rc.Close()
 
 			_, err := rc.Do("SET", key, blocks)
 			if err != nil {
-				log.Debugf("error during flush idx %v:%v", idx, err)
+				log.Infof("error during flush idx %v: %v", idx, err)
 				errGlob = err
 			}
 		}(i)
@@ -224,12 +216,12 @@ func (f *flusher) storeEncoded(vdiskID string, key []byte, encoded [][]byte, tab
 	go func() {
 		defer wg.Done()
 
-		rc := f.redisPools[0].Get()
+		rc := f.redisPool.Get(0)
 		defer rc.Close()
 
 		err := tab.storeLastHash(rc, key)
 		if err != nil {
-			log.Debugf("error when setting last hash name:%v", err)
+			log.Debugf("error when setting last hash name: %v", err)
 			errGlob = err
 		}
 	}()
