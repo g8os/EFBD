@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -21,7 +22,6 @@ func main() {
 	var gridapiaddress string
 	var nonDedupedExports string
 	var testArdbConnectionStrings string
-	var vdiskID string
 	var tlogObjstorAddrs string
 	var K, M int
 	var privKey, hexNonce string
@@ -29,7 +29,6 @@ func main() {
 	flag.StringVar(&gridapiaddress, "gridapi", "", "Address of the grid api REST API, leave empty to use the embedded stub")
 	flag.StringVar(&nonDedupedExports, "nondeduped", "", "when using the embedded gridapi, comma seperated list of exports that should not be deduped")
 	flag.StringVar(&testArdbConnectionStrings, "testardbs", "localhost:16377,localhost:16378", "Comma seperated list of ardb connection strings returned by the embedded backend controller, first one is the metadataserver")
-	flag.StringVar(&vdiskID, "vdiskid", "", "vdisk ID")
 	flag.StringVar(&tlogObjstorAddrs, "tlog-objstor-addrs",
 		"127.0.0.1:16379,127.0.0.1:16380,127.0.0.1:16381,127.0.0.1:16382,127.0.0.1:16383,127.0.0.1:16384,127.0.0.1:16385",
 		"tlog objstor addrs")
@@ -38,11 +37,22 @@ func main() {
 	flag.StringVar(&privKey, "priv-key", "12345678901234567890123456789012", "private key")
 	flag.StringVar(&hexNonce, "nonce", "37b8e8a308c354048d245f6d", "hex nonce used for encryption")
 
+	flag.Usage = func() {
+		fmt.Fprint(os.Stderr, "Restore a vdisk using the transactions stored in the tlogserver.\n\n")
+		fmt.Fprintf(os.Stderr, "usage: %s vdiskID\n\nOptional Flags:\n", os.Args[0])
+		flag.PrintDefaults()
+		fmt.Fprint(os.Stderr, "  -h, -help\n    \tprint this usage message\n")
+	}
+
 	flag.Parse()
 
-	if vdiskID == "" {
-		log.Fatal("please specify vdiskID to recover")
+	posArgs := flag.Args()
+	if len(posArgs) != 1 {
+		fmt.Fprint(os.Stderr, "ERROR: only one positional argument (vdiskID) is required and allowed\n\n")
+		flag.Usage()
+		os.Exit(2)
 	}
+	vdiskID := posArgs[0]
 
 	// gridapiaddress
 	if gridapiaddress == "" {
@@ -99,7 +109,7 @@ func main() {
 	// create tlog decoder
 	addrs := strings.Split(tlogObjstorAddrs, ",")
 	log.Infof("addr=%v", addrs)
-	dec, err := decoder.New(strings.Split(tlogObjstorAddrs, ","), K, M, vdiskID, privKey, hexNonce)
+	dec, err := decoder.New(addrs, K, M, vdiskID, privKey, hexNonce)
 	if err != nil {
 		log.Fatalf("failed to create tlog decoder:%v", err)
 	}
