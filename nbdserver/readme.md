@@ -10,25 +10,33 @@ Therefore it is important to understand this configuration well, as it controls 
 ### YAML Configuration
 
 ```yaml
-storageclusters: # A required map of storage clusters
+storageClusters: # A required map of storage clusters,
+                 # only 1 storage cluster is required
   mycluster: # Required (string) ID of this storage cluster
     dataStorage: # A required array of connection (dial)strings, used to store data
       - 192.168.58.146:2000 # At least 1 connection (dial)string is required,
       - 192.123.123.123:2001 # more are optional
     metadataStorage: 192.168.58.146:2001 # Required connection (dial)string,
                                          # used to store meta data (LBA indices)
+  rootcluster: # Required (string) ID of this (optional) storage cluster
+    dataStorage: # A required array of connection (dial)strings, used to store data
+      - 192.168.58.147:2000 # only 1 connection (dial)string is required
+    metadataStorage: 192.168.58.147:2001 # Required connection (dial)string
   # ... more (optional) storage clusters
-vdisks: # A required map of vdisks
+vdisks: # A required map of vdisks,
+        # only 1 vdisk is required
   myvdisk: # Required (string) ID of this vdisk
     blocksize: 4096 # Required static (uint64) size of each block
     readOnly: false # Defines if this vdisk can be written to or not
                     # (optional, false by default)
     size: 10 # Required (uint64) total size in GiB of this vdisk
-    storagecluster: mycluster # Required (string) ID of storage cluster to use
+    storageCluster: mycluster # Required (string) ID of the storage cluster to use
                               # for this vdisk's storage, has to be a storage cluster
-                              # defined in the `storageclusters` section of THIS config file
-    rootDataStorage: 192.168.2.2:2002 # Optional connection (dial)string
-                                      # of fallback/root storage
+                              # defined in the `storageClusters` section of THIS config file
+    rootStorageCluster: rootcluster # Optional (string) ID of the (root) storage cluster to use
+                                    # for this vdisk's fallback/root/template storage, has to be
+                                    # a storage cluster defined in the `storageClusters` section
+                                    # of THIS config file
     type: boot # Required (VdiskType) type of this vdisk
                # which also defines if its deduped or nondeduped,
                # valid types are: `boot`, `db` and `cache`
@@ -36,9 +44,9 @@ vdisks: # A required map of vdisks
 ```
 
 As you can see, both the storage clusters and vdisks are configured in
-and within the same nbdserver `config.yaml` file.
+and within the same nbdserver `config.yml` file.
 
-By default the NBDServer CLI util assumes the `config.yaml` file
+By default the NBDServer CLI util assumes the `config.yml` file
 exists within the work directory of its process, this location can be defined
 using the `--config path` optional CLI flag.
 

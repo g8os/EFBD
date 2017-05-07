@@ -8,20 +8,24 @@ import (
 )
 
 const validConfig = `
-storageclusters:
+storageClusters:
   mycluster:
     dataStorage:
       - 192.168.58.146:2000
       - 192.123.123.123:2001
     metadataStorage: 192.168.58.146:2001
+  rootcluster:
+    dataStorage:
+      - 192.168.58.147:2000
+    metadataStorage: 192.168.58.147:2001
 vdisks:
   myvdisk:
     blocksize: 4096
     readOnly: false
     size: 10
-    storagecluster: mycluster
-    rootDataStorage: 192.168.2.2:2002
-    tlogStoragecluster: ''
+    storageCluster: mycluster
+    rootStorageCluster: rootcluster
+    tlogStorageCluster: ''
     type: boot`
 
 func TestValidConfigFromBytes(t *testing.T) {
@@ -30,13 +34,20 @@ func TestValidConfigFromBytes(t *testing.T) {
 		return
 	}
 
-	if assert.Len(t, cfg.StorageClusters, 1) {
+	if assert.Len(t, cfg.StorageClusters, 2) {
 		if cluster, ok := cfg.StorageClusters["mycluster"]; assert.True(t, ok) {
 			if assert.Len(t, cluster.DataStorage, 2) {
 				assert.Equal(t, "192.168.58.146:2000", cluster.DataStorage[0])
 				assert.Equal(t, "192.123.123.123:2001", cluster.DataStorage[1])
 			}
 			assert.Equal(t, "192.168.58.146:2001", cluster.MetaDataStorage)
+		}
+
+		if cluster, ok := cfg.StorageClusters["rootcluster"]; assert.True(t, ok) {
+			if assert.Len(t, cluster.DataStorage, 1) {
+				assert.Equal(t, "192.168.58.147:2000", cluster.DataStorage[0])
+			}
+			assert.Equal(t, "192.168.58.147:2001", cluster.MetaDataStorage)
 		}
 	}
 
@@ -46,7 +57,7 @@ func TestValidConfigFromBytes(t *testing.T) {
 			assert.False(t, vdisk.ReadOnly)
 			assert.Equal(t, uint64(10), vdisk.Size)
 			assert.Equal(t, "mycluster", vdisk.Storagecluster)
-			assert.Equal(t, "192.168.2.2:2002", vdisk.RootDataStorage)
+			assert.Equal(t, "rootcluster", vdisk.RootStorageCluster)
 			assert.Equal(t, "", vdisk.TlogStoragecluster)
 			assert.Equal(t, VdiskTypeBoot, vdisk.Type)
 		}
@@ -54,7 +65,7 @@ func TestValidConfigFromBytes(t *testing.T) {
 }
 
 const minimalValidConfig = `
-storageclusters:
+storageClusters:
   mycluster:
     dataStorage:
       - 192.168.58.146:2000
@@ -63,7 +74,7 @@ vdisks:
   myvdisk:
     blocksize: 4096
     size: 10
-    storagecluster: mycluster
+    storageCluster: mycluster
     type: boot`
 
 func TestMinimalValidConfigFromBytes(t *testing.T) {
@@ -87,7 +98,7 @@ func TestMinimalValidConfigFromBytes(t *testing.T) {
 			assert.False(t, vdisk.ReadOnly)
 			assert.Equal(t, uint64(10), vdisk.Size)
 			assert.Equal(t, "mycluster", vdisk.Storagecluster)
-			assert.Equal(t, "", vdisk.RootDataStorage)
+			assert.Equal(t, "", vdisk.RootStorageCluster)
 			assert.Equal(t, "", vdisk.TlogStoragecluster)
 			assert.Equal(t, VdiskTypeBoot, vdisk.Type)
 		}
@@ -100,15 +111,12 @@ var invalidConfigs = []string{
 vdisks:
   myvdisk:
     blocksize: 4096
-    readOnly: false
     size: 10
-    storagecluster: mycluster
-    rootDataStorage: 192.168.2.2:2002
-    tlogStoragecluster: ''
+    storageCluster: mycluster
     type: boot
 `,
 	// no vdisks
-	`storageclusters:
+	`storageClusters:
   mycluster:
     dataStorage:
       - 192.168.58.146:2000
@@ -117,22 +125,19 @@ vdisks:
 `,
 	// no data storage given
 	`
-storageclusters:
+storageClusters:
   mycluster:
     metadataStorage: 192.168.58.146:2001
 vdisks:
   myvdisk:
     blocksize: 4096
-    readOnly: false
     size: 10
-    storagecluster: mycluster
-    rootDataStorage: 192.168.2.2:2002
-    tlogStoragecluster: ''
+    storageCluster: mycluster
     type: boot
 `,
 	// invalid data storage given
 	`
-storageclusters:
+storageClusters:
   mycluster:
     dataStorage:
       - foo
@@ -140,16 +145,13 @@ storageclusters:
 vdisks:
   myvdisk:
     blocksize: 4096
-    readOnly: false
     size: 10
-    storagecluster: mycluster
-    rootDataStorage: 192.168.2.2:2002
-    tlogStoragecluster: ''
+    storageCluster: mycluster
     type: boot
 `,
 	// no meta storage given
 	`
-storageclusters:
+storageClusters:
   mycluster:
     dataStorage:
       - 192.168.58.146:2000
@@ -157,16 +159,13 @@ storageclusters:
 vdisks:
   myvdisk:
     blocksize: 4096
-    readOnly: false
     size: 10
-    storagecluster: mycluster
-    rootDataStorage: 192.168.2.2:2002
-    tlogStoragecluster: ''
+    storageCluster: mycluster
     type: boot
 `,
 	// invalid meta storage given
 	`
-storageclusters:
+storageClusters:
   mycluster:
     dataStorage:
       - 192.168.58.146:2000
@@ -175,16 +174,13 @@ storageclusters:
 vdisks:
   myvdisk:
     blocksize: 4096
-    readOnly: false
     size: 10
-    storagecluster: mycluster
-    rootDataStorage: 192.168.2.2:2002
-    tlogStoragecluster: ''
+    storageCluster: mycluster
     type: boot
 `,
 	// no block size given
 	`
-storageclusters:
+storageClusters:
   mycluster:
     dataStorage:
       - 192.168.58.146:2000
@@ -192,16 +188,13 @@ storageclusters:
     metadataStorage: 192.168.58.146:2001
 vdisks:
   myvdisk:
-    readOnly: false
     size: 10
-    storagecluster: mycluster
-    rootDataStorage: 192.168.2.2:2002
-    tlogStoragecluster: ''
+    storageCluster: mycluster
     type: boot
 `,
 	// no size given
 	`
-storageclusters:
+storageClusters:
   mycluster:
     dataStorage:
       - 192.168.58.146:2000
@@ -210,15 +203,12 @@ storageclusters:
 vdisks:
   myvdisk:
     blocksize: 4096
-    readOnly: false
-    storagecluster: mycluster
-    rootDataStorage: 192.168.2.2:2002
-    tlogStoragecluster: ''
+    storageCluster: mycluster
     type: boot
 `,
 	// bad readOnly type given
 	`
-storageclusters:
+storageClusters:
   mycluster:
     dataStorage:
       - 192.168.58.146:2000
@@ -229,14 +219,12 @@ vdisks:
     blocksize: 4096
     readOnly: foo
     size: 10
-    storagecluster: mycluster
-    rootDataStorage: 192.168.2.2:2002
-    tlogStoragecluster: ''
+    storageCluster: mycluster
     type: boot
 `,
 	// no storage Cluster Name given
 	`
-storageclusters:
+storageClusters:
   mycluster:
     dataStorage:
       - 192.168.58.146:2000
@@ -245,33 +233,12 @@ storageclusters:
 vdisks:
   myvdisk:
     blocksize: 4096
-    readOnly: false
     size: 10
-    rootDataStorage: 192.168.2.2:2002
-    tlogStoragecluster: ''
-    type: boot
-`,
-	// invalid root data storage given
-	`
-storageclusters:
-  mycluster:
-    dataStorage:
-      - 192.168.58.146:2000
-      - 192.123.123.123:2001
-    metadataStorage: 192.168.58.146:2001
-vdisks:
-  myvdisk:
-    blocksize: 4096
-    readOnly: false
-    size: 10
-    storagecluster: mycluster
-    rootDataStorage: foo
-    tlogStoragecluster: ''
     type: boot
 `,
 	// bad vdisk type given
 	`
-storageclusters:
+storageClusters:
   mycluster:
     dataStorage:
       - 192.168.58.146:2000
@@ -280,12 +247,40 @@ storageclusters:
 vdisks:
   myvdisk:
     blocksize: 4096
-    readOnly: false
     size: 10
-    storagecluster: mycluster
-    rootDataStorage: 192.168.2.2:2002
-    tlogStoragecluster: ''
+    storageCluster: mycluster
     type: foo
+`,
+	// unreferenced storageCluster given
+	`
+storageClusters:
+  mycluster:
+    dataStorage:
+      - 192.168.58.146:2000
+      - 192.123.123.123:2001
+    metadataStorage: 192.168.58.146:2001
+vdisks:
+  myvdisk:
+    blocksize: 4096
+    size: 10
+    storageCluster: foo
+    type: boot
+`,
+	// unreferenced rootStorageCluster given
+	`
+storageClusters:
+  mycluster:
+    dataStorage:
+      - 192.168.58.146:2000
+      - 192.123.123.123:2001
+    metadataStorage: 192.168.58.146:2001
+vdisks:
+  myvdisk:
+    blocksize: 4096
+    size: 10
+    storageCluster: mycluster
+    rootStorageCluster: foo
+    type: boot
 `,
 }
 

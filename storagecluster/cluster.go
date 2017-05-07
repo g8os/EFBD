@@ -3,6 +3,7 @@ package storagecluster
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/signal"
 	"sync"
@@ -140,8 +141,10 @@ type ClusterClient struct {
 	dataConnectionStrings []string
 	numberOfServers       int64 //Keep it as a seperate variable since this is constantly needed
 
-	// used as a fallback for getting data from a remote server
-	rootDataConnectionString string
+	// used as a fallback for getting data
+	// from a remote (root/template) server
+	rootDataConnectionStrings []string
+	numberOfRootServers       int64 //Keep it as a seperate variable since this is constantly needed
 
 	// used to store meta data
 	metaConnectionString string
@@ -172,7 +175,7 @@ func (cc *ClusterClient) ConnectionString(index int64) (string, error) {
 }
 
 // RootConnectionString returns the root connectionstring, if available
-func (cc *ClusterClient) RootConnectionString() (string, error) {
+func (cc *ClusterClient) RootConnectionString(index int64) (string, error) {
 	cc.mux.Lock()
 	defer cc.mux.Unlock()
 
@@ -180,7 +183,15 @@ func (cc *ClusterClient) RootConnectionString() (string, error) {
 		return "", errors.New("couldn't load storage cluster config")
 	}
 
-	return cc.rootDataConnectionString, nil
+	// not all vdisks have a rootStoragecluster defined,
+	// it is therefore not a guarantee that at least one server is available,
+	// a given we do have in the ConnectionString method
+	if cc.numberOfRootServers == 0 {
+		return "", fmt.Errorf("no root connection strings available for vdisk %s", cc.vdiskID)
+	}
+
+	bcIndex := index % cc.numberOfRootServers
+	return cc.rootDataConnectionStrings[bcIndex], nil
 }
 
 // MetaConnectionString returns the connectionstring (`<host>:<port>`),
@@ -272,9 +283,6 @@ func (cc *ClusterClient) loadConfig() bool {
 	}
 	cc.vdiskType = vdisk.Type
 
-	// remote server, used as fallback for getting data
-	cc.rootDataConnectionString = vdisk.RootDataStorage
-
 	if cc.storageClusterName != "" {
 		cc.logger.Info("using predefined storage cluster name:", cc.storageClusterName)
 		storageClusterName = cc.storageClusterName
@@ -287,24 +295,36 @@ func (cc *ClusterClient) loadConfig() bool {
 	//Get information about the backend storage nodes
 	storageCluster, ok := cfg.StorageClusters[storageClusterName]
 	if !ok {
+		// could be not found, as the static `cc.storageClusterName`
+		// isn't ensured to exist within the loaded config
 		cc.logger.Infof("couldn't find a storagecluster %s in the loaded config", storageClusterName)
 		return false
+	}
+
+	// update root storage cluster information
+	if vdisk.RootStorageCluster == "" {
+		cc.rootDataConnectionStrings = nil
+		cc.numberOfRootServers = 0
+	} else {
+		// get (root) storage cluster
+		// the config ensures referenced storageClusters exist exists
+		storageCluster, _ := cfg.StorageClusters[vdisk.RootStorageCluster]
+
+		cc.rootDataConnectionStrings = storageCluster.DataStorage
+		cc.numberOfRootServers = int64(len(cc.rootDataConnectionStrings))
+		// no need to check length of root servers,
+		// as the storage cluster config validation ensures
+		// that at least 1 data storage server is defined
 	}
 
 	// store information required for getting redis connections
 	cc.dataConnectionStrings = storageCluster.DataStorage
 	cc.numberOfServers = int64(len(cc.dataConnectionStrings))
-	if cc.numberOfServers < 1 {
-		cc.logger.Info(
-			"received no data storage servers, while at least 1 is required")
-		return false
-	}
+	// no need to check length of servers,
+	// as the storage cluster config validation ensures
+	// that at least 1 data storage server is defined
 
-	// used to store metadata
-	if storageCluster.MetaDataStorage == "" {
-		cc.logger.Infof("No metadata servers available in storagecluster %s", storageClusterName)
-		return false
-	}
+	// used to store metadata (required by config)
 	cc.metaConnectionString = storageCluster.MetaDataStorage
 
 	cc.loaded = true

@@ -197,7 +197,7 @@ func (rp *redisProvider) RedisConnection(index int64) (conn redis.Conn, err erro
 // FallbackRedisConnection gets a redis connection from the underlying fallback pool,
 // using a modulo index
 func (rp *redisProvider) FallbackRedisConnection(index int64) (conn redis.Conn, err error) {
-	connString, err := rp.storageClusterClient.RootConnectionString()
+	connString, err := rp.storageClusterClient.RootConnectionString(index)
 	if err != nil {
 		return
 	}
