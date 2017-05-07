@@ -49,16 +49,16 @@ type Config struct {
 // StorageClusterConfig defines the config for a storagecluster
 type StorageClusterConfig struct {
 	DataStorage     []string `yaml:"dataStorage" valid:"dialstring,length(1),required"`
-	RootDataStorage string   `yaml:"rootDataStorage" valid:"dialstring,optional"`
 	MetaDataStorage string   `yaml:"metadataStorage" valid:"dialstring,required"`
 }
 
 // VdiskConfig defines the config for a vdisk
 type VdiskConfig struct {
 	Blocksize          uint64    `yaml:"blocksize" valid:"required"`
-	ReadOnly           bool      `yaml:"readOnly" valid:"-"`
+	ReadOnly           bool      `yaml:"readOnly" valid:"optional"`
 	Size               uint64    `yaml:"size" valid:"required"`
 	Storagecluster     string    `yaml:"storagecluster" valid:"required"`
+	RootDataStorage    string    `yaml:"rootDataStorage" valid:"dialstring,optional"`
 	TlogStoragecluster string    `yaml:"tlogStoragecluster" valid:"optional"`
 	Type               VdiskType `yaml:"type" valid:"required"`
 }

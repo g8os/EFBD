@@ -15,8 +15,6 @@ storageclusters: # A required map of storage clusters
     dataStorage: # A required array of connection (dial)strings, used to store data
       - 192.168.58.146:2000 # At least 1 connection (dial)string is required,
       - 192.123.123.123:2001 # more are optional
-    rootDataStorage: 192.168.2.2:2002 # Optional connection (dial)string
-                                      # of fallback/root storage
     metadataStorage: 192.168.58.146:2001 # Required connection (dial)string,
                                          # used to store meta data (LBA indices)
   # ... more (optional) storage clusters
@@ -29,6 +27,8 @@ vdisks: # A required map of vdisks
     storagecluster: mycluster # Required (string) ID of storage cluster to use
                               # for this vdisk's storage, has to be a storage cluster
                               # defined in the `storageclusters` section of THIS config file
+    rootDataStorage: 192.168.2.2:2002 # Optional connection (dial)string
+                                      # of fallback/root storage
     type: boot # Required (VdiskType) type of this vdisk
                # which also defines if its deduped or nondeduped,
                # valid types are: `boot`, `db` and `cache`

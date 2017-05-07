@@ -258,30 +258,30 @@ func (cc *ClusterClient) loadConfig() bool {
 		return false
 	}
 
-	if cc.storageClusterName == "" && cc.vdiskID != "" {
-		vdisk, ok := cfg.Vdisks[cc.vdiskID]
-		if !ok {
-			cc.logger.Infof("couldn't find a vdisk %s in the loaded config", cc.vdiskID)
-			return false
-		}
+	vdisk, ok := cfg.Vdisks[cc.vdiskID]
+	if !ok {
+		cc.logger.Infof("couldn't find a vdisk %q in the loaded config", cc.vdiskID)
+		return false
+	}
 
-		// check vdiskType, and sure it's the same one as last time
-		if cc.vdiskType != config.VdiskTypeNil && cc.vdiskType != vdisk.Type {
-			cc.logger.Infof("wrong type for vdisk %q, expected %q, while received %q",
-				cc.vdiskID, cc.vdiskType, vdisk.Type)
-			return false
-		}
-		cc.vdiskType = vdisk.Type
+	// check vdiskType, and sure it's the same one as last time
+	if cc.vdiskType != config.VdiskTypeNil && cc.vdiskType != vdisk.Type {
+		cc.logger.Infof("wrong type for vdisk %q, expected %q, while received %q",
+			cc.vdiskID, cc.vdiskType, vdisk.Type)
+		return false
+	}
+	cc.vdiskType = vdisk.Type
 
-		storageClusterName = vdisk.Storagecluster
-	} else if cc.storageClusterName != "" {
-		cc.logger.Infof(
-			"skipping fetching vdisk config because storage cluster name (%s) is already given",
-			cc.storageClusterName)
+	// remote server, used as fallback for getting data
+	cc.rootDataConnectionString = vdisk.RootDataStorage
+
+	if cc.storageClusterName != "" {
+		cc.logger.Info("using predefined storage cluster name:", cc.storageClusterName)
 		storageClusterName = cc.storageClusterName
 	} else {
-		cc.logger.Info("couldn't load config: either the vdiskID or the storageClusterName has to be defined")
-		return false
+		// StorageCluster is a /required/ property in the vdisk config,
+		// thus this can always be used as a fallback
+		storageClusterName = vdisk.Storagecluster
 	}
 
 	//Get information about the backend storage nodes
@@ -299,9 +299,6 @@ func (cc *ClusterClient) loadConfig() bool {
 			"received no data storage servers, while at least 1 is required")
 		return false
 	}
-
-	// remote server, used as fallback for getting data
-	cc.rootDataConnectionString = storageCluster.RootDataStorage
 
 	// used to store metadata
 	if storageCluster.MetaDataStorage == "" {

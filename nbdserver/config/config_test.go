@@ -13,7 +13,6 @@ storageclusters:
     dataStorage:
       - 192.168.58.146:2000
       - 192.123.123.123:2001
-    rootDataStorage: 192.168.2.2:2002
     metadataStorage: 192.168.58.146:2001
 vdisks:
   myvdisk:
@@ -21,6 +20,7 @@ vdisks:
     readOnly: false
     size: 10
     storagecluster: mycluster
+    rootDataStorage: 192.168.2.2:2002
     tlogStoragecluster: ''
     type: boot`
 
@@ -36,7 +36,6 @@ func TestValidConfigFromBytes(t *testing.T) {
 				assert.Equal(t, "192.168.58.146:2000", cluster.DataStorage[0])
 				assert.Equal(t, "192.123.123.123:2001", cluster.DataStorage[1])
 			}
-			assert.Equal(t, "192.168.2.2:2002", cluster.RootDataStorage)
 			assert.Equal(t, "192.168.58.146:2001", cluster.MetaDataStorage)
 		}
 	}
@@ -47,6 +46,7 @@ func TestValidConfigFromBytes(t *testing.T) {
 			assert.False(t, vdisk.ReadOnly)
 			assert.Equal(t, uint64(10), vdisk.Size)
 			assert.Equal(t, "mycluster", vdisk.Storagecluster)
+			assert.Equal(t, "192.168.2.2:2002", vdisk.RootDataStorage)
 			assert.Equal(t, "", vdisk.TlogStoragecluster)
 			assert.Equal(t, VdiskTypeBoot, vdisk.Type)
 		}
@@ -77,7 +77,6 @@ func TestMinimalValidConfigFromBytes(t *testing.T) {
 			if assert.Len(t, cluster.DataStorage, 1) {
 				assert.Equal(t, "192.168.58.146:2000", cluster.DataStorage[0])
 			}
-			assert.Equal(t, "", cluster.RootDataStorage)
 			assert.Equal(t, "192.168.58.146:2001", cluster.MetaDataStorage)
 		}
 	}
@@ -88,6 +87,7 @@ func TestMinimalValidConfigFromBytes(t *testing.T) {
 			assert.False(t, vdisk.ReadOnly)
 			assert.Equal(t, uint64(10), vdisk.Size)
 			assert.Equal(t, "mycluster", vdisk.Storagecluster)
+			assert.Equal(t, "", vdisk.RootDataStorage)
 			assert.Equal(t, "", vdisk.TlogStoragecluster)
 			assert.Equal(t, VdiskTypeBoot, vdisk.Type)
 		}
@@ -103,6 +103,7 @@ vdisks:
     readOnly: false
     size: 10
     storagecluster: mycluster
+    rootDataStorage: 192.168.2.2:2002
     tlogStoragecluster: ''
     type: boot
 `,
@@ -112,14 +113,12 @@ vdisks:
     dataStorage:
       - 192.168.58.146:2000
       - 192.123.123.123:2001
-    rootDataStorage: 192.168.2.2:2002
     metadataStorage: 192.168.58.146:2001
 `,
 	// no data storage given
 	`
 storageclusters:
   mycluster:
-    rootDataStorage: 192.168.2.2:2002
     metadataStorage: 192.168.58.146:2001
 vdisks:
   myvdisk:
@@ -127,6 +126,7 @@ vdisks:
     readOnly: false
     size: 10
     storagecluster: mycluster
+    rootDataStorage: 192.168.2.2:2002
     tlogStoragecluster: ''
     type: boot
 `,
@@ -136,32 +136,14 @@ storageclusters:
   mycluster:
     dataStorage:
       - foo
+    metadataStorage: 192.168.58.146:2001
+vdisks:
+  myvdisk:
+    blocksize: 4096
+    readOnly: false
+    size: 10
+    storagecluster: mycluster
     rootDataStorage: 192.168.2.2:2002
-    metadataStorage: 192.168.58.146:2001
-vdisks:
-  myvdisk:
-    blocksize: 4096
-    readOnly: false
-    size: 10
-    storagecluster: mycluster
-    tlogStoragecluster: ''
-    type: boot
-`,
-	// invalid root data storage given
-	`
-storageclusters:
-  mycluster:
-    dataStorage:
-      - 192.168.58.146:2000
-      - 192.123.123.123:2001
-    rootDataStorage: foo
-    metadataStorage: 192.168.58.146:2001
-vdisks:
-  myvdisk:
-    blocksize: 4096
-    readOnly: false
-    size: 10
-    storagecluster: mycluster
     tlogStoragecluster: ''
     type: boot
 `,
@@ -172,13 +154,13 @@ storageclusters:
     dataStorage:
       - 192.168.58.146:2000
       - 192.123.123.123:2001
-    rootDataStorage: 192.168.2.2:2002
 vdisks:
   myvdisk:
     blocksize: 4096
     readOnly: false
     size: 10
     storagecluster: mycluster
+    rootDataStorage: 192.168.2.2:2002
     tlogStoragecluster: ''
     type: boot
 `,
@@ -189,7 +171,6 @@ storageclusters:
     dataStorage:
       - 192.168.58.146:2000
       - 192.123.123.123:2001
-    rootDataStorage: 192.168.2.2:2002
     metadataStorage: foo
 vdisks:
   myvdisk:
@@ -197,6 +178,7 @@ vdisks:
     readOnly: false
     size: 10
     storagecluster: mycluster
+    rootDataStorage: 192.168.2.2:2002
     tlogStoragecluster: ''
     type: boot
 `,
@@ -207,13 +189,13 @@ storageclusters:
     dataStorage:
       - 192.168.58.146:2000
       - 192.123.123.123:2001
-    rootDataStorage: 192.168.2.2:2002
     metadataStorage: 192.168.58.146:2001
 vdisks:
   myvdisk:
     readOnly: false
     size: 10
     storagecluster: mycluster
+    rootDataStorage: 192.168.2.2:2002
     tlogStoragecluster: ''
     type: boot
 `,
@@ -224,13 +206,13 @@ storageclusters:
     dataStorage:
       - 192.168.58.146:2000
       - 192.123.123.123:2001
-    rootDataStorage: 192.168.2.2:2002
     metadataStorage: 192.168.58.146:2001
 vdisks:
   myvdisk:
     blocksize: 4096
     readOnly: false
     storagecluster: mycluster
+    rootDataStorage: 192.168.2.2:2002
     tlogStoragecluster: ''
     type: boot
 `,
@@ -241,7 +223,6 @@ storageclusters:
     dataStorage:
       - 192.168.58.146:2000
       - 192.123.123.123:2001
-    rootDataStorage: 192.168.2.2:2002
     metadataStorage: 192.168.58.146:2001
 vdisks:
   myvdisk:
@@ -249,6 +230,7 @@ vdisks:
     readOnly: foo
     size: 10
     storagecluster: mycluster
+    rootDataStorage: 192.168.2.2:2002
     tlogStoragecluster: ''
     type: boot
 `,
@@ -259,13 +241,31 @@ storageclusters:
     dataStorage:
       - 192.168.58.146:2000
       - 192.123.123.123:2001
-    rootDataStorage: 192.168.2.2:2002
     metadataStorage: 192.168.58.146:2001
 vdisks:
   myvdisk:
     blocksize: 4096
     readOnly: false
     size: 10
+    rootDataStorage: 192.168.2.2:2002
+    tlogStoragecluster: ''
+    type: boot
+`,
+	// invalid root data storage given
+	`
+storageclusters:
+  mycluster:
+    dataStorage:
+      - 192.168.58.146:2000
+      - 192.123.123.123:2001
+    metadataStorage: 192.168.58.146:2001
+vdisks:
+  myvdisk:
+    blocksize: 4096
+    readOnly: false
+    size: 10
+    storagecluster: mycluster
+    rootDataStorage: foo
     tlogStoragecluster: ''
     type: boot
 `,
@@ -276,7 +276,6 @@ storageclusters:
     dataStorage:
       - 192.168.58.146:2000
       - 192.123.123.123:2001
-    rootDataStorage: 192.168.2.2:2002
     metadataStorage: 192.168.58.146:2001
 vdisks:
   myvdisk:
@@ -284,6 +283,7 @@ vdisks:
     readOnly: false
     size: 10
     storagecluster: mycluster
+    rootDataStorage: 192.168.2.2:2002
     tlogStoragecluster: ''
     type: foo
 `,
