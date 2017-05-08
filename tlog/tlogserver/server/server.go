@@ -80,6 +80,8 @@ func (s *Server) ListenAddr() string {
 }
 
 func (s *Server) handle(conn net.Conn) error {
+	var tlc *tlogChan
+	var vdiskID string
 
 	defer conn.Close()
 	for {
@@ -97,9 +99,27 @@ func (s *Server) handle(conn net.Conn) error {
 			return err
 		}
 
-		vdiskID, err := tlb.VdiskID()
+		// vdiskID
+		curVdiskID, err := tlb.VdiskID()
 		if err != nil {
-			log.Debugf("failed to get vdisk ID: %v", err)
+			log.Infof("failed to get vdisk ID: %v", err)
+			return err
+		}
+
+		if tlc == nil {
+			vdiskID = curVdiskID
+
+			tlc, err = s.f.getTlogChan(vdiskID)
+			if err != nil {
+				log.Infof("failed to get tlog channel of vdisk: %v, err: %v", vdiskID, err)
+				return err
+			}
+			go s.sendResp(conn, vdiskID, tlc.respChan)
+		}
+
+		if vdiskID != curVdiskID {
+			err = fmt.Errorf("invalid vdiskID. expected: %v, got: %v", vdiskID, curVdiskID)
+			log.Info(err)
 			return err
 		}
 
@@ -110,10 +130,21 @@ func (s *Server) handle(conn net.Conn) error {
 		}
 
 		// store
-		resp := s.f.store(tlb, vdiskID)
+		tlc.inputChan <- tlb
+		tlc.respChan <- &response{
+			Status:    0,
+			Sequences: []uint64{tlb.Sequence()},
+		}
+	}
+}
 
+func (s *Server) sendResp(conn net.Conn, vdiskID string, respChan chan *response) {
+	for {
+		resp := <-respChan
 		if err := resp.write(conn); err != nil {
-			return err
+			log.Infof("failed to send resp to :%v, err:%v", vdiskID, err)
+			conn.Close()
+			return
 		}
 	}
 }
