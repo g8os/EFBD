@@ -254,7 +254,10 @@ func (f *flusher) encodeCapnp(vdiskID string, blocks []*schema.TlogBlock, lastHa
 
 	// add blocks
 	for i := 0; i < blockList.Len(); i++ {
-		blockList.Set(i, *blocks[i])
+		block := blockList.At(i)
+		if err := schema.CopyBlock(&block, blocks[i]); err != nil {
+			return nil, err
+		}
 	}
 
 	buf := new(bytes.Buffer)
