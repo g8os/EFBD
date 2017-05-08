@@ -84,6 +84,8 @@ func TestEndToEnd(t *testing.T) {
 
 		blocks, err := agg.Blocks()
 		assert.Nil(t, err)
+
+		assert.Equal(t, conf.FlushSize, blocks.Len())
 		for i := 0; i < blocks.Len(); i++ {
 			block := blocks.At(i)
 
