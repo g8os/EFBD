@@ -26,6 +26,13 @@ type Response struct {
 	Sequences []uint64 // flushed sequences number (optional)
 }
 
+// Result defines a struct that contains
+// response and error from tlog.
+type Result struct {
+	Resp *Response
+	Err  error
+}
+
 // Client defines a Tlog Client.
 // This client is not thread/goroutine safe
 type Client struct {
@@ -48,22 +55,19 @@ func New(addr string) (*Client, error) {
 	}, nil
 }
 
-// Recv get channel of responses and errors
-func (c *Client) Recv() (<-chan *Response, <-chan error) {
-	respChan := make(chan *Response)
-	errChan := make(chan error)
-
+// Recv get channel of responses and errors (Result)
+func (c *Client) Recv(chanSize int) <-chan *Result {
+	reChan := make(chan *Result, chanSize)
 	go func() {
 		for {
 			tr, err := c.RecvOne()
-			if err != nil {
-				errChan <- err
-				continue
+			reChan <- &Result{
+				Resp: tr,
+				Err:  err,
 			}
-			respChan <- tr
 		}
 	}()
-	return respChan, errChan
+	return reChan
 }
 
 // RecvOne receive one response

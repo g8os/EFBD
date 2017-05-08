@@ -235,6 +235,8 @@ func (ab *Backend) GoBackground(ctx context.Context) {
 		return
 	}
 
+	respChan := ab.tlogClient.Recv(transactionChCapacity)
+
 	log.Debug(
 		"starting backend background thread for vdisk:",
 		ab.vdiskID)
@@ -258,17 +260,16 @@ func (ab *Backend) GoBackground(ctx context.Context) {
 					ab.vdiskID, err)
 				continue
 			}
-
-			tr, err := ab.tlogClient.RecvOne()
-			if err != nil {
+		case tResp := <-respChan:
+			if tResp.Err != nil {
 				log.Infof("tlog for vdisk %s failed to recv: %v",
-					ab.vdiskID, err)
+					ab.vdiskID, tResp.Err)
 				continue
 			}
 
-			if tr.Status < 0 {
+			if tResp.Resp.Status < 0 {
 				log.Infof("tlog call for vdisk %s failed (%d)",
-					ab.vdiskID, tr.Status)
+					ab.vdiskID, tResp.Resp.Status)
 				continue
 			}
 

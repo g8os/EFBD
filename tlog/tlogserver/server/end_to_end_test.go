@@ -1,6 +1,7 @@
 package server
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -49,17 +50,38 @@ func TestEndToEnd(t *testing.T) {
 	expectedVdiskID := "1234567890"
 	numFlush := 5
 
-	for i := 0; i < conf.FlushSize*numFlush; i++ {
-		x := uint64(i)
-		// check we can send it without error
-		err := client.Send(expectedVdiskID, schema.OpWrite, x, x, x, data, uint64(len(data)))
-		assert.Nil(t, err)
+	var wg sync.WaitGroup
 
-		// check there is no error from server
-		tr, err := client.RecvOne()
-		assert.Nil(t, err)
-		assert.Equal(t, true, tr.Status >= 0)
-	}
+	wg.Add(2)
+
+	numLogs := conf.FlushSize * numFlush // number of logs to send.
+
+	// send tlog
+	go func() {
+		defer wg.Done()
+		for i := 0; i < numLogs; i++ {
+			x := uint64(i)
+			// check we can send it without error
+			err := client.Send(expectedVdiskID, schema.OpWrite, x, x, x, data, uint64(len(data)))
+			assert.Nil(t, err)
+		}
+	}()
+
+	// recv it
+	go func() {
+		defer wg.Done()
+		expected := numLogs + numFlush
+		received := 0
+		respChan := client.Recv(1)
+		for received < expected {
+			re := <-respChan
+			received++
+			assert.Nil(t, re.Err)
+			assert.Equal(t, true, re.Resp.Status >= 0)
+		}
+	}()
+
+	wg.Wait()
 
 	// decode the message
 	dec, err := decoder.New(s.ObjStorAddresses, conf.K, conf.M, expectedVdiskID, conf.PrivKey, conf.HexNonce)
