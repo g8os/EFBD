@@ -32,8 +32,10 @@ func TestEndToEnd(t *testing.T) {
 		s.Listen()
 	}()
 
+	expectedVdiskID := "1234567890"
+
 	// send tlog messages
-	client, err := tlogclient.New(s.ListenAddr())
+	client, err := tlogclient.New(s.ListenAddr(), expectedVdiskID)
 	assert.Nil(t, err)
 
 	t.Logf("listen addr=%v", s.ListenAddr())
@@ -47,7 +49,6 @@ func TestEndToEnd(t *testing.T) {
 	data[0] = 'b'
 	data[1] = 'c'
 
-	expectedVdiskID := "1234567890"
 	numFlush := 5
 
 	var wg sync.WaitGroup
@@ -62,7 +63,7 @@ func TestEndToEnd(t *testing.T) {
 		for i := 0; i < numLogs; i++ {
 			x := uint64(i)
 			// check we can send it without error
-			err := client.Send(expectedVdiskID, schema.OpWrite, x, x, x, data, uint64(len(data)))
+			err := client.Send(schema.OpWrite, x, x, x, data, uint64(len(data)))
 			assert.Nil(t, err)
 		}
 	}()

@@ -30,7 +30,7 @@ func main() {
 	seqChan := make(chan uint64, 8)
 
 	for i := 0; i < numClient; i++ {
-		client, err := client.New("127.0.0.1:11211")
+		client, err := client.New("127.0.0.1:11211", vdiskID)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -57,7 +57,7 @@ func main() {
 			client := clients[int(j)%numClient]
 
 			log.Infof("j=%v\n", j)
-			err := client.Send(vdiskID, schema.OpWrite, j, j, j, data, uint64(len(data)))
+			err := client.Send(schema.OpWrite, j, j, j, data, uint64(len(data)))
 			if err != nil {
 				log.Infof("client %v died\n", idx)
 				return

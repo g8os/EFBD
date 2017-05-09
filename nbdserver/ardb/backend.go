@@ -246,7 +246,6 @@ func (ab *Backend) GoBackground(ctx context.Context) {
 		select {
 		case transaction := <-ab.transactionCh:
 			err := ab.tlogClient.Send(
-				ab.vdiskID,
 				transaction.Operation,
 				ab.tlogCounter,
 				transaction.Offset,

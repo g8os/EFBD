@@ -36,22 +36,24 @@ type Result struct {
 // Client defines a Tlog Client.
 // This client is not thread/goroutine safe
 type Client struct {
-	addr string
-	conn *net.TCPConn
-	bw   *bufio.Writer
+	addr    string
+	vdiskID string
+	conn    *net.TCPConn
+	bw      *bufio.Writer
 }
 
 // New creates a new tlog client
-func New(addr string) (*Client, error) {
+func New(addr string, vdiskID string) (*Client, error) {
 	conn, err := createConn(addr)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Client{
-		addr: addr,
-		conn: conn,
-		bw:   bufio.NewWriter(conn),
+		addr:    addr,
+		vdiskID: vdiskID,
+		conn:    conn,
+		bw:      bufio.NewWriter(conn),
 	}, nil
 }
 
@@ -157,12 +159,12 @@ func createConn(addr string) (*net.TCPConn, error) {
 // - failed to send all tlog
 // in case of errors, client is not in valid state,
 // shouldn't be used anymore
-func (c *Client) Send(vdiskID string, op uint8, seq uint64, lba, timestamp uint64,
+func (c *Client) Send(op uint8, seq uint64, lba, timestamp uint64,
 	data []byte, size uint64) error {
 
 	hash := blockstor.HashBytes(data)
 
-	b, err := buildCapnp(vdiskID, op, seq, hash[:], lba, timestamp, data, size)
+	b, err := buildCapnp(c.vdiskID, op, seq, hash[:], lba, timestamp, data, size)
 	if err != nil {
 		return err
 	}
