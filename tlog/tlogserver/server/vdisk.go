@@ -4,8 +4,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/g8os/blockstor/tlog/schema"
 	log "github.com/glendc/go-mini-log"
+
+	"github.com/g8os/blockstor/tlog"
+	"github.com/g8os/blockstor/tlog/schema"
 )
 
 const (
@@ -115,12 +117,12 @@ func (vd *vdisk) Run() {
 		tlogs = tlogs[toFlushLen:]
 
 		var seqs []uint64
-		var status int8
+		var status int8 = tlog.StatusFlushOK
 
 		seqs, err = vd.flusher.flush(blocks[:], vd)
 		if err != nil {
 			log.Infof("flush %v failed: %v", vd.vdiskID, err)
-			status = -1
+			status = tlog.StatusFlushFailed
 		}
 
 		vd.respChan <- &response{

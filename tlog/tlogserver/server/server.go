@@ -11,6 +11,7 @@ import (
 	log "github.com/glendc/go-mini-log"
 
 	"github.com/g8os/blockstor"
+	"github.com/g8os/blockstor/tlog"
 	"github.com/g8os/blockstor/tlog/schema"
 	"zombiezen.com/go/capnproto2"
 )
@@ -132,7 +133,7 @@ func (s *Server) handle(conn net.Conn) error {
 		// store
 		vd.inputChan <- tlb
 		vd.respChan <- &response{
-			Status:    0,
+			Status:    tlog.StatusBlockRecvOK,
 			Sequences: []uint64{tlb.Sequence()},
 		}
 	}

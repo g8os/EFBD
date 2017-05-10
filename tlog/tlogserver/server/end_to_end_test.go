@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/g8os/blockstor/tlog"
 	"github.com/g8os/blockstor/tlog/schema"
 	"github.com/g8os/blockstor/tlog/tlogclient"
 	"github.com/g8os/blockstor/tlog/tlogclient/decoder"
@@ -78,7 +79,13 @@ func TestEndToEnd(t *testing.T) {
 			re := <-respChan
 			received++
 			assert.Nil(t, re.Err)
-			assert.Equal(t, true, re.Resp.Status >= 0)
+			assert.Equal(t, true, re.Resp.Status > 0)
+
+			if re.Resp.Status == tlog.StatusFlushOK {
+				assert.Equal(t, conf.FlushSize, len(re.Resp.Sequences))
+			} else if re.Resp.Status == tlog.StatusBlockRecvOK {
+				assert.Equal(t, 1, len(re.Resp.Sequences))
+			}
 		}
 	}()
 

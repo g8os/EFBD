@@ -26,7 +26,7 @@ func (r *response) toCapnp(segmentBuf []byte) (*capnp.Message, error) {
 		return nil, err
 	}
 
-	resp, err := schema.NewTlogResponse(seg)
+	resp, err := schema.NewRootTlogResponse(seg)
 	if err != nil {
 		return nil, err
 	}
