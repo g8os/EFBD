@@ -12,7 +12,7 @@ Components:
 * [TLOG Server](tlog/tlogserver/README.md)
     A Transaction log server to record block changes
 * [CopyVdisk CLI](cmd/copyvdisk/readme.md)
-    A CLI to copy the metadata of a deduped vdisk
+    A CLI tool to copy the metadata of a deduped vdisk
 
 # Build for g8os
 - Clone the code to your GOPATH:
