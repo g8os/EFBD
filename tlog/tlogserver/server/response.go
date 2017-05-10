@@ -20,8 +20,8 @@ func (r *response) capnpSize() int {
 	return 1 /* status */ + (len(r.Sequences) * 8) /* sequences */ + 30 /* capnp overhead */
 }
 
-func (r *response) toCapnp() (*capnp.Message, error) {
-	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
+func (r *response) toCapnp(segmentBuf []byte) (*capnp.Message, error) {
+	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(segmentBuf))
 	if err != nil {
 		return nil, err
 	}
@@ -46,8 +46,8 @@ func (r *response) toCapnp() (*capnp.Message, error) {
 	return msg, nil
 }
 
-func (r *response) write(w io.Writer) error {
-	msg, err := r.toCapnp()
+func (r *response) write(w io.Writer, segmentBuf []byte) error {
+	msg, err := r.toCapnp(segmentBuf)
 	if err != nil {
 		return err
 	}

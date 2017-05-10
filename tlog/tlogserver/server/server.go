@@ -17,11 +17,12 @@ import (
 
 // Server defines a tlog server
 type Server struct {
-	port             int
-	bufSize          int
-	f                *flusher
-	ObjStorAddresses []string
-	listener         net.Listener
+	port                 int
+	bufSize              int
+	maxRespSegmentBufLen int // max len of response capnp segment buffer
+	f                    *flusher
+	ObjStorAddresses     []string
+	listener             net.Listener
 }
 
 // NewServer creates a new tlog server
@@ -53,10 +54,12 @@ func NewServer(conf *Config) (*Server, error) {
 		}
 	}
 
+	vdiskMgr = newVdiskManager(conf.BlockSize, conf.FlushSize)
 	return &Server{
-		f:                f,
-		ObjStorAddresses: objstorAddrs,
-		listener:         listener,
+		f:                    f,
+		ObjStorAddresses:     objstorAddrs,
+		listener:             listener,
+		maxRespSegmentBufLen: schema.RawTlogRespLen(conf.FlushSize),
 	}, nil
 }
 
@@ -80,8 +83,7 @@ func (s *Server) ListenAddr() string {
 }
 
 func (s *Server) handle(conn net.Conn) error {
-	var tlc *tlogChan
-	var vdiskID string
+	var vd *vdisk
 
 	defer conn.Close()
 	for {
@@ -106,32 +108,30 @@ func (s *Server) handle(conn net.Conn) error {
 			return err
 		}
 
-		if tlc == nil {
-			vdiskID = curVdiskID
-
-			tlc, err = s.f.getTlogChan(vdiskID)
+		if vd == nil {
+			vd, err = vdiskMgr.get(curVdiskID, s.f)
 			if err != nil {
-				log.Infof("failed to get tlog channel of vdisk: %v, err: %v", vdiskID, err)
+				log.Infof("failed to vdisk: %v, err: %v", curVdiskID, err)
 				return err
 			}
-			go s.sendResp(conn, vdiskID, tlc.respChan)
+			go s.sendResp(conn, vd.vdiskID, vd.respChan)
 		}
 
-		if vdiskID != curVdiskID {
-			err = fmt.Errorf("invalid vdiskID. expected: %v, got: %v", vdiskID, curVdiskID)
+		if vd.vdiskID != curVdiskID {
+			err = fmt.Errorf("invalid vdiskID. expected: %v, got: %v", vd.vdiskID, curVdiskID)
 			log.Info(err)
 			return err
 		}
 
 		// check hash
-		if err := s.hash(tlb, vdiskID); err != nil {
+		if err := s.hash(tlb, vd.vdiskID); err != nil {
 			log.Debugf("hash check failed:%v\n", err)
 			return err
 		}
 
 		// store
-		tlc.inputChan <- tlb
-		tlc.respChan <- &response{
+		vd.inputChan <- tlb
+		vd.respChan <- &response{
 			Status:    0,
 			Sequences: []uint64{tlb.Sequence()},
 		}
@@ -139,9 +139,10 @@ func (s *Server) handle(conn net.Conn) error {
 }
 
 func (s *Server) sendResp(conn net.Conn, vdiskID string, respChan chan *response) {
+	segmentBuf := make([]byte, 0, s.maxRespSegmentBufLen)
 	for {
 		resp := <-respChan
-		if err := resp.write(conn); err != nil {
+		if err := resp.write(conn, segmentBuf); err != nil {
 			log.Infof("failed to send resp to :%v, err:%v", vdiskID, err)
 			conn.Close()
 			return

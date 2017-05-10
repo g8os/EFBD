@@ -36,10 +36,11 @@ type Result struct {
 // Client defines a Tlog Client.
 // This client is not thread/goroutine safe
 type Client struct {
-	addr    string
-	vdiskID string
-	conn    *net.TCPConn
-	bw      *bufio.Writer
+	addr            string
+	vdiskID         string
+	conn            *net.TCPConn
+	bw              *bufio.Writer
+	capnpSegmentBuf []byte
 }
 
 // New creates a new tlog client
@@ -164,7 +165,7 @@ func (c *Client) Send(op uint8, seq uint64, lba, timestamp uint64,
 
 	hash := blockstor.HashBytes(data)
 
-	b, err := buildCapnp(c.vdiskID, op, seq, hash[:], lba, timestamp, data, size)
+	b, err := c.buildCapnp(op, seq, hash[:], lba, timestamp, data, size)
 	if err != nil {
 		return err
 	}
