@@ -1,4 +1,4 @@
-# Building your NDB Server
+# Building your NBD Server
 
 The below documentation uses a Docker container with JumpScale 8.2 installed, as documented in the [Jumpscale/developer](https://github.com/Jumpscale/developer) GitHub repository.
 

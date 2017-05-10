@@ -7,4 +7,4 @@ A NBD Server actually implements the NBD protocol. For each virtual disk one NBD
 ![Architecture](block-storage-architecture.png)
 
 Next:
-- [Building your NDB Server](building.md)
+- [Building your NBD Server](building.md)
