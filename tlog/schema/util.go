@@ -1,5 +1,12 @@
 package schema
 
+// RawTlogRespLen returns length of raw TlogResponse packet
+func RawTlogRespLen(numSeq int) int {
+	return 1 + // status:uint8
+		(numSeq * 8) + // sequences:uint64
+		40 // capnp overhead. TODO : find the exact number.
+}
+
 // CopyBlock copies content of block 'src' to 'dst'
 func CopyBlock(dst, src *TlogBlock) error {
 	vdiskID, err := src.VdiskID()

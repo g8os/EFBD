@@ -17,11 +17,12 @@ import (
 
 // Server defines a tlog server
 type Server struct {
-	port             int
-	bufSize          int
-	f                *flusher
-	ObjStorAddresses []string
-	listener         net.Listener
+	port                 int
+	bufSize              int
+	maxRespSegmentBufLen int // max len of response capnp segment buffer
+	f                    *flusher
+	ObjStorAddresses     []string
+	listener             net.Listener
 }
 
 // NewServer creates a new tlog server
@@ -55,9 +56,10 @@ func NewServer(conf *Config) (*Server, error) {
 
 	vdiskMgr = newVdiskManager(conf.BlockSize, conf.FlushSize)
 	return &Server{
-		f:                f,
-		ObjStorAddresses: objstorAddrs,
-		listener:         listener,
+		f:                    f,
+		ObjStorAddresses:     objstorAddrs,
+		listener:             listener,
+		maxRespSegmentBufLen: schema.RawTlogRespLen(conf.FlushSize),
 	}, nil
 }
 
@@ -137,9 +139,10 @@ func (s *Server) handle(conn net.Conn) error {
 }
 
 func (s *Server) sendResp(conn net.Conn, vdiskID string, respChan chan *response) {
+	segmentBuf := make([]byte, 0, s.maxRespSegmentBufLen)
 	for {
 		resp := <-respChan
-		if err := resp.write(conn); err != nil {
+		if err := resp.write(conn, segmentBuf); err != nil {
 			log.Infof("failed to send resp to :%v, err:%v", vdiskID, err)
 			conn.Close()
 			return
