@@ -80,8 +80,7 @@ func (s *Server) ListenAddr() string {
 }
 
 func (s *Server) handle(conn net.Conn) error {
-	var tlc *tlogChan
-	var vdiskID string
+	var vd *vdisk
 
 	defer conn.Close()
 	for {
@@ -106,32 +105,30 @@ func (s *Server) handle(conn net.Conn) error {
 			return err
 		}
 
-		if tlc == nil {
-			vdiskID = curVdiskID
-
-			tlc, err = s.f.getTlogChan(vdiskID)
+		if vd == nil {
+			vd, err = vdiskTab.get(curVdiskID, s.f)
 			if err != nil {
-				log.Infof("failed to get tlog channel of vdisk: %v, err: %v", vdiskID, err)
+				log.Infof("failed to vdisk: %v, err: %v", curVdiskID, err)
 				return err
 			}
-			go s.sendResp(conn, vdiskID, tlc.respChan)
+			go s.sendResp(conn, vd.vdiskID, vd.respChan)
 		}
 
-		if vdiskID != curVdiskID {
-			err = fmt.Errorf("invalid vdiskID. expected: %v, got: %v", vdiskID, curVdiskID)
+		if vd.vdiskID != curVdiskID {
+			err = fmt.Errorf("invalid vdiskID. expected: %v, got: %v", vd.vdiskID, curVdiskID)
 			log.Info(err)
 			return err
 		}
 
 		// check hash
-		if err := s.hash(tlb, vdiskID); err != nil {
+		if err := s.hash(tlb, vd.vdiskID); err != nil {
 			log.Debugf("hash check failed:%v\n", err)
 			return err
 		}
 
 		// store
-		tlc.inputChan <- tlb
-		tlc.respChan <- &response{
+		vd.inputChan <- tlb
+		vd.respChan <- &response{
 			Status:    0,
 			Sequences: []uint64{tlb.Sequence()},
 		}
