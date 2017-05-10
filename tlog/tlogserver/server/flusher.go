@@ -114,6 +114,7 @@ func (f *flusher) vdiskFlusher(vdiskID string, lastHash []byte, tlc *tlogChan) {
 	tlogs := []*schema.TlogBlock{}
 	dur := time.Duration(f.flushTime) * time.Second
 	pfTimer := time.NewTimer(dur) // periodic flush timer
+	var segmentBuf []byte         // capnp segment buffer
 
 	var toFlushLen int
 	for {
@@ -143,7 +144,7 @@ func (f *flusher) vdiskFlusher(vdiskID string, lastHash []byte, tlc *tlogChan) {
 		var seqs []uint64
 		var status int8
 
-		lastHash, seqs, err = f.flush(vdiskID, blocks[:], lastHash)
+		lastHash, segmentBuf, seqs, err = f.flush(vdiskID, blocks[:], lastHash, segmentBuf[:])
 		if err != nil {
 			log.Infof("flush %v failed: %v", vdiskID, err)
 			status = -1
@@ -156,11 +157,12 @@ func (f *flusher) vdiskFlusher(vdiskID string, lastHash []byte, tlc *tlogChan) {
 	}
 }
 
-func (f *flusher) flush(vdiskID string, blocks []*schema.TlogBlock, lastHash []byte) ([]byte, []uint64, error) {
+func (f *flusher) flush(vdiskID string, blocks []*schema.TlogBlock,
+	lastHash, segmentBuf []byte) ([]byte, []byte, []uint64, error) {
 	// capnp -> byte
-	data, err := f.encodeCapnp(vdiskID, blocks[:], lastHash)
+	data, segmentBuf, err := f.encodeCapnp(vdiskID, blocks[:], lastHash, segmentBuf[:])
 	if err != nil {
-		return lastHash, nil, err
+		return lastHash, segmentBuf, nil, err
 	}
 
 	// compress
@@ -175,7 +177,7 @@ func (f *flusher) flush(vdiskID string, blocks []*schema.TlogBlock, lastHash []b
 	// to the message to make it aligned.
 	buf := new(bytes.Buffer)
 	if err := binary.Write(buf, binary.LittleEndian, uint64(len(encrypted))); err != nil {
-		return lastHash, nil, err
+		return lastHash, segmentBuf, nil, err
 	}
 
 	finalData := append(buf.Bytes(), encrypted...)
@@ -183,14 +185,14 @@ func (f *flusher) flush(vdiskID string, blocks []*schema.TlogBlock, lastHash []b
 	// erasure
 	erEncoded, err := f.erasure.Encode(vdiskID, finalData[:])
 	if err != nil {
-		return lastHash, nil, err
+		return lastHash, segmentBuf, nil, err
 	}
 
 	hash := blake2b.Sum256(encrypted)
 	lastHash = hash[:]
 	// store to ardb
 	if err := f.storeEncoded(vdiskID, lastHash, erEncoded); err != nil {
-		return lastHash, nil, err
+		return lastHash, segmentBuf, nil, err
 	}
 
 	seqs := make([]uint64, len(blocks))
@@ -198,7 +200,7 @@ func (f *flusher) flush(vdiskID string, blocks []*schema.TlogBlock, lastHash []b
 		seqs[i] = blocks[i].Sequence()
 	}
 
-	return lastHash, seqs[:], nil
+	return lastHash, segmentBuf, seqs[:], nil
 }
 
 func (f *flusher) storeEncoded(vdiskID string, key []byte, encoded [][]byte) error {
@@ -239,15 +241,16 @@ func (f *flusher) storeEncoded(vdiskID string, key []byte, encoded [][]byte) err
 	return errGlob
 }
 
-func (f *flusher) encodeCapnp(vdiskID string, blocks []*schema.TlogBlock, lastHash []byte) ([]byte, error) {
-	// create capnp aggregation
-	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
+func (f *flusher) encodeCapnp(vdiskID string, blocks []*schema.TlogBlock,
+	lastHash, segmentBuf []byte) ([]byte, []byte, error) {
+
+	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(segmentBuf))
 	if err != nil {
-		return nil, err
+		return nil, segmentBuf, err
 	}
 	agg, err := schema.NewRootTlogAggregation(seg)
 	if err != nil {
-		return nil, err
+		return nil, segmentBuf, err
 	}
 
 	agg.SetName("The Go Tlog")
@@ -258,14 +261,14 @@ func (f *flusher) encodeCapnp(vdiskID string, blocks []*schema.TlogBlock, lastHa
 
 	blockList, err := agg.NewBlocks(int32(len(blocks)))
 	if err != nil {
-		return nil, err
+		return nil, segmentBuf, err
 	}
 
 	// add blocks
 	for i := 0; i < blockList.Len(); i++ {
 		block := blockList.At(i)
 		if err := schema.CopyBlock(&block, blocks[i]); err != nil {
-			return nil, err
+			return nil, segmentBuf, err
 		}
 	}
 
@@ -273,7 +276,12 @@ func (f *flusher) encodeCapnp(vdiskID string, blocks []*schema.TlogBlock, lastHa
 
 	err = capnp.NewEncoder(buf).Encode(msg)
 
-	return buf.Bytes(), err
+	// increase the length of segment buffer
+	if buf.Len() > cap(segmentBuf) {
+		segmentBuf = make([]byte, 0, buf.Len())
+	}
+
+	return buf.Bytes(), segmentBuf, err
 }
 
 func (f *flusher) getLastHash(vdiskID string) ([]byte, error) {
