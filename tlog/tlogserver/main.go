@@ -20,6 +20,7 @@ func main() {
 	flag.StringVar(&conf.ListenAddr, "listen-addr", conf.ListenAddr, "port to listen")
 	flag.IntVar(&conf.FlushSize, "flush-size", conf.FlushSize, "flush size")
 	flag.IntVar(&conf.FlushTime, "flush-time", conf.FlushTime, "flush time (seconds)")
+	flag.IntVar(&conf.BlockSize, "block-size", conf.BlockSize, "block size (bytes)")
 	flag.IntVar(&conf.K, "k", conf.K, "K variable of erasure encoding")
 	flag.IntVar(&conf.M, "m", conf.M, "M variable of erasure encoding")
 	flag.StringVar(&conf.PrivKey, "priv-key", conf.PrivKey, "private key")

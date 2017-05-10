@@ -53,6 +53,7 @@ func NewServer(conf *Config) (*Server, error) {
 		}
 	}
 
+	vdiskMgr = newVdiskManager(conf.BlockSize, conf.FlushSize)
 	return &Server{
 		f:                f,
 		ObjStorAddresses: objstorAddrs,
@@ -106,7 +107,7 @@ func (s *Server) handle(conn net.Conn) error {
 		}
 
 		if vd == nil {
-			vd, err = vdiskTab.get(curVdiskID, s.f)
+			vd, err = vdiskMgr.get(curVdiskID, s.f)
 			if err != nil {
 				log.Infof("failed to vdisk: %v, err: %v", curVdiskID, err)
 				return err

@@ -183,10 +183,7 @@ func (f *flusher) encodeCapnp(blocks []*schema.TlogBlock, vd *vdisk) ([]byte, er
 
 	err = capnp.NewEncoder(buf).Encode(msg)
 
-	// increase the length of segment buffer
-	if buf.Len() > cap(vd.segmentBuf) {
-		vd.segmentBuf = make([]byte, 0, buf.Len())
-	}
+	vd.resizeSegmentBuf(buf.Len())
 
 	return buf.Bytes(), err
 }

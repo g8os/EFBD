@@ -18,6 +18,7 @@ func DefaultConfig() *Config {
 		ListenAddr: "0.0.0.0:11211",
 		FlushSize:  25,
 		FlushTime:  25,
+		BlockSize:  4096,
 		PrivKey:    "12345678901234567890123456789012",
 		HexNonce:   "37b8e8a308c354048d245f6d",
 	}
@@ -27,6 +28,7 @@ func DefaultConfig() *Config {
 type Config struct {
 	K                 int
 	M                 int
+	BlockSize         int // size of each block, used as hint for the flusher buffer size
 	ListenAddr        string
 	FlushSize         int
 	FlushTime         int

@@ -18,11 +18,7 @@ const (
 	tlogBlockFactorSize = 5
 )
 
-var vdiskTab *vdiskTable
-
-func init() {
-	vdiskTab = newVdiskTable()
-}
+var vdiskMgr *vdiskManager
 
 type vdisk struct {
 	vdiskID    string
@@ -49,18 +45,26 @@ func newVdisk(vdiskID string, f *flusher) (*vdisk, error) {
 	}, nil
 }
 
-type vdiskTable struct {
-	vdisks map[string]*vdisk
-	lock   sync.Mutex
+type vdiskManager struct {
+	vdisks           map[string]*vdisk
+	lock             sync.Mutex
+	maxSegmentBufLen int // max len of capnp buffer used by flushing process
 }
 
-func newVdiskTable() *vdiskTable {
-	return &vdiskTable{
-		vdisks: map[string]*vdisk{},
+func newVdiskManager(blockSize, flushSize int) *vdiskManager {
+	// the estimation of max segment buf len we will need.
+	// we add it by '1' because:
+	// - the block will also container other data like 'sequenece', 'timestamp', etc..
+	// - overhead of capnp schema
+	segmentBufLen := blockSize * (flushSize + 1)
+
+	return &vdiskManager{
+		vdisks:           map[string]*vdisk{},
+		maxSegmentBufLen: segmentBufLen,
 	}
 }
 
-func (vt *vdiskTable) get(vdiskID string, f *flusher) (*vdisk, error) {
+func (vt *vdiskManager) get(vdiskID string, f *flusher) (*vdisk, error) {
 	vt.lock.Lock()
 	defer vt.lock.Unlock()
 
@@ -124,4 +128,17 @@ func (vd *vdisk) Run() {
 			Sequences: seqs,
 		}
 	}
+}
+
+// resize segmentBuf to new length
+func (vd *vdisk) resizeSegmentBuf(length int) {
+	if length > vdiskMgr.maxSegmentBufLen {
+		length = vdiskMgr.maxSegmentBufLen
+	}
+
+	if length <= cap(vd.segmentBuf) {
+		return
+	}
+
+	vd.segmentBuf = make([]byte, 0, length)
 }
