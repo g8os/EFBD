@@ -96,7 +96,7 @@ func (vd *vdisk) Run() {
 		select {
 		case tlb := <-vd.inputChan:
 			tlogs = append(tlogs, tlb)
-			if len(tlogs)%vd.flusher.flushSize != 0 { // only flush if it reach f.flushSize
+			if len(tlogs) < vd.flusher.flushSize { // only flush if it > f.flushSize
 				continue
 			}
 			toFlushLen = vd.flusher.flushSize
