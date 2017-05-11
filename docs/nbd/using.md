@@ -1,5 +1,7 @@
 # Using your NBD Server
 
+This documentation supplements the usage instructions in the [README](/nbdserver/readme.md) of the [`nbdserver`](/nbdserver) source directory.
+
 Make sure you have an ARDB server running on `localhost:16379`!
 
 ```
