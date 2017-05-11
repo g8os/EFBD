@@ -64,16 +64,16 @@ type Connection struct {
 
 // Backend is an interface implemented by the various backend drivers
 type Backend interface {
-	WriteAt(ctx context.Context, b []byte, offset int64, fua bool) (int64, error)     // write data to w at offset, with force unit access optional
-	WriteZeroesAt(ctx context.Context, offset, length int64, fua bool) (int64, error) // write zeroes to w at offset, with force unit access optional
-	ReadAt(ctx context.Context, offset, length int64) ([]byte, error)                 // read from o b at offset
-	TrimAt(ctx context.Context, offset, length int64) (int64, error)                  // trim
-	Flush(ctx context.Context) error                                                  // flush
-	Close(ctx context.Context) error                                                  // close
-	Geometry(ctx context.Context) (Geometry, error)                                   // size, minimum BS, preferred BS, maximum BS
-	HasFua(ctx context.Context) bool                                                  // does the driver support FUA?
-	HasFlush(ctx context.Context) bool                                                // does the driver support flush?
-	GoBackground(ctx context.Context)                                                 // optional background thread
+	WriteAt(ctx context.Context, b []byte, offset int64) (int64, error)     // write data to w at offset
+	WriteZeroesAt(ctx context.Context, offset, length int64) (int64, error) // write zeroes to w at offset
+	ReadAt(ctx context.Context, offset, length int64) ([]byte, error)       // read from o b at offset
+	TrimAt(ctx context.Context, offset, length int64) (int64, error)        // trim
+	Flush(ctx context.Context) error                                        // flush
+	Close(ctx context.Context) error                                        // close
+	Geometry(ctx context.Context) (Geometry, error)                         // size, minimum BS, preferred BS, maximum BS
+	HasFua(ctx context.Context) bool                                        // does the driver support FUA?
+	HasFlush(ctx context.Context) bool                                      // does the driver support flush?
+	GoBackground(ctx context.Context)                                       // optional background thread
 }
 
 // BackendGenerator is a generator function type that generates a backend
@@ -405,10 +405,10 @@ func (c *Connection) receive(ctx context.Context) {
 
 				}
 				wg.Add(1)
-				go func(wBuffer []byte, offset int64, blocklen uint64, fua bool) {
+				go func(wBuffer []byte, offset int64, blocklen uint64) {
 					defer wg.Done()
 					// WARNING: potential overflow (blocklen, offset)
-					bn, err := c.backend.WriteAt(ctx, wBuffer, offset, fua)
+					bn, err := c.backend.WriteAt(ctx, wBuffer, offset)
 					if err != nil {
 						c.logger.Infof("Client %s got write I/O error: %s", c.name, err)
 						nbdRep.NbdError = errorCodeFromGolangError(err)
@@ -416,7 +416,7 @@ func (c *Connection) receive(ctx context.Context) {
 						c.logger.Infof("Client %s got incomplete write (%d != %d) at offset %d", c.name, bn, blocklen, offset)
 						nbdRep.NbdError = NBD_EIO
 					}
-				}(wBuffer, int64(offset), blocklen, fua && blocklen == length)
+				}(wBuffer, int64(offset), blocklen)
 				length -= blocklen
 				offset += blocklen
 
@@ -428,14 +428,21 @@ func (c *Connection) receive(ctx context.Context) {
 
 			wg.Wait()
 
+			// flush if forced and no error occured
+			if fua && nbdRep.NbdError == 0 {
+				err := c.backend.Flush(ctx)
+				c.logger.Infof("Client %s got flush I/O error: %s", c.name, err)
+				nbdRep.NbdError = errorCodeFromGolangError(err)
+			}
+
 		case NBD_CMD_WRITE_ZEROES:
 			wg := sync.WaitGroup{}
 
 			for blocklen > 0 {
 				wg.Add(1)
-				go func(offset int64, blocklen int64, fua bool) {
+				go func(offset int64, blocklen int64) {
 					defer wg.Done()
-					n, err := c.backend.WriteZeroesAt(ctx, offset, blocklen, fua)
+					n, err := c.backend.WriteZeroesAt(ctx, offset, blocklen)
 					if err != nil {
 						c.logger.Infof("Client %s got write I/O error: %s", c.name, err)
 						nbdRep.NbdError = errorCodeFromGolangError(err)
@@ -443,7 +450,7 @@ func (c *Connection) receive(ctx context.Context) {
 						c.logger.Infof("Client %s got incomplete write (%d != %d) at offset %d", c.name, n, blocklen, offset)
 						nbdRep.NbdError = NBD_EIO
 					}
-				}(int64(offset), int64(blocklen), fua && blocklen == length)
+				}(int64(offset), int64(blocklen))
 
 				length -= blocklen
 				offset += blocklen
@@ -455,6 +462,13 @@ func (c *Connection) receive(ctx context.Context) {
 			}
 
 			wg.Wait()
+
+			// flush if forced and no error occured
+			if fua && nbdRep.NbdError == 0 {
+				err := c.backend.Flush(ctx)
+				c.logger.Infof("Client %s got flush I/O error: %s", c.name, err)
+				nbdRep.NbdError = errorCodeFromGolangError(err)
+			}
 
 		case NBD_CMD_FLUSH:
 			if err := c.backend.Flush(ctx); err != nil {
