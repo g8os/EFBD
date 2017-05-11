@@ -7,9 +7,8 @@ go:
 
 install:
   - go get -u github.com/Jumpscale/go-raml
-  - go get -u -t zombiezen.com/go/capnproto2/...
   - ./tlog/install_dependencies.sh
-  - sudo apt-get install capnproto
+  - ./tlog/install_capnp_0.6.0.sh
 
 script:
   - go test -timeout 5m $(go list ./... | grep -v vendor)
