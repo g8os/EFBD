@@ -5,8 +5,8 @@ import (
 
 	log "github.com/glendc/go-mini-log"
 
+	"github.com/g8os/blockstor/gonbdserver/nbd"
 	"github.com/g8os/blockstor/storagecluster"
-	"github.com/g8os/gonbdserver/nbd"
 )
 
 //Backend is a nbd.Backend implementation on top of ARDB

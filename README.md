@@ -9,6 +9,8 @@ A vdisk can be deduped, have various block sizes and depending on the underlying
 Components:
 * [NBD Server](nbdserver/)
   - A network block device server to expose the vdisks to virtual machines
+* [Gonbdserver](gonbdserver/)
+  - An NBD server written in Go, integrated within the [NBD Server](nbdserver/)
 * [TLOG Server](tlog/)
   - A transaction log server to record block changes
 * [Copyvdisk](cmd/copyvdisk/)

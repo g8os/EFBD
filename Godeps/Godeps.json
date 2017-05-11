@@ -38,10 +38,6 @@
 			"Rev": "0bce6a6887123b67a60366d2c9fe2dfb74289d2e"
 		},
 		{
-			"ImportPath": "github.com/g8os/gonbdserver/nbd",
-			"Rev": "98bdfe683354eb1f512c200dda375282d3ac1970"
-		},
-		{
 			"ImportPath": "github.com/garyburd/redigo/internal",
 			"Rev": "d8dbe4d94f15fe89232e0402c6e8a0ddf21af3ab"
 		},

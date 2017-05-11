@@ -12,11 +12,11 @@ import (
 
 	log "github.com/glendc/go-mini-log"
 
+	"github.com/g8os/blockstor/gonbdserver/nbd"
 	"github.com/g8os/blockstor/nbdserver/ardb"
 	"github.com/g8os/blockstor/nbdserver/lba"
 	"github.com/g8os/blockstor/redisstub"
 	"github.com/g8os/blockstor/storagecluster"
-	"github.com/g8os/gonbdserver/nbd"
 )
 
 func main() {
