@@ -2,7 +2,7 @@
 
 This repository implements the components required for supporting block storage in G8OS nodes.
 
-The G8OS block storage components allow to create and use block devices (vdisks) from within virtual machines hosted on a G8OS node.
+The G8OS block storage components allow you to create and use block devices (vdisks) from within virtual machines hosted on a G8OS node.
 
 A vdisk can be deduped, have various block sizes and depending on the underlying storage cluster, have different speed characteristics.
 
