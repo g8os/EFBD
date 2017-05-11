@@ -75,7 +75,7 @@ qemu-img convert -p -n ubuntu-16.04-server-cloudimg-amd64-disk1.img -q nbd nbd+u
 
 ## More
 
-For more verbose documentation see the [/docs](/docs) directory.
+For more verbose documentation see the [`/docs`](/docs) directory.
 
 You'll find there following sections about the NBD Server:
 

@@ -6,17 +6,14 @@ The G8OS block storage components allow you to create and use block devices (vdi
 
 A vdisk can be deduped, have various block sizes and depending on the underlying storage cluster, have different speed characteristics.
 
-All documentation is in the [/docs](docs/SUMMARY.md) directory.
-
 Components:
-* [NBD Server](nbdserver/readme.md)
+* [NBD Server](nbdserver/)
   - A network block device server to expose the vdisks to virtual machines
-  - Documented [here](docs/nbd/nbd.md)
-* [TLOG Server](tlog/readme.md)
+* [TLOG Server](tlog/)
   - A transaction log server to record block changes
-  - Documented [here](docs/tlog/tlog.md)
-* [CopyVdisk CLI](cmd/copyvdisk/readme.md)
+* [Copyvdisk](cmd/copyvdisk/)
   - A CLI tool to copy the metadata of a deduped vdis
-  - Documented [here](docs/copyvdisk/copyvdisk.md)
 
 Make sure to have [Golang](https://golang.org/) version 1.8 or above installed.
+
+See the [`/docs`](/docs) directory for more verbose documentation.
