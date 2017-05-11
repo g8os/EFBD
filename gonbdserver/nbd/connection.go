@@ -429,16 +429,13 @@ func (c *Connection) receive(ctx context.Context) {
 			wg.Wait()
 
 		case NBD_CMD_WRITE_ZEROES:
-			var n int64
-			var err error
-
 			wg := sync.WaitGroup{}
 
 			for blocklen > 0 {
 				wg.Add(1)
 				go func(offset int64, blocklen int64, fua bool) {
 					defer wg.Done()
-					n, err = c.backend.WriteZeroesAt(ctx, offset, blocklen, fua)
+					n, err := c.backend.WriteZeroesAt(ctx, offset, blocklen, fua)
 					if err != nil {
 						c.logger.Infof("Client %s got write I/O error: %s", c.name, err)
 						nbdRep.NbdError = errorCodeFromGolangError(err)
@@ -466,16 +463,13 @@ func (c *Connection) receive(ctx context.Context) {
 			}
 
 		case NBD_CMD_TRIM:
-			var n int64
-			var err error
-
 			wg := sync.WaitGroup{}
 
 			for blocklen > 0 {
 				wg.Add(1)
 				go func(offset int64, blocklen int64) {
 					defer wg.Done()
-					n, err = c.backend.TrimAt(ctx, offset, blocklen)
+					n, err := c.backend.TrimAt(ctx, offset, blocklen)
 					if err != nil {
 						c.logger.Infof("Client %s got trim I/O error: %s", c.name, err)
 						nbdRep.NbdError = errorCodeFromGolangError(err)
