@@ -76,6 +76,10 @@
 			"Rev": "29ae4ffbc9a6fe9fb2bc5029050ce6996ea1d3bc"
 		},
 		{
+			"ImportPath": "github.com/mattn/go-isatty",
+			"Rev": "dda3de49cbfcec471bd7a70e6cc01fcc3ff90109"
+		},
+		{
 			"ImportPath": "github.com/minio/blake2b-simd",
 			"Rev": "3f5f724cb5b182a5c278d6d3d55b40e7f8c2efb4"
 		},
@@ -254,6 +258,10 @@
 		{
 			"ImportPath": "golang.org/x/net/context",
 			"Rev": "ffcf1bedda3b04ebb15a168a59800a73d6dc0f4d"
+		},
+		{
+			"ImportPath": "golang.org/x/sys/unix",
+			"Rev": "b699b7032584f0953262cb2788a0ca19bb494703"
 		},
 		{
 			"ImportPath": "gopkg.in/validator.v2",
