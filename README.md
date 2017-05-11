@@ -1,17 +1,22 @@
 # G8OS Block Storage [![Build Status](https://travis-ci.org/g8os/blockstor.svg?branch=master)](https://travis-ci.org/g8os/blockstor)
 
-The G8OS block storage allows to create and use block devices (vdisks) from within virtual machines hosted on a G8OS node.
+This repository implements the components required for supporting G8OS block storage in G8OS nodes.
+
+The G8OS block storage components allow to create and use block devices (vdisks) from within virtual machines hosted on a G8OS node.
 
 A vdisk can be deduped, have various block sizes and depending on the underlying storage cluster, have different speed characteristics.
 
-Make sure to have Golang version 1.8 or above installed!
+All documentation is in the [/docs](docs/SUMMARY.md) directory.
 
 Components:
 * [NBD Server](nbdserver/readme.md)
-    A Network Block Device server to expose the vdisks to virtual machines
-* [TLOG Server](tlog/tlogserver/README.md)
-    A Transaction Log server to record block changes
+  - A network block device server to expose the vdisks to virtual machines
+  - Documented [here](docs/nbd/nbd.md)
+* [TLOG Server](tlog/readme.md)
+  - A transaction log server to record block changes
+  - Documented [here](docs/tlog/tlog.md)
 * [CopyVdisk CLI](cmd/copyvdisk/readme.md)
-    A CLI tool to copy the metadata of a deduped vdisk
+  - A CLI tool to copy the metadata of a deduped vdis
+  - Documented [here](docs/copyvdisk/copyvdisk.md)
 
-All documentation is in the [/docs](docs/SUMMARY.md) directory.
+Make sure to have [Golang](https://golang.org/) version 1.8 or above installed.

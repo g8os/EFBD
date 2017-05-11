@@ -8,73 +8,13 @@ Options:
 
 
 
-```
-GIGHOME="/Users/$USER/gig"
-ZEROTIER_NETWORK_ID="..."
-```
-
-Create a new Docker image and start a container:
-```
-curl -sL https://raw.githubusercontent.com/Jumpscale/developer/master/scripts/js_builder_js82_zerotier.sh | bash -s <your-ZeroTier-network-ID>
-```
-
-Or in case you already have the image, start a new container using the existing image:
-```
-docker rm --force js8
-docker run --name js82 -h js82 -d --device=/dev/net/tun --cap-add=NET_ADMIN --cap-add=SYS_ADMIN -v ${GIGHOME}/zerotier-one/:/var/lib/zerotier-one/ -v ${GIGHOME}/code/:/opt/code/ -v ${GIGHOME}/data/:/optvar/data jumpscale/js82 /root/init.sh ${ZEROTIER_NETWORK_ID}
-
-
-Then start the SSH daemon in the container:
-```
-/usr/sbin/sshd
-```
-
-For the next step you need to SSH into your container:
-```
-ssh root@ZERO-TIER-IP-ADDRESS
-```
-
-First we need to install Go into the Docker container. JumpScale makes that very easy:
-```
-jspython -c "from JumpScale import j; j.tools.cuisine.local.development.golang.install()"
-```
-
-Next:
-```
-mkdir -p /usr/local/go
-export GOROOT=/opt/go/root/
-export PATH=$PATH:$GOROOT/bin
-export GOPATH=/opt/go/proj
-```
-
-```
-go get -d github.com/g8os/blockstor/nbdserver
-```
-
-```
-cd $GOPATH/src/github.com/g8os/blockstor/nbdserver
-CGO_ENABLED=0
-GOOS=linux
-go build -a -ldflags '-extldflags "-static"' .
-```
-
-Geert:
-
-cd /opt/go/proj/src/github.com/g8os/resourcepool/api;
-
-GOPATH=/opt/go/proj
-GOROOT=/opt/go/root/
-
-/opt/go/root/bin/go get -d ./...;
-
-GOPATH=/opt/go/proj
-GOROOT=/opt/go/root/
-/opt/go/root/bin/go build -o /root/resourcepoolapiserver
 
 
 
 
-GOPATH=$GIGHOME/
+
+
+
 
 
 -> requires:
