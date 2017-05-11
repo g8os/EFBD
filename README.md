@@ -1,6 +1,6 @@
 # G8OS Block Storage [![Build Status](https://travis-ci.org/g8os/blockstor.svg?branch=master)](https://travis-ci.org/g8os/blockstor)
 
-This repository implements the components required for supporting G8OS block storage in G8OS nodes.
+This repository implements the components required for supporting block storage in G8OS nodes.
 
 The G8OS block storage components allow to create and use block devices (vdisks) from within virtual machines hosted on a G8OS node.
 
