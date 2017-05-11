@@ -44,7 +44,7 @@ gzip flist-nbdserver.db.tar
 
 ## More
 
-For more documentation see the [/docs](/docs/SUMMARY.md) directory.
+For more verbose documentation see the [/docs](/docs) directory.
 
 You'll find there following sections about the NBD Server:
 
