@@ -4,11 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"net"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/g8os/blockstor"
@@ -75,7 +72,7 @@ func (c *Client) Recv(chanSize int) <-chan *Result {
 // RecvOne receive one response
 func (c *Client) RecvOne() (*Response, error) {
 	// read prefix to get the length
-	length, err := c.recvPrefix()
+	_, length, err := tlog.ReadCapnpPrefix(c.conn)
 	if err != nil {
 		return nil, err
 	}
@@ -105,37 +102,6 @@ func (c *Client) RecvOne() (*Response, error) {
 		Status:    tr.Status(),
 		Sequences: seqs,
 	}, nil
-}
-
-func (c *Client) recvPrefix() (int, error) {
-	// check if prefix already fully retrieved
-	endPrefix := func(data []byte) bool {
-		if len(data) < 3 {
-			return false
-		}
-		return strings.HasSuffix(string(data), "\r\n")
-	}
-
-	// min prefix len = 3
-	prefix := make([]byte, 3)
-	_, err := c.conn.Read(prefix)
-	if err != nil {
-		return 0, err
-	}
-
-	// read byte by byte
-	for !endPrefix(prefix) {
-		if len(prefix) > 6 { // prefix too long
-			return 0, fmt.Errorf("prefix too long")
-		}
-
-		temp := make([]byte, 1)
-		if _, err := c.conn.Read(temp); err != nil {
-			return 0, err
-		}
-		prefix = append(prefix, temp...)
-	}
-	return strconv.Atoi(string(prefix[:len(prefix)-2]))
 }
 
 func createConn(addr string) (*net.TCPConn, error) {

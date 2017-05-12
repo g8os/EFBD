@@ -2,9 +2,9 @@ package server
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 
+	"github.com/g8os/blockstor/tlog"
 	"github.com/g8os/blockstor/tlog/schema"
 
 	"zombiezen.com/go/capnproto2"
@@ -58,9 +58,9 @@ func (r *response) write(w io.Writer, segmentBuf []byte) error {
 		return err
 	}
 
-	prefix := fmt.Sprintf("%v\r\n", buf.Len())
-
-	w.Write([]byte(prefix))
+	if err := tlog.WriteCapnpPrefix(w, buf.Len()); err != nil {
+		return err
+	}
 
 	_, err = buf.WriteTo(w)
 	return err
