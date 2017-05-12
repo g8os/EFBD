@@ -2,7 +2,6 @@ package ardb
 
 import (
 	"context"
-	"strconv"
 
 	log "github.com/glendc/go-mini-log"
 
@@ -29,8 +28,6 @@ type nonDedupedStorage struct {
 
 // Set implements backendStorage.Set
 func (ss *nonDedupedStorage) Set(blockIndex int64, content []byte) (err error) {
-	key := ss.getKey(blockIndex)
-
 	conn, err := ss.provider.RedisConnection(blockIndex)
 	if err != nil {
 		return
@@ -43,26 +40,24 @@ func (ss *nonDedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 		log.Debugf(
 			"deleting content @ %d for vdisk %s as it's an all zeroes block",
 			blockIndex, ss.vdiskID)
-		_, err = conn.Do("DEL", key)
+		_, err = conn.Do("HDEL", ss.vdiskID, blockIndex)
 		return
 	}
 
 	// content is not zero, so let's (over)write it
-	_, err = conn.Do("SET", key, content)
+	_, err = conn.Do("HSET", ss.vdiskID, blockIndex, content)
 	return
 }
 
 // Merge implements backendStorage.Merge
 func (ss *nonDedupedStorage) Merge(blockIndex, offset int64, content []byte) (err error) {
-	key := ss.getKey(blockIndex)
-
 	conn, err := ss.provider.RedisConnection(blockIndex)
 	if err != nil {
 		return
 	}
 	defer conn.Close()
 
-	origContent, _ := redis.Bytes(conn.Do("GET", key))
+	origContent, _ := redis.Bytes(conn.Do("HGET", ss.vdiskID, blockIndex))
 	if ocl := int64(len(origContent)); ocl == 0 {
 		origContent = make([]byte, ss.blockSize)
 	} else if ocl < ss.blockSize {
@@ -75,21 +70,19 @@ func (ss *nonDedupedStorage) Merge(blockIndex, offset int64, content []byte) (er
 	copy(origContent[offset:], content)
 
 	// store new content, as the merged version is non-zero
-	_, err = conn.Do("SET", key, origContent)
+	_, err = conn.Do("HSET", ss.vdiskID, blockIndex, origContent)
 	return
 }
 
 // Get implements backendStorage.Get
 func (ss *nonDedupedStorage) Get(blockIndex int64) (content []byte, err error) {
-	key := ss.getKey(blockIndex)
-
 	conn, err := ss.provider.RedisConnection(blockIndex)
 	if err != nil {
 		return
 	}
 	defer conn.Close()
 
-	content, err = redisBytes(conn.Do("GET", key))
+	content, err = redisBytes(conn.Do("HGET", ss.vdiskID, blockIndex))
 	return
 }
 
@@ -101,8 +94,7 @@ func (ss *nonDedupedStorage) Delete(blockIndex int64) (err error) {
 	}
 	defer conn.Close()
 
-	key := ss.getKey(blockIndex)
-	_, err = conn.Do("DEL", key)
+	_, err = conn.Do("HDEL", ss.vdiskID, blockIndex)
 	return
 }
 
@@ -120,13 +112,6 @@ func (ss *nonDedupedStorage) Close() error {
 // GoBackground implements backendStorage.GoBackground
 func (ss *nonDedupedStorage) GoBackground(ctx context.Context) {
 	// no background thread needed
-}
-
-// get the unique key for a block,
-// based on its index and the shared vdiskID
-func (ss *nonDedupedStorage) getKey(blockIndex int64) string {
-	//Is twice as fast as fmt.Sprintf
-	return ss.vdiskID + ":" + strconv.FormatInt(blockIndex, 10)
 }
 
 // isZeroContent detects if a given content buffer is completely filled with 0s

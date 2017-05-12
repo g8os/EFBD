@@ -1,4 +1,4 @@
-package main
+package copyvdisk
 
 import (
 	"github.com/garyburd/redigo/redis"
@@ -6,7 +6,7 @@ import (
 )
 
 // get 1 or 2 ardb connection(s) based on the given input
-func getARDBConnections(logger log.Logger, input *userInputPair) (connA, connB redis.Conn, err error) {
+func getARDBConnections(input *userInputPair, logger log.Logger) (connA, connB redis.Conn, err error) {
 	// dial first (source) connection string
 	connA, err = redis.Dial("tcp", input.Source.URL)
 	if err != nil {
