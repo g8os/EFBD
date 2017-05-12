@@ -74,7 +74,12 @@ func (s *Server) Listen() {
 			log.Infof("couldn't accept connection: %v", err)
 			continue
 		}
-		go s.handle(conn)
+		tcpConn, ok := conn.(*net.TCPConn)
+		if !ok {
+			log.Info("received conn is not tcp conn")
+			continue
+		}
+		go s.handle(tcpConn)
 	}
 }
 
@@ -83,11 +88,13 @@ func (s *Server) ListenAddr() string {
 	return s.listener.Addr().String()
 }
 
-func (s *Server) handle(conn net.Conn) error {
+func (s *Server) handle(conn *net.TCPConn) error {
 	var vd *vdisk
 
-	br := bufio.NewReader(conn)
 	defer conn.Close()
+
+	br := bufio.NewReader(conn)
+
 	for {
 		data, err := s.readData(br)
 		if err != nil {
@@ -116,6 +123,7 @@ func (s *Server) handle(conn net.Conn) error {
 				log.Infof("failed to vdisk: %v, err: %v", curVdiskID, err)
 				return err
 			}
+			// start response sender
 			go s.sendResp(conn, vd.vdiskID, vd.respChan)
 		}
 
@@ -140,14 +148,19 @@ func (s *Server) handle(conn net.Conn) error {
 	}
 }
 
-func (s *Server) sendResp(conn net.Conn, vdiskID string, respChan chan *response) {
+func (s *Server) sendResp(conn *net.TCPConn, vdiskID string, respChan chan *response) {
 	segmentBuf := make([]byte, 0, s.maxRespSegmentBufLen)
+	bw := bufio.NewWriter(conn)
 	for {
 		resp := <-respChan
-		if err := resp.write(conn, segmentBuf); err != nil {
+
+		if err := resp.write(bw, segmentBuf); err != nil {
 			log.Infof("failed to send resp to :%v, err:%v", vdiskID, err)
 			conn.Close()
 			return
+		}
+		if err := bw.Flush(); err != nil {
+			log.Infof("failed flush:%v", err)
 		}
 	}
 }
