@@ -97,11 +97,13 @@ func (f *flusher) flush(blocks []*schema.TlogBlock, vd *vdisk) ([]uint64, error)
 
 	hash := blake2b.Sum256(encrypted)
 	lastHash := hash[:]
+
 	// store to ardb
-	if err := f.storeEncoded(vd.vdiskID, lastHash, erEncoded); err != nil {
+	if err := f.storeEncoded(vd, lastHash, erEncoded); err != nil {
 		return nil, err
 	}
-	vd.lastHash = lastHash
+
+	vd.lastHash = lastHash // only update last hash if everything is OK
 
 	seqs := make([]uint64, len(blocks))
 	for i := 0; i < len(blocks); i++ {
@@ -111,42 +113,59 @@ func (f *flusher) flush(blocks []*schema.TlogBlock, vd *vdisk) ([]uint64, error)
 	return seqs[:], nil
 }
 
-func (f *flusher) storeEncoded(vdiskID string, key []byte, encoded [][]byte) error {
+func (f *flusher) storeEncoded(vd *vdisk, key []byte, encoded [][]byte) error {
 	var wg sync.WaitGroup
 
 	length := f.k + f.m
 	wg.Add(length + 1)
 
-	var errGlob error
+	var allErr []error
+
 	// store encoded data
 	for i := 0; i < length; i++ {
 		go func(idx int) {
 			defer wg.Done()
 
 			blocks := encoded[idx]
-			rc := f.redisPool.Get(idx + 1)
-			defer rc.Close()
-
-			_, err := rc.Do("SET", key, blocks)
+			err := f.storeRedis(idx+1, key, blocks)
 			if err != nil {
-				log.Infof("error during flush idx %v: %v", idx, err)
-				errGlob = err
+				err = fmt.Errorf("error during flush idx %v: %v", idx, err)
+				allErr = append(allErr, err)
 			}
 		}(i)
 	}
 
 	// store last hash name
+	lastHashStored := false
 	go func() {
 		defer wg.Done()
-		err := f.storeLastHash(vdiskID, key)
+		err := f.storeLastHash(vd.vdiskID, key)
 		if err != nil {
-			log.Infof("error when setting last hash name: %v", err)
-			errGlob = err
+			err = fmt.Errorf("error when setting last hash name: %v", err)
+			allErr = append(allErr, err)
+		} else {
+			lastHashStored = true
 		}
 	}()
 
 	wg.Wait()
-	return errGlob
+
+	if lastHashStored && len(allErr) > 0 {
+		// if last hash successfully stored but we had error in data pieces,
+		// we need to roolback the last_hash
+		//
+		// FIXME : what to do if the rollback itself got error?
+		// - need to use other data structure?
+		// - only store last hash after we successfully store all pieces?
+		if err := f.storeLastHash(vd.vdiskID, vd.lastHash); err != nil {
+			log.Infof("WARNING: failed to rollback last hash of %v to %v, err: %v", vd.vdiskID, vd.lastHash, err)
+		}
+	}
+	if len(allErr) > 0 {
+		log.Infof("flush of vdiskID=%v failed: %v", vd.vdiskID, allErr)
+		return fmt.Errorf("flush vdiskID=%v failed", vd.vdiskID)
+	}
+	return nil
 }
 
 func (f *flusher) encodeCapnp(blocks []*schema.TlogBlock, vd *vdisk) ([]byte, error) {
@@ -207,13 +226,40 @@ func (f *flusher) getLastHash(vdiskID string) ([]byte, error) {
 }
 
 func (f *flusher) storeLastHash(vdiskID string, lastHash []byte) error {
-	rc := f.redisPool.Get(0)
-	defer rc.Close()
-
-	_, err := rc.Do("SET", f.lastHashKey(vdiskID), lastHash)
-	return err
+	return f.storeRedis(0, []byte(f.lastHashKey(vdiskID)), lastHash)
 }
 
 func (f *flusher) lastHashKey(vdiskID string) string {
 	return lastHashPrefix + vdiskID
+}
+
+// store data to redis and retry it if failed
+func (f *flusher) storeRedis(idx int, key, data []byte) error {
+
+	store := func() error {
+		// get new connection inside this function.
+		// so in case of error, we got new connection that hopefully better
+		rc := f.redisPool.Get(idx)
+		defer rc.Close()
+
+		_, err := rc.Do("SET", key, data)
+		return err
+	}
+
+	var err error
+
+	sleepMs := time.Duration(500) * time.Millisecond
+
+	for i := 0; i < 4; i++ {
+		err = store()
+		if err == nil {
+			return nil
+		}
+		log.Infof("error to store to idx:%v, err: %v", idx, err)
+
+		// sleep for a while
+		time.Sleep(sleepMs)
+		sleepMs *= 2 // double the sleep time for the next iteration
+	}
+	return err
 }
