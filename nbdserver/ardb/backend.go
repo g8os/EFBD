@@ -7,6 +7,7 @@ import (
 	"github.com/g8os/blockstor/storagecluster"
 	"github.com/g8os/blockstor/tlog/schema"
 	"github.com/g8os/blockstor/tlog/tlogclient"
+	tlogserver "github.com/g8os/blockstor/tlog/tlogserver/server"
 	"github.com/g8os/gonbdserver/nbd"
 	"github.com/siddontang/go/log"
 )
@@ -293,6 +294,6 @@ func (ab *Backend) sendTransaction(offset uint64, op uint8, content []byte, leng
 	}
 }
 
-const (
-	transactionChCapacity = 8
+var (
+	transactionChCapacity = tlogserver.DefaultConfig().FlushSize * 2
 )
