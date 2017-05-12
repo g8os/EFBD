@@ -3,7 +3,6 @@ package tlogclient
 import (
 	"bufio"
 	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/g8os/blockstor"
+	"github.com/g8os/blockstor/tlog"
 )
 
 var (
@@ -175,16 +175,9 @@ func (c *Client) Send(op uint8, seq uint64, lba, timestamp uint64,
 		c.capnpSegmentBuf = make([]byte, 0, len(b))
 	}
 
-	// build capnp prefix as described at https://capnproto.org/encoding.html#serialization-over-a-stream
+	// add capnp prefix
 	buf := new(bytes.Buffer)
-
-	var prefix uint32
-	if err := binary.Write(buf, binary.LittleEndian, prefix); err != nil {
-		return err
-	}
-
-	prefix = uint32(len(b) / 8)
-	if err := binary.Write(buf, binary.LittleEndian, prefix); err != nil {
+	if err := tlog.WriteCapnpPrefix(buf, len(b)); err != nil {
 		return err
 	}
 

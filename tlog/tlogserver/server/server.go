@@ -3,7 +3,6 @@ package server
 import (
 	"bufio"
 	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -154,19 +153,13 @@ func (s *Server) sendResp(conn net.Conn, vdiskID string, respChan chan *response
 }
 func (s *Server) readData(rd io.Reader) ([]byte, error) {
 	// read length prefix
-	// as described in https://capnproto.org/encoding.html#serialization-over-a-stream
-	var segmentNum, length uint32
-
-	if err := binary.Read(rd, binary.LittleEndian, &segmentNum); err != nil {
+	_, length, err := tlog.ReadCapnpPrefix(rd)
+	if err != nil {
 		return nil, err
 	}
 
-	if err := binary.Read(rd, binary.LittleEndian, &length); err != nil {
-		return nil, err
-	}
-
-	data := make([]byte, length*8)
-	_, err := io.ReadFull(rd, data)
+	data := make([]byte, length)
+	_, err = io.ReadFull(rd, data)
 	return data, err
 }
 
