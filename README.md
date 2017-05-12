@@ -16,4 +16,9 @@ Components:
 
 Make sure to have [Golang](https://golang.org/) version 1.8 or above installed.
 
-See the [`/docs`](/docs) directory for more verbose documentation.
+
+## More
+
+All documentation is in the [`/docs`](./docs) directory, including a [table of contents](/docs/SUMMARY.md).
+
+In [Getting Started with NBD Server](/docs/gettingstarted/gettingstarted.md) you find the recommended path to quickly get up and running.
