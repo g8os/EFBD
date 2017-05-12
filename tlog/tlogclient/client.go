@@ -49,7 +49,6 @@ func New(addr string, vdiskID string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	return &Client{
 		addr:    addr,
 		vdiskID: vdiskID,
@@ -168,6 +167,12 @@ func (c *Client) Send(op uint8, seq uint64, lba, timestamp uint64,
 	b, err := c.buildCapnp(op, seq, hash[:], lba, timestamp, data, size)
 	if err != nil {
 		return err
+	}
+
+	// adjust capnp segment buffer and tcp write buffer
+	if len(b) > cap(c.capnpSegmentBuf) {
+		c.conn.SetWriteBuffer(len(b))
+		c.capnpSegmentBuf = make([]byte, 0, len(b))
 	}
 
 	// build capnp prefix as described at https://capnproto.org/encoding.html#serialization-over-a-stream

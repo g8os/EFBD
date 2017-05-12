@@ -43,9 +43,5 @@ func (c *Client) buildCapnp(op uint8, seq uint64, hash []byte,
 
 	err = capnp.NewEncoder(buf).Encode(msg)
 
-	// adjust the size
-	if buf.Len() > cap(c.capnpSegmentBuf) {
-		c.capnpSegmentBuf = make([]byte, 0, buf.Len())
-	}
 	return buf.Bytes(), err
 }
