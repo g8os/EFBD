@@ -3,7 +3,7 @@ package nbd
 /* --- START OF NBD PROTOCOL SECTION --- */
 
 // this section is in essence a transcription of the protocol from
-// NBD's proto.md; note that that file is *not* GPL. For details of
+// NBD's proto.md. For details of
 // what the options mean, see proto.md
 
 // NBD commands
