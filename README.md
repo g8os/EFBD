@@ -13,8 +13,8 @@ Components:
   - An NBD server written in Go, integrated within the [NBD Server](nbdserver/)
 * [TLOG Server](tlog/)
   - A transaction log server to record block changes
-* [Copyvdisk](cmd/copyvdisk/)
-  - A CLI tool to copy the metadata of a deduped vdis
+* [g8stor](g8stor/)
+  - A CLI tool suite to control g8os resources
 
 Make sure to have [Golang](https://golang.org/) version 1.8 or above installed.
 
