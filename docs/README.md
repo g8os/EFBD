@@ -9,6 +9,6 @@ G8OS Block Storage is implemented in the [g8os/blockstor](https://github.com/g8o
 Components:
 * [NBD Server](nbd/nbd.md): A network block device server to expose the vdisks to virtual machines
 * [TLOG Server](tlog/tlog.md): A transaction log server to record block changes
-* [Copyvdisk Tool](copyvdisk/copyvdisk.md): A CLI tool to copy the metadata of a deduped vdisk
+* [g8stor Tool Suite](g8stor/g8stor.md): A CLI tool suite to control g8os resources
 
 See the [Table of Contents](SUMMARY.md) for all documentation.
