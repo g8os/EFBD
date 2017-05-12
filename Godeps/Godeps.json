@@ -72,6 +72,10 @@
 			"Rev": "599cba5e7b6137d46ddf58fb1765f5d928e69604"
 		},
 		{
+			"ImportPath": "github.com/inconshreveable/mousetrap",
+			"Rev": "76626ae9c91c4f2a10f34cad8ce83ea42c93bb75"
+		},
+		{
 			"ImportPath": "github.com/kardianos/osext",
 			"Rev": "29ae4ffbc9a6fe9fb2bc5029050ce6996ea1d3bc"
 		},
@@ -177,6 +181,14 @@
 		{
 			"ImportPath": "github.com/siddontang/rdb",
 			"Rev": "fc89ed2e418d27e3ea76e708e54276d2b44ae9cf"
+		},
+		{
+			"ImportPath": "github.com/spf13/cobra",
+			"Rev": "7be4beda01ec05d0b93d80b3facd2b6f44080d94"
+		},
+		{
+			"ImportPath": "github.com/spf13/pflag",
+			"Rev": "d16db1e50e33dff1b6cdf37596cef36742128670"
 		},
 		{
 			"ImportPath": "github.com/stretchr/testify/assert",
