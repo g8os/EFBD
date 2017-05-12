@@ -5,8 +5,8 @@ import (
 
 	log "github.com/glendc/go-mini-log"
 
+	"github.com/g8os/blockstor/gonbdserver/nbd"
 	"github.com/g8os/blockstor/storagecluster"
-	"github.com/g8os/gonbdserver/nbd"
 )
 
 //Backend is a nbd.Backend implementation on top of ARDB
@@ -18,7 +18,7 @@ type Backend struct {
 }
 
 //WriteAt implements nbd.Backend.WriteAt
-func (ab *Backend) WriteAt(ctx context.Context, b []byte, offset int64, fua bool) (bytesWritten int64, err error) {
+func (ab *Backend) WriteAt(ctx context.Context, b []byte, offset int64) (bytesWritten int64, err error) {
 	blockIndex := offset / ab.blockSize
 	offsetInsideBlock := offset % ab.blockSize
 
@@ -43,20 +43,12 @@ func (ab *Backend) WriteAt(ctx context.Context, b []byte, offset int64, fua bool
 		return
 	}
 
-	if fua {
-		err = ab.Flush(ctx)
-		if err != nil {
-			log.Debug("failed to force flush:", err)
-			return
-		}
-	}
-
 	bytesWritten = int64(len(b))
 	return
 }
 
 //WriteZeroesAt implements nbd.Backend.WriteZeroesAt
-func (ab *Backend) WriteZeroesAt(ctx context.Context, offset, length int64, fua bool) (bytesWritten int64, err error) {
+func (ab *Backend) WriteZeroesAt(ctx context.Context, offset, length int64) (bytesWritten int64, err error) {
 	blockIndex := offset / ab.blockSize
 	offsetInsideBlock := offset % ab.blockSize
 
@@ -78,13 +70,6 @@ func (ab *Backend) WriteZeroesAt(ctx context.Context, offset, length int64, fua 
 			"backend failed to WriteZeroesAt %d (offset=%d, length=%d): %s",
 			blockIndex, offsetInsideBlock, length, err.Error())
 		return
-	}
-
-	if fua {
-		err = ab.Flush(ctx)
-		if err != nil {
-			return
-		}
 	}
 
 	bytesWritten = length

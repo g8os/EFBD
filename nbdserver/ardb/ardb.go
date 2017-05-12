@@ -7,10 +7,10 @@ import (
 
 	log "github.com/glendc/go-mini-log"
 
+	"github.com/g8os/blockstor/gonbdserver/nbd"
 	"github.com/g8os/blockstor/nbdserver/config"
 	"github.com/g8os/blockstor/nbdserver/lba"
 	"github.com/g8os/blockstor/storagecluster"
-	"github.com/g8os/gonbdserver/nbd"
 	"github.com/garyburd/redigo/redis"
 )
 

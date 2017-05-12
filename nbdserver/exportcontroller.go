@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/g8os/blockstor/gonbdserver/nbd"
 	"github.com/g8os/blockstor/nbdserver/config"
-	"github.com/g8os/gonbdserver/nbd"
 	log "github.com/glendc/go-mini-log"
 )
 
