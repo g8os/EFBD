@@ -18,14 +18,11 @@ var DedupedCmd = &cobra.Command{
 
 func deleteDeduped(cmd *cobra.Command, args []string) error {
 	// create logger
-	var logger log.Logger
+	logLevel := log.ErrorLevel
 	if config.Verbose {
-		// log info to stderr
-		logger = log.New("delete-deduped", log.InfoLevel)
-	} else {
-		// discard all logs
-		logger = log.NopLogger()
+		logLevel = log.DebugLevel
 	}
+	logger := log.New("copy-deduped", logLevel)
 
 	// parse user input
 	logger.Info("parsing positional arguments...")

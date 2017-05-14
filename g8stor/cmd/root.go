@@ -30,6 +30,7 @@ func init() {
 		VersionCmd,
 		CopyCmd,
 		DeleteCmd,
+		RestoreCmd,
 	)
 
 	RootCmd.PersistentFlags().BoolVarP(

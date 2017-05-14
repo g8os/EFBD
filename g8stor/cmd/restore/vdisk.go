@@ -1,59 +1,59 @@
-package main
+package restore
 
 import (
 	"context"
-	"flag"
-	"fmt"
-	"os"
+	"errors"
 	"strings"
 
+	"github.com/g8os/blockstor/g8stor/cmd/config"
 	"github.com/g8os/blockstor/gonbdserver/nbd"
 	"github.com/g8os/blockstor/log"
 	"github.com/g8os/blockstor/nbdserver/ardb"
 	"github.com/g8os/blockstor/storagecluster"
 	"github.com/g8os/blockstor/tlog/schema"
 	"github.com/g8os/blockstor/tlog/tlogclient/decoder"
+	"github.com/spf13/cobra"
 )
 
-func main() {
-	var tlogObjstorAddrs string
-	var configPath string
-	var K, M int
-	var privKey, hexNonce string
+var vdiskCfg struct {
+	TlogObjStorAddresses string
+	ConfigPath           string
+	K, M                 int
+	PrivKey, HexNonce    string
+}
 
-	flag.StringVar(&tlogObjstorAddrs, "tlog-objstor-addrs",
-		"127.0.0.1:16379,127.0.0.1:16380,127.0.0.1:16381,127.0.0.1:16382,127.0.0.1:16383,127.0.0.1:16384,127.0.0.1:16385",
-		"tlog objstor addrs")
-	flag.StringVar(&configPath, "config", "config.yml", "ARDB Config YAML File")
-	flag.IntVar(&K, "k", 4, "K variable of erasure encoding")
-	flag.IntVar(&M, "m", 2, "M variable of erasure encoding")
-	flag.StringVar(&privKey, "priv-key", "12345678901234567890123456789012", "private key")
-	flag.StringVar(&hexNonce, "nonce", "37b8e8a308c354048d245f6d", "hex nonce used for encryption")
+// VdiskCmd represents the restore vdisk subcommand
+var VdiskCmd = &cobra.Command{
+	Use:   "vdisk id",
+	Short: "Restore a vdisk using a given tlogserver",
+	RunE:  restoreVdisk,
+}
 
-	flag.Usage = func() {
-		fmt.Fprint(os.Stderr, "Restore a vdisk using the transactions stored in the tlogserver.\n\n")
-		fmt.Fprintf(os.Stderr, "usage: %s vdiskID\n\nOptional Flags:\n", os.Args[0])
-		flag.PrintDefaults()
-		fmt.Fprint(os.Stderr, "  -h, -help\n    \tprint this usage message\n")
+func restoreVdisk(cmd *cobra.Command, args []string) error {
+	argn := len(args)
+
+	if argn < 1 {
+		return errors.New("not enough arguments")
+	}
+	if argn > 1 {
+		return errors.New("too many arguments")
 	}
 
-	flag.Parse()
-
-	posArgs := flag.Args()
-	if len(posArgs) != 1 {
-		fmt.Fprint(os.Stderr, "ERROR: only one positional argument (vdiskID) is required and allowed\n\n")
-		flag.Usage()
-		os.Exit(2)
-	}
-	vdiskID := posArgs[0]
+	vdiskID := args[0]
 
 	// redis pool
 	var poolDial ardb.DialFunc
 	redisPool := ardb.NewRedisPool(poolDial)
 
+	logLevel := log.ErrorLevel
+	if config.Verbose {
+		logLevel = log.DebugLevel
+	}
+	log.SetLevel(logLevel)
+
 	// storage cluster
 	storageClusterClientFactory, err := storagecluster.NewClusterClientFactory(
-		configPath, log.New("storagecluster", log.InfoLevel))
+		vdiskCfg.ConfigPath, log.New("storagecluster", logLevel))
 	if err != nil {
 		log.Fatalf("failed to create storageClusterClientFactory:%v", err)
 	}
@@ -61,7 +61,7 @@ func main() {
 
 	config := ardb.BackendFactoryConfig{
 		Pool:            redisPool,
-		ConfigPath:      configPath,
+		ConfigPath:      vdiskCfg.ConfigPath,
 		LBACacheLimit:   ardb.DefaultLBACacheLimit,
 		SCClientFactory: storageClusterClientFactory,
 	}
@@ -85,9 +85,13 @@ func main() {
 	}
 
 	// create tlog decoder
-	addrs := strings.Split(tlogObjstorAddrs, ",")
+	addrs := strings.Split(vdiskCfg.TlogObjStorAddresses, ",")
 	log.Infof("addr=%v", addrs)
-	dec, err := decoder.New(addrs, K, M, vdiskID, privKey, hexNonce)
+	dec, err := decoder.New(
+		addrs,
+		vdiskCfg.K, vdiskCfg.M,
+		vdiskID,
+		vdiskCfg.PrivKey, vdiskCfg.HexNonce)
 	if err != nil {
 		log.Fatalf("failed to create tlog decoder:%v", err)
 	}
@@ -130,4 +134,33 @@ func main() {
 			}
 		}
 	}
+
+	return nil
+}
+
+func init() {
+	VdiskCmd.Flags().StringVar(
+		&vdiskCfg.TlogObjStorAddresses,
+		"tlog-objstor-addrs",
+		"127.0.0.1:16379,127.0.0.1:16380,127.0.0.1:16381,127.0.0.1:16382,127.0.0.1:16383,127.0.0.1:16384,127.0.0.1:16385",
+		"tlog objstor addresses, from which the data will be retrieved")
+	VdiskCmd.Flags().StringVar(
+		&vdiskCfg.ConfigPath, "config", "config.yml",
+		"blockstor config file")
+	VdiskCmd.Flags().IntVar(
+		&vdiskCfg.K,
+		"k", 4,
+		"K variable of erasure encoding")
+	VdiskCmd.Flags().IntVar(
+		&vdiskCfg.M,
+		"m", 2,
+		"M variable of erasure encoding")
+	VdiskCmd.Flags().StringVar(
+		&vdiskCfg.PrivKey,
+		"priv-key", "12345678901234567890123456789012",
+		"private key")
+	VdiskCmd.Flags().StringVar(
+		&vdiskCfg.HexNonce,
+		"nonce", "37b8e8a308c354048d245f6d",
+		"hex nonce used for encryption")
 }
