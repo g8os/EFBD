@@ -6,8 +6,8 @@ import (
 	"net"
 	"strconv"
 
+	"github.com/g8os/blockstor/log"
 	"github.com/g8os/blockstor/redisstub"
-	log "github.com/glendc/go-mini-log"
 )
 
 // DefaultConfig creates a new config, using sane defaults

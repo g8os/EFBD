@@ -7,11 +7,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/g8os/blockstor/log"
 	"github.com/g8os/blockstor/tlog"
 	"github.com/g8os/blockstor/tlog/schema"
 	"github.com/g8os/blockstor/tlog/tlogserver/erasure"
 	"github.com/garyburd/redigo/redis"
-	log "github.com/glendc/go-mini-log"
 	"github.com/golang/snappy"
 	"github.com/minio/blake2b-simd"
 	"zombiezen.com/go/capnproto2"
