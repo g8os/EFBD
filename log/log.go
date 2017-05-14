@@ -3,13 +3,13 @@ package log
 import (
 	"fmt"
 	"os"
+	"sync"
 
 	log "github.com/inconshreveable/log15"
 )
 
-// TODO
-//  + suport handlers (at creation and for std logger)
-//    (and make it work with the stdHandler :S)
+// Record is what a Logger asks its handler to write
+type Record *log.Record
 
 // Level type
 type Level log.Lvl
@@ -28,12 +28,28 @@ const (
 )
 
 var (
-	std = New("global", InfoLevel).(*glueLogger)
+	stdMux      sync.Mutex
+	stdLevel    = InfoLevel
+	stdHandlers []Handler
+	std         = New("global", InfoLevel).(*glueLogger)
 )
 
 // SetLevel defines at which level the std logger should log
 func SetLevel(level Level) {
-	std.internal.SetHandler(stdHandler(level))
+	stdMux.Lock()
+	stdLevel = level
+	stdMux.Unlock()
+	std.internal.SetHandler(newLoggerHandler(stdLevel, stdHandlers))
+}
+
+// SetHandlers allows you to set extra handlers on the std logger,
+// besides the default StdErr Logger
+func SetHandlers(handlers ...Handler) {
+	stdMux.Lock()
+	stdHandlers = handlers
+	stdMux.Unlock()
+
+	std.internal.SetHandler(newLoggerHandler(stdLevel, stdHandlers))
 }
 
 // Debug logs a message at level Debug on the standard logger.
@@ -76,17 +92,18 @@ func Fatalf(format string, args ...interface{}) {
 	std.Fatalf(format, args...)
 }
 
-func stdHandler(level Level) log.Handler {
-	return log.LvlFilterHandler(log.Lvl(level),
-		log.CallerFileHandler(log.StdoutHandler))
-}
-
 // New logger, creates a new logger
-func New(module string, level Level) Logger {
+func New(module string, level Level, handlers ...Handler) Logger {
 	logger := log.New("module", module)
-	logger.SetHandler(stdHandler(level))
+	logger.SetHandler(newLoggerHandler(level, handlers))
 
 	return &glueLogger{logger}
+}
+
+// NopLogger creates a Logger which discards all logs,
+// and doesn't ever exit the process when a fatal error occurs.
+func NopLogger() Logger {
+	return new(nopLogger)
 }
 
 // Logger defines a pragmatic Logger interface.
@@ -153,3 +170,14 @@ func (logger *glueLogger) Fatalf(format string, args ...interface{}) {
 	logger.internal.Crit(fmt.Sprintf(format, args...))
 	os.Exit(1)
 }
+
+type nopLogger struct{}
+
+func (logger *nopLogger) Debug(args ...interface{})                 {}
+func (logger *nopLogger) Debugf(format string, args ...interface{}) {}
+func (logger *nopLogger) Info(args ...interface{})                  {}
+func (logger *nopLogger) Infof(format string, args ...interface{})  {}
+func (logger *nopLogger) Error(args ...interface{})                 {}
+func (logger *nopLogger) Errorf(format string, args ...interface{}) {}
+func (logger *nopLogger) Fatal(args ...interface{})                 {}
+func (logger *nopLogger) Fatalf(format string, args ...interface{}) {}
