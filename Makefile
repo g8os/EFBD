@@ -9,7 +9,7 @@ BUILD_DATE = $(shell date +%FT%T%z)
 ldflags = -extldflags "-static"
 ldflagsg8stor = -X $(PACKAGE)/g8stor/cmd.CommitHash=$(COMMIT_HASH) -X $(PACKAGE)/g8stor/cmd.BuildDate=$(BUILD_DATE)
 
-all: nbdserver g8stor
+all: nbdserver tlogserver g8stor
 
 g8stor: $(OUTPUT)
 ifeq ($(GOOS), darwin)
@@ -26,10 +26,14 @@ ifeq ($(GOOS), darwin)
 		go build -o $(OUTPUT)/$@ ./nbdserver
 else
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -ldflags $(ldflags) -o $(OUTPUT)/$@ ./nbdserver
+		go build -ldflags '$(ldflags)' -o $(OUTPUT)/$@ ./nbdserver
 endif
+
+tlogserver: $(OUTPUT)
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) \
+		go build -ldflags '$(ldflags)' -o $(OUTPUT)/$@ ./tlog/tlogserver
 
 $(OUTPUT):
 	mkdir -p $(OUTPUT)
 
-.PHONY: $(OUTPUT) nbdserver g8stor
+.PHONY: $(OUTPUT) nbdserver tlogserver g8stor
