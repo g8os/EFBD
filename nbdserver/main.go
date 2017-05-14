@@ -27,7 +27,11 @@ func main() {
 	var protocol string
 	var address string
 	var configPath string
+	var logPath string
+	var syslogTag string
 	flag.BoolVar(&verbose, "v", false, "when false, only log warnings and errors")
+	flag.StringVar(&logPath, "logfile", "", "optionally log everything also to the specified file")
+	flag.StringVar(&syslogTag, "syslog", "", "optionally log everything also to the system log")
 	flag.BoolVar(&inMemoryStorage, "memorystorage", false, "Stores the data in memory only, usefull for testing or benchmarking")
 	flag.BoolVar(&tlsonly, "tlsonly", false, "Forces all nbd connections to be tls-enabled")
 	flag.StringVar(&profileAddress, "profileaddress", "", "Enables profiling of this server as an http service")
@@ -42,14 +46,34 @@ func main() {
 	if verbose {
 		logLevel = log.DebugLevel
 	}
-
 	log.SetLevel(logLevel)
-	log.Debugf("flags parsed: memorystorage=%t tlsonly=%t profileaddress=%q protocol=%q address=%q config=%q lbacachelimit=%d",
+
+	var logHandlers []log.Handler
+
+	if syslogTag != "" {
+		handler, err := log.SyslogHandler(syslogTag)
+		if err != nil {
+			log.Fatal(err)
+		}
+		logHandlers = append(logHandlers, handler)
+	}
+	if logPath != "" {
+		handler, err := log.FileHandler(logPath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		logHandlers = append(logHandlers, handler)
+	}
+
+	log.SetHandlers(logHandlers...)
+
+	log.Debugf("flags parsed: memorystorage=%t tlsonly=%t profileaddress=%q protocol=%q address=%q config=%q lbacachelimit=%d logfile=%q syslog=%q",
 		inMemoryStorage, tlsonly,
 		profileAddress,
 		protocol, address,
 		configPath,
 		lbacachelimit,
+		logPath, syslogTag,
 	)
 
 	if len(profileAddress) > 0 {
@@ -101,7 +125,7 @@ func main() {
 	defer redisPool.Close()
 
 	storageClusterClientFactory, err := storagecluster.NewClusterClientFactory(
-		configPath, log.New("storagecluster", logLevel))
+		configPath, log.New("storagecluster", logLevel, logHandlers...))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -123,7 +147,7 @@ func main() {
 
 	nbd.RegisterBackend("ardb", backendFactory.NewBackend)
 
-	l, err := nbd.NewListener(log.New("nbdserver", logLevel), s)
+	l, err := nbd.NewListener(log.New("nbdserver", logLevel, logHandlers...), s)
 	if err != nil {
 		log.Fatal(err)
 		return

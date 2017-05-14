@@ -297,8 +297,7 @@ func (c *Config) GetLogger() (log.Logger, error) {
 	}
 
 	if c.Logging.SyslogFacility != "" {
-		handler, err := log.SyslogHandler(
-			syslog.LOG_INFO, c.Logging.SyslogFacility)
+		handler, err := log.SyslogHandler(c.Logging.SyslogFacility)
 		if err != nil {
 			return nil, err
 		}

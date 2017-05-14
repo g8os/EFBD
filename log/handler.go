@@ -23,7 +23,7 @@ type Handler interface {
 // FileHandler will append to the given file.
 // If it does not, FileHandler will create the file with mode 0644.
 func FileHandler(path string) (Handler, error) {
-	handler, err := log.FileHandler(path, log.TerminalFormat())
+	handler, err := log.FileHandler(path, log.LogfmtFormat())
 	if err != nil {
 		return nil, fmt.Errorf("couldn't create FileHandler: %s", err.Error())
 	}
@@ -33,8 +33,8 @@ func FileHandler(path string) (Handler, error) {
 
 // SyslogHandler opens a connection to the system syslog daemon
 // by calling syslog.New and writes all records to it.
-func SyslogHandler(priority syslog.Priority, tag string) (Handler, error) {
-	handler, err := log.SyslogHandler(priority, tag, log.TerminalFormat())
+func SyslogHandler(tag string) (Handler, error) {
+	handler, err := log.SyslogHandler(syslog.LOG_KERN, tag, log.LogfmtFormat())
 	if err != nil {
 		return nil, fmt.Errorf("couldn't create SyslogHandler: %s", err.Error())
 	}
