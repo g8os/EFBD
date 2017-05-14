@@ -1,7 +1,7 @@
 package ardb
 
 import (
-	"strconv"
+	"github.com/g8os/blockstor/log"
 
 	"github.com/garyburd/redigo/redis"
 )
@@ -26,8 +26,6 @@ type nonDedupedStorage struct {
 
 // Set implements backendStorage.Set
 func (ss *nonDedupedStorage) Set(blockIndex int64, content []byte) (err error) {
-	key := ss.getKey(blockIndex)
-
 	conn, err := ss.provider.RedisConnection(blockIndex)
 	if err != nil {
 		return
@@ -37,26 +35,27 @@ func (ss *nonDedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 	// don't store zero blocks,
 	// and delete existing ones if they already existed
 	if ss.isZeroContent(content) {
-		_, err = conn.Do("DEL", key)
+		log.Debugf(
+			"deleting content @ %d for vdisk %s as it's an all zeroes block",
+			blockIndex, ss.vdiskID)
+		_, err = conn.Do("HDEL", ss.vdiskID, blockIndex)
 		return
 	}
 
 	// content is not zero, so let's (over)write it
-	_, err = conn.Do("SET", key, content)
+	_, err = conn.Do("HSET", ss.vdiskID, blockIndex, content)
 	return
 }
 
 // Merge implements backendStorage.Merge
 func (ss *nonDedupedStorage) Merge(blockIndex, offset int64, content []byte) (mergedContent []byte, err error) {
-	key := ss.getKey(blockIndex)
-
 	conn, err := ss.provider.RedisConnection(blockIndex)
 	if err != nil {
 		return
 	}
 	defer conn.Close()
 
-	mergedContent, _ = redis.Bytes(conn.Do("GET", key))
+	mergedContent, _ = redis.Bytes(conn.Do("HGET", ss.vdiskID, blockIndex))
 	if ocl := int64(len(mergedContent)); ocl == 0 {
 		mergedContent = make([]byte, ss.blockSize)
 	} else if ocl < ss.blockSize {
@@ -69,21 +68,19 @@ func (ss *nonDedupedStorage) Merge(blockIndex, offset int64, content []byte) (me
 	copy(mergedContent[offset:], content)
 
 	// store new content, as the merged version is non-zero
-	_, err = conn.Do("SET", key, mergedContent)
+	_, err = conn.Do("HSET", ss.vdiskID, blockIndex, mergedContent)
 	return
 }
 
 // Get implements backendStorage.Get
 func (ss *nonDedupedStorage) Get(blockIndex int64) (content []byte, err error) {
-	key := ss.getKey(blockIndex)
-
 	conn, err := ss.provider.RedisConnection(blockIndex)
 	if err != nil {
 		return
 	}
 	defer conn.Close()
 
-	content, err = redisBytes(conn.Do("GET", key))
+	content, err = redisBytes(conn.Do("HGET", ss.vdiskID, blockIndex))
 	return
 }
 
@@ -95,8 +92,7 @@ func (ss *nonDedupedStorage) Delete(blockIndex int64) (err error) {
 	}
 	defer conn.Close()
 
-	key := ss.getKey(blockIndex)
-	_, err = conn.Do("DEL", key)
+	_, err = conn.Do("HDEL", ss.vdiskID, blockIndex)
 	return
 }
 
@@ -104,13 +100,6 @@ func (ss *nonDedupedStorage) Delete(blockIndex int64) (err error) {
 func (ss *nonDedupedStorage) Flush() (err error) {
 	// nothing to do for the nonDeduped backendStorage
 	return
-}
-
-// get the unique key for a block,
-// based on its index and the shared vdiskID
-func (ss *nonDedupedStorage) getKey(blockIndex int64) string {
-	//Is twice as fast as fmt.Sprintf
-	return ss.vdiskID + ":" + strconv.FormatInt(blockIndex, 10)
 }
 
 // isZeroContent detects if a given content buffer is completely filled with 0s

@@ -5,8 +5,8 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/g8os/blockstor/log"
 	"github.com/garyburd/redigo/redis"
-	log "github.com/glendc/go-mini-log"
 	"github.com/golang/snappy"
 	"github.com/templexxx/reedsolomon"
 	"zombiezen.com/go/capnproto2"

@@ -10,16 +10,6 @@ func createTestNondedupedStorage(t *testing.T, vdiskID string, blockSize int64, 
 	return newNonDedupedStorage(vdiskID, blockSize, provider).(*nonDedupedStorage)
 }
 
-func BenchmarkTimeOfKeyCreation(b *testing.B) {
-	s := &nonDedupedStorage{
-		vdiskID: "MyVdiskID",
-	}
-	for i := 0; i < b.N; i++ {
-		s.getKey(int64(i))
-	}
-
-}
-
 func TestNondedupedContent(t *testing.T) {
 	memRedis := redisstub.NewMemoryRedis()
 	go memRedis.Listen()

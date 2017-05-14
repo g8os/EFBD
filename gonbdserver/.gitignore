@@ -1,0 +1,7 @@
+.project
+.settings
+gonbdserver
+*~
+\#*\#
+certs
+nbd.test

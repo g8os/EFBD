@@ -6,8 +6,8 @@ import (
 	_ "net/http/pprof"
 	"strings"
 
+	"github.com/g8os/blockstor/log"
 	"github.com/g8os/blockstor/tlog/tlogserver/server"
-	log "github.com/glendc/go-mini-log"
 )
 
 func main() {
@@ -51,11 +51,11 @@ func main() {
 	}
 
 	// config logger (verbose or not)
-	flags := log.LstdFlags | log.Lshortfile
 	if verbose {
-		flags |= log.LDebug
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
 	}
-	log.SetFlags(flags)
 
 	const allowStubs = true
 	err := conf.ValidateAndCreateObjStoreAddresses(allowStubs)

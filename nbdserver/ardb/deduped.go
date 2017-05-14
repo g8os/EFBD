@@ -3,8 +3,8 @@ package ardb
 import (
 	"fmt"
 
+	"github.com/g8os/blockstor/log"
 	"github.com/garyburd/redigo/redis"
-	log "github.com/glendc/go-mini-log"
 
 	"github.com/g8os/blockstor"
 	"github.com/g8os/blockstor/nbdserver/lba"
@@ -36,6 +36,9 @@ type dedupedStorage struct {
 func (ds *dedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 	hash := blockstor.HashBytes(content)
 	if ds.zeroContentHash.Equals(hash) {
+		log.Debugf(
+			"deleting hash @ %d from LBA for deduped vdisk %s as it's an all zeroes block",
+			blockIndex, ds.vdiskID)
 		err = ds.lba.Delete(blockIndex)
 		return
 	}

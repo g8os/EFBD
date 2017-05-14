@@ -43,4 +43,4 @@ It should be:
 1. All changes to sequence of hashes should be logged to archive storage.
 
 Links:
-https://github.com/g8os/gonbdserver
+./gonbdserver

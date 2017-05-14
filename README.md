@@ -1,39 +1,26 @@
 # G8OS Block Storage [![Build Status](https://travis-ci.org/g8os/blockstor.svg?branch=master)](https://travis-ci.org/g8os/blockstor)
 
-The G8OS block storage allows to create and use block devices (vdisks) on top of the [G80S object storage](https://github.com/g8os/objstor).
+This repository implements the components required for supporting block storage in G8OS nodes.
 
-A vdisk can be deduped, have various blocksizes and depending on the underlying storage cluster used, have different speed characteristics.
+The G8OS block storage components allow you to create and use block devices (vdisks) from within virtual machines hosted on a G8OS node.
 
-Make sure to have Golang version 1.8 or above installed!
+A vdisk can be deduped, have various block sizes and depending on the underlying storage cluster, have different speed characteristics.
 
 Components:
-* [NBD Server](nbdserver/readme.md)
-    A Network Block Device server to expose the vdisks to virtual machines.
-* [TLOG Server](cmd/tlogserver/README.md)
-    A Transaction log server to record block changes
-* [CopyVdisk CLI](cmd/copyvdisk/readme.md)
-    A CLI to copy the metadata of a deduped vdisk
+* [NBD Server](nbdserver/)
+  - A network block device server to expose the vdisks to virtual machines
+* [Gonbdserver](gonbdserver/)
+  - An NBD server written in Go, integrated within the [NBD Server](nbdserver/)
+* [TLOG Server](tlog/)
+  - A transaction log server to record block changes
+* [g8stor](g8stor/)
+  - A CLI tool suite to control g8os resources
 
-# Build for g8os
-- Clone the code to your GOPATH:
-```
-go get -d github.com/g8os/blockstor/nbdserver
-cd $GOPATH/src/github.com/g8os/blockstor/nbdserver
-```
+Make sure to have [Golang](https://golang.org/) version 1.8 or above installed.
 
-- Build (totally static) the binary: `CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static"' .`
-- Put that single binary somewhere alone: `mkdir /tmp/gonbdserver && cp nbdserver /tmp/gonbdserver`
-- From JumpScale, create the flist:
-```
-kvs = j.servers.kvs.getRocksDBStore(name='flist', namespace=None, dbpath="/tmp/flist-gonbdserver.db")
-f = j.tools.flist.getFlist(rootpath='/tmp/gonbdserver', kvs=kvs)
-f.add('/tmp/gonbdserver/')
-f.upload("remote-ardb-server", 16379)
-```
 
-- Pack your rocksdb database, and you're done:
-```
-cd /tmp/flist-gonbdserver.db/
-tar -cf ../flist-gonbdserver.db.tar *
-cd .. && gzip flist-gonbdserver.db.tar
-```
+## More
+
+All documentation is in the [`/docs`](./docs) directory, including a [table of contents](/docs/SUMMARY.md).
+
+In [Getting Started with NBD Server](/docs/gettingstarted/gettingstarted.md) you find the recommended path to quickly get up and running.

@@ -4,12 +4,13 @@ import (
 	"context"
 	"time"
 
+	"github.com/g8os/blockstor/log"
+
+	"github.com/g8os/blockstor/gonbdserver/nbd"
 	"github.com/g8os/blockstor/storagecluster"
 	"github.com/g8os/blockstor/tlog/schema"
 	"github.com/g8os/blockstor/tlog/tlogclient"
 	tlogserver "github.com/g8os/blockstor/tlog/tlogserver/server"
-	"github.com/g8os/gonbdserver/nbd"
-	"github.com/siddontang/go/log"
 )
 
 func newBackend(vdiskID string, blockSize int64, size uint64, storage backendStorage, storageClusterClient *storagecluster.ClusterClient, tlogClient *tlogclient.Client) (backend *Backend) {
@@ -53,7 +54,7 @@ type transaction struct {
 }
 
 //WriteAt implements nbd.Backend.WriteAt
-func (ab *Backend) WriteAt(ctx context.Context, b []byte, offset int64, fua bool) (bytesWritten int64, err error) {
+func (ab *Backend) WriteAt(ctx context.Context, b []byte, offset int64) (bytesWritten int64, err error) {
 	blockIndex := offset / ab.blockSize
 	offsetInsideBlock := offset % ab.blockSize
 
@@ -72,6 +73,9 @@ func (ab *Backend) WriteAt(ctx context.Context, b []byte, offset int64, fua bool
 	}
 
 	if err != nil {
+		log.Debugf(
+			"backend failed to WriteAt %d (offset=%d): %s",
+			blockIndex, offsetInsideBlock, err.Error())
 		return
 	}
 
@@ -80,19 +84,12 @@ func (ab *Backend) WriteAt(ctx context.Context, b []byte, offset int64, fua bool
 		ab.sendTransaction(uint64(offset), schema.OpWrite, b, uint64(length))
 	}
 
-	if fua {
-		err = ab.Flush(ctx)
-		if err != nil {
-			return
-		}
-	}
-
 	bytesWritten = int64(len(b))
 	return
 }
 
 //WriteZeroesAt implements nbd.Backend.WriteZeroesAt
-func (ab *Backend) WriteZeroesAt(ctx context.Context, offset, length int64, fua bool) (bytesWritten int64, err error) {
+func (ab *Backend) WriteZeroesAt(ctx context.Context, offset, length int64) (bytesWritten int64, err error) {
 	blockIndex := offset / ab.blockSize
 	offsetInsideBlock := offset % ab.blockSize
 
@@ -110,19 +107,15 @@ func (ab *Backend) WriteZeroesAt(ctx context.Context, offset, length int64, fua 
 	}
 
 	if err != nil {
+		log.Debugf(
+			"backend failed to WriteZeroesAt %d (offset=%d, length=%d): %s",
+			blockIndex, offsetInsideBlock, length, err.Error())
 		return
 	}
 
 	// send tlog async
 	if ab.tlogClient != nil {
 		ab.sendTransaction(uint64(offset), schema.OpWriteZeroesAt, nil, uint64(length))
-	}
-
-	if fua {
-		err = ab.Flush(ctx)
-		if err != nil {
-			return
-		}
 	}
 
 	bytesWritten = length

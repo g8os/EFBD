@@ -12,6 +12,11 @@
 			"Rev": "b26d9c308763d68093482582cea63d69be07a0f0"
 		},
 		{
+			"ImportPath": "github.com/asaskevich/govalidator",
+			"Comment": "v5",
+			"Rev": "7b3beb6df3c42abd3509abfc3bcacc0fbfb7c877"
+		},
+		{
 			"ImportPath": "github.com/cupcake/rdb",
 			"Rev": "43ba34106c765f2111c0dc7b74cdf8ee437411e0"
 		},
@@ -33,20 +38,12 @@
 			"Rev": "0bce6a6887123b67a60366d2c9fe2dfb74289d2e"
 		},
 		{
-			"ImportPath": "github.com/g8os/gonbdserver/nbd",
-			"Rev": "98bdfe683354eb1f512c200dda375282d3ac1970"
-		},
-		{
 			"ImportPath": "github.com/garyburd/redigo/internal",
 			"Rev": "d8dbe4d94f15fe89232e0402c6e8a0ddf21af3ab"
 		},
 		{
 			"ImportPath": "github.com/garyburd/redigo/redis",
 			"Rev": "d8dbe4d94f15fe89232e0402c6e8a0ddf21af3ab"
-		},
-		{
-			"ImportPath": "github.com/glendc/go-mini-log",
-			"Rev": "e52b0f9eb69c62005ccce4de0daa3c74adb83814"
 		},
 		{
 			"ImportPath": "github.com/glendc/gopher-json",
@@ -58,6 +55,15 @@
 			"Rev": "cd7940bb26b149ce2faf398e7c63fff01aa7b394"
 		},
 		{
+			"ImportPath": "github.com/go-stack/stack",
+			"Comment": "v1.5.3",
+			"Rev": "7a2f19628aabfe68f0766b59e74d6315f8347d22"
+		},
+		{
+			"ImportPath": "github.com/go-yaml/yaml",
+			"Rev": "cd8b52f8269e0feb286dfeef29f8fe4d5b397e0b"
+		},
+		{
 			"ImportPath": "github.com/golang/snappy",
 			"Rev": "553a641470496b2327abcac10b36396bd98e45c9"
 		},
@@ -67,8 +73,31 @@
 			"Rev": "599cba5e7b6137d46ddf58fb1765f5d928e69604"
 		},
 		{
+			"ImportPath": "github.com/inconshreveable/log15",
+			"Comment": "v2.3-92-g39bacc2",
+			"Rev": "39bacc234bf1afd0b68573e95b45871f67ba2cd4"
+		},
+		{
+			"ImportPath": "github.com/inconshreveable/log15/term",
+			"Comment": "v2.3-92-g39bacc2",
+			"Rev": "39bacc234bf1afd0b68573e95b45871f67ba2cd4"
+		},
+		{
+			"ImportPath": "github.com/inconshreveable/mousetrap",
+			"Rev": "76626ae9c91c4f2a10f34cad8ce83ea42c93bb75"
+		},
+		{
 			"ImportPath": "github.com/kardianos/osext",
 			"Rev": "29ae4ffbc9a6fe9fb2bc5029050ce6996ea1d3bc"
+		},
+		{
+			"ImportPath": "github.com/mattn/go-colorable",
+			"Comment": "v0.0.7-24-gded68f7",
+			"Rev": "ded68f7a9561c023e790de24279db7ebf473ea80"
+		},
+		{
+			"ImportPath": "github.com/mattn/go-isatty",
+			"Rev": "dda3de49cbfcec471bd7a70e6cc01fcc3ff90109"
 		},
 		{
 			"ImportPath": "github.com/minio/blake2b-simd",
@@ -170,6 +199,14 @@
 			"Rev": "fc89ed2e418d27e3ea76e708e54276d2b44ae9cf"
 		},
 		{
+			"ImportPath": "github.com/spf13/cobra",
+			"Rev": "7be4beda01ec05d0b93d80b3facd2b6f44080d94"
+		},
+		{
+			"ImportPath": "github.com/spf13/pflag",
+			"Rev": "d16db1e50e33dff1b6cdf37596cef36742128670"
+		},
+		{
 			"ImportPath": "github.com/stretchr/testify/assert",
 			"Comment": "v1.1.3-72-ga30d470",
 			"Rev": "a30d47007ef19da43c69f24ed5e40ccc5b6cbb6f"
@@ -249,6 +286,10 @@
 		{
 			"ImportPath": "golang.org/x/net/context",
 			"Rev": "ffcf1bedda3b04ebb15a168a59800a73d6dc0f4d"
+		},
+		{
+			"ImportPath": "golang.org/x/sys/unix",
+			"Rev": "b699b7032584f0953262cb2788a0ca19bb494703"
 		},
 		{
 			"ImportPath": "gopkg.in/validator.v2",

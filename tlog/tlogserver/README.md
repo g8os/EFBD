@@ -1,4 +1,4 @@
-# Go Tlog server
+# Go Tlog Server
 
 ## Using the isa-l library for erasure coding
 

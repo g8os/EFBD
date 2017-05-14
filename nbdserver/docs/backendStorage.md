@@ -22,8 +22,6 @@ This storage is called deduped, because no duplicated content is stored. [Hash][
 
 It is possible (and in fact desired), that multiple block indices of the (same or different) [vdisk][vdisk] point to the same [hash][blake2b.hash] and thus content.
 
-Each time a block is referenced by an index in a [vdisk][vdisk]'s LBA, the reference counter for that content is increased. When a block in a [vdisk][vdisk]'s LBA is "deleted", the actual content isn't deleted and instead simply dereferenced. When a block is dereferenced the reference counter for that content is decreased. When the reference counter for a block reaches 0, the content itself is permanently deleted from the (local) storage.
-
 See [the deduped code](../ardb/deduped.go) for more information.
 
 ## Nondeduped Storage
