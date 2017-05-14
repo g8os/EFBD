@@ -2,13 +2,11 @@ package copyvdisk
 
 import (
 	"fmt"
-	"io/ioutil"
-	"os"
 	"strconv"
 
 	"github.com/g8os/blockstor/g8stor/cmd/config"
+	"github.com/g8os/blockstor/log"
 	"github.com/garyburd/redigo/redis"
-	log "github.com/glendc/go-mini-log"
 	"github.com/spf13/cobra"
 )
 
@@ -24,10 +22,10 @@ func copyDeduped(cmd *cobra.Command, args []string) error {
 	var logger log.Logger
 	if config.Verbose {
 		// log info to stderr
-		logger = log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile)
+		logger = log.New("copy-deduped", log.InfoLevel)
 	} else {
 		// discard all logs
-		logger = log.New(ioutil.Discard, "", 0)
+		logger = log.NopLogger()
 	}
 
 	// parse user input

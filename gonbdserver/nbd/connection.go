@@ -16,7 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	log "github.com/glendc/go-mini-log"
+	"github.com/g8os/blockstor/log"
 )
 
 // Map of configuration text to TLS versions

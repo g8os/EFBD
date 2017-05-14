@@ -3,8 +3,8 @@ package main
 import (
 	"flag"
 
+	"github.com/g8os/blockstor/log"
 	client "github.com/g8os/blockstor/tlog/tlogclient"
-	log "github.com/glendc/go-mini-log"
 )
 
 var (

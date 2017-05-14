@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/g8os/blockstor/gonbdserver/nbd"
+	"github.com/g8os/blockstor/log"
 	"github.com/g8os/blockstor/nbdserver/config"
-	log "github.com/glendc/go-mini-log"
 )
 
 // NewExportController creates a new export config manager.

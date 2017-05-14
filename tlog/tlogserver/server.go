@@ -8,7 +8,7 @@ import (
 	"io"
 	"net"
 
-	log "github.com/glendc/go-mini-log"
+	"github.com/g8os/blockstor/log"
 
 	"github.com/g8os/blockstor"
 	"github.com/g8os/blockstor/tlog/schema"

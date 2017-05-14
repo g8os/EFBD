@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 
-	log "github.com/glendc/go-mini-log"
+	"github.com/g8os/blockstor/log"
 )
 
 func main() {
@@ -26,11 +26,11 @@ func main() {
 	flag.Parse()
 
 	// config logger (verbose or not)
-	flags := log.LstdFlags | log.Lshortfile
 	if verbose {
-		flags |= log.LDebug
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
 	}
-	log.SetFlags(flags)
 
 	log.Debugf("listen addr=%v\n", conf.listenAddr)
 	log.Debugf("k=%v, m=%v\n", conf.K, conf.M)

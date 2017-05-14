@@ -3,7 +3,6 @@ package nbd
 import (
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log/syslog"
 	"net/http"
@@ -16,12 +15,11 @@ import (
 	"regexp"
 	"runtime"
 	"runtime/debug"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 
-	log "github.com/glendc/go-mini-log"
+	"github.com/g8os/blockstor/log"
 
 	"github.com/sevlyar/go-daemon"
 	"gopkg.in/yaml.v2"
@@ -134,11 +132,6 @@ type LogConfig struct {
 	File           string // a file to log to
 	FileMode       string // file mode
 	SyslogFacility string // a syslog facility name - set to enable syslog
-	Date           bool   // log the date - i.e. log.Ldate
-	Time           bool   // log the time - i.e. log.Ltime
-	Microseconds   bool   // log microseconds - i.e. log.Lmicroseconds
-	UTC            bool   // log time in URC - i.e. LUTC
-	SourceFile     bool   // log source file - i.e. Lshortfile
 	Debug          bool   // log debug statements
 }
 
@@ -288,52 +281,32 @@ func StartServer(parentCtx context.Context, sessionParentCtx context.Context, se
 }
 
 // GetLogger returns the configured logger linked to this config
-func (c *Config) GetLogger() (log.Logger, io.Closer, error) {
-	logFlags := 0
-	if c.Logging.Date {
-		logFlags |= log.Ldate
-	}
-	if c.Logging.Time {
-		logFlags |= log.Ltime
-	}
-	if c.Logging.Microseconds {
-		logFlags |= log.Lmicroseconds
-	}
-	if c.Logging.SourceFile {
-		logFlags |= log.Lshortfile
-	}
+func (c *Config) GetLogger() (log.Logger, error) {
+	level := log.InfoLevel
 	if c.Logging.Debug {
-		logFlags |= log.LDebug
+		level = log.DebugLevel
 	}
+
+	var handlers []log.Handler
 	if c.Logging.File != "" {
-		mode := os.FileMode(0644)
-		if c.Logging.FileMode != "" {
-			i, err := strconv.ParseInt(c.Logging.FileMode, 8, 32)
-			if err != nil {
-				return nil, nil, fmt.Errorf("Cannot read file logging mode: %v", err)
-			}
-
-			mode = os.FileMode(i)
-		}
-
-		file, err := os.OpenFile(c.Logging.File, os.O_CREATE|os.O_APPEND|os.O_WRONLY, mode)
+		handler, err := log.FileHandler(c.Logging.File)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
-
-		return log.New(file, "gonbdserver:", logFlags), file, nil
+		handlers = append(handlers, handler)
 	}
 
 	if c.Logging.SyslogFacility != "" {
-		s, err := NewSyslogWriter(c.Logging.SyslogFacility)
+		handler, err := log.SyslogHandler(
+			syslog.LOG_INFO, c.Logging.SyslogFacility)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
-
-		return log.New(s, "gonbdserver:", logFlags), s, nil
+		handlers = append(handlers, handler)
 	}
 
-	return log.New(os.Stderr, "gonbdserver:", logFlags), nil, nil
+	logger := log.New("gonbdserver", level, handlers...)
+	return logger, nil
 }
 
 // RunConfig - this is effectively the main entry point of the program
@@ -341,8 +314,7 @@ func (c *Config) GetLogger() (log.Logger, io.Closer, error) {
 // We parse the config, then start each of the listeners, restarting them when we get SIGHUP, but being sure not to kill the sessions
 func RunConfig(control *Control) {
 	// just until we read the configuration
-	logger := log.New(os.Stderr, "gonbdserver:", log.LstdFlags)
-	var logCloser io.Closer
+	logger := log.New("gonbdserver", log.InfoLevel)
 	var sessionWaitGroup sync.WaitGroup
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer func() {
@@ -350,9 +322,6 @@ func RunConfig(control *Control) {
 		cancelFunc()
 		sessionWaitGroup.Wait()
 		logger.Info("Shutdown complete")
-		if logCloser != nil {
-			logCloser.Close()
-		}
 	}()
 
 	intr := make(chan os.Signal, 1)
@@ -396,14 +365,10 @@ func RunConfig(control *Control) {
 			return
 		}
 
-		if nlogger, nlogCloser, err := c.GetLogger(); err != nil {
+		if nlogger, err := c.GetLogger(); err != nil {
 			logger.Infof("Could not load logger: %v\n", err)
 		} else {
-			if logCloser != nil {
-				logCloser.Close()
-			}
 			logger = nlogger
-			logCloser = nlogCloser
 		}
 
 		logger.Infof("Loaded configuration. Available backends: %s\n", strings.Join(GetBackendNames(), ", "))
@@ -453,7 +418,7 @@ func Run(control *Control) {
 	}
 
 	// Just for this routine
-	logger := log.New(os.Stderr, "gonbdserver:", log.LstdFlags)
+	logger := log.New("gonbdserver", log.InfoLevel)
 
 	daemon.AddFlag(daemon.StringFlag(&sendSignal, "stop"), syscall.SIGTERM)
 	daemon.AddFlag(daemon.StringFlag(&sendSignal, "reload"), syscall.SIGHUP)

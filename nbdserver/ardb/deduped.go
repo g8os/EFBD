@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/g8os/blockstor/log"
 	"github.com/garyburd/redigo/redis"
-	log "github.com/glendc/go-mini-log"
 
 	"github.com/g8os/blockstor"
 	"github.com/g8os/blockstor/nbdserver/lba"

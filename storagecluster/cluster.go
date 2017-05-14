@@ -9,8 +9,8 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/g8os/blockstor/log"
 	"github.com/g8os/blockstor/nbdserver/config"
-	log "github.com/glendc/go-mini-log"
 )
 
 // NewClusterClientFactory creates a ClusterClientFactory.
@@ -19,7 +19,7 @@ func NewClusterClientFactory(configPath string, logger log.Logger) (*ClusterClie
 		return nil, errors.New("NewClusterClientFactory requires a non-empty config path")
 	}
 	if logger == nil {
-		logger = log.New(os.Stderr, "", log.LstdFlags)
+		logger = log.New("cluster", log.GetLevel())
 	}
 
 	return &ClusterClientFactory{
@@ -103,7 +103,7 @@ type ClusterClientConfig struct {
 // NewClusterClient creates a new cluster client
 func NewClusterClient(cfg ClusterClientConfig, logger log.Logger) (*ClusterClient, error) {
 	if logger == nil {
-		logger = log.New(os.Stderr, "", log.LstdFlags)
+		logger = log.New("cluster", log.GetLevel())
 	}
 
 	cc := &ClusterClient{

@@ -42,6 +42,13 @@ func SetLevel(level Level) {
 	std.internal.SetHandler(newLoggerHandler(stdLevel, stdHandlers))
 }
 
+// GetLevel returns the level used by the std logger
+func GetLevel() Level {
+	stdMux.Lock()
+	defer stdMux.Unlock()
+	return stdLevel
+}
+
 // SetHandlers allows you to set extra handlers on the std logger,
 // besides the default StdErr Logger
 func SetHandlers(handlers ...Handler) {

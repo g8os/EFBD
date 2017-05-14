@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	log "github.com/glendc/go-mini-log"
+	"github.com/g8os/blockstor/log"
 )
 
 // ExportConfigManager is the interface,

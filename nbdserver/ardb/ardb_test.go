@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/g8os/blockstor/log"
 	"github.com/g8os/blockstor/redisstub"
 	"github.com/garyburd/redigo/redis"
-	log "github.com/glendc/go-mini-log"
 )
 
 // use pool in testRedisProvider
@@ -318,5 +318,5 @@ func testBackendStorageDeadlock(t *testing.T, blockSize, blockCount int64, stora
 }
 
 func init() {
-	log.SetFlags(log.LstdFlags | log.Lshortfile | log.LDebug)
+	log.SetLevel(log.DebugLevel)
 }

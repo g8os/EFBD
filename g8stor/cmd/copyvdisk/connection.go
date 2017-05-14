@@ -1,8 +1,8 @@
 package copyvdisk
 
 import (
+	"github.com/g8os/blockstor/log"
 	"github.com/garyburd/redigo/redis"
-	log "github.com/glendc/go-mini-log"
 )
 
 // get 1 or 2 ardb connection(s) based on the given input

@@ -5,12 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
-	"os"
 	"sync"
 
 	_ "net/http/pprof"
 
-	log "github.com/glendc/go-mini-log"
+	"github.com/g8os/blockstor/log"
 
 	"github.com/g8os/blockstor/gonbdserver/nbd"
 	"github.com/g8os/blockstor/nbdserver/ardb"
@@ -39,13 +38,12 @@ func main() {
 		fmt.Sprintf("Cache limit of LBA in bytes, needs to be higher then %d (bytes in 1 shard)", lba.BytesPerShard))
 	flag.Parse()
 
-	logFlags := log.Ldate | log.Ltime | log.Lshortfile
-
+	logLevel := log.InfoLevel
 	if verbose {
-		logFlags |= log.LDebug
+		logLevel = log.DebugLevel
 	}
 
-	log.SetFlags(logFlags)
+	log.SetLevel(logLevel)
 	log.Debugf("flags parsed: memorystorage=%t tlsonly=%t profileaddress=%q protocol=%q address=%q config=%q lbacachelimit=%d",
 		inMemoryStorage, tlsonly,
 		profileAddress,
@@ -103,7 +101,7 @@ func main() {
 	defer redisPool.Close()
 
 	storageClusterClientFactory, err := storagecluster.NewClusterClientFactory(
-		configPath, log.New(os.Stderr, "storagecluster:", log.Flags()))
+		configPath, log.New("storagecluster", logLevel))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -125,7 +123,7 @@ func main() {
 
 	nbd.RegisterBackend("ardb", backendFactory.NewBackend)
 
-	l, err := nbd.NewListener(log.New(os.Stderr, "nbdserver:", logFlags), s)
+	l, err := nbd.NewListener(log.New("nbdserver", logLevel), s)
 	if err != nil {
 		log.Fatal(err)
 		return

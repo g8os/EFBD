@@ -4,8 +4,8 @@ import (
 	"io/ioutil"
 	"os"
 
+	"github.com/g8os/blockstor/log"
 	"github.com/garyburd/redigo/redis"
-	log "github.com/glendc/go-mini-log"
 	"github.com/siddontang/ledisdb/config"
 	"github.com/siddontang/ledisdb/server"
 )
