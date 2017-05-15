@@ -52,13 +52,15 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 	}
 	log.SetLevel(logLevel)
 
+	ctx := context.Background()
+
 	// storage cluster
 	storageClusterClientFactory, err := storagecluster.NewClusterClientFactory(
 		vdiskCfg.ConfigPath, log.New("storagecluster", logLevel))
 	if err != nil {
 		return fmt.Errorf("failed to create storageClusterClientFactory:%v", err)
 	}
-	go storageClusterClientFactory.Listen(context.Background())
+	go storageClusterClientFactory.Listen(ctx)
 
 	config := ardb.BackendFactoryConfig{
 		Pool:            redisPool,
@@ -79,8 +81,7 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 		TLSOnly:     false,
 	}
 
-	backendCtx := context.Background()
-	backend, err := fact.NewBackend(backendCtx, ec)
+	backend, err := fact.NewBackend(ctx, ec)
 	if err != nil {
 		return fmt.Errorf("failed to create backend:%v", err)
 	}
@@ -125,18 +126,18 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 				if err != nil {
 					return fmt.Errorf("failed to get data block of lba=%v, err=%v", lba, err)
 				}
-				if _, err := backend.WriteAt(backendCtx, data, int64(lba)); err != nil {
+				if _, err := backend.WriteAt(ctx, data, int64(lba)); err != nil {
 					return fmt.Errorf("failed to WriteAt lba=%v, err=%v", lba, err)
 				}
 			case schema.OpWriteZeroesAt:
-				if _, err := backend.WriteZeroesAt(backendCtx, int64(lba), int64(block.Size())); err != nil {
+				if _, err := backend.WriteZeroesAt(ctx, int64(lba), int64(block.Size())); err != nil {
 					return fmt.Errorf("failed to WriteAt lba=%v, err=%v", lba, err)
 				}
 			}
 		}
 	}
 
-	return nil
+	return backend.Flush(ctx)
 }
 
 func init() {
