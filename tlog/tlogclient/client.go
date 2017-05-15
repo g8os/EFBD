@@ -2,19 +2,9 @@ package tlogclient
 
 import (
 	"bufio"
-	"bytes"
-	"errors"
-	"io"
 	"net"
-	"time"
 
 	"github.com/g8os/blockstor"
-	"github.com/g8os/blockstor/tlog"
-)
-
-var (
-	// ErrClosed happens when tlog server-client connection is closed.
-	ErrClosed = errors.New("connection closed")
 )
 
 // Response defines a response from tlog server
@@ -71,21 +61,8 @@ func (c *Client) Recv(chanSize int) <-chan *Result {
 
 // RecvOne receive one response
 func (c *Client) RecvOne() (*Response, error) {
-	// read prefix to get the length
-	_, length, err := tlog.ReadCapnpPrefix(c.conn)
-	if err != nil {
-		return nil, err
-	}
-
-	// read actual data
-	data := make([]byte, length)
-	_, err = io.ReadFull(c.conn, data)
-	if err != nil {
-		return nil, err
-	}
-
 	// decode capnp and build response
-	tr, err := decodeResponse(data)
+	tr, err := c.decodeResponse()
 	if err != nil {
 		return nil, err
 	}
@@ -129,50 +106,8 @@ func (c *Client) Send(op uint8, seq uint64, lba, timestamp uint64,
 	data []byte, size uint64) error {
 
 	hash := blockstor.HashBytes(data)
-
-	b, err := c.buildCapnp(op, seq, hash[:], lba, timestamp, data, size)
-	if err != nil {
+	if err := c.encodeCapnp(op, seq, hash[:], lba, timestamp, data, size); err != nil {
 		return err
 	}
-
-	// adjust capnp segment buffer and tcp write buffer
-	if len(b) > cap(c.capnpSegmentBuf) {
-		c.conn.SetWriteBuffer(len(b))
-		c.capnpSegmentBuf = make([]byte, 0, len(b))
-	}
-
-	// add capnp prefix
-	buf := new(bytes.Buffer)
-	if err := tlog.WriteCapnpPrefix(buf, len(b)); err != nil {
-		return err
-	}
-
-	_, err = c.sendAll(append(buf.Bytes(), b...))
-	return err
-}
-
-func (c *Client) sendAll(b []byte) (int, error) {
-	c.conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
-	nWrite := 0
-	for nWrite < len(b) {
-		n, err := c.bw.Write(b[nWrite:])
-		if err != nil && !isNetTempErr(err) {
-			return nWrite, err
-		}
-		if n == 0 {
-			return nWrite, ErrClosed
-		}
-		if err := c.bw.Flush(); !isNetTempErr(err) {
-			return nWrite, err
-		}
-		nWrite += n
-	}
-	return nWrite, nil
-}
-
-func isNetTempErr(err error) bool {
-	if nerr, ok := err.(net.Error); ok && nerr.Temporary() {
-		return true
-	}
-	return false
+	return c.bw.Flush()
 }

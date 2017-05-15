@@ -1,15 +1,14 @@
 package tlogclient
 
 import (
-	"bytes"
 	"fmt"
 
 	"github.com/g8os/blockstor/tlog/schema"
 	"zombiezen.com/go/capnproto2"
 )
 
-func decodeResponse(data []byte) (*schema.TlogResponse, error) {
-	msg, err := capnp.NewDecoder(bytes.NewBuffer(data)).Decode()
+func (c *Client) decodeResponse() (*schema.TlogResponse, error) {
+	msg, err := capnp.NewDecoder(c.conn).Decode()
 	if err != nil {
 		return nil, err
 	}
@@ -18,16 +17,16 @@ func decodeResponse(data []byte) (*schema.TlogResponse, error) {
 	return &tr, err
 }
 
-func (c *Client) buildCapnp(op uint8, seq uint64, hash []byte,
-	lba, timestamp uint64, data []byte, size uint64) ([]byte, error) {
+func (c *Client) encodeCapnp(op uint8, seq uint64, hash []byte,
+	lba, timestamp uint64, data []byte, size uint64) error {
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(c.capnpSegmentBuf))
 	if err != nil {
-		return nil, fmt.Errorf("build capnp:%v", err)
+		return fmt.Errorf("build capnp:%v", err)
 	}
 
 	block, err := schema.NewRootTlogBlock(seg)
 	if err != nil {
-		return nil, fmt.Errorf("create block:%v", err)
+		return fmt.Errorf("create block:%v", err)
 	}
 
 	block.SetVdiskID(c.vdiskID)
@@ -39,9 +38,5 @@ func (c *Client) buildCapnp(op uint8, seq uint64, hash []byte,
 	block.SetSize(size)
 	block.SetData(data)
 
-	buf := new(bytes.Buffer)
-
-	err = capnp.NewEncoder(buf).Encode(msg)
-
-	return buf.Bytes(), err
+	return capnp.NewEncoder(c.bw).Encode(msg)
 }
