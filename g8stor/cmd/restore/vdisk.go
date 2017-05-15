@@ -3,6 +3,7 @@ package restore
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/g8os/blockstor/g8stor/cmd/config"
@@ -55,7 +56,7 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 	storageClusterClientFactory, err := storagecluster.NewClusterClientFactory(
 		vdiskCfg.ConfigPath, log.New("storagecluster", logLevel))
 	if err != nil {
-		log.Fatalf("failed to create storageClusterClientFactory:%v", err)
+		return fmt.Errorf("failed to create storageClusterClientFactory:%v", err)
 	}
 	go storageClusterClientFactory.Listen(context.Background())
 
@@ -67,7 +68,7 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 	}
 	fact, err := ardb.NewBackendFactory(config)
 	if err != nil {
-		log.Fatalf("failed to create factory:%v", err)
+		return fmt.Errorf("failed to create factory:%v", err)
 	}
 
 	ec := &nbd.ExportConfig{
@@ -81,7 +82,7 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 	backendCtx := context.Background()
 	backend, err := fact.NewBackend(backendCtx, ec)
 	if err != nil {
-		log.Fatalf("failed to create backend:%v", err)
+		return fmt.Errorf("failed to create backend:%v", err)
 	}
 
 	// create tlog decoder
@@ -93,7 +94,7 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 		vdiskID,
 		vdiskCfg.PrivKey, vdiskCfg.HexNonce)
 	if err != nil {
-		log.Fatalf("failed to create tlog decoder:%v", err)
+		return fmt.Errorf("failed to create tlog decoder:%v", err)
 	}
 
 	aggChan := dec.Decode(0)
@@ -107,10 +108,10 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 		// some small checking
 		storedViskID, err := agg.VdiskID()
 		if err != nil {
-			log.Fatalf("failed to get vdisk id from aggregation:%v", err)
+			return fmt.Errorf("failed to get vdisk id from aggregation:%v", err)
 		}
 		if strings.Compare(storedViskID, vdiskID) != 0 {
-			log.Fatalf("vdisk id not mactched .expected=%v, got=%v", vdiskID, storedViskID)
+			return fmt.Errorf("vdisk id not mactched .expected=%v, got=%v", vdiskID, storedViskID)
 		}
 
 		blocks, err := agg.Blocks()
@@ -122,14 +123,14 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 			case schema.OpWrite:
 				data, err := block.Data()
 				if err != nil {
-					log.Fatalf("failed to get data block of lba=%v, err=%v", lba, err)
+					return fmt.Errorf("failed to get data block of lba=%v, err=%v", lba, err)
 				}
 				if _, err := backend.WriteAt(backendCtx, data, int64(lba)); err != nil {
-					log.Fatalf("failed to WriteAt lba=%v, err=%v", lba, err)
+					return fmt.Errorf("failed to WriteAt lba=%v, err=%v", lba, err)
 				}
 			case schema.OpWriteZeroesAt:
 				if _, err := backend.WriteZeroesAt(backendCtx, int64(lba), int64(block.Size())); err != nil {
-					log.Fatalf("failed to WriteAt lba=%v, err=%v", lba, err)
+					return fmt.Errorf("failed to WriteAt lba=%v, err=%v", lba, err)
 				}
 			}
 		}
