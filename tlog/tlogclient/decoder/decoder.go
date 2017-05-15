@@ -3,6 +3,7 @@ package decoder
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 
 	"github.com/g8os/blockstor/log"
@@ -28,9 +29,6 @@ type Decoder struct {
 	decrypter tlog.AESDecrypter
 	privKey   []byte
 
-	// prefix of the last hash key
-	lastHashPrefix string
-
 	// pools of redis connection
 	redisPool *tlog.RedisPool
 }
@@ -45,7 +43,7 @@ type DecodedAggregation struct {
 // New creates a tlog decoder
 func New(objstorAddr []string, k, m int, vdiskID, privKey, nonce string) (*Decoder, error) {
 	if len(objstorAddr) != k+m+1 {
-		return nil, fmt.Errorf("invalid number of objstor")
+		return nil, errors.New("invalid number of objstor")
 	}
 
 	// create decrypter
@@ -61,14 +59,13 @@ func New(objstorAddr []string, k, m int, vdiskID, privKey, nonce string) (*Decod
 	}
 
 	return &Decoder{
-		objstorAddr:    objstorAddr,
-		vdiskID:        vdiskID,
-		k:              k,
-		m:              m,
-		decrypter:      decrypter,
-		privKey:        []byte(privKey),
-		lastHashPrefix: "last_hash_",
-		redisPool:      redisPool,
+		objstorAddr: objstorAddr,
+		vdiskID:     vdiskID,
+		k:           k,
+		m:           m,
+		decrypter:   decrypter,
+		privKey:     []byte(privKey),
+		redisPool:   redisPool,
 	}, nil
 }
 
@@ -227,16 +224,26 @@ func (d *Decoder) getAllPieces(key []byte) ([]byte, error) {
 	return all, nil
 }
 
+// get last hash of a vdisk
 func (d *Decoder) getLastHash() ([]byte, error) {
 	rc := d.redisPool.Get(0)
 	defer rc.Close()
 
-	key := d.lastHashPrefix + d.vdiskID
-	b, err := redis.Bytes(rc.Do("get", key))
+	key := tlog.LastHashPrefix + d.vdiskID
+
+	hashes, err := redis.ByteSlices(rc.Do("LRANGE", key, 0, -1))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get key:%v, err:%v", key, err)
 	}
-	return b, nil
+
+	// check that the hash really valid
+	for _, hash := range hashes {
+		if _, err := rc.Do("GET", hash); err == nil {
+			return hash, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no valid hash for vdiskID: %s", d.vdiskID)
 }
 
 func (d *Decoder) decodeCapnp(data []byte) (*schema.TlogAggregation, error) {

@@ -39,11 +39,13 @@
 		},
 		{
 			"ImportPath": "github.com/garyburd/redigo/internal",
-			"Rev": "d8dbe4d94f15fe89232e0402c6e8a0ddf21af3ab"
+			"Comment": "v1.0.0-26-g4339695",
+			"Rev": "433969511232c397de61b1442f9fd49ec06ae9ba"
 		},
 		{
 			"ImportPath": "github.com/garyburd/redigo/redis",
-			"Rev": "d8dbe4d94f15fe89232e0402c6e8a0ddf21af3ab"
+			"Comment": "v1.0.0-26-g4339695",
+			"Rev": "433969511232c397de61b1442f9fd49ec06ae9ba"
 		},
 		{
 			"ImportPath": "github.com/glendc/gopher-json",

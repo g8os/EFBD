@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	lastHashPrefix = "last_hash_"
+	lastHashNum = 5 // number of last hashes we want to save per vdisk ID
 )
 
 type flusher struct {
@@ -127,7 +127,7 @@ func (f *flusher) storeEncoded(vd *vdisk, key []byte, encoded [][]byte) error {
 			defer wg.Done()
 
 			blocks := encoded[idx]
-			err := f.storeRedis(idx+1, key, blocks)
+			err := f.storeRedis(idx+1, "SET", key, blocks)
 			if err != nil {
 				err = fmt.Errorf("error during flush idx %v: %v", idx, err)
 				allErr = append(allErr, err)
@@ -158,12 +158,13 @@ func (f *flusher) storeEncoded(vd *vdisk, key []byte, encoded [][]byte) error {
 		// - need to use other data structure?
 		// - only store last hash after we successfully store all pieces?
 		if err := f.storeLastHash(vd.vdiskID, vd.lastHash); err != nil {
-			log.Infof("WARNING: failed to rollback last hash of %v to %v, err: %v", vd.vdiskID, vd.lastHash, err)
+			log.Infof("WARNING: failed to rollback last hash of %s to %v, err: %s",
+				vd.vdiskID, vd.lastHash, err.Error())
 		}
 	}
 	if len(allErr) > 0 {
-		log.Infof("flush of vdiskID=%v failed: %v", vd.vdiskID, allErr)
-		return fmt.Errorf("flush vdiskID=%v failed", vd.vdiskID)
+		log.Infof("flush of vdiskID=%s failed: %v", vd.vdiskID, allErr)
+		return fmt.Errorf("flush vdiskID=%s failed", vd.vdiskID)
 	}
 	return nil
 }
@@ -225,33 +226,35 @@ func (f *flusher) getLastHash(vdiskID string) ([]byte, error) {
 
 }
 
+// we store last hash as array of lastHashNum last hashes.
 func (f *flusher) storeLastHash(vdiskID string, lastHash []byte) error {
-	return f.storeRedis(0, []byte(f.lastHashKey(vdiskID)), lastHash)
+	key := []byte(f.lastHashKey(vdiskID))
+
+	// we don't need to wait for the trim operation because it won't harm us
+	// if failed
+	go func() {
+		rc := f.redisPool.Get(0)
+		defer rc.Close()
+		if _, err := rc.Do("LTRIM", key, 0, lastHashNum); err != nil {
+			log.Errorf("failed to trim lasth hash of %s: %s", vdiskID, err.Error())
+		}
+	}()
+
+	return f.storeRedis(0, "LPUSH", key, lastHash)
 }
 
 func (f *flusher) lastHashKey(vdiskID string) string {
-	return lastHashPrefix + vdiskID
+	return tlog.LastHashPrefix + vdiskID
 }
 
 // store data to redis and retry it if failed
-func (f *flusher) storeRedis(idx int, key, data []byte) error {
-
-	store := func() error {
-		// get new connection inside this function.
-		// so in case of error, we got new connection that hopefully better
-		rc := f.redisPool.Get(idx)
-		defer rc.Close()
-
-		_, err := rc.Do("SET", key, data)
-		return err
-	}
-
+func (f *flusher) storeRedisAndRetry(idx int, cmd string, key, data []byte) error {
 	var err error
 
 	sleepMs := time.Duration(500) * time.Millisecond
 
 	for i := 0; i < 4; i++ {
-		err = store()
+		err = f.storeRedis(idx, cmd, key, data)
 		if err == nil {
 			return nil
 		}
@@ -261,5 +264,16 @@ func (f *flusher) storeRedis(idx int, key, data []byte) error {
 		time.Sleep(sleepMs)
 		sleepMs *= 2 // double the sleep time for the next iteration
 	}
+	return err
+}
+
+// store data to redis and retry it if failed
+func (f *flusher) storeRedis(idx int, cmd string, key, data []byte) error {
+	// get new connection inside this function.
+	// so in case of error, we got new connection that hopefully better
+	rc := f.redisPool.Get(idx)
+	defer rc.Close()
+
+	_, err := rc.Do(cmd, key, data)
 	return err
 }
