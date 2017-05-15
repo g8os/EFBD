@@ -141,17 +141,13 @@ func (s *Server) handle(conn *net.TCPConn) error {
 
 func (s *Server) sendResp(conn *net.TCPConn, vdiskID string, respChan chan *response) {
 	segmentBuf := make([]byte, 0, s.maxRespSegmentBufLen)
-	bw := bufio.NewWriter(conn)
 	for {
 		resp := <-respChan
 
-		if err := resp.write(bw, segmentBuf); err != nil {
+		if err := resp.write(conn, segmentBuf); err != nil {
 			log.Infof("failed to send resp to :%v, err:%v", vdiskID, err)
 			conn.Close()
 			return
-		}
-		if err := bw.Flush(); err != nil {
-			log.Infof("failed flush:%v", err)
 		}
 	}
 }

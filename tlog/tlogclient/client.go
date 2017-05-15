@@ -106,5 +106,8 @@ func (c *Client) Send(op uint8, seq uint64, lba, timestamp uint64,
 	data []byte, size uint64) error {
 
 	hash := blockstor.HashBytes(data)
-	return c.encodeCapnp(op, seq, hash[:], lba, timestamp, data, size)
+	if err := c.encodeCapnp(op, seq, hash[:], lba, timestamp, data, size); err != nil {
+		return err
+	}
+	return c.bw.Flush()
 }
