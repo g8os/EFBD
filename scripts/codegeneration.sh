@@ -18,3 +18,4 @@ generate_and_check() {
 }
 
 generate_and_check ./tlog
+generate_and_check ./docs/assets

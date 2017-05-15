@@ -18,7 +18,6 @@ Components:
 
 Make sure to have [Golang](https://golang.org/) version 1.8 or above installed.
 
-
 ## More
 
 All documentation is in the [`/docs`](./docs) directory, including a [table of contents](/docs/SUMMARY.md).

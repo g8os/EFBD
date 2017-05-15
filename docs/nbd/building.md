@@ -60,19 +60,16 @@ go get -d github.com/g8os/blockstor/nbdserver
 
 Build (totally static) the binary:
 ```
-cd $GOPATH/src/github.com/g8os/blockstor/nbdserver
-CGO_ENABLED=0
-GOOS=linux
-go build -a -ldflags '-extldflags "-static"' .
+cd $GOPATH/src/github.com/g8os/blockstor
+make nbdserver
 ```
 
 Optionally you can now create a flist for your NBD server so you can easily start a container on a G8OS with your NBD server. Below the steps.
 
-
 First put 'nbdserver' binary somewhere alone:
 ```
 mkdir /tmp/nbdserver
-cp nbdserver /tmp/nbdserver
+cp /bin/nbdserver /tmp/nbdserver
 ```
 
 Then, using JumpScale:
