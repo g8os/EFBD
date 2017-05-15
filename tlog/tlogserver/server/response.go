@@ -1,13 +1,11 @@
 package server
 
 import (
-	"bytes"
 	"io"
 
-	"github.com/g8os/blockstor/tlog"
-	"github.com/g8os/blockstor/tlog/schema"
-
 	"zombiezen.com/go/capnproto2"
+
+	"github.com/g8os/blockstor/tlog/schema"
 )
 
 type response struct {
@@ -15,7 +13,7 @@ type response struct {
 	Sequences []uint64
 }
 
-func (r *response) toCapnp(segmentBuf []byte) ([]byte, error) {
+func (r *response) toCapnp(segmentBuf []byte) (*capnp.Message, error) {
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(segmentBuf))
 	if err != nil {
 		return nil, err
@@ -38,23 +36,14 @@ func (r *response) toCapnp(segmentBuf []byte) ([]byte, error) {
 	resp.SetStatus(r.Status)
 	resp.SetSequences(seqs)
 
-	buf := new(bytes.Buffer)
-	if err := capnp.NewEncoder(buf).Encode(msg); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+	return msg, nil
 }
 
 func (r *response) write(w io.Writer, segmentBuf []byte) error {
-	data, err := r.toCapnp(segmentBuf)
+	msg, err := r.toCapnp(segmentBuf)
 	if err != nil {
 		return err
 	}
 
-	if err := tlog.WriteCapnpPrefix(w, len(data)); err != nil {
-		return err
-	}
-
-	_, err = w.Write(data)
-	return err
+	return capnp.NewEncoder(w).Encode(msg)
 }

@@ -2,7 +2,6 @@ package server
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -95,17 +94,10 @@ func (s *Server) handle(conn *net.TCPConn) error {
 	br := bufio.NewReader(conn)
 
 	for {
-		data, err := s.readData(br)
-		if err != nil {
-			return err
-		}
-
-		buf := bytes.NewBuffer(data)
-
 		// decode
-		tlb, err := s.decode(buf)
+		tlb, err := s.readDecode(br)
 		if err != nil {
-			log.Debugf("failed to decode tlog: %v", err)
+			log.Errorf("failed to decode tlog: %v", err)
 			return err
 		}
 
@@ -163,20 +155,9 @@ func (s *Server) sendResp(conn *net.TCPConn, vdiskID string, respChan chan *resp
 		}
 	}
 }
-func (s *Server) readData(rd io.Reader) ([]byte, error) {
-	// read length prefix
-	_, length, err := tlog.ReadCapnpPrefix(rd)
-	if err != nil {
-		return nil, err
-	}
 
-	data := make([]byte, length)
-	_, err = io.ReadFull(rd, data)
-	return data, err
-}
-
-// decode tlog message from client
-func (s *Server) decode(r io.Reader) (*schema.TlogBlock, error) {
+// read and decode tlog message from client
+func (s *Server) readDecode(r io.Reader) (*schema.TlogBlock, error) {
 	msg, err := capnp.NewDecoder(r).Decode()
 	if err != nil {
 		return nil, err

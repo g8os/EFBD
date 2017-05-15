@@ -8,7 +8,3 @@ type block struct {
 	data      []byte
 	timestamp uint64
 }
-
-func newBlock() error {
-	return nil
-}
