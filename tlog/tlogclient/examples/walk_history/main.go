@@ -55,12 +55,14 @@ func main() {
 		agg := da.Agg
 		log.Info("================================")
 		log.Infof("agg timestamp=%v, size=%v", agg.Timestamp(), agg.Size())
+
+		vdiskID, err := agg.VdiskID()
+		exitOnErr(err)
 		blocks, err := agg.Blocks()
 		exitOnErr(err)
 
 		for i := 0; i < blocks.Len(); i++ {
 			block := blocks.At(i)
-			vdiskID, err := block.VdiskID()
 			exitOnErr(err)
 
 			data, err := block.Data()

@@ -26,10 +26,9 @@ func (c *Client) encodeCapnp(op uint8, seq uint64, hash []byte,
 
 	block, err := schema.NewRootTlogBlock(seg)
 	if err != nil {
-		return fmt.Errorf("create block:%v", err)
+		return fmt.Errorf("couldn't create block:%v", err)
 	}
 
-	block.SetVdiskID(c.vdiskID)
 	block.SetOperation(op)
 	block.SetSequence(seq)
 	block.SetLba(lba)
@@ -37,6 +36,13 @@ func (c *Client) encodeCapnp(op uint8, seq uint64, hash []byte,
 	block.SetTimestamp(timestamp)
 	block.SetSize(size)
 	block.SetData(data)
+
+	clientPackage, err := schema.NewRootTlogClientPackage(seg)
+	if err != nil {
+		return fmt.Errorf("couldn't create package: %v", err)
+	}
+	clientPackage.SetVdiskID(c.vdiskID)
+	clientPackage.SetBlock(block)
 
 	return capnp.NewEncoder(c.bw).Encode(msg)
 }

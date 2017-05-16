@@ -93,12 +93,12 @@ type TlogBlock struct{ capnp.Struct }
 const TlogBlock_TypeID = 0x8cf178de3c82d431
 
 func NewTlogBlock(s *capnp.Segment) (TlogBlock, error) {
-	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 40, PointerCount: 3})
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 40, PointerCount: 2})
 	return TlogBlock{st}, err
 }
 
 func NewRootTlogBlock(s *capnp.Segment) (TlogBlock, error) {
-	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 40, PointerCount: 3})
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 40, PointerCount: 2})
 	return TlogBlock{st}, err
 }
 
@@ -110,25 +110,6 @@ func ReadRootTlogBlock(msg *capnp.Message) (TlogBlock, error) {
 func (s TlogBlock) String() string {
 	str, _ := text.Marshal(0x8cf178de3c82d431, s.Struct)
 	return str
-}
-
-func (s TlogBlock) VdiskID() (string, error) {
-	p, err := s.Struct.Ptr(0)
-	return p.Text(), err
-}
-
-func (s TlogBlock) HasVdiskID() bool {
-	p, err := s.Struct.Ptr(0)
-	return p.IsValid() || err != nil
-}
-
-func (s TlogBlock) VdiskIDBytes() ([]byte, error) {
-	p, err := s.Struct.Ptr(0)
-	return p.TextBytes(), err
-}
-
-func (s TlogBlock) SetVdiskID(v string) error {
-	return s.Struct.SetText(0, v)
 }
 
 func (s TlogBlock) Sequence() uint64 {
@@ -156,31 +137,31 @@ func (s TlogBlock) SetSize(v uint64) {
 }
 
 func (s TlogBlock) Hash() ([]byte, error) {
-	p, err := s.Struct.Ptr(1)
+	p, err := s.Struct.Ptr(0)
 	return []byte(p.Data()), err
 }
 
 func (s TlogBlock) HasHash() bool {
-	p, err := s.Struct.Ptr(1)
+	p, err := s.Struct.Ptr(0)
 	return p.IsValid() || err != nil
 }
 
 func (s TlogBlock) SetHash(v []byte) error {
-	return s.Struct.SetData(1, v)
+	return s.Struct.SetData(0, v)
 }
 
 func (s TlogBlock) Data() ([]byte, error) {
-	p, err := s.Struct.Ptr(2)
+	p, err := s.Struct.Ptr(1)
 	return []byte(p.Data()), err
 }
 
 func (s TlogBlock) HasData() bool {
-	p, err := s.Struct.Ptr(2)
+	p, err := s.Struct.Ptr(1)
 	return p.IsValid() || err != nil
 }
 
 func (s TlogBlock) SetData(v []byte) error {
-	return s.Struct.SetData(2, v)
+	return s.Struct.SetData(1, v)
 }
 
 func (s TlogBlock) Timestamp() uint64 {
@@ -204,7 +185,7 @@ type TlogBlock_List struct{ capnp.List }
 
 // NewTlogBlock creates a new list of TlogBlock.
 func NewTlogBlock_List(s *capnp.Segment, sz int32) (TlogBlock_List, error) {
-	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 40, PointerCount: 3}, sz)
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 40, PointerCount: 2}, sz)
 	return TlogBlock_List{l}, err
 }
 
@@ -218,6 +199,104 @@ type TlogBlock_Promise struct{ *capnp.Pipeline }
 func (p TlogBlock_Promise) Struct() (TlogBlock, error) {
 	s, err := p.Pipeline.Struct()
 	return TlogBlock{s}, err
+}
+
+type TlogClientPackage struct{ capnp.Struct }
+
+// TlogClientPackage_TypeID is the unique identifier for the type TlogClientPackage.
+const TlogClientPackage_TypeID = 0xa77849c1e50404ed
+
+func NewTlogClientPackage(s *capnp.Segment) (TlogClientPackage, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 2})
+	return TlogClientPackage{st}, err
+}
+
+func NewRootTlogClientPackage(s *capnp.Segment) (TlogClientPackage, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 2})
+	return TlogClientPackage{st}, err
+}
+
+func ReadRootTlogClientPackage(msg *capnp.Message) (TlogClientPackage, error) {
+	root, err := msg.RootPtr()
+	return TlogClientPackage{root.Struct()}, err
+}
+
+func (s TlogClientPackage) String() string {
+	str, _ := text.Marshal(0xa77849c1e50404ed, s.Struct)
+	return str
+}
+
+func (s TlogClientPackage) VdiskID() (string, error) {
+	p, err := s.Struct.Ptr(0)
+	return p.Text(), err
+}
+
+func (s TlogClientPackage) HasVdiskID() bool {
+	p, err := s.Struct.Ptr(0)
+	return p.IsValid() || err != nil
+}
+
+func (s TlogClientPackage) VdiskIDBytes() ([]byte, error) {
+	p, err := s.Struct.Ptr(0)
+	return p.TextBytes(), err
+}
+
+func (s TlogClientPackage) SetVdiskID(v string) error {
+	return s.Struct.SetText(0, v)
+}
+
+func (s TlogClientPackage) Block() (TlogBlock, error) {
+	p, err := s.Struct.Ptr(1)
+	return TlogBlock{Struct: p.Struct()}, err
+}
+
+func (s TlogClientPackage) HasBlock() bool {
+	p, err := s.Struct.Ptr(1)
+	return p.IsValid() || err != nil
+}
+
+func (s TlogClientPackage) SetBlock(v TlogBlock) error {
+	return s.Struct.SetPtr(1, v.Struct.ToPtr())
+}
+
+// NewBlock sets the block field to a newly
+// allocated TlogBlock struct, preferring placement in s's segment.
+func (s TlogClientPackage) NewBlock() (TlogBlock, error) {
+	ss, err := NewTlogBlock(s.Struct.Segment())
+	if err != nil {
+		return TlogBlock{}, err
+	}
+	err = s.Struct.SetPtr(1, ss.Struct.ToPtr())
+	return ss, err
+}
+
+// TlogClientPackage_List is a list of TlogClientPackage.
+type TlogClientPackage_List struct{ capnp.List }
+
+// NewTlogClientPackage creates a new list of TlogClientPackage.
+func NewTlogClientPackage_List(s *capnp.Segment, sz int32) (TlogClientPackage_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 2}, sz)
+	return TlogClientPackage_List{l}, err
+}
+
+func (s TlogClientPackage_List) At(i int) TlogClientPackage {
+	return TlogClientPackage{s.List.Struct(i)}
+}
+
+func (s TlogClientPackage_List) Set(i int, v TlogClientPackage) error {
+	return s.List.SetStruct(i, v.Struct)
+}
+
+// TlogClientPackage_Promise is a wrapper for a TlogClientPackage promised by a client call.
+type TlogClientPackage_Promise struct{ *capnp.Pipeline }
+
+func (p TlogClientPackage_Promise) Struct() (TlogClientPackage, error) {
+	s, err := p.Pipeline.Struct()
+	return TlogClientPackage{s}, err
+}
+
+func (p TlogClientPackage_Promise) Block() TlogBlock_Promise {
+	return TlogBlock_Promise{Pipeline: p.Pipeline.GetPipeline(1)}
 }
 
 type TlogAggregation struct{ capnp.Struct }
@@ -361,46 +440,50 @@ func (p TlogAggregation_Promise) Struct() (TlogAggregation, error) {
 	return TlogAggregation{s}, err
 }
 
-const schema_f4533cbae6e08506 = "x\xda|\x93AH\x14m\x1c\xc6\x9f\xe7\xff\xdfY?" +
-	"A\xddo\xd89|\xca\x17Ix1\xb2\xb4n\"X" +
-	"\xd2\xa1<\xf9Z\xd01\xc6uX7ww6g\xb4" +
-	"\xe8\x12\x04\x1e\x8a\x8e\x1e\xec\x10\x18x((\xe8P\x1d" +
-	"\xa2K\x10\xd8\xa1\x8b``P\xb1\x82E\x81A\x81A" +
-	"\x9d&^\x97]\xb7\x90n\xef\xfb\xf0\xcc\xfc\x9f\xff\xf3" +
-	"\x9b\xe9\x9f\xe4q\x19pB\x01\xcc\xffN:\x19X\xbb" +
-	"6\xf4\xfe\xf2\xb7\x9b0\x9dt\x92\xf4|\xf5\xe3\xd3\xa1" +
-	"3\xdbp\xb4\x058\xb6\x8f]\xcc\xf6\xd1\x1e{\xb9B" +
-	"0y\xd3sce\xa3ku\xd1\xda\xd9d\xdf\xf1\xfc" +
-	"\x94\xa3\xcc\xb6\xda'\xb3\x8e^\x02\x93\x85j\xe7\x93G" +
-	"\x8f/lZ\xb74\xb9S\xd6=\xab\xa3\xcc^\xdf\x99" +
-	"3\xaf\xe7\x88\xbe$\xcaM\x05%\xffH\xac\xc50\x7f" +
-	"\xbev9\x9c\xf3+\xe5\xca\xe0\xd9b\x98\x1f)\x86\x9a" +
-	"\x9b\x1e#M\xb7\xa6\x80\x14\x01wu\x040\xaf\x94f" +
-	"]Hz\xb4\xda\xebQ\xc0\xac)MU\xe8\x0a=\x0a" +
-	"\xe0\xbe;\x00\x98u\xa5\xd9\x14\xba*\x1e\x15p7\x0e" +
-	"\x02\xe6\xad\xd2|\x12\xba)zL\x01\xee\x07+V\x95" +
-	"fK\xe8:\xe2\xd1\x01\xdc\xcfV\xdcT\x9a\xafB7" +
-	"\xad\x1e\xd3\x80\xfbe\x1c0[J\xf3C\xe8\xb6t{" +
-	"\xb6\x03\xf7\xbb\x15\xb7\x95\xe3\x14^\x9d\x9b,D\xd3\xa7" +
-	"O\xb2\x0d\xc260\x89\x82\x8b\xb3A9\x17\x00`+" +
-	"\x84\xad`Kq\xc2\xaf\x9f3Q\xe1J\xd0\xb8L\xf9" +
-	"\xd1\x14\xdb!l\x073\x93~\xec\xd7/I\\(\x05" +
-	"Q\xec\x97\xc0J\xdd\x9d\x84\x95`\xc6\x8f\x0b!Xf" +
-	"\x1a\xc2\xb4\x1d\xf7\xd7>\xc7\x83h\x7f%,G\x81\xad" +
-	"\xf4\x9fF\xa5\xbd\x83\x80\xe9Q\x9a\xfe\xddJ\xfb\xecR" +
-	"\x87\x94\xe6\x94p8\x8a\xfdx6\xa2@(\xcd;1" +
-	"b\x078\xa6\xdc\xc9\xd4\xd14?\xb5\xe7\xfc\x13\xf9\xfc" +
-	"L\x90\xb7\x99\xcb\x80\xcd\xf0_#\xc3-[\xf7\x82\xd2" +
-	",\xedf\xb8m\xb5E\xa5Yn\xc2z\xc7\x06[R" +
-	"\x9a\xfb\x16+kX\xef\xd9\x8fbYi\x1eZ\xacR" +
-	"\xc3\xfa\xc0\xaeuWi^X\xacZ\xc3\xfa\xdc\xbe\xf3" +
-	"\x99\xd2\xbc\x14f\xca~)\xa8\x93\xfa\x8d\xc4^}\xff" +
-	"\x89vx\xa2\x18\xe6\xa6\x1b\x0d\xfc\xbb\xfb_\x81V\xcc" +
-	"Tf\x82\xb9:\xc0_\x01\x00\x00\xff\xff\xf0v\xc7\x08"
+const schema_f4533cbae6e08506 = "x\xda\x84\x92OHT]\x18\xc6\x9f\xe7\xbcw\xc6O" +
+	"P\xc7\xcb\xcc\xe2S>P>\\Td\xf9\xa7\x95\x08" +
+	"\x96\xb5HW\x1e+\xa26q\x1d/\xe34\x7f\xf3^" +
+	"\xcd\xda\x04A-\"h\xe3\xc2\x16\x81\x81PAA\x0b" +
+	"\x8d\x88\x02\x05\xc3\x02\x83\x04\x83\xda\x84B\x06-Z\x04" +
+	"\xb5hu\xe38\xddq\x14\xc1\xddy_\x9es\xce\xf3" +
+	">\xef\xaf\xed&\x8f\xaa\xf6\xc8\x92\x02ts$\x1a\xb4" +
+	"\xaf^\xef\xfe<\xf1\xe36t\x03#A\xf4\xc6\xda\xd7" +
+	"\x17\xdd\xa7~\"\xa2\xaa\x80\xce>62~\x8e\xe6x" +
+	"\x86w\x08\x06\x9fZn-\xad7\xaeL\x199+\xe4" +
+	"\x9b\x9ao\xaa\x83\xf1\xdf\xe6f\xfc\x97\xba\x0c\x06\xdf-" +
+	"kc\xa1o\xe2\x01\xec\x06\xee|\xdb\x95\xf3\x8c_\x11" +
+	"#\x1e\x13#\x9e\\kx6;w\xf1\x8byZU" +
+	"\xa8-\xa3^\x91~\xc67\x8c\xbas]\xce\x12\xad\x81" +
+	"\x97\x1cqs\xcea_\xb2\x85\xd4\x85Rq(\xe9\x14" +
+	"\xf3\xc5\xae\xd3\xd9B\xaa7[\x90df\x80\xd4\xff\x89" +
+	"\x05X\x04\xec\xb9~@\xcf\x0a\xf5\xbc\xa2M&h\x9a" +
+	"\xaf\xfe\x07\xf4s\xa1^T\xb4\x95JP\x01\xf6\xc2\x01" +
+	"@\xbf\x14\xea7\x8a\x94\x04\x05\xb0_\x9b\xde\xbcP/" +
+	"+\xda\x16\x13\xb4\x00\xfb\xadi.\x0a\xf5{E;\"" +
+	"\x09F\x00\xfb\xdd \xa0\x97\x85\xfa\xa3\xa2\x1dmN0" +
+	"\x0a\xd8\x1fLsU\xa8\xd7\x14\x03\xcf\xbd4\xe6\xe6\x93" +
+	".\x00VC\xb1\x1a\xac\xca\x0e9\xe19\xe6\xa5\xaf\xba" +
+	"\xe5b\xc4\xf1FX\x0b\xc5Z06\xec\xf8NX\x04" +
+	"~:\xe7z\xbe\x93\x03\x8b\xa1:(\x14\xddQ\xc7O" +
+	"\x17\xc0<\xa3P\x8c\x82{D5\xe8zM\xc5B\xde" +
+	"sMZ\xff\x94\xd3\xda\xdf\x05\xe8\x16\xa1nS\x0c\xc3" +
+	"j5C\x1c\x14\xea\x93\x8a=\x9e\xef\xf8c\x1e\x15\x14" +
+	"\x15*f\xa2\xc7:p@\xb8\xe9\xa9\xae\xe2\x7fk\xd7" +
+	"\xff\x8fg\xd3n\xde\x1fp\x92\x19GR;M\xf4n" +
+	"\x99(\xaf\xac\xb5\x03\xd0\xfb\x84\xfa\x88\xe2\xb5\xf1\xe1\xb4" +
+	"\x97\xe9;\xc1\x1a(\xd6\x80MC\xd9B2\xc3\xfa-" +
+	"\xaeA\xd6\xef\xe9\xe1X*5\xea\xa6Lny\xc0X" +
+	"\xf8\xb7l\xe1\xaeY\xf1\xa4POo\xe5p\xcf\xf4\xa6" +
+	"\x84z\xc6@\xc3\x124\xf7M8\xd3B\xfdX\xd1\x16" +
+	"\x96\xa8yd\x06\x98\x11\xea\xa7\x86\x1aU\xa2\xe6\x89\x89" +
+	"\xf6\xe1_\xe6Bj*\x99\x8b\xe5\x9d\x9c\x1b\x8e\xb4\x8d" +
+	"\x86\xddv\xbe3\x83\x9e\xcd\x0c\xca[\xd8\x9eE\x1d\x18" +
+	"+\x8e\xba\xe3!D\x7f\x02\x00\x00\xff\xff Y\xef\xb5"
 
 func init() {
 	schemas.Register(schema_f4533cbae6e08506,
 		0x8cf178de3c82d431,
 		0x98d11ae1c78a24d9,
+		0xa77849c1e50404ed,
 		0xe46ab5b4b619e094)
 }

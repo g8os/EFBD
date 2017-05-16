@@ -7,8 +7,8 @@
 ## Data send from the client to server:
 
 ```
-Block:
-  - vdiskID: Text
+- vdiskID : String
+- Block:
   - sequence : uint64
   - lba :uint64
   - size :uint32

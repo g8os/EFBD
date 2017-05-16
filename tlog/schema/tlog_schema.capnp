@@ -9,14 +9,17 @@ struct TlogResponse {
 	# only exist in flush response
 }
 struct TlogBlock {
+	sequence @0 :UInt64;
+	lba @1 :UInt64;
+	size @2 :UInt64;
+	hash  @3 :Data;
+	data @4 :Data;
+	timestamp @5 :UInt64;
+	operation @6 :UInt8; # disk operation  1=WriteAt,2=WriteZeroesAt
+}
+struct TlogClientPackage {
 	vdiskID @0 :Text;
-	sequence @1 :UInt64;
-	lba @2 :UInt64;
-	size @3 :UInt64;
-	hash  @4 :Data;
-	data @5 :Data;
-	timestamp @6 :UInt64;
-	operation @7 :UInt8; # disk operation  1=WriteAt,2=WriteZeroesAt
+	block @1 :TlogBlock;
 }
 
 struct TlogAggregation {

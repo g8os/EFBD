@@ -95,14 +95,14 @@ func (s *Server) handle(conn *net.TCPConn) error {
 
 	for {
 		// decode
-		tlb, err := s.readDecode(br)
+		pkg, err := s.readDecode(br)
 		if err != nil {
 			log.Errorf("failed to decode tlog: %v", err)
 			return err
 		}
 
 		// vdiskID
-		curVdiskID, err := tlb.VdiskID()
+		curVdiskID, err := pkg.VdiskID()
 		if err != nil {
 			log.Infof("failed to get vdisk ID: %v", err)
 			return err
@@ -124,17 +124,23 @@ func (s *Server) handle(conn *net.TCPConn) error {
 			return err
 		}
 
+		block, err := pkg.Block()
+		if err != nil {
+			log.Infof("failed to get block: %v", err)
+			return err
+		}
+
 		// check hash
-		if err := s.hash(tlb, vd.vdiskID); err != nil {
+		if err := s.hash(&block, vd.vdiskID); err != nil {
 			log.Debugf("hash check failed:%v\n", err)
 			return err
 		}
 
 		// store
-		vd.inputChan <- tlb
+		vd.inputChan <- &block
 		vd.respChan <- &response{
 			Status:    tlog.StatusBlockRecvOK,
-			Sequences: []uint64{tlb.Sequence()},
+			Sequences: []uint64{block.Sequence()},
 		}
 	}
 }
@@ -153,13 +159,13 @@ func (s *Server) sendResp(conn *net.TCPConn, vdiskID string, respChan chan *resp
 }
 
 // read and decode tlog message from client
-func (s *Server) readDecode(r io.Reader) (*schema.TlogBlock, error) {
+func (s *Server) readDecode(r io.Reader) (*schema.TlogClientPackage, error) {
 	msg, err := capnp.NewDecoder(r).Decode()
 	if err != nil {
 		return nil, err
 	}
 
-	tlb, err := schema.ReadRootTlogBlock(msg)
+	tlb, err := schema.ReadRootTlogClientPackage(msg)
 	if err != nil {
 		return nil, err
 	}

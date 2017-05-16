@@ -168,7 +168,6 @@ func (f *flusher) storeEncoded(vd *vdisk, key []byte, encoded [][]byte) error {
 }
 
 func (f *flusher) encodeCapnp(blocks []*schema.TlogBlock, vd *vdisk) ([]byte, error) {
-
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(vd.segmentBuf))
 	if err != nil {
 		return nil, err

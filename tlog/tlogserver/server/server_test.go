@@ -83,7 +83,9 @@ func TestEndToEnd(t *testing.T) {
 		for received < expected {
 			re := <-respChan
 			received++
-			assert.Nil(t, re.Err)
+			if !assert.Nil(t, re.Err) {
+				continue
+			}
 			assert.Equal(t, true, re.Resp.Status > 0)
 
 			if re.Resp.Status == tlog.StatusFlushOK {
@@ -128,11 +130,6 @@ func TestEndToEnd(t *testing.T) {
 			blockData, err := block.Data()
 			assert.Nil(t, err)
 			assert.Equal(t, data, blockData)
-
-			// check vdisk id
-			vdiskID, err := block.VdiskID()
-			assert.Nil(t, err)
-			assert.Equal(t, expectedVdiskID, vdiskID)
 		}
 
 		aggReceived++
