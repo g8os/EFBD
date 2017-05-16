@@ -1148,6 +1148,8 @@ func diff(expected interface{}, actual interface{}) string {
 }
 
 var spewConfig = spew.ConfigState{
-	Indent:   " ",
-	SortKeys: true,
+	Indent:                  " ",
+	DisablePointerAddresses: true,
+	DisableCapacities:       true,
+	SortKeys:                true,
 }

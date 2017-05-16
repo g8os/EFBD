@@ -13,8 +13,8 @@
 		},
 		{
 			"ImportPath": "github.com/asaskevich/govalidator",
-			"Comment": "v5",
-			"Rev": "7b3beb6df3c42abd3509abfc3bcacc0fbfb7c877"
+			"Comment": "v6-13-g065ea97",
+			"Rev": "065ea97278837088c52c0cd0d963473f61b2d98c"
 		},
 		{
 			"ImportPath": "github.com/cupcake/rdb",
@@ -30,8 +30,8 @@
 		},
 		{
 			"ImportPath": "github.com/davecgh/go-spew/spew",
-			"Comment": "v1.0.0-3-g6d21280",
-			"Rev": "6d212800a42e8ab5c146b8ace3490ee17e5225f9"
+			"Comment": "v1.1.0",
+			"Rev": "346938d642f2ec3594ed81d874461961cd0faa76"
 		},
 		{
 			"ImportPath": "github.com/edsrzf/mmap-go",
@@ -71,8 +71,8 @@
 		},
 		{
 			"ImportPath": "github.com/gorilla/mux",
-			"Comment": "v1.3.0-5-g599cba5",
-			"Rev": "599cba5e7b6137d46ddf58fb1765f5d928e69604"
+			"Comment": "v1.3.0-6-g4c1c395",
+			"Rev": "4c1c3952b7d9d0a061a3fa7b36fd373ba0398ebc"
 		},
 		{
 			"ImportPath": "github.com/inconshreveable/log15",
@@ -90,7 +90,7 @@
 		},
 		{
 			"ImportPath": "github.com/kardianos/osext",
-			"Rev": "29ae4ffbc9a6fe9fb2bc5029050ce6996ea1d3bc"
+			"Rev": "ae77be60afb1dcacde03767a8c37337fad28ac14"
 		},
 		{
 			"ImportPath": "github.com/mattn/go-colorable",
@@ -99,7 +99,8 @@
 		},
 		{
 			"ImportPath": "github.com/mattn/go-isatty",
-			"Rev": "dda3de49cbfcec471bd7a70e6cc01fcc3ff90109"
+			"Comment": "v0.0.2",
+			"Rev": "fc9e8d8ef48496124e79ae0df75490096eccf6fe"
 		},
 		{
 			"ImportPath": "github.com/minio/blake2b-simd",
@@ -202,15 +203,15 @@
 		},
 		{
 			"ImportPath": "github.com/spf13/cobra",
-			"Rev": "7be4beda01ec05d0b93d80b3facd2b6f44080d94"
+			"Rev": "4cdb38c072b86bf795d2c81de50784d9fdd6eb77"
 		},
 		{
 			"ImportPath": "github.com/spf13/pflag",
-			"Rev": "d16db1e50e33dff1b6cdf37596cef36742128670"
+			"Rev": "e57e3eeb33f795204c1ca35f56c44f83227c6e66"
 		},
 		{
 			"ImportPath": "github.com/stretchr/testify/assert",
-			"Comment": "v1.1.3-72-ga30d470",
+			"Comment": "v1.1.4-26-ga30d470",
 			"Rev": "a30d47007ef19da43c69f24ed5e40ccc5b6cbb6f"
 		},
 		{
@@ -267,7 +268,7 @@
 		},
 		{
 			"ImportPath": "github.com/ugorji/go/codec",
-			"Rev": "9c7f9b7a2bc3a520f7c7b30b34b7f85f47fe27b6"
+			"Rev": "708a42d246822952f38190a8d8c4e6b16a0e600c"
 		},
 		{
 			"ImportPath": "github.com/yuin/gopher-lua",
@@ -287,49 +288,49 @@
 		},
 		{
 			"ImportPath": "golang.org/x/net/context",
-			"Rev": "ffcf1bedda3b04ebb15a168a59800a73d6dc0f4d"
+			"Rev": "34057069f4ab13dc4433c68d368737ebeafcccdc"
 		},
 		{
 			"ImportPath": "golang.org/x/sys/unix",
-			"Rev": "b699b7032584f0953262cb2788a0ca19bb494703"
+			"Rev": "1e99a4f9d247b28c670884b9a8d6801f39a47b77"
 		},
 		{
 			"ImportPath": "gopkg.in/validator.v2",
-			"Rev": "0a9835d809fb647a62611d30cb792e0b5dd65b11"
+			"Rev": "07ffaad256c8e957050ad83d6472eb97d785013d"
 		},
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
-			"Rev": "14227de293ca979cf205cd88769fe71ed96a97e2"
+			"Rev": "cd8b52f8269e0feb286dfeef29f8fe4d5b397e0b"
 		},
 		{
 			"ImportPath": "zombiezen.com/go/capnproto2",
-			"Comment": "v2.13.0-5-g28f2e70",
-			"Rev": "28f2e70113b36f2cb5b9800929a49550004dbb43"
+			"Comment": "v2.14.0",
+			"Rev": "917bd4b4c47e99b11e8cadbc2fc4e47935c942d0"
 		},
 		{
 			"ImportPath": "zombiezen.com/go/capnproto2/encoding/text",
-			"Comment": "v2.13.0-5-g28f2e70",
-			"Rev": "28f2e70113b36f2cb5b9800929a49550004dbb43"
+			"Comment": "v2.14.0",
+			"Rev": "917bd4b4c47e99b11e8cadbc2fc4e47935c942d0"
 		},
 		{
 			"ImportPath": "zombiezen.com/go/capnproto2/internal/nodemap",
-			"Comment": "v2.13.0-5-g28f2e70",
-			"Rev": "28f2e70113b36f2cb5b9800929a49550004dbb43"
+			"Comment": "v2.14.0",
+			"Rev": "917bd4b4c47e99b11e8cadbc2fc4e47935c942d0"
 		},
 		{
 			"ImportPath": "zombiezen.com/go/capnproto2/internal/packed",
-			"Comment": "v2.13.0-5-g28f2e70",
-			"Rev": "28f2e70113b36f2cb5b9800929a49550004dbb43"
+			"Comment": "v2.14.0",
+			"Rev": "917bd4b4c47e99b11e8cadbc2fc4e47935c942d0"
 		},
 		{
 			"ImportPath": "zombiezen.com/go/capnproto2/schemas",
-			"Comment": "v2.13.0-5-g28f2e70",
-			"Rev": "28f2e70113b36f2cb5b9800929a49550004dbb43"
+			"Comment": "v2.14.0",
+			"Rev": "917bd4b4c47e99b11e8cadbc2fc4e47935c942d0"
 		},
 		{
 			"ImportPath": "zombiezen.com/go/capnproto2/std/capnp/schema",
-			"Comment": "v2.13.0-5-g28f2e70",
-			"Rev": "28f2e70113b36f2cb5b9800929a49550004dbb43"
+			"Comment": "v2.14.0",
+			"Rev": "917bd4b4c47e99b11e8cadbc2fc4e47935c942d0"
 		}
 	]
 }
