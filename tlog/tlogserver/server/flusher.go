@@ -26,7 +26,6 @@ type flusher struct {
 	m         int
 	flushSize int
 	flushTime int
-	privKey   []byte
 
 	redisPool *tlog.RedisPool
 
@@ -56,7 +55,6 @@ func newFlusher(conf *Config) (*flusher, error) {
 		m:         conf.M,
 		flushSize: conf.FlushSize,
 		flushTime: conf.FlushTime,
-		privKey:   []byte(conf.PrivKey),
 		redisPool: redisPool,
 		erasure:   erasure.NewErasurer(conf.K, conf.M),
 		encrypter: encrypter,
@@ -217,10 +215,8 @@ func (f *flusher) getLastHash(vdiskID string) ([]byte, error) {
 		return nil, err
 	}
 
-	// if this is first aggregation, use priv key as last hash value
-	// TODO : check with @robvanmieghem.
 	if err == redis.ErrNil {
-		hash = f.privKey
+		hash = tlog.FirstAggregateHash
 	}
 	return hash, nil
 

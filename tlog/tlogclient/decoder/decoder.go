@@ -27,7 +27,6 @@ type Decoder struct {
 
 	// encryption variable
 	decrypter tlog.AESDecrypter
-	privKey   []byte
 
 	// pools of redis connection
 	redisPool *tlog.RedisPool
@@ -41,13 +40,13 @@ type DecodedAggregation struct {
 }
 
 // New creates a tlog decoder
-func New(objstorAddr []string, k, m int, vdiskID, privKey, nonce string) (*Decoder, error) {
+func New(objstorAddr []string, k, m int, vdiskID, privKey, hexNonce string) (*Decoder, error) {
 	if len(objstorAddr) != k+m+1 {
 		return nil, errors.New("invalid number of objstor")
 	}
 
 	// create decrypter
-	decrypter, err := tlog.NewAESDecrypter(privKey, nonce)
+	decrypter, err := tlog.NewAESDecrypter(privKey, hexNonce)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +63,6 @@ func New(objstorAddr []string, k, m int, vdiskID, privKey, nonce string) (*Decod
 		k:           k,
 		m:           m,
 		decrypter:   decrypter,
-		privKey:     []byte(privKey),
 		redisPool:   redisPool,
 	}, nil
 }
@@ -130,7 +128,7 @@ func (d *Decoder) getKeysAfter(startTs uint64) ([][]byte, error) {
 		}
 
 		// this is very first key
-		if bytes.Compare(prev, d.privKey) == 0 {
+		if bytes.Compare(prev, tlog.FirstAggregateHash.Bytes()) == 0 {
 			return keys, nil
 		}
 
