@@ -31,7 +31,8 @@ type Client struct {
 	capnpSegmentBuf []byte
 }
 
-// New creates a new tlog client
+// New creates a new tlog client.
+// The client is not goroutine safe.
 func New(addr, vdiskID string) (*Client, error) {
 	c := &Client{
 		addr:    addr,
@@ -133,7 +134,7 @@ func (c *Client) Send(op uint8, seq, lba, timestamp uint64,
 		// so we don't need to sleep in case of simple closed connection.
 		// We sleep in next iteration because there might be something error in
 		// the network connection or the tlog server that need time to be recovered.
-		time.Sleep(time.Duration(i) * time.Duration(sendSleepMs) * time.Millisecond)
+		time.Sleep(time.Duration(i) * sendSleepMs)
 
 		if err = c.createConn(); err != nil {
 			okToSend = false
@@ -146,5 +147,5 @@ func (c *Client) Send(op uint8, seq, lba, timestamp uint64,
 
 const (
 	sendRetryNum = 3
-	sendSleepMs  = 500
+	sendSleepMs  = 500 * time.Millisecond
 )
