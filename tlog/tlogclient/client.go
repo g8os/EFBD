@@ -2,10 +2,13 @@ package tlogclient
 
 import (
 	"bufio"
+	"fmt"
 	"net"
 	"time"
 
 	"github.com/g8os/blockstor"
+	"github.com/g8os/blockstor/log"
+	"github.com/g8os/blockstor/tlog"
 )
 
 // Response defines a response from tlog server
@@ -34,15 +37,51 @@ type Client struct {
 // New creates a new tlog client.
 // The client is not goroutine safe.
 func New(addr, vdiskID string) (*Client, error) {
-	c := &Client{
+	client := &Client{
 		addr:    addr,
 		vdiskID: vdiskID,
 	}
-	if err := c.createConn(); err != nil {
-		return nil, err
+	err := client.createConn()
+	if err != nil {
+		return nil, fmt.Errorf("client couldn't be created: %s", err.Error())
 	}
 
-	return c, nil
+	err = client.handshake()
+	if err != nil {
+		if err := client.Close(); err != nil {
+			log.Debug("couldn't close open connection of invalid client:", err)
+		}
+		return nil, fmt.Errorf("client handshake failed: %s", err.Error())
+	}
+
+	return client, nil
+}
+
+func (c *Client) handshake() error {
+	// send our verack
+	err := c.encodeVerackCapnp()
+	if err != nil {
+		return err
+	}
+	err = c.bw.Flush()
+	if err != nil {
+		return err
+	}
+
+	// receive their verack
+	resp, err := c.decodeVerackResponse()
+	if err != nil {
+		return err
+	}
+
+	// check server response status
+	err = tlog.VerAckStatus(resp.Status()).Error()
+	if err != nil {
+		return err
+	}
+
+	// all checks out, ready to go!
+	return nil
 }
 
 // Recv get channel of responses and errors (Result)
@@ -63,7 +102,7 @@ func (c *Client) Recv(chanSize int) <-chan *Result {
 // RecvOne receive one response
 func (c *Client) RecvOne() (*Response, error) {
 	// decode capnp and build response
-	tr, err := c.decodeResponse()
+	tr, err := c.decodeBlockResponse()
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +150,8 @@ func (c *Client) Send(op uint8, seq, lba, timestamp uint64,
 	hash := blockstor.HashBytes(data)
 
 	send := func() error {
-		if err = c.encodeCapnp(op, seq, hash[:], lba, timestamp, data, size); err != nil {
+		err = c.encodeBlockCapnp(op, seq, hash[:], lba, timestamp, data, size)
+		if err != nil {
 			return err
 		}
 		return c.bw.Flush()
@@ -134,7 +174,7 @@ func (c *Client) Send(op uint8, seq, lba, timestamp uint64,
 		// so we don't need to sleep in case of simple closed connection.
 		// We sleep in next iteration because there might be something error in
 		// the network connection or the tlog server that need time to be recovered.
-		time.Sleep(time.Duration(i) * sendSleepMs)
+		time.Sleep(time.Duration(i) * sendSleepTime)
 
 		if err = c.createConn(); err != nil {
 			okToSend = false
@@ -145,7 +185,12 @@ func (c *Client) Send(op uint8, seq, lba, timestamp uint64,
 	return err
 }
 
+// Close the open connection, making this client invalid
+func (c *Client) Close() error {
+	return c.conn.Close()
+}
+
 const (
-	sendRetryNum = 3
-	sendSleepMs  = 500 * time.Millisecond
+	sendRetryNum  = 3
+	sendSleepTime = 500 * time.Millisecond
 )

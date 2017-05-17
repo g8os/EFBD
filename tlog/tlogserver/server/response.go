@@ -8,12 +8,12 @@ import (
 	"github.com/g8os/blockstor/tlog/schema"
 )
 
-type response struct {
+type blockResponse struct {
 	Status    int8
 	Sequences []uint64
 }
 
-func (r *response) toCapnp(segmentBuf []byte) (*capnp.Message, error) {
+func (r *blockResponse) toCapnp(segmentBuf []byte) (*capnp.Message, error) {
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(segmentBuf))
 	if err != nil {
 		return nil, err
@@ -39,7 +39,7 @@ func (r *response) toCapnp(segmentBuf []byte) (*capnp.Message, error) {
 	return msg, nil
 }
 
-func (r *response) write(w io.Writer, segmentBuf []byte) error {
+func (r *blockResponse) write(w io.Writer, segmentBuf []byte) error {
 	msg, err := r.toCapnp(segmentBuf)
 	if err != nil {
 		return err

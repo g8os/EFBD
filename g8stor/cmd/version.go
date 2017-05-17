@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"runtime"
 
+	"github.com/g8os/blockstor"
 	"github.com/spf13/cobra"
 )
 
@@ -12,11 +13,6 @@ var (
 	CommitHash string
 	// BuildDate represents the date when this tool suite was built
 	BuildDate string
-)
-
-const (
-	// G8storVersion represents the semantic version of this tool suite
-	G8storVersion = "0.1.0"
 )
 
 // VersionCmd represents the version subcommand
@@ -29,7 +25,7 @@ var VersionCmd = &cobra.Command{
 
 func outputVersion(*cobra.Command, []string) {
 	// Tool Version
-	version := "Version: " + G8storVersion
+	version := "Version: " + blockstor.CurrentVersion.String()
 
 	// Build (Git) Commit Hash
 	if CommitHash != "" {
