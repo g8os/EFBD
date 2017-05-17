@@ -96,7 +96,10 @@ func main() {
 		config := tlogserver.DefaultConfig()
 
 		// create embedded obj store servers (used to store tlogs)
-		config.ValidateAndCreateObjStoreAddresses(true)
+		err := config.ValidateAndCreateStorageAddresses(true)
+		if err != nil {
+			log.Fatalf("couldn't create embedded tlogserver: %v", err)
+		}
 
 		// create server
 		server, err := tlogserver.NewServer(config)
