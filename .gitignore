@@ -1,4 +1,4 @@
-cmd/copyvdisk/copyvdisk
+g8stor/g8stor
 nbdserver/nbdserver
 ubuntu-16.04-server-cloudimg-amd64.img
 ubuntu-16.04-server-cloudimg-amd64-disk1.img
