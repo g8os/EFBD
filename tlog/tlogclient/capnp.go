@@ -31,24 +31,24 @@ func (c *Client) encodeVerackCapnp(firstSequence uint64) error {
 }
 
 func (c *Client) encodeBlockCapnp(op uint8, seq uint64, hash []byte,
-	lba, timestamp uint64, data []byte, size uint64) error {
+	lba, timestamp uint64, data []byte, size uint64) (*schema.TlogBlock, error) {
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(c.capnpSegmentBuf))
 	if err != nil {
-		return fmt.Errorf("failed to build build (block) capnp: %s", err.Error())
+		return nil, fmt.Errorf("failed to build build (block) capnp: %s", err.Error())
 	}
 
 	block, err := schema.NewRootTlogBlock(seg)
 	if err != nil {
-		return fmt.Errorf("couldn't create block: %s", err.Error())
+		return nil, fmt.Errorf("couldn't create block: %s", err.Error())
 	}
 
 	err = block.SetHash(hash)
 	if err != nil {
-		return fmt.Errorf("couldn't set block hash: %s", err.Error())
+		return nil, fmt.Errorf("couldn't set block hash: %s", err.Error())
 	}
 	err = block.SetData(data)
 	if err != nil {
-		return fmt.Errorf("couldn't set block data: %s", err.Error())
+		return nil, fmt.Errorf("couldn't set block data: %s", err.Error())
 	}
 
 	block.SetOperation(op)
@@ -57,7 +57,7 @@ func (c *Client) encodeBlockCapnp(op uint8, seq uint64, hash []byte,
 	block.SetTimestamp(timestamp)
 	block.SetSize(size)
 
-	return capnp.NewEncoder(c.bw).Encode(msg)
+	return &block, capnp.NewEncoder(c.bw).Encode(msg)
 }
 
 func (c *Client) decodeVerackResponse() (*schema.ServerVerAck, error) {

@@ -4,11 +4,18 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/g8os/blockstor"
 	"github.com/g8os/blockstor/log"
 	"github.com/g8os/blockstor/tlog"
+	"github.com/g8os/blockstor/tlog/schema"
+	"github.com/g8os/blockstor/tlog/tlogclient/blockbuffer"
+)
+
+var (
+	resendTimeoutDur = 5 * time.Second // duration to wait before re-send the tlog.
 )
 
 // Response defines a response from tlog server
@@ -31,15 +38,18 @@ type Client struct {
 	vdiskID         string
 	conn            *net.TCPConn
 	bw              *bufio.Writer
+	blockBuffer     *blockbuffer.Buffer
 	capnpSegmentBuf []byte
+	lock            sync.RWMutex
 }
 
 // New creates a new tlog client.
 // The client is not goroutine safe.
 func New(addr, vdiskID string, firstSequence uint64) (*Client, error) {
 	client := &Client{
-		addr:    addr,
-		vdiskID: vdiskID,
+		addr:        addr,
+		vdiskID:     vdiskID,
+		blockBuffer: blockbuffer.NewBuffer(resendTimeoutDur),
 	}
 	err := client.createConn()
 	if err != nil {
@@ -53,8 +63,25 @@ func New(addr, vdiskID string, firstSequence uint64) (*Client, error) {
 		}
 		return nil, fmt.Errorf("client handshake failed: %s", err.Error())
 	}
-
+	go client.resender()
 	return client, nil
+}
+
+// goroutine which re-send the block.
+func (c *Client) resender() {
+	for {
+		block := <-c.blockBuffer.TimedOut()
+		data, err := block.Data()
+		if err != nil {
+			log.Errorf("client resender failed to get data:%v", err)
+			continue
+		}
+
+		err = c.Send(block.Operation(), block.Sequence(), block.Lba(), block.Timestamp(), data, block.Size())
+		if err != nil {
+			log.Errorf("failed to send data:%v", err)
+		}
+	}
 }
 
 func (c *Client) handshake(firstSequence uint64) error {
@@ -90,6 +117,27 @@ func (c *Client) Recv(chanSize int) <-chan *Result {
 	go func() {
 		for {
 			tr, err := c.RecvOne()
+			status := tlog.BlockStatus(tr.Status)
+			seq := tr.Sequences[0]
+
+			// if it failed to be received, promote it to be
+			// timed out as soon as possible.
+			if status == tlog.BlockStatusRecvFailed {
+				if err := c.blockBuffer.Promote(seq); err != nil {
+					// failed to promote, forward the server's response to user.
+					log.Infof("tlog client failed to promote %v, err: %v", seq, err)
+				} else {
+					// successfully promoted, ignore the response.
+					// let the client resend it
+					continue
+				}
+			}
+
+			// if it successfully received by server, delete from buffer
+			if status == tlog.BlockStatusRecvOK {
+				c.blockBuffer.Delete(seq)
+			}
+
 			reChan <- &Result{
 				Resp: tr,
 				Err:  err,
@@ -144,29 +192,40 @@ func (c *Client) createConn() error {
 // - failed to recover from broken network connection.
 func (c *Client) Send(op uint8, seq, lba, timestamp uint64,
 	data []byte, size uint64) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
 
-	var err error
+	block, err := c.send(op, seq, lba, timestamp, data, size)
+	if err == nil && block != nil {
+		c.blockBuffer.Add(block)
+	}
+	return err
+}
+
+func (c *Client) send(op uint8, seq, lba, timestamp uint64,
+	data []byte, size uint64) (block *schema.TlogBlock, err error) {
 
 	hash := blockstor.HashBytes(data)
 
-	send := func() error {
-		err = c.encodeBlockCapnp(op, seq, hash[:], lba, timestamp, data, size)
+	send := func() (*schema.TlogBlock, error) {
+		block, err := c.encodeBlockCapnp(op, seq, hash[:], lba, timestamp, data, size)
 		if err != nil {
-			return err
+			return block, err
 		}
-		return c.bw.Flush()
+		return block, c.bw.Flush()
 	}
 
 	okToSend := true
 
 	for i := 0; i < sendRetryNum+1; i++ {
 		if okToSend {
-			if err = send(); err == nil {
-				return nil
+			block, err = send()
+			if err == nil {
+				return
 			}
 
 			if _, ok := err.(net.Error); !ok {
-				return err // no need to rety if it is not network error.
+				return // no need to rety if it is not network error.
 			}
 		}
 
@@ -182,7 +241,7 @@ func (c *Client) Send(op uint8, seq, lba, timestamp uint64,
 			okToSend = true
 		}
 	}
-	return err
+	return
 }
 
 // Close the open connection, making this client invalid
