@@ -144,27 +144,12 @@ func (handler *emailHandler) Log(r Record) error {
 // toLog15Handler is used to map our Handler type
 // to the log15.Handler type
 type toLog15Handler struct {
-	internal  Handler
-	callDepth int
+	internal Handler
 }
 
 // Log implements log15.Handler.Log
 func (handler *toLog15Handler) Log(r *log.Record) error {
-	r.Call = stack.Caller(handler.callDepth)
 	return handler.internal.Log(Record(r))
-}
-
-// log15Handler is used to wrap the log15 handler,
-// such that the call can be updated to the correct value
-type log15Handler struct {
-	internal  log.Handler
-	callDepth int
-}
-
-// Log implements log15.Handler.Log
-func (handler *log15Handler) Log(r *log.Record) error {
-	r.Call = stack.Caller(handler.callDepth)
-	return handler.internal.Log(r)
 }
 
 // fromLog15Handler is used to map the log15.Handler type
@@ -178,14 +163,19 @@ func (handler *fromLog15Handler) Log(r Record) error {
 	return handler.internal.Log((*log.Record)(r))
 }
 
-func newLoggerHandler(level Level, stackDepth int, handlers []Handler) log.Handler {
-	var logHandler log.Handler
+// callerFileLog15Handler returns a log15Handler that adds the line number and file of
+// the calling function to the context with key "caller".
+// It also updates the call stored in the record to the correct one.
+func callerFileLog15Handler(callDepth int, h log.Handler) log.Handler {
+	return log.FuncHandler(func(r *log.Record) error {
+		r.Call = stack.Caller(callDepth)
+		r.Ctx = append(r.Ctx, "caller", fmt.Sprint(r.Call))
+		return h.Log(r)
+	})
+}
 
-	const (
-		// because of the filter, callerFileHandler, and multiHandler,
-		// the stack depth becomes 5 layers deeper
-		extraStackDepth = 5
-	)
+func newLoggerHandler(level Level, extraStackDepth int, handlers []Handler) log.Handler {
+	var logHandler log.Handler
 
 	if len(handlers) == 0 {
 		logHandler = log.StderrHandler
@@ -194,9 +184,9 @@ func newLoggerHandler(level Level, stackDepth int, handlers []Handler) log.Handl
 		for _, handler := range handlers {
 			var lh log.Handler
 			if l, ok := handler.(*fromLog15Handler); ok {
-				lh = &log15Handler{l.internal, stackDepth + extraStackDepth}
+				lh = l.internal
 			} else {
-				lh = &toLog15Handler{handler, stackDepth + extraStackDepth}
+				lh = &toLog15Handler{handler}
 			}
 			handlerArr = append(handlerArr, lh)
 		}
@@ -204,5 +194,5 @@ func newLoggerHandler(level Level, stackDepth int, handlers []Handler) log.Handl
 	}
 
 	return log.LvlFilterHandler(log.Lvl(level),
-		&log15Handler{log.CallerFileHandler(logHandler), stackDepth})
+		callerFileLog15Handler(8+extraStackDepth, logHandler))
 }
