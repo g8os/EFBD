@@ -111,3 +111,10 @@ func (cfg *Config) ObjStoreServerAddresses() ([]string, error) {
 
 	return cfg.ObjStoreAddresses, nil
 }
+
+// ConnectionConfig is given by the client to the server,
+// during the handshake phase.
+type ConnectionConfig struct {
+	VdiskID       string
+	FirstSequence uint64
+}

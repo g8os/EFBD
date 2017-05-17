@@ -76,22 +76,23 @@ func newVdiskManager(blockSize, flushSize int) *vdiskManager {
 }
 
 // get a vdisk and initialize it if not exist yet
-func (vt *vdiskManager) get(vdiskID string, f *flusher, firstSequence uint64) (*vdisk, error) {
+func (vt *vdiskManager) get(vdiskID string, f *flusher, firstSequence uint64) (*vdisk, bool, error) {
 	vt.lock.Lock()
 	defer vt.lock.Unlock()
 
-	vd, ok := vt.vdisks[vdiskID]
-	if !ok {
+	vd, exists := vt.vdisks[vdiskID]
+
+	if !exists {
 		var err error
 		vd, err = newVdisk(vdiskID, f, firstSequence)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		go vd.runFlusher()
 		go vd.runReceiver()
 	}
 
-	return vd, nil
+	return vd, !exists, nil
 }
 
 // the comparator function needed by https://godoc.org/github.com/emirpasic/gods/sets/treeset#NewWith

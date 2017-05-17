@@ -87,7 +87,7 @@ func (s *Server) ListenAddr() string {
 }
 
 // handshake stage, required prior to receiving blocks
-func (s *Server) handshake(r io.Reader, w io.Writer) (vdiskID string, err error) {
+func (s *Server) handshake(r io.Reader, w io.Writer) (cfg *ConnectionConfig, err error) {
 	verack, err := s.readDecodeVerAck(r)
 	if err != nil {
 		return
@@ -100,7 +100,8 @@ func (s *Server) handshake(r io.Reader, w io.Writer) (vdiskID string, err error)
 	// validate version
 	clientVersion := blockstor.Version(verack.Version())
 	if clientVersion.Compare(tlog.MinSupportedVersion) < 0 {
-		if err := s.writeVerackResponse(w, segmentBuf, tlog.VerackStatusInvalidVersion); err != nil {
+		err = s.writeVerackResponse(w, segmentBuf, tlog.VerackStatusInvalidVersion)
+		if err != nil {
 			log.Infof("couldn't write server invalid-version response: %s", err.Error())
 		}
 		err = errors.New("client version is not supported by this server")
@@ -108,13 +109,28 @@ func (s *Server) handshake(r io.Reader, w io.Writer) (vdiskID string, err error)
 	}
 	log.Debug("incoming connection checks out with version:", clientVersion.String())
 
+	// make sure vdisk doesn't exist yet
+	vdiskID, err := verack.VdiskID()
+	if err != nil {
+		writeErr := s.writeVerackResponse(w, segmentBuf, tlog.VerackStatusInvalidVdiskID)
+		if writeErr != nil {
+			log.Infof("couldn't write server invalid-vdiskid response: %s", writeErr.Error())
+		}
+		return
+	}
+
 	// version checks out, let's send our verack message back to client
 	err = s.writeVerackResponse(w, segmentBuf, tlog.VerackStatusOK)
 	if err != nil {
 		return
 	}
-	// return vdiskID
-	return verack.VdiskID()
+
+	// return cfg, as connection has been established
+	cfg = &ConnectionConfig{
+		VdiskID:       vdiskID,
+		FirstSequence: verack.FirstSequence(),
+	}
+	return
 }
 
 func (s *Server) writeVerackResponse(w io.Writer, segmentBuf []byte, status tlog.VerAckStatus) error {
@@ -140,12 +156,23 @@ func (s *Server) handle(conn *net.TCPConn) error {
 	defer conn.Close()
 	br := bufio.NewReader(conn)
 
-	vdiskID, err := s.handshake(br, conn)
+	cfg, err := s.handshake(br, conn)
 	if err != nil {
-		return fmt.Errorf("handshake failed: %s", err.Error())
+		err = fmt.Errorf("handshake failed: %s", err.Error())
+		log.Info(err)
+		return err
 	}
 
-	var vd *vdisk
+	vdisk, created, err := vdiskMgr.get(cfg.VdiskID, s.f, cfg.FirstSequence)
+	if err != nil {
+		err = fmt.Errorf("couldn't get or create vdisk %s", cfg.VdiskID)
+		log.Info(err)
+		return err
+	}
+	if created {
+		// start response sender for vdisk
+		go s.sendResp(conn, vdisk.vdiskID, vdisk.respChan)
+	}
 
 	for {
 		// decode
@@ -155,25 +182,15 @@ func (s *Server) handle(conn *net.TCPConn) error {
 			return err
 		}
 
-		if vd == nil {
-			vd, err = vdiskMgr.get(vdiskID, s.f, block.Sequence())
-			if err != nil {
-				log.Infof("failed to vdisk: %v, err: %v", vdiskID, err)
-				return err
-			}
-			// start response sender
-			go s.sendResp(conn, vd.vdiskID, vd.respChan)
-		}
-
 		// check hash
-		if err := s.hash(block, vd.vdiskID); err != nil {
+		if err := s.hash(block, vdisk.vdiskID); err != nil {
 			log.Debugf("hash check failed:%v\n", err)
 			return err
 		}
 
 		// store
-		vd.inputChan <- block
-		vd.respChan <- &blockResponse{
+		vdisk.inputChan <- block
+		vdisk.respChan <- &blockResponse{
 			Status:    tlog.BlockStatusRecvOK.Int8(),
 			Sequences: []uint64{block.Sequence()},
 		}
@@ -184,7 +201,6 @@ func (s *Server) sendResp(conn *net.TCPConn, vdiskID string, respChan chan *bloc
 	segmentBuf := make([]byte, 0, s.maxRespSegmentBufLen)
 	for {
 		resp := <-respChan
-
 		if err := resp.write(conn, segmentBuf); err != nil {
 			log.Infof("failed to send resp to :%v, err:%v", vdiskID, err)
 			conn.Close()

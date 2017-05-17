@@ -40,6 +40,8 @@ func (status VerAckStatus) Error() error {
 	}
 
 	switch status {
+	case VerackStatusInvalidVdiskID:
+		return errors.New("given vdisk is not accepted by the server")
 	case VerackStatusInvalidVersion:
 		return errors.New("client version is not compatible with server")
 	default:
@@ -49,6 +51,10 @@ func (status VerAckStatus) Error() error {
 
 // VerAck status values
 const (
+	// returned when the given VdiskID is not legal
+	// could be because it's not valid, or because it already
+	// exists on the server
+	VerackStatusInvalidVdiskID VerAckStatus = -2
 	// returned when the given version by the client
 	// was not supported by the server
 	VerackStatusInvalidVersion VerAckStatus = -1
