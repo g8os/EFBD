@@ -36,7 +36,7 @@ type Client struct {
 
 // New creates a new tlog client.
 // The client is not goroutine safe.
-func New(addr, vdiskID string) (*Client, error) {
+func New(addr, vdiskID string, firstSequence uint64) (*Client, error) {
 	client := &Client{
 		addr:    addr,
 		vdiskID: vdiskID,
@@ -46,7 +46,7 @@ func New(addr, vdiskID string) (*Client, error) {
 		return nil, fmt.Errorf("client couldn't be created: %s", err.Error())
 	}
 
-	err = client.handshake()
+	err = client.handshake(firstSequence)
 	if err != nil {
 		if err := client.Close(); err != nil {
 			log.Debug("couldn't close open connection of invalid client:", err)
@@ -57,9 +57,9 @@ func New(addr, vdiskID string) (*Client, error) {
 	return client, nil
 }
 
-func (c *Client) handshake() error {
+func (c *Client) handshake(firstSequence uint64) error {
 	// send our verack
-	err := c.encodeVerackCapnp()
+	err := c.encodeVerackCapnp(firstSequence)
 	if err != nil {
 		return err
 	}

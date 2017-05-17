@@ -7,6 +7,7 @@ $Go.import("github.com/g8os/blockstor/tlog/schema");
 struct ClientVerAck {
 	version @0 :UInt32;
 	vdiskID @1 :Text;
+	firstSequence @2: UInt64;
 }
 # Response VerAck message sent from server to client,
 # after receiving a ClientVerAck message from the client.

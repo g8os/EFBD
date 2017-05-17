@@ -8,7 +8,7 @@ import (
 	"zombiezen.com/go/capnproto2"
 )
 
-func (c *Client) encodeVerackCapnp() error {
+func (c *Client) encodeVerackCapnp(firstSequence uint64) error {
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(c.capnpSegmentBuf))
 	if err != nil {
 		return fmt.Errorf("failed to build (verack) capnp: %s", err.Error())
@@ -20,6 +20,7 @@ func (c *Client) encodeVerackCapnp() error {
 	}
 
 	verack.SetVersion(blockstor.CurrentVersion.UInt32())
+	verack.SetFirstSequence(firstSequence)
 
 	err = verack.SetVdiskID(c.vdiskID)
 	if err != nil {

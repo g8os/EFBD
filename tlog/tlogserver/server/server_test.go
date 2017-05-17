@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"math/rand"
 	"sync"
 	"testing"
@@ -39,10 +40,13 @@ func TestEndToEnd(t *testing.T) {
 	go s.Listen()
 	t.Logf("listen addr=%v", s.ListenAddr())
 
-	const expectedVdiskID = "1234567890"
+	const (
+		expectedVdiskID = "1234567890"
+		firstSequence   = 0
+	)
 
 	// create tlog client
-	client, err := tlogclient.New(s.ListenAddr(), expectedVdiskID)
+	client, err := tlogclient.New(s.ListenAddr(), expectedVdiskID, firstSequence)
 	if !assert.Nil(t, err) {
 		return
 	}
@@ -154,10 +158,13 @@ func TestUnordered(t *testing.T) {
 	go s.Listen()
 
 	t.Logf("listen addr=%v", s.ListenAddr())
-	const vdiskID = "12345"
+	const (
+		vdiskID       = "12345"
+		firstSequence = 10
+	)
 
 	// create tlog client
-	client, err := tlogclient.New(s.ListenAddr(), vdiskID)
+	client, err := tlogclient.New(s.ListenAddr(), vdiskID, firstSequence)
 	if !assert.Nil(t, err) {
 		return
 	}
@@ -169,53 +176,79 @@ func TestUnordered(t *testing.T) {
 
 	wg.Add(2)
 
-	var startSeq uint64 = 10 /* first sequence number we want to send */
 	const numFlush = 4
 	numLogs := conf.FlushSize * numFlush // number of logs to send.
 	seqs := []uint64{}
 	for i := 0; i < numLogs; i++ {
-		seqs = append(seqs, uint64(i)+startSeq)
+		seqs = append(seqs, uint64(i)+firstSequence)
 	}
+
+	ctx, cancelFunc := context.WithCancel(context.Background())
 
 	// send tlog
 	go func() {
 		defer wg.Done()
+
 		var seqIdx int
 		for i := 0; i < numLogs; i++ {
-			// pick random sequence
-			if i != 0 { // first message must be come in ordered manner
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				// pick random sequence
 				seqIdx = rand.Intn(len(seqs))
+
+				seq := seqs[seqIdx]
+				seqs = append(seqs[:seqIdx], seqs[seqIdx+1:]...)
+
+				x := uint64(i)
+				// check we can send it without error
+				err := client.Send(schema.OpWrite, seq, x, x, data, uint64(len(data)))
+				if !assert.Nil(t, err) {
+					cancelFunc()
+					return
+				}
+
+				// send it twice, to test duplicated message
+				err = client.Send(schema.OpWrite, seq, x, x, data, uint64(len(data)))
+				if !assert.Nil(t, err) {
+					cancelFunc()
+					return
+				}
 			}
-
-			seq := seqs[seqIdx]
-			seqs = append(seqs[:seqIdx], seqs[seqIdx+1:]...)
-
-			x := uint64(i)
-			// check we can send it without error
-			err := client.Send(schema.OpWrite, seq, x, x, data, uint64(len(data)))
-			assert.Nil(t, err)
-
-			// send it twice, to test duplicated message
-			err = client.Send(schema.OpWrite, seq, x, x, data, uint64(len(data)))
-			assert.Nil(t, err)
 		}
 	}()
+
+	expected := (numLogs * 2) + numFlush // multiply by 2 because we send duplicated message
+	received := 0
 
 	// recv it
 	go func() {
 		defer wg.Done()
-		expected := (numLogs * 2) + numFlush // multiply by 2 because we send duplicated message
-		received := 0
+
 		respChan := client.Recv(1)
 		for received < expected {
-			re := <-respChan
-			received++
-			assert.Nil(t, re.Err)
-			assert.Equal(t, true, re.Resp.Status > 0)
+			select {
+			case re := <-respChan:
+				received++
+				if !assert.Nil(t, re.Err) {
+					cancelFunc()
+					return
+				}
+				if !assert.Equal(t, true, re.Resp.Status > 0) {
+					cancelFunc()
+					return
+				}
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 
 	wg.Wait()
+	if !assert.Equal(t, expected, received) {
+		return
+	}
 
 	// decode the message
 	dec, err := decoder.New(s.ObjStorAddresses, conf.K, conf.M, vdiskID, conf.PrivKey, conf.HexNonce)
@@ -223,7 +256,7 @@ func TestUnordered(t *testing.T) {
 
 	aggChan := dec.Decode(0)
 
-	var expectedSequence = uint64(startSeq)
+	var expectedSequence = uint64(firstSequence)
 	for {
 		da, more := <-aggChan
 		if !more {
@@ -242,6 +275,5 @@ func TestUnordered(t *testing.T) {
 			assert.Equal(t, expectedSequence, block.Sequence())
 			expectedSequence++
 		}
-
 	}
 }
