@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	valid "github.com/asaskevich/govalidator"
+	"github.com/go-stack/stack"
 	log "github.com/inconshreveable/log15"
 )
 
@@ -91,7 +92,7 @@ func (handler *emailHandler) Log(r Record) error {
 		context = "Context:\r\n"
 		ctxLen := len(r.Ctx)
 		for i := 0; i < ctxLen; i += 2 {
-			context += "\t\t- "
+			context += "\t- "
 			if i+1 < ctxLen {
 				context += fmt.Sprintf("%v: %v", r.Ctx[i], r.Ctx[i+1])
 			} else {
@@ -101,32 +102,29 @@ func (handler *emailHandler) Log(r Record) error {
 		}
 	}
 
-	var level string
-	if r.Lvl == log.LvlError {
-		level = "Fatal"
-	} else {
-		level = "Error"
+	var callstack string
+	for _, call := range stack.Trace().TrimBelow(r.Call) {
+		callstack += fmt.Sprintf("\t- %+v\r\n", call)
 	}
+
+	level := r.Lvl.String()
 
 	messageParts := []string{
 		"To: " + strings.Join(handler.to, ","),
-		"Subject: Error in g8os/blockster mod " + handler.module + "!",
+		"Subject: " + level + " statement in g8os/blockster mod " + handler.module + "!",
 		"",
-		"Be Aware!",
+		"Log " + level + " statement has occured in the g8os/blockstor mod " + handler.module + "!",
 		"",
-		"An error has occured in the g8os/blockstor mod " + handler.module + "!",
-		"",
-		"Time: " + r.Time.String(),
+		"Time (UTC): " + r.Time.UTC().String(),
 		"Level: " + level,
-		context,
 		"Message: " + r.Msg,
+		"",
+		context,
 		"Callstack:",
-		"",
-		r.Call.String(),
-		"",
+		callstack,
 		"- - -",
 		"",
-		"This is an automated Email send by the g8os/Blockstor email handler,",
+		"This is an automated Email send by the g8os/blockstor email handler,",
 		"please do no respond.",
 		"",
 	}
@@ -146,12 +144,27 @@ func (handler *emailHandler) Log(r Record) error {
 // toLog15Handler is used to map our Handler type
 // to the log15.Handler type
 type toLog15Handler struct {
-	internal Handler
+	internal  Handler
+	callDepth int
 }
 
 // Log implements log15.Handler.Log
 func (handler *toLog15Handler) Log(r *log.Record) error {
+	r.Call = stack.Caller(handler.callDepth)
 	return handler.internal.Log(Record(r))
+}
+
+// log15Handler is used to wrap the log15 handler,
+// such that the call can be updated to the correct value
+type log15Handler struct {
+	internal  log.Handler
+	callDepth int
+}
+
+// Log implements log15.Handler.Log
+func (handler *log15Handler) Log(r *log.Record) error {
+	r.Call = stack.Caller(handler.callDepth)
+	return handler.internal.Log(r)
 }
 
 // fromLog15Handler is used to map the log15.Handler type
@@ -165,8 +178,15 @@ func (handler *fromLog15Handler) Log(r Record) error {
 	return handler.internal.Log((*log.Record)(r))
 }
 
-func newLoggerHandler(level Level, handlers []Handler) log.Handler {
+func newLoggerHandler(level Level, stackDepth int, handlers []Handler) log.Handler {
 	var logHandler log.Handler
+
+	const (
+		// because of the filter, callerFileHandler, and multiHandler,
+		// the stack depth becomes 5 layers deeper
+		extraStackDepth = 5
+	)
+
 	if len(handlers) == 0 {
 		logHandler = log.StderrHandler
 	} else {
@@ -174,9 +194,9 @@ func newLoggerHandler(level Level, handlers []Handler) log.Handler {
 		for _, handler := range handlers {
 			var lh log.Handler
 			if l, ok := handler.(*fromLog15Handler); ok {
-				lh = l.internal
+				lh = &log15Handler{l.internal, stackDepth + extraStackDepth}
 			} else {
-				lh = &toLog15Handler{handler}
+				lh = &toLog15Handler{handler, stackDepth + extraStackDepth}
 			}
 			handlerArr = append(handlerArr, lh)
 		}
@@ -184,5 +204,5 @@ func newLoggerHandler(level Level, handlers []Handler) log.Handler {
 	}
 
 	return log.LvlFilterHandler(log.Lvl(level),
-		log.CallerFileHandler(logHandler))
+		&log15Handler{log.CallerFileHandler(logHandler), stackDepth})
 }

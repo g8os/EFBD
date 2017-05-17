@@ -34,12 +34,18 @@ var (
 	std         = New("global", InfoLevel).(*glueLogger)
 )
 
+const (
+	logStackDepth       = 7
+	globalLogStackDepth = logStackDepth + 1
+)
+
 // SetLevel defines at which level the std logger should log
 func SetLevel(level Level) {
 	stdMux.Lock()
 	stdLevel = level
 	stdMux.Unlock()
-	std.internal.SetHandler(newLoggerHandler(stdLevel, stdHandlers))
+
+	setGlobalHandler()
 }
 
 // GetLevel returns the level used by the std logger
@@ -56,7 +62,11 @@ func SetHandlers(handlers ...Handler) {
 	stdHandlers = handlers
 	stdMux.Unlock()
 
-	std.internal.SetHandler(newLoggerHandler(stdLevel, stdHandlers))
+	setGlobalHandler()
+}
+
+func setGlobalHandler() {
+	std.internal.SetHandler(newLoggerHandler(stdLevel, globalLogStackDepth, stdHandlers))
 }
 
 // Debug logs a message at level Debug on the standard logger.
@@ -102,7 +112,7 @@ func Fatalf(format string, args ...interface{}) {
 // New logger, creates a new logger
 func New(module string, level Level, handlers ...Handler) Logger {
 	logger := log.New("module", module)
-	logger.SetHandler(newLoggerHandler(level, handlers))
+	logger.SetHandler(newLoggerHandler(level, logStackDepth, handlers))
 
 	return &glueLogger{logger}
 }
