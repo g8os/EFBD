@@ -38,6 +38,12 @@ vdisk `a` and `b` are in different ardbs (`localhost:16379` -> `localhost:16380`
 $ g8stor copy deduped a b localhost:16379 localhost:16380
 ```
 
+vdisk `a` and `b` are in different ardb databases (`localhost:16379 DB=0` -> `localhost:16379 DB=1`):
+
+```
+$ g8stor copy deduped a b localhost:16379 --targetdb 1
+```
+
 ### Delete metadata of a deduped vdisk
 
 delete vdisk `a`:

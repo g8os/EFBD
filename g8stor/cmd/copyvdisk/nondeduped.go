@@ -10,6 +10,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var nondedupedCfg struct {
+	SourceDatabase int
+	TargetDatabase int
+}
+
 // NondedupedCmd represents the nondeduped copy subcommand
 var NondedupedCmd = &cobra.Command{
 	Use:   "nondeduped source_vdisk target_vdisk source_url [target_url]",
@@ -34,7 +39,10 @@ func copyNondeduped(cmd *cobra.Command, args []string) error {
 
 	// get ardb connections
 	logger.Info("get the redis connection(s)...")
-	connA, connB, err := getARDBConnections(input, logger)
+	connA, connB, err := getARDBConnections(
+		input,
+		nondedupedCfg.SourceDatabase, nondedupedCfg.TargetDatabase,
+		logger)
 	if err != nil {
 		return err
 	}
@@ -158,4 +166,13 @@ func init() {
 	DedupedCmd.Long = DedupedCmd.Short + `
 
 When no target_url is given, the target_url is the same as the source_url.`
+
+	NondedupedCmd.Flags().IntVar(
+		&nondedupedCfg.SourceDatabase,
+		"sourcedb", 0,
+		"database to use for the source connection (0 by default)")
+	NondedupedCmd.Flags().IntVar(
+		&nondedupedCfg.TargetDatabase,
+		"targetdb", 0,
+		"database to use for the target connection (0 by default)")
 }
