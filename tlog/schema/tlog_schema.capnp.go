@@ -8,6 +8,141 @@ import (
 	schemas "zombiezen.com/go/capnproto2/schemas"
 )
 
+type ClientVerAck struct{ capnp.Struct }
+
+// ClientVerAck_TypeID is the unique identifier for the type ClientVerAck.
+const ClientVerAck_TypeID = 0x89f8da619fcbb3f3
+
+func NewClientVerAck(s *capnp.Segment) (ClientVerAck, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 1})
+	return ClientVerAck{st}, err
+}
+
+func NewRootClientVerAck(s *capnp.Segment) (ClientVerAck, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 1})
+	return ClientVerAck{st}, err
+}
+
+func ReadRootClientVerAck(msg *capnp.Message) (ClientVerAck, error) {
+	root, err := msg.RootPtr()
+	return ClientVerAck{root.Struct()}, err
+}
+
+func (s ClientVerAck) String() string {
+	str, _ := text.Marshal(0x89f8da619fcbb3f3, s.Struct)
+	return str
+}
+
+func (s ClientVerAck) Version() uint32 {
+	return s.Struct.Uint32(0)
+}
+
+func (s ClientVerAck) SetVersion(v uint32) {
+	s.Struct.SetUint32(0, v)
+}
+
+func (s ClientVerAck) VdiskID() (string, error) {
+	p, err := s.Struct.Ptr(0)
+	return p.Text(), err
+}
+
+func (s ClientVerAck) HasVdiskID() bool {
+	p, err := s.Struct.Ptr(0)
+	return p.IsValid() || err != nil
+}
+
+func (s ClientVerAck) VdiskIDBytes() ([]byte, error) {
+	p, err := s.Struct.Ptr(0)
+	return p.TextBytes(), err
+}
+
+func (s ClientVerAck) SetVdiskID(v string) error {
+	return s.Struct.SetText(0, v)
+}
+
+// ClientVerAck_List is a list of ClientVerAck.
+type ClientVerAck_List struct{ capnp.List }
+
+// NewClientVerAck creates a new list of ClientVerAck.
+func NewClientVerAck_List(s *capnp.Segment, sz int32) (ClientVerAck_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 8, PointerCount: 1}, sz)
+	return ClientVerAck_List{l}, err
+}
+
+func (s ClientVerAck_List) At(i int) ClientVerAck { return ClientVerAck{s.List.Struct(i)} }
+
+func (s ClientVerAck_List) Set(i int, v ClientVerAck) error { return s.List.SetStruct(i, v.Struct) }
+
+// ClientVerAck_Promise is a wrapper for a ClientVerAck promised by a client call.
+type ClientVerAck_Promise struct{ *capnp.Pipeline }
+
+func (p ClientVerAck_Promise) Struct() (ClientVerAck, error) {
+	s, err := p.Pipeline.Struct()
+	return ClientVerAck{s}, err
+}
+
+type ServerVerAck struct{ capnp.Struct }
+
+// ServerVerAck_TypeID is the unique identifier for the type ServerVerAck.
+const ServerVerAck_TypeID = 0xb0f1edca577182a7
+
+func NewServerVerAck(s *capnp.Segment) (ServerVerAck, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 0})
+	return ServerVerAck{st}, err
+}
+
+func NewRootServerVerAck(s *capnp.Segment) (ServerVerAck, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 0})
+	return ServerVerAck{st}, err
+}
+
+func ReadRootServerVerAck(msg *capnp.Message) (ServerVerAck, error) {
+	root, err := msg.RootPtr()
+	return ServerVerAck{root.Struct()}, err
+}
+
+func (s ServerVerAck) String() string {
+	str, _ := text.Marshal(0xb0f1edca577182a7, s.Struct)
+	return str
+}
+
+func (s ServerVerAck) Version() uint32 {
+	return s.Struct.Uint32(0)
+}
+
+func (s ServerVerAck) SetVersion(v uint32) {
+	s.Struct.SetUint32(0, v)
+}
+
+func (s ServerVerAck) Status() int8 {
+	return int8(s.Struct.Uint8(4))
+}
+
+func (s ServerVerAck) SetStatus(v int8) {
+	s.Struct.SetUint8(4, uint8(v))
+}
+
+// ServerVerAck_List is a list of ServerVerAck.
+type ServerVerAck_List struct{ capnp.List }
+
+// NewServerVerAck creates a new list of ServerVerAck.
+func NewServerVerAck_List(s *capnp.Segment, sz int32) (ServerVerAck_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 8, PointerCount: 0}, sz)
+	return ServerVerAck_List{l}, err
+}
+
+func (s ServerVerAck_List) At(i int) ServerVerAck { return ServerVerAck{s.List.Struct(i)} }
+
+func (s ServerVerAck_List) Set(i int, v ServerVerAck) error { return s.List.SetStruct(i, v.Struct) }
+
+// ServerVerAck_Promise is a wrapper for a ServerVerAck promised by a client call.
+type ServerVerAck_Promise struct{ *capnp.Pipeline }
+
+func (p ServerVerAck_Promise) Struct() (ServerVerAck, error) {
+	s, err := p.Pipeline.Struct()
+	return ServerVerAck{s}, err
+}
+
 type TlogResponse struct{ capnp.Struct }
 
 // TlogResponse_TypeID is the unique identifier for the type TlogResponse.
@@ -201,104 +336,6 @@ func (p TlogBlock_Promise) Struct() (TlogBlock, error) {
 	return TlogBlock{s}, err
 }
 
-type TlogClientPackage struct{ capnp.Struct }
-
-// TlogClientPackage_TypeID is the unique identifier for the type TlogClientPackage.
-const TlogClientPackage_TypeID = 0xa77849c1e50404ed
-
-func NewTlogClientPackage(s *capnp.Segment) (TlogClientPackage, error) {
-	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 2})
-	return TlogClientPackage{st}, err
-}
-
-func NewRootTlogClientPackage(s *capnp.Segment) (TlogClientPackage, error) {
-	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 2})
-	return TlogClientPackage{st}, err
-}
-
-func ReadRootTlogClientPackage(msg *capnp.Message) (TlogClientPackage, error) {
-	root, err := msg.RootPtr()
-	return TlogClientPackage{root.Struct()}, err
-}
-
-func (s TlogClientPackage) String() string {
-	str, _ := text.Marshal(0xa77849c1e50404ed, s.Struct)
-	return str
-}
-
-func (s TlogClientPackage) VdiskID() (string, error) {
-	p, err := s.Struct.Ptr(0)
-	return p.Text(), err
-}
-
-func (s TlogClientPackage) HasVdiskID() bool {
-	p, err := s.Struct.Ptr(0)
-	return p.IsValid() || err != nil
-}
-
-func (s TlogClientPackage) VdiskIDBytes() ([]byte, error) {
-	p, err := s.Struct.Ptr(0)
-	return p.TextBytes(), err
-}
-
-func (s TlogClientPackage) SetVdiskID(v string) error {
-	return s.Struct.SetText(0, v)
-}
-
-func (s TlogClientPackage) Block() (TlogBlock, error) {
-	p, err := s.Struct.Ptr(1)
-	return TlogBlock{Struct: p.Struct()}, err
-}
-
-func (s TlogClientPackage) HasBlock() bool {
-	p, err := s.Struct.Ptr(1)
-	return p.IsValid() || err != nil
-}
-
-func (s TlogClientPackage) SetBlock(v TlogBlock) error {
-	return s.Struct.SetPtr(1, v.Struct.ToPtr())
-}
-
-// NewBlock sets the block field to a newly
-// allocated TlogBlock struct, preferring placement in s's segment.
-func (s TlogClientPackage) NewBlock() (TlogBlock, error) {
-	ss, err := NewTlogBlock(s.Struct.Segment())
-	if err != nil {
-		return TlogBlock{}, err
-	}
-	err = s.Struct.SetPtr(1, ss.Struct.ToPtr())
-	return ss, err
-}
-
-// TlogClientPackage_List is a list of TlogClientPackage.
-type TlogClientPackage_List struct{ capnp.List }
-
-// NewTlogClientPackage creates a new list of TlogClientPackage.
-func NewTlogClientPackage_List(s *capnp.Segment, sz int32) (TlogClientPackage_List, error) {
-	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 2}, sz)
-	return TlogClientPackage_List{l}, err
-}
-
-func (s TlogClientPackage_List) At(i int) TlogClientPackage {
-	return TlogClientPackage{s.List.Struct(i)}
-}
-
-func (s TlogClientPackage_List) Set(i int, v TlogClientPackage) error {
-	return s.List.SetStruct(i, v.Struct)
-}
-
-// TlogClientPackage_Promise is a wrapper for a TlogClientPackage promised by a client call.
-type TlogClientPackage_Promise struct{ *capnp.Pipeline }
-
-func (p TlogClientPackage_Promise) Struct() (TlogClientPackage, error) {
-	s, err := p.Pipeline.Struct()
-	return TlogClientPackage{s}, err
-}
-
-func (p TlogClientPackage_Promise) Block() TlogBlock_Promise {
-	return TlogBlock_Promise{Pipeline: p.Pipeline.GetPipeline(1)}
-}
-
 type TlogAggregation struct{ capnp.Struct }
 
 // TlogAggregation_TypeID is the unique identifier for the type TlogAggregation.
@@ -440,50 +477,54 @@ func (p TlogAggregation_Promise) Struct() (TlogAggregation, error) {
 	return TlogAggregation{s}, err
 }
 
-const schema_f4533cbae6e08506 = "x\xda\x84\x92OHT]\x18\xc6\x9f\xe7\xbcw\xc6O" +
-	"P\xc7\xcb\xcc\xe2S>P>\\Td\xf9\xa7\x95\x08" +
-	"\x96\xb5HW\x1e+\xa26q\x1d/\xe34\x7f\xf3^" +
-	"\xcd\xda\x04A-\"h\xe3\xc2\x16\x81\x81PAA\x0b" +
-	"\x8d\x88\x02\x05\xc3\x02\x83\x04\x83\xda\x84B\x06-Z\x04" +
-	"\xb5hu\xe38\xddq\x14\xc1\xddy_\x9es\xce\xf3" +
-	">\xef\xaf\xed&\x8f\xaa\xf6\xc8\x92\x02ts$\x1a\xb4" +
-	"\xaf^\xef\xfe<\xf1\xe36t\x03#A\xf4\xc6\xda\xd7" +
-	"\x17\xdd\xa7~\"\xa2\xaa\x80\xce>62~\x8e\xe6x" +
-	"\x86w\x08\x06\x9fZn-\xad7\xaeL\x199+\xe4" +
-	"\x9b\x9ao\xaa\x83\xf1\xdf\xe6f\xfc\x97\xba\x0c\x06\xdf-" +
-	"kc\xa1o\xe2\x01\xec\x06\xee|\xdb\x95\xf3\x8c_\x11" +
-	"#\x1e\x13#\x9e\\kx6;w\xf1\x8byZU" +
-	"\xa8-\xa3^\x91~\xc67\x8c\xbas]\xce\x12\xad\x81" +
-	"\x97\x1cqs\xcea_\xb2\x85\xd4\x85Rq(\xe9\x14" +
-	"\xf3\xc5\xae\xd3\xd9B\xaa7[\x90df\x80\xd4\xff\x89" +
-	"\x05X\x04\xec\xb9~@\xcf\x0a\xf5\xbc\xa2M&h\x9a" +
-	"\xaf\xfe\x07\xf4s\xa1^T\xb4\x95JP\x01\xf6\xc2\x01" +
-	"@\xbf\x14\xea7\x8a\x94\x04\x05\xb0_\x9b\xde\xbcP/" +
-	"+\xda\x16\x13\xb4\x00\xfb\xadi.\x0a\xf5{E;\"" +
-	"\x09F\x00\xfb\xdd \xa0\x97\x85\xfa\xa3\xa2\x1dmN0" +
-	"\x0a\xd8\x1fLsU\xa8\xd7\x14\x03\xcf\xbd4\xe6\xe6\x93" +
-	".\x00VC\xb1\x1a\xac\xca\x0e9\xe19\xe6\xa5\xaf\xba" +
-	"\xe5b\xc4\xf1FX\x0b\xc5Z06\xec\xf8NX\x04" +
-	"~:\xe7z\xbe\x93\x03\x8b\xa1:(\x14\xddQ\xc7O" +
-	"\x17\xc0<\xa3P\x8c\x82{D5\xe8zM\xc5B\xde" +
-	"sMZ\xff\x94\xd3\xda\xdf\x05\xe8\x16\xa1nS\x0c\xc3" +
-	"j5C\x1c\x14\xea\x93\x8a=\x9e\xef\xf8c\x1e\x15\x14" +
-	"\x15*f\xa2\xc7:p@\xb8\xe9\xa9\xae\xe2\x7fk\xd7" +
-	"\xff\x8fg\xd3n\xde\x1fp\x92\x19GR;M\xf4n" +
-	"\x99(\xaf\xac\xb5\x03\xd0\xfb\x84\xfa\x88\xe2\xb5\xf1\xe1\xb4" +
-	"\x97\xe9;\xc1\x1a(\xd6\x80MC\xd9B2\xc3\xfa-" +
-	"\xaeA\xd6\xef\xe9\xe1X*5\xea\xa6Lny\xc0X" +
-	"\xf8\xb7l\xe1\xaeY\xf1\xa4POo\xe5p\xcf\xf4\xa6" +
-	"\x84z\xc6@\xc3\x124\xf7M8\xd3B\xfdX\xd1\x16" +
-	"\x96\xa8yd\x06\x98\x11\xea\xa7\x86\x1aU\xa2\xe6\x89\x89" +
-	"\xf6\xe1_\xe6Bj*\x99\x8b\xe5\x9d\x9c\x1b\x8e\xb4\x8d" +
-	"\x86\xddv\xbe3\x83\x9e\xcd\x0c\xca[\xd8\x9eE\x1d\x18" +
-	"+\x8e\xba\xe3!D\x7f\x02\x00\x00\xff\xff Y\xef\xb5"
+const schema_f4533cbae6e08506 = "x\xda\x84TMH\x14a\x18~\x9f\xef\x9bY\x15\xd4" +
+	"m\xd8=\xa4\x04Fx\xa8\xc8R\xeb$\x82i\x1d\xca" +
+	"\x93\x9fF\x1ec\\?\xd6\xcd\xdd\x99ufv\x8b " +
+	"$\xc1\x83Qt\xf1`\x87\xc8@\xa8\xa0@H#\xa2" +
+	"\xc0\xc0\xe8\xcf\xa0\xc0\xa0\x82\xc2 \x82\x0e\x1e\xa4\x0eu" +
+	"\x9a\xf8v\x9du\xdb6\xbd\xbd\xef\xc33\xef\xf3\xfe<" +
+	"\xf35\xcf\xe30k\xd1\x1b8\x91h\xd4C\xfe\x8f{" +
+	"\xaf\xae\x9b\x1f\x7fM\x90\xa8\x03\xfc\xd0\xf8\xca\xb7\x87\xed" +
+	"}?IG\x05\xd1\xc1\x0cZ\x11\x19Wa\xe4\x02\xce" +
+	"\x10\xfc\x96\xe5\xb1\xf6\xcfg\xd7.)\xb6^\xc4f\x8a" +
+	"\xfd\x09\xf5\x88\xac\xe6>\xfc\x8e+ \xf8\x1f\x1a/>" +
+	"\xfbR\xffv\xaal\xf1\xf3\xbc\x15\x91\xcb\\\x15\x9f\xe0" +
+	"\xaa\xf8\xcd\xb1\x91\xfe\x97\xabk\xb3%lM\x91\x7f+" +
+	"r\x95\x0a#\xba\xa6\xc8\x93+u\xf7\xe7\xe6O\x7fU" +
+	"dVT:\xc76\xb5nD2\xb9pD\xeb\x075" +
+	"\xf9nlH\xa6\xcc\x03\x1eO\xda\xf1S\xf9d\x7f\xcc" +
+	"L[\xe9\xb6#\xc9\x84\xb4\xbc\x93\x0d\xd2\xe9\x8c\x0d\xf7" +
+	"\x00\xa2\x92kD\x1a\x88\x8c=]jI\x1c\xa2\x99\x01" +
+	"\x88BaM\x0a\xdb\xcd!\x0e1\x8cf\xa5\xe3&l" +
+	"\x0b\x95\xc4PI\x18\xcd\x0e&\xdc\xe1\xe3GQM\x0c" +
+	"\xd5\x84MTO$\xedxW\xd2\xe6y\xc9\x1d\x05\xc9" +
+	"\xf9n\"1\xc7!\x16\x18\x8c@\xf3\xf1.\"\xf1\x80" +
+	"C,2\x18\x8cE\xc1\x88\x8c'{\x89\xc4#\x0e\xf1" +
+	"\x9c\x01<\x0aNd<U\xd8\x02\x87Xb04D" +
+	"\xa1\x11\x19/\x14\xb8\xc8!\xde0\x18:\x8fB'2" +
+	"^\xf7\x12\x89%\x0e\xf1\x9e\xc1\x08\xed\x8c\"Dd\xbc" +
+	"S\xe02\x87Xa\xf0]9\x92\x91VL\x12\x11\xaa" +
+	"\x88\xa1\x8aP\x91\x1c0\x838\xec&\xce\xc9B2d" +
+	"\xbaC\xa8!\x86\x1aBx\xd0\xf4\xcc \xf1\xbdDJ" +
+	"\xba\x9e\x99\"\xa4\x03\xb6o\xa7\xa5cz\x09\x9b`!" +
+	"D\x0c\xa1-W\xd5+\xdd\x86\xb4m\xb9\xb2\xe4@m" +
+	"e\x0e\xa4\x86\xd8\xc7!\x8e1t\xb8\x9e\xe9e\\0" +
+	"b`T4\x13\\\xd4\x12z8r=\xd5n\xaa\xdf" +
+	"'\x9d\xact\xb64\x88\x01m\xbd\x81\xb6\xff;\xe4\x9f" +
+	"\x86\xd6U\xb5\xb2Sw\xc6\xe3\x8e\x8c\xabMYDJ" +
+	"y{A\xf9\xaa:\xea$\x87\x98\xde\x98\xfc\x9a\xc2\xa6" +
+	"8\xc4\x8c\xb2\x09\xf26\xb9\xa1\xd61\xcd!\xee0\x18" +
+	"\x1cy\x9f\xdcV}\xcfp\x88Y\xe5\x13\x96\xf7\xc9]" +
+	"\xd5\xf7\xadu\x97\x05>)vY\xd82S2\xf0\xf6" +
+	"_\xf7/w\xe5\xd2\x9f\xa1c i\xc7\x86\x0b{\xdf" +
+	"\xb6\xf1\x96\x10\x14\x18N;2\x1b\xd8\xe6O\x00\x00\x00" +
+	"\xff\xff;\x9e\x12\x88"
 
 func init() {
 	schemas.Register(schema_f4533cbae6e08506,
+		0x89f8da619fcbb3f3,
 		0x8cf178de3c82d431,
 		0x98d11ae1c78a24d9,
-		0xa77849c1e50404ed,
+		0xb0f1edca577182a7,
 		0xe46ab5b4b619e094)
 }

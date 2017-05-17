@@ -1,7 +1,19 @@
 using Go = import "/go.capnp";
 @0xf4533cbae6e08506;
 $Go.package("schema");
-$Go.import("github.com/g8os/blockstor/tlog/tlogclient");
+$Go.import("github.com/g8os/blockstor/tlog/schema");
+
+# VerAck message sent from client to server.
+struct ClientVerAck {
+	version @0 :UInt32;
+	vdiskID @1 :Text;
+}
+# Response VerAck message sent from server to client,
+# after receiving a ClientVerAck message from the client.
+struct ServerVerAck {
+	version @0 :UInt32;
+	status @1 :Int8;
+}
 
 struct TlogResponse {
 	status @0 :Int8;
@@ -16,10 +28,6 @@ struct TlogBlock {
 	data @4 :Data;
 	timestamp @5 :UInt64;
 	operation @6 :UInt8; # disk operation  1=WriteAt,2=WriteZeroesAt
-}
-struct TlogClientPackage {
-	vdiskID @0 :Text;
-	block @1 :TlogBlock;
 }
 
 struct TlogAggregation {

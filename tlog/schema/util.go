@@ -7,6 +7,12 @@ func RawTlogRespLen(numSeq int) int {
 		40 // capnp overhead. TODO : find the exact number.
 }
 
+// RawServerVerackLen returns length of raw ServerVerack packet
+func RawServerVerackLen() int {
+	return 1 /*status:uint8*/ + 4 /*version:uint32*/ +
+		40 // capnp overhead. TODO : find the exact number
+}
+
 // CopyBlock copies content of block 'src' to 'dst'
 func CopyBlock(dst, src *TlogBlock) error {
 	dst.SetSequence(src.Sequence())

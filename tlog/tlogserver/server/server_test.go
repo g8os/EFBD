@@ -43,7 +43,9 @@ func TestEndToEnd(t *testing.T) {
 
 	// create tlog client
 	client, err := tlogclient.New(s.ListenAddr(), expectedVdiskID)
-	assert.Nil(t, err)
+	if !assert.Nil(t, err) {
+		return
+	}
 
 	// initialize test data
 	dataLen := 4096 * 4
@@ -88,9 +90,10 @@ func TestEndToEnd(t *testing.T) {
 			}
 			assert.Equal(t, true, re.Resp.Status > 0)
 
-			if re.Resp.Status == tlog.StatusFlushOK {
+			respStatus := tlog.BlockStatus(re.Resp.Status)
+			if respStatus == tlog.BlockStatusFlushOK {
 				assert.Equal(t, conf.FlushSize, len(re.Resp.Sequences))
-			} else if re.Resp.Status == tlog.StatusBlockRecvOK {
+			} else if respStatus == tlog.BlockStatusRecvOK {
 				assert.Equal(t, 1, len(re.Resp.Sequences))
 			}
 		}
@@ -155,7 +158,9 @@ func TestUnordered(t *testing.T) {
 
 	// create tlog client
 	client, err := tlogclient.New(s.ListenAddr(), vdiskID)
-	assert.Nil(t, err)
+	if !assert.Nil(t, err) {
+		return
+	}
 
 	// initialize test data
 	data := make([]byte, 4096)
@@ -218,7 +223,7 @@ func TestUnordered(t *testing.T) {
 
 	aggChan := dec.Decode(0)
 
-	var expectedSequence uint64 = startSeq
+	var expectedSequence = uint64(startSeq)
 	for {
 		da, more := <-aggChan
 		if !more {

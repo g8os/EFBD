@@ -192,9 +192,17 @@ func (ab *Backend) Flush(ctx context.Context) (err error) {
 //Close implements nbd.Backend.Close
 func (ab *Backend) Close(ctx context.Context) (err error) {
 	ab.storageClusterClient.Close()
+
+	if ab.tlogClient != nil {
+		err = ab.tlogClient.Close()
+		if err != nil {
+			return
+		}
+	}
 	if ab.backgroundCancelFn != nil {
 		ab.backgroundCancelFn()
 	}
+
 	return
 }
 
