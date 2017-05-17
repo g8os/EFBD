@@ -17,18 +17,18 @@ func main() {
 	var profileAddr string
 	var objstoraddresses string
 
-	flag.StringVar(&conf.ListenAddr, "listen-addr", conf.ListenAddr, "port to listen")
+	flag.StringVar(&conf.ListenAddr, "address", conf.ListenAddr, "Address to listen on")
 	flag.IntVar(&conf.FlushSize, "flush-size", conf.FlushSize, "flush size")
 	flag.IntVar(&conf.FlushTime, "flush-time", conf.FlushTime, "flush time (seconds)")
 	flag.IntVar(&conf.BlockSize, "block-size", conf.BlockSize, "block size (bytes)")
-	flag.IntVar(&conf.K, "k", conf.K, "K variable of erasure encoding")
-	flag.IntVar(&conf.M, "m", conf.M, "M variable of erasure encoding")
+	flag.IntVar(&conf.K, "k", conf.K, "K variable of the erasure encoding")
+	flag.IntVar(&conf.M, "m", conf.M, "M variable of the erasure encoding")
 	flag.StringVar(&conf.PrivKey, "priv-key", conf.PrivKey, "private key")
 	flag.StringVar(&conf.HexNonce, "nonce", conf.HexNonce, "hex nonce used for encryption")
-	flag.StringVar(&profileAddr, "profile-addr", "", "profile address")
+	flag.StringVar(&profileAddr, "profile-address", "", "Enables profiling of this server as an http service")
 
-	flag.StringVar(&objstoraddresses, "objstor-addresses", "",
-		"comma seperated list of objstor addresses, if < k+m+1 addresses are given, the missing addresses are assumed to be on the ports following the last given address")
+	flag.StringVar(&objstoraddresses, "storage-addresses", "",
+		"comma seperated list of redis compatible connectionstrings, if < k+m+1 addresses are given, the missing addresses are assumed to be on the ports following the last given address")
 
 	flag.BoolVar(&verbose, "v", false, "log verbose (debug) statements")
 

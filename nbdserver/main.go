@@ -36,7 +36,7 @@ func main() {
 	flag.StringVar(&syslogTag, "syslog", "", "optionally log everything also to the system log")
 	flag.BoolVar(&inMemoryStorage, "memorystorage", false, "Stores the data in memory only, usefull for testing or benchmarking")
 	flag.BoolVar(&tlsonly, "tlsonly", false, "Forces all nbd connections to be tls-enabled")
-	flag.StringVar(&profileAddress, "profileaddress", "", "Enables profiling of this server as an http service")
+	flag.StringVar(&profileAddress, "profile-address", "", "Enables profiling of this server as an http service")
 	flag.StringVar(&protocol, "protocol", "unix", "Protocol to listen on, 'tcp' or 'unix'")
 	flag.StringVar(&address, "address", "/tmp/nbd-socket", "Address to listen on, unix socket or tcp address, ':6666' for example")
 	flag.StringVar(&tlogrpcaddress, "tlogrpc", "", "Address of the tlog RPC, set to 'auto' to use the inmemory version (test/dev only)")
