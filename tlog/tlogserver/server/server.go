@@ -51,6 +51,7 @@ func NewServer(conf *Config) (*Server, error) {
 				return nil, fmt.Errorf("failed to listen on localhost, port: %v", err)
 			}
 		}
+		log.Infof("Started listening on local address %s", listener.Addr().String())
 	}
 
 	vdiskMgr = newVdiskManager(conf.BlockSize, conf.FlushSize)
