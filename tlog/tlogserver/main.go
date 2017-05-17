@@ -15,7 +15,7 @@ func main() {
 
 	var verbose bool
 	var profileAddr string
-	var objstoraddresses string
+	var storageAddresses string
 
 	flag.StringVar(&conf.ListenAddr, "address", conf.ListenAddr, "Address to listen on")
 	flag.IntVar(&conf.FlushSize, "flush-size", conf.FlushSize, "flush size")
@@ -27,7 +27,7 @@ func main() {
 	flag.StringVar(&conf.HexNonce, "nonce", conf.HexNonce, "hex nonce used for encryption")
 	flag.StringVar(&profileAddr, "profile-address", "", "Enables profiling of this server as an http service")
 
-	flag.StringVar(&objstoraddresses, "storage-addresses", "",
+	flag.StringVar(&storageAddresses, "storage-addresses", "",
 		"comma seperated list of redis compatible connectionstrings, if < k+m+1 addresses are given, the missing addresses are assumed to be on the ports following the last given address")
 
 	flag.BoolVar(&verbose, "v", false, "log verbose (debug) statements")
@@ -46,8 +46,8 @@ func main() {
 	}
 
 	// get objstore addresses
-	if objstoraddresses != "" {
-		conf.ObjStoreAddresses = strings.Split(objstoraddresses, ",")
+	if storageAddresses != "" {
+		conf.StorageAddresses = strings.Split(storageAddresses, ",")
 	}
 
 	// config logger (verbose or not)
@@ -58,7 +58,7 @@ func main() {
 	}
 
 	const allowStubs = true
-	err := conf.ValidateAndCreateObjStoreAddresses(allowStubs)
+	err := conf.ValidateAndCreateStorageAddresses(allowStubs)
 	if err != nil {
 		log.Fatalf("failed to create config: %v", err)
 	}
