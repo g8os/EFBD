@@ -50,8 +50,8 @@ func (mr *MemoryRedis) Listen() {
 
 // Dial to the embedded Go Redis Server,
 // and return the established connection if possible.
-func (mr *MemoryRedis) Dial(connectionString string) (redis.Conn, error) {
-	return redis.Dial("tcp", mr.addr)
+func (mr *MemoryRedis) Dial(connectionString string, database int) (redis.Conn, error) {
+	return redis.Dial("tcp", mr.addr, redis.DialDatabase(database))
 }
 
 // Close the embedded Go Redis Server.

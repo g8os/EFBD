@@ -15,19 +15,23 @@ storageClusters: # A required map of storage clusters,
                  # only 1 storage cluster is required
   mycluster: # Required (string) ID of this storage cluster
     dataStorage: # A required array of connection (dial)strings, used to store data
-      - 192.168.58.146:2000 # At least 1 connection (dial)string is required,
-      - 192.123.123.123:2001 # more are optional
-    metadataStorage: 192.168.58.146:2001 # Required connection (dial)string,
-                                         # used to store meta data (LBA indices)
+      - address: 192.168.58.146:2000 # At least 1 connection (dial)string is required
+        db: 0                        # database is optional, 0 by default
+      - 192.123.123.123:2001 # more connections are optional
+    metadataStorage:
+      address: 192.168.58.146:2001 # Required connection (dial)string,
+                                   # used to store meta data (LBA indices)
   rootcluster: # Required (string) ID of this (optional) storage cluster
     dataStorage: # A required array of connection (dial)strings, used to store data
-      - 192.168.58.147:2000 # only 1 connection (dial)string is required
-    metadataStorage: 192.168.58.147:2001 # Required connection (dial)string
+      - address: 192.168.58.147:2000 # only 1 connection (dial)string is required
+        db: 1                        # database is optional, 0 by default
+    metadataStorage:
+      address: 192.168.58.147:2001 # Required connection (dial)string
   # ... more (optional) storage clusters
 vdisks: # A required map of vdisks,
         # only 1 vdisk is required
   myvdisk: # Required (string) ID of this vdisk
-    blocksize: 4096 # Required static (uint64) size of each block
+    blockSize: 4096 # Required static (uint64) size of each block
     readOnly: false # Defines if this vdisk can be written to or not
                     # (optional, false by default)
     size: 10 # Required (uint64) total size in GiB of this vdisk

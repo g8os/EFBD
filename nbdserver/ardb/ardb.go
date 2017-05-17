@@ -211,35 +211,35 @@ type redisProvider struct {
 // RedisConnection gets a redis connection from the underlying pool,
 // using a modulo index
 func (rp *redisProvider) RedisConnection(index int64) (conn redis.Conn, err error) {
-	connString, err := rp.storageClusterClient.ConnectionString(index)
+	connConfig, err := rp.storageClusterClient.ConnectionConfig(index)
 	if err != nil {
 		return
 	}
 
-	conn = rp.redisPool.Get(connString)
+	conn = rp.redisPool.Get(connConfig.Address, connConfig.Database)
 	return
 }
 
 // FallbackRedisConnection gets a redis connection from the underlying fallback pool,
 // using a modulo index
 func (rp *redisProvider) FallbackRedisConnection(index int64) (conn redis.Conn, err error) {
-	connString, err := rp.storageClusterClient.RootConnectionString(index)
+	connConfig, err := rp.storageClusterClient.RootConnectionConfig(index)
 	if err != nil {
 		return
 	}
 
-	conn = rp.redisPool.Get(connString)
+	conn = rp.redisPool.Get(connConfig.Address, connConfig.Database)
 	return
 }
 
 // MetaRedisConnection implements lba.MetaRedisProvider.MetaRedisConnection
 func (rp *redisProvider) MetaRedisConnection() (conn redis.Conn, err error) {
-	connString, err := rp.storageClusterClient.MetaConnectionString()
+	connConfig, err := rp.storageClusterClient.MetaConnectionConfig()
 	if err != nil {
 		return
 	}
 
-	conn = rp.redisPool.Get(connString)
+	conn = rp.redisPool.Get(connConfig.Address, connConfig.Database)
 	return
 }
 

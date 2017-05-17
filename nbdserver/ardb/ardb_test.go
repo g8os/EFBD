@@ -36,14 +36,14 @@ func newTestRedisProvider(main, root *redisstub.MemoryRedis) *testRedisProvider 
 			return nil, errors.New("no memory redis available")
 		}
 
-		return provider.memRedis.Dial("")
+		return provider.memRedis.Dial("", 0)
 	})
 	provider.rootPool = newTestRedisPool(func() (redis.Conn, error) {
 		if provider.rootMemRedis == nil {
 			return nil, errors.New("no root memory redis available")
 		}
 
-		return provider.rootMemRedis.Dial("")
+		return provider.rootMemRedis.Dial("", 0)
 	})
 	return provider
 }
