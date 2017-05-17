@@ -109,7 +109,7 @@ func (s *Server) handle(conn *net.TCPConn) error {
 		}
 
 		if vd == nil {
-			vd, err = vdiskMgr.get(curVdiskID, s.f)
+			vd, err = vdiskMgr.get(curVdiskID, s.f, tlb.Sequence())
 			if err != nil {
 				log.Infof("failed to vdisk: %v, err: %v", curVdiskID, err)
 				return err

@@ -38,6 +38,36 @@
 			"Rev": "0bce6a6887123b67a60366d2c9fe2dfb74289d2e"
 		},
 		{
+			"ImportPath": "github.com/emirpasic/gods/containers",
+			"Comment": "v1.9.0",
+			"Rev": "f6c17b524822278a87e3b3bd809fec33b51f5b46"
+		},
+		{
+			"ImportPath": "github.com/emirpasic/gods/sets",
+			"Comment": "v1.9.0",
+			"Rev": "f6c17b524822278a87e3b3bd809fec33b51f5b46"
+		},
+		{
+			"ImportPath": "github.com/emirpasic/gods/sets/treeset",
+			"Comment": "v1.9.0",
+			"Rev": "f6c17b524822278a87e3b3bd809fec33b51f5b46"
+		},
+		{
+			"ImportPath": "github.com/emirpasic/gods/trees",
+			"Comment": "v1.9.0",
+			"Rev": "f6c17b524822278a87e3b3bd809fec33b51f5b46"
+		},
+		{
+			"ImportPath": "github.com/emirpasic/gods/trees/redblacktree",
+			"Comment": "v1.9.0",
+			"Rev": "f6c17b524822278a87e3b3bd809fec33b51f5b46"
+		},
+		{
+			"ImportPath": "github.com/emirpasic/gods/utils",
+			"Comment": "v1.9.0",
+			"Rev": "f6c17b524822278a87e3b3bd809fec33b51f5b46"
+		},
+		{
 			"ImportPath": "github.com/garyburd/redigo/internal",
 			"Comment": "v1.0.0-26-g4339695",
 			"Rev": "433969511232c397de61b1442f9fd49ec06ae9ba"
@@ -304,33 +334,33 @@
 		},
 		{
 			"ImportPath": "zombiezen.com/go/capnproto2",
-			"Comment": "v2.14.0",
-			"Rev": "917bd4b4c47e99b11e8cadbc2fc4e47935c942d0"
+			"Comment": "v2.14.1-1-gd0d6fcb",
+			"Rev": "d0d6fcbc1707dad418661921f3fb72174e8b0ddc"
 		},
 		{
 			"ImportPath": "zombiezen.com/go/capnproto2/encoding/text",
-			"Comment": "v2.14.0",
-			"Rev": "917bd4b4c47e99b11e8cadbc2fc4e47935c942d0"
+			"Comment": "v2.14.1-1-gd0d6fcb",
+			"Rev": "d0d6fcbc1707dad418661921f3fb72174e8b0ddc"
 		},
 		{
 			"ImportPath": "zombiezen.com/go/capnproto2/internal/nodemap",
-			"Comment": "v2.14.0",
-			"Rev": "917bd4b4c47e99b11e8cadbc2fc4e47935c942d0"
+			"Comment": "v2.14.1-1-gd0d6fcb",
+			"Rev": "d0d6fcbc1707dad418661921f3fb72174e8b0ddc"
 		},
 		{
 			"ImportPath": "zombiezen.com/go/capnproto2/internal/packed",
-			"Comment": "v2.14.0",
-			"Rev": "917bd4b4c47e99b11e8cadbc2fc4e47935c942d0"
+			"Comment": "v2.14.1-1-gd0d6fcb",
+			"Rev": "d0d6fcbc1707dad418661921f3fb72174e8b0ddc"
 		},
 		{
 			"ImportPath": "zombiezen.com/go/capnproto2/schemas",
-			"Comment": "v2.14.0",
-			"Rev": "917bd4b4c47e99b11e8cadbc2fc4e47935c942d0"
+			"Comment": "v2.14.1-1-gd0d6fcb",
+			"Rev": "d0d6fcbc1707dad418661921f3fb72174e8b0ddc"
 		},
 		{
 			"ImportPath": "zombiezen.com/go/capnproto2/std/capnp/schema",
-			"Comment": "v2.14.0",
-			"Rev": "917bd4b4c47e99b11e8cadbc2fc4e47935c942d0"
+			"Comment": "v2.14.1-1-gd0d6fcb",
+			"Rev": "d0d6fcbc1707dad418661921f3fb72174e8b0ddc"
 		}
 	]
 }
