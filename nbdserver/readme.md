@@ -12,7 +12,7 @@ storageClusters: # A required map of storage clusters,
     dataStorage: # A required array of connection (dial)strings, used to store data
       - address: 192.168.58.146:2000 # At least 1 connection (dial)string is required
         db: 0                        # database is optional, 0 by default
-      - 192.123.123.123:2001 # more connections are optional
+      - address: 192.123.123.123:2001 # more connections are optional
     metadataStorage:
       address: 192.168.58.146:2001 # Required connection (dial)string,
                                    # used to store meta data (LBA indices)
