@@ -9,8 +9,8 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/g8os/blockstor/config"
 	"github.com/g8os/blockstor/log"
-	"github.com/g8os/blockstor/nbdserver/config"
 )
 
 // NewClusterClientFactory creates a ClusterClientFactory.

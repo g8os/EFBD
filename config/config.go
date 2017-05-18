@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"io/ioutil"
+	"strings"
 
 	valid "github.com/asaskevich/govalidator"
 	"github.com/go-yaml/yaml"
@@ -55,42 +56,37 @@ func (cfg *Config) Validate() error {
 
 	// ensure all referenced storage clusters exist, O(n^2)
 	for vdiskID, vdisk := range cfg.Vdisks {
-		var storageClusterExists, rootStorageClusterExists bool
-
-		// cache storage cluster references
-		storageCluster := vdisk.Storagecluster
-		rootStorageCluster := vdisk.RootStorageCluster
-
-		if rootStorageCluster == "" {
-			// non-reference always exists
-			rootStorageClusterExists = true
+		// collect all storageClusters
+		storageClusters := []string{vdisk.Storagecluster}
+		if vdisk.RootStorageCluster != "" {
+			storageClusters = append(
+				storageClusters, vdisk.RootStorageCluster)
+		}
+		if vdisk.TlogStoragecluster != "" {
+			storageClusters = append(
+				storageClusters, vdisk.TlogStoragecluster)
 		}
 
 		// go through all storageClusters
 		for clusterID := range cfg.StorageClusters {
-			if !storageClusterExists && storageCluster == clusterID {
-				storageClusterExists = true
-				if rootStorageClusterExists {
-					break // both references exists, early break
+			for index, name := range storageClusters {
+				if name == clusterID {
+					storageClusters = append(
+						storageClusters[:index],
+						storageClusters[index+1:]...)
+					break
 				}
-			} else if !rootStorageClusterExists && rootStorageCluster == clusterID {
-				rootStorageClusterExists = true
-				if storageClusterExists {
-					break // both references exists, early break
-				}
+			}
+			if len(storageClusters) == 0 {
+				break
 			}
 		}
 
 		// ensure referenced (root) storage cluster exists
-		if !storageClusterExists {
+		if len(storageClusters) > 0 {
 			return fmt.Errorf(
-				"vdisk %q references unexisting storage cluster %q",
-				vdiskID, storageCluster)
-		}
-		if !rootStorageClusterExists {
-			return fmt.Errorf(
-				"vdisk %q references unexisting root storage cluster %q",
-				vdiskID, rootStorageCluster)
+				"vdisk %q references unexisting storage cluster(s): %s",
+				vdiskID, strings.Join(storageClusters, ", "))
 		}
 	}
 

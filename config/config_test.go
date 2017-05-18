@@ -25,6 +25,13 @@ storageClusters:
     metadataStorage:
       address: 192.168.58.147:2001
       db: 2
+  tlogcluster:
+    dataStorage:
+      - address: 192.168.58.149:2000
+        db: 4
+    metadataStorage:
+      address: 192.168.58.149:2000
+      db: 8
 vdisks:
   myvdisk:
     blockSize: 4096
@@ -32,7 +39,7 @@ vdisks:
     size: 10
     storageCluster: mycluster
     rootStorageCluster: rootcluster
-    tlogStorageCluster: ''
+    tlogStorageCluster: tlogcluster
     type: boot`
 
 func TestValidConfigFromBytes(t *testing.T) {
@@ -41,7 +48,7 @@ func TestValidConfigFromBytes(t *testing.T) {
 		return
 	}
 
-	if assert.Len(t, cfg.StorageClusters, 2) {
+	if assert.Len(t, cfg.StorageClusters, 3) {
 		if cluster, ok := cfg.StorageClusters["mycluster"]; assert.True(t, ok) {
 			if assert.Len(t, cluster.DataStorage, 2) {
 				assert.Equal(t, "192.168.58.146:2000", cluster.DataStorage[0].Address)
@@ -61,6 +68,15 @@ func TestValidConfigFromBytes(t *testing.T) {
 			assert.Equal(t, "192.168.58.147:2001", cluster.MetaDataStorage.Address)
 			assert.Equal(t, 2, cluster.MetaDataStorage.Database)
 		}
+
+		if cluster, ok := cfg.StorageClusters["tlogcluster"]; assert.True(t, ok) {
+			if assert.Len(t, cluster.DataStorage, 1) {
+				assert.Equal(t, "192.168.58.149:2000", cluster.DataStorage[0].Address)
+				assert.Equal(t, 4, cluster.DataStorage[0].Database)
+			}
+			assert.Equal(t, "192.168.58.149:2000", cluster.MetaDataStorage.Address)
+			assert.Equal(t, 8, cluster.MetaDataStorage.Database)
+		}
 	}
 
 	if assert.Len(t, cfg.Vdisks, 1) {
@@ -70,7 +86,7 @@ func TestValidConfigFromBytes(t *testing.T) {
 			assert.Equal(t, uint64(10), vdisk.Size)
 			assert.Equal(t, "mycluster", vdisk.Storagecluster)
 			assert.Equal(t, "rootcluster", vdisk.RootStorageCluster)
-			assert.Equal(t, "", vdisk.TlogStoragecluster)
+			assert.Equal(t, "tlogcluster", vdisk.TlogStoragecluster)
 			assert.Equal(t, VdiskTypeBoot, vdisk.Type)
 		}
 	}
@@ -341,6 +357,22 @@ vdisks:
     size: 10
     storageCluster: mycluster
     rootStorageCluster: foo
+    type: boot
+`,
+	// unreferenced tlogStorageCluster given
+	`
+storageClusters:
+  mycluster:
+    dataStorage:
+      - address: 192.168.58.146:2000
+    metadataStorage:
+      address: 192.168.58.146:2001
+vdisks:
+  myvdisk:
+    blockSize: 4096
+    size: 10
+    storageCluster: mycluster
+    tlogStorageCluster: foo
     type: boot
 `,
 }

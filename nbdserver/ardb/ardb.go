@@ -9,8 +9,8 @@ import (
 
 	"github.com/g8os/blockstor/tlog/tlogclient"
 
+	"github.com/g8os/blockstor/config"
 	"github.com/g8os/blockstor/gonbdserver/nbd"
-	"github.com/g8os/blockstor/nbdserver/config"
 	"github.com/g8os/blockstor/nbdserver/lba"
 	"github.com/g8os/blockstor/storagecluster"
 	"github.com/garyburd/redigo/redis"
