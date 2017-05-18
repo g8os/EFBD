@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"io/ioutil"
+	"strconv"
 	"strings"
 
 	valid "github.com/asaskevich/govalidator"
@@ -98,6 +99,50 @@ func (cfg *Config) Validate() error {
 type StorageClusterConfig struct {
 	DataStorage     []StorageServerConfig `yaml:"dataStorage" valid:"required"`
 	MetaDataStorage StorageServerConfig   `yaml:"metadataStorage" valid:"required"`
+}
+
+// ParseCSStorageServerConfigStrings allows you to parse a slice of raw dial config strings.
+// Dial Config Strings are a simple format used to specify ardb connection configs
+// easily as a command line argument.
+// The format is as follows: `<ip>:<port>[@<db_index>][,<ip>:<port>[@<db_index>]]`,
+// where the db_index is optional, and you can give multiple configs by
+// seperating them with a comma.
+func ParseCSStorageServerConfigStrings(dialCSConfigString string) (configs []StorageServerConfig, err error) {
+	if dialCSConfigString == "" {
+		return nil, nil
+	}
+	dialConfigStrings := strings.Split(dialCSConfigString, ",")
+
+	// convert all connection strings into ConnectionConfigs
+	for _, dialConfigString := range dialConfigStrings {
+		// remove whitespace around
+		dialConfigString = strings.TrimSpace(dialConfigString)
+
+		// trailing commas are allowed
+		if dialConfigString == "" {
+			continue
+		}
+
+		var cfg StorageServerConfig
+		parts := strings.Split(dialConfigString, "@")
+		if n := len(parts); n < 2 {
+			cfg.Address = dialConfigString
+		} else {
+			cfg.Database, err = strconv.Atoi(parts[n-1])
+			if err != nil {
+				err = nil // ignore actual error
+				n++       // not a valid database, thus probably part of address
+			}
+			cfg.Address = strings.Join(parts[:n-1], "@")
+		}
+		if !valid.IsDialString(cfg.Address) {
+			err = fmt.Errorf("%s is not a valid storage address", cfg.Address)
+			return
+		}
+		configs = append(configs, cfg)
+	}
+
+	return
 }
 
 // StorageServerConfig defines the config for a storage server

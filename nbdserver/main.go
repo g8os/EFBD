@@ -16,6 +16,7 @@ import (
 	"github.com/g8os/blockstor/nbdserver/lba"
 	"github.com/g8os/blockstor/redisstub"
 	"github.com/g8os/blockstor/storagecluster"
+	"github.com/g8os/blockstor/tlog"
 	tlogserver "github.com/g8os/blockstor/tlog/tlogserver/server"
 )
 
@@ -95,14 +96,22 @@ func main() {
 		log.Info("Starting embedded (in-memory) tlogserver")
 		config := tlogserver.DefaultConfig()
 
-		// create embedded obj store servers (used to store tlogs)
-		err := config.ValidateAndCreateStorageAddresses(true)
-		if err != nil {
-			log.Fatalf("couldn't create embedded tlogserver: %v", err)
+		var err error
+		var poolFactory tlog.RedisPoolFactory
+
+		requiredDataServers := config.RequiredDataServers()
+
+		if inMemoryStorage {
+			poolFactory = tlog.InMemoryRedisPoolFactory(requiredDataServers)
+		} else {
+			poolFactory, err = tlog.ConfigRedisPoolFactory(requiredDataServers, configPath)
+			if err != nil {
+				log.Fatalf("couldn't create embedded tlogserver: %v", err)
+			}
 		}
 
 		// create server
-		server, err := tlogserver.NewServer(config)
+		server, err := tlogserver.NewServer(config, poolFactory)
 		if err != nil {
 			log.Fatalf("couldn't create embedded tlogserver: %v", err)
 		}

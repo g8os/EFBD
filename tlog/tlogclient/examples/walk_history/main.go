@@ -2,21 +2,22 @@ package main
 
 import (
 	"flag"
-	"fmt"
 
+	blockstorcfg "github.com/g8os/blockstor/config"
 	"github.com/g8os/blockstor/log"
+	"github.com/g8os/blockstor/tlog"
 
 	"github.com/g8os/blockstor/tlog/tlogclient/decoder"
 )
 
 type config struct {
-	K                int
-	M                int
-	firstObjStorPort int
-	firstObjStorAddr string
-	privKey          string
-	vdiskID          string
-	nonce            string // encryption nonce
+	K                    int
+	M                    int
+	privKey              string
+	vdiskID              string
+	nonce                string // encryption nonce
+	TlogObjStorAddresses string
+	ConfigPath           string
 }
 
 func main() {
@@ -24,21 +25,30 @@ func main() {
 
 	flag.IntVar(&conf.K, "k", 4, "K variable of erasure encoding")
 	flag.IntVar(&conf.M, "m", 2, "M variable of erasure encoding")
-	flag.StringVar(&conf.firstObjStorAddr, "first-objstor-addr", "127.0.0.1", "first objstor addr")
-	flag.IntVar(&conf.firstObjStorPort, "first-objstor-port", 16379, "first objstor port")
 	flag.StringVar(&conf.privKey, "priv-key", "12345678901234567890123456789012", "priv key")
 	flag.StringVar(&conf.vdiskID, "vdiskid", "1234567890", "virtual disk ID")
 	flag.StringVar(&conf.nonce, "nonce", "37b8e8a308c354048d245f6d", "encryption nonce")
+	flag.StringVar(&conf.TlogObjStorAddresses, "storage-addresses", "",
+		"comma seperated list of redis compatible connectionstrings (format: '<ip>:<port>[@<db>]', eg: 'localhost:16379,localhost:6379@2'), if given, these are used for all vdisks, ignoring the given config")
+	flag.StringVar(&conf.ConfigPath, "config", "config.yml", "blockstor config file")
 
 	flag.Parse()
 
-	objstorAddrs := []string{}
-	for i := 0; i < conf.K+conf.M+1; i++ {
-		addr := fmt.Sprintf("%v:%v", conf.firstObjStorAddr, conf.firstObjStorPort+i)
-		objstorAddrs = append(objstorAddrs, addr)
-	}
+	// parse optional server configs
+	serverConfigs, err := blockstorcfg.ParseCSStorageServerConfigStrings(conf.TlogObjStorAddresses)
+	exitOnErr(err)
 
-	dec, err := decoder.New(objstorAddrs, conf.K, conf.M, conf.vdiskID, conf.privKey, conf.nonce)
+	// create redisPool, used by the tlog decoder
+	redisPool, err := tlog.AnyRedisPool(tlog.RedisPoolConfig{
+		VdiskID:                 conf.vdiskID,
+		RequiredDataServerCount: conf.K + conf.M,
+		ConfigPath:              conf.ConfigPath,
+		ServerConfigs:           serverConfigs,
+		AutoFill:                true,
+		AllowInMemory:           false,
+	})
+
+	dec, err := decoder.New(redisPool, conf.K, conf.M, conf.vdiskID, conf.privKey, conf.nonce)
 	if err != nil {
 		log.Fatalf("tlog decoder creation failed:%v", err)
 	}
@@ -49,8 +59,8 @@ func main() {
 		if !more {
 			break
 		}
-		if err != nil {
-			log.Fatalf("error to decode:%v", err)
+		if da.Err != nil {
+			log.Fatalf("error to decode:%v", da.Err)
 		}
 		agg := da.Agg
 		log.Info("================================")

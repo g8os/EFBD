@@ -18,8 +18,7 @@ import (
 
 // Decoder defines tlog data decoder
 type Decoder struct {
-	objstorAddr []string
-	vdiskID     string
+	vdiskID string
 
 	// erasure encoder variable
 	k int
@@ -29,7 +28,7 @@ type Decoder struct {
 	decrypter tlog.AESDecrypter
 
 	// pools of redis connection
-	redisPool *tlog.RedisPool
+	pool tlog.RedisPool
 }
 
 // DecodedAggregation defines a decoded tlog aggregation
@@ -40,8 +39,11 @@ type DecodedAggregation struct {
 }
 
 // New creates a tlog decoder
-func New(objstorAddr []string, k, m int, vdiskID, privKey, hexNonce string) (*Decoder, error) {
-	if len(objstorAddr) != k+m+1 {
+func New(pool tlog.RedisPool, k, m int, vdiskID, privKey, hexNonce string) (*Decoder, error) {
+	if pool == nil {
+		return nil, errors.New("Decoder requires a non-nil RedisPool")
+	}
+	if pool.DataConnectionCount() < k+m {
 		return nil, errors.New("invalid number of objstor")
 	}
 
@@ -51,19 +53,12 @@ func New(objstorAddr []string, k, m int, vdiskID, privKey, hexNonce string) (*De
 		return nil, err
 	}
 
-	// create redis pools
-	redisPool, err := tlog.NewRedisPool(objstorAddr)
-	if err != nil {
-		return nil, err
-	}
-
 	return &Decoder{
-		objstorAddr: objstorAddr,
-		vdiskID:     vdiskID,
-		k:           k,
-		m:           m,
-		decrypter:   decrypter,
-		redisPool:   redisPool,
+		vdiskID:   vdiskID,
+		k:         k,
+		m:         m,
+		decrypter: decrypter,
+		pool:      pool,
 	}, nil
 }
 
@@ -180,7 +175,7 @@ func (d *Decoder) getAllPieces(key []byte) ([]byte, error) {
 
 	// get pieces from storage
 	for i := 0; i < length; i++ {
-		rc := d.redisPool.Get(i + 1)
+		rc := d.pool.DataConnection(i)
 		defer rc.Close()
 
 		b, err := redis.Bytes(rc.Do("GET", key))
@@ -224,7 +219,7 @@ func (d *Decoder) getAllPieces(key []byte) ([]byte, error) {
 
 // get last hash of a vdisk
 func (d *Decoder) getLastHash() ([]byte, error) {
-	rc := d.redisPool.Get(0)
+	rc := d.pool.MetadataConnection()
 	defer rc.Close()
 
 	key := tlog.LastHashPrefix + d.vdiskID

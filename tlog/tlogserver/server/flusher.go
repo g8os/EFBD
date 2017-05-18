@@ -27,24 +27,14 @@ type flusher struct {
 	flushSize int
 	flushTime int
 
-	redisPool *tlog.RedisPool
+	pool tlog.RedisPool
 
 	// platform-dependent interfaces
 	erasure   erasure.EraruseCoder
 	encrypter tlog.AESEncrypter
 }
 
-func newFlusher(conf *Config) (*flusher, error) {
-	addresses, err := conf.StorageServerAddresses()
-	if err != nil {
-		return nil, err
-	}
-
-	redisPool, err := tlog.NewRedisPool(addresses)
-	if err != nil {
-		return nil, fmt.Errorf("couldn't create flusher: %s", err.Error())
-	}
-
+func newFlusher(conf *flusherConfig, pool tlog.RedisPool) (*flusher, error) {
 	encrypter, err := tlog.NewAESEncrypter(conf.PrivKey, conf.HexNonce)
 	if err != nil {
 		return nil, err
@@ -55,7 +45,7 @@ func newFlusher(conf *Config) (*flusher, error) {
 		m:         conf.M,
 		flushSize: conf.FlushSize,
 		flushTime: conf.FlushTime,
-		redisPool: redisPool,
+		pool:      pool,
 		erasure:   erasure.NewErasurer(conf.K, conf.M),
 		encrypter: encrypter,
 	}
@@ -125,7 +115,7 @@ func (f *flusher) storeEncoded(vd *vdisk, key []byte, encoded [][]byte) error {
 			defer wg.Done()
 
 			blocks := encoded[idx]
-			err := f.storeRedis(idx+1, "SET", key, blocks)
+			err := f.storeData(idx, "SET", key, blocks)
 			if err != nil {
 				err = fmt.Errorf("error during flush idx %v: %v", idx, err)
 				allErr = append(allErr, err)
@@ -206,7 +196,7 @@ func (f *flusher) encodeCapnp(blocks []*schema.TlogBlock, vd *vdisk) ([]byte, er
 }
 
 func (f *flusher) getLastHash(vdiskID string) ([]byte, error) {
-	rc := f.redisPool.Get(0)
+	rc := f.pool.MetadataConnection()
 	defer rc.Close()
 
 	hash, err := redis.Bytes(rc.Do("GET", f.lastHashKey(vdiskID)))
@@ -228,14 +218,14 @@ func (f *flusher) storeLastHash(vdiskID string, lastHash []byte) error {
 	// we don't need to wait for the trim operation because it won't harm us
 	// if failed
 	go func() {
-		rc := f.redisPool.Get(0)
+		rc := f.pool.MetadataConnection()
 		defer rc.Close()
 		if _, err := rc.Do("LTRIM", key, 0, lastHashNum); err != nil {
 			log.Errorf("failed to trim lasth hash of %s: %s", vdiskID, err.Error())
 		}
 	}()
 
-	return f.storeRedis(0, "LPUSH", key, lastHash)
+	return f.storeMetadataAndRetry("LPUSH", key, lastHash)
 }
 
 func (f *flusher) lastHashKey(vdiskID string) string {
@@ -243,17 +233,17 @@ func (f *flusher) lastHashKey(vdiskID string) string {
 }
 
 // store data to redis and retry it if failed
-func (f *flusher) storeRedisAndRetry(idx int, cmd string, key, data []byte) error {
+func (f *flusher) storeDataAndRetry(idx int, cmd string, key, data []byte) error {
 	var err error
 
 	sleepMs := time.Duration(500) * time.Millisecond
 
 	for i := 0; i < 4; i++ {
-		err = f.storeRedis(idx, cmd, key, data)
+		err = f.storeData(idx, cmd, key, data)
 		if err == nil {
 			return nil
 		}
-		log.Infof("error to store to idx:%v, err: %v", idx, err)
+		log.Infof("error to store data in server idx:%v, err: %v", idx, err)
 
 		// sleep for a while
 		time.Sleep(sleepMs)
@@ -263,10 +253,41 @@ func (f *flusher) storeRedisAndRetry(idx int, cmd string, key, data []byte) erro
 }
 
 // store data to redis and retry it if failed
-func (f *flusher) storeRedis(idx int, cmd string, key, data []byte) error {
+func (f *flusher) storeData(idx int, cmd string, key, data []byte) error {
 	// get new connection inside this function.
 	// so in case of error, we got new connection that hopefully better
-	rc := f.redisPool.Get(idx)
+	rc := f.pool.DataConnection(idx)
+	defer rc.Close()
+
+	_, err := rc.Do(cmd, key, data)
+	return err
+}
+
+// store metadata to redis and retry it if failed
+func (f *flusher) storeMetadataAndRetry(cmd string, key, data []byte) error {
+	var err error
+
+	sleepMs := time.Duration(500) * time.Millisecond
+
+	for i := 0; i < 4; i++ {
+		err = f.storeMetadata(cmd, key, data)
+		if err == nil {
+			return nil
+		}
+		log.Infof("error to store metadata, err: %v", err)
+
+		// sleep for a while
+		time.Sleep(sleepMs)
+		sleepMs *= 2 // double the sleep time for the next iteration
+	}
+	return err
+}
+
+// store metadata to redis and retry it if failed
+func (f *flusher) storeMetadata(cmd string, key, data []byte) error {
+	// get new connection inside this function.
+	// so in case of error, we got new connection that hopefully better
+	rc := f.pool.MetadataConnection()
 	defer rc.Close()
 
 	_, err := rc.Do(cmd, key, data)

@@ -19,24 +19,23 @@ type Server struct {
 	port                 int
 	bufSize              int
 	maxRespSegmentBufLen int // max len of response capnp segment buffer
-	f                    *flusher
-	StorageAddresses     []string
+	poolFactory          tlog.RedisPoolFactory
 	listener             net.Listener
+	flusherConf          *flusherConfig
 }
 
 // NewServer creates a new tlog server
-func NewServer(conf *Config) (*Server, error) {
-	f, err := newFlusher(conf)
-	if err != nil {
-		return nil, err
+func NewServer(conf *Config, poolFactory tlog.RedisPoolFactory) (*Server, error) {
+	if conf == nil {
+		return nil, errors.New("tlogserver requires a non-nil config")
+	}
+	if poolFactory == nil {
+		return nil, errors.New("tlogserver requires a non-nil RedisPoolFactory")
 	}
 
-	storageAddrs, err := conf.StorageServerAddresses()
-	if err != nil {
-		return nil, err
-	}
-
+	var err error
 	var listener net.Listener
+
 	if conf.ListenAddr != "" {
 		// listen for tcp requests on given address
 		listener, err = net.Listen("tcp", conf.ListenAddr)
@@ -55,10 +54,21 @@ func NewServer(conf *Config) (*Server, error) {
 	}
 
 	vdiskMgr = newVdiskManager(conf.BlockSize, conf.FlushSize)
+
+	// used to created a flusher on rumtime
+	flusherConf := &flusherConfig{
+		K:         conf.K,
+		M:         conf.M,
+		FlushSize: conf.FlushSize,
+		FlushTime: conf.FlushTime,
+		PrivKey:   conf.PrivKey,
+		HexNonce:  conf.HexNonce,
+	}
+
 	return &Server{
-		f:                    f,
-		StorageAddresses:     storageAddrs,
+		poolFactory:          poolFactory,
 		listener:             listener,
+		flusherConf:          flusherConf,
 		maxRespSegmentBufLen: schema.RawTlogRespLen(conf.FlushSize),
 	}, nil
 }
@@ -88,7 +98,7 @@ func (s *Server) ListenAddr() string {
 }
 
 // handshake stage, required prior to receiving blocks
-func (s *Server) handshake(r io.Reader, w io.Writer) (cfg *ConnectionConfig, err error) {
+func (s *Server) handshake(r io.Reader, w io.Writer) (cfg *connectionConfig, err error) {
 	req, err := s.readDecodeHandshakeRequest(r)
 	if err != nil {
 		return
@@ -120,16 +130,35 @@ func (s *Server) handshake(r io.Reader, w io.Writer) (cfg *ConnectionConfig, err
 		return
 	}
 
-	// version checks out, let's send our req message back to client
+	redisPool, err := s.poolFactory.NewRedisPool(vdiskID)
+	if err != nil {
+		writeErr := s.writeHandshakeResponse(w, segmentBuf, tlog.HandshakeStatusInsufficientDataServers)
+		if writeErr != nil {
+			log.Infof("couldn't write server insufficient-dataservers response: %s", writeErr.Error())
+		}
+		return
+	}
+
+	flusher, err := newFlusher(s.flusherConf, redisPool)
+	if err != nil {
+		writeErr := s.writeHandshakeResponse(w, segmentBuf, tlog.HandshakeStatusInternalServerError)
+		if writeErr != nil {
+			log.Infof("couldn't write server internal-server-error response: %s", writeErr.Error())
+		}
+		return
+	}
+
+	// version checks out, let's send our verack message back to client
 	err = s.writeHandshakeResponse(w, segmentBuf, tlog.HandshakeStatusOK)
 	if err != nil {
 		return
 	}
 
 	// return cfg, as connection has been established
-	cfg = &ConnectionConfig{
+	cfg = &connectionConfig{
 		VdiskID:       vdiskID,
 		FirstSequence: req.FirstSequence(),
+		Flusher:       flusher,
 	}
 	return
 }
@@ -164,7 +193,7 @@ func (s *Server) handle(conn *net.TCPConn) error {
 		return err
 	}
 
-	vdisk, created, err := vdiskMgr.get(cfg.VdiskID, s.f, cfg.FirstSequence)
+	vdisk, created, err := vdiskMgr.get(cfg.VdiskID, cfg.Flusher, cfg.FirstSequence)
 	if err != nil {
 		err = fmt.Errorf("couldn't get or create vdisk %s", cfg.VdiskID)
 		log.Info(err)
