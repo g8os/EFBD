@@ -31,7 +31,7 @@ var (
 	stdMux      sync.Mutex
 	stdLevel    = InfoLevel
 	stdHandlers []Handler
-	std         = New("global", InfoLevel).(*glueLogger)
+	std         = newLogger("global", InfoLevel, 1)
 )
 
 // SetLevel defines at which level the std logger should log
@@ -106,8 +106,12 @@ func Fatalf(format string, args ...interface{}) {
 
 // New logger, creates a new logger
 func New(module string, level Level, handlers ...Handler) Logger {
+	return newLogger(module, level, 0, handlers...)
+}
+
+func newLogger(module string, level Level, extraStackDepth int, handlers ...Handler) *glueLogger {
 	logger := log.New("module", module)
-	logger.SetHandler(newLoggerHandler(level, 0, handlers))
+	logger.SetHandler(newLoggerHandler(level, extraStackDepth, handlers))
 
 	return &glueLogger{logger}
 }
