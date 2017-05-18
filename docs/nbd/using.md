@@ -62,6 +62,9 @@ In order to run the `nbdserver` execute:
 ./nbdserver -protocol tcp -address ":6666"
 ```
 
+Note that if you don't have the `config.yml` file in your current working directory,
+you'll have to specify the config file explicitly using the `-config path` flag.
+
 <a id="nbd-client"></a>
 ### Test with nbd-client](nbd-client)
 
