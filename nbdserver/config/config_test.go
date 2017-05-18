@@ -11,16 +11,23 @@ const validConfig = `
 storageClusters:
   mycluster:
     dataStorage:
-      - 192.168.58.146:2000
-      - 192.123.123.123:2001
-    metadataStorage: 192.168.58.146:2001
+      - address: 192.168.58.146:2000
+        db: 0
+      - address: 192.123.123.123:2001
+        db: 0
+    metadataStorage:
+      address: 192.168.58.146:2001
+      db: 1
   rootcluster:
     dataStorage:
-      - 192.168.58.147:2000
-    metadataStorage: 192.168.58.147:2001
+      - address: 192.168.58.147:2000
+        db: 0
+    metadataStorage:
+      address: 192.168.58.147:2001
+      db: 2
 vdisks:
   myvdisk:
-    blocksize: 4096
+    blockSize: 4096
     readOnly: false
     size: 10
     storageCluster: mycluster
@@ -37,17 +44,22 @@ func TestValidConfigFromBytes(t *testing.T) {
 	if assert.Len(t, cfg.StorageClusters, 2) {
 		if cluster, ok := cfg.StorageClusters["mycluster"]; assert.True(t, ok) {
 			if assert.Len(t, cluster.DataStorage, 2) {
-				assert.Equal(t, "192.168.58.146:2000", cluster.DataStorage[0])
-				assert.Equal(t, "192.123.123.123:2001", cluster.DataStorage[1])
+				assert.Equal(t, "192.168.58.146:2000", cluster.DataStorage[0].Address)
+				assert.Equal(t, 0, cluster.DataStorage[0].Database)
+				assert.Equal(t, "192.123.123.123:2001", cluster.DataStorage[1].Address)
+				assert.Equal(t, 0, cluster.DataStorage[1].Database)
 			}
-			assert.Equal(t, "192.168.58.146:2001", cluster.MetaDataStorage)
+			assert.Equal(t, "192.168.58.146:2001", cluster.MetaDataStorage.Address)
+			assert.Equal(t, 1, cluster.MetaDataStorage.Database)
 		}
 
 		if cluster, ok := cfg.StorageClusters["rootcluster"]; assert.True(t, ok) {
 			if assert.Len(t, cluster.DataStorage, 1) {
-				assert.Equal(t, "192.168.58.147:2000", cluster.DataStorage[0])
+				assert.Equal(t, "192.168.58.147:2000", cluster.DataStorage[0].Address)
+				assert.Equal(t, 0, cluster.DataStorage[0].Database)
 			}
-			assert.Equal(t, "192.168.58.147:2001", cluster.MetaDataStorage)
+			assert.Equal(t, "192.168.58.147:2001", cluster.MetaDataStorage.Address)
+			assert.Equal(t, 2, cluster.MetaDataStorage.Database)
 		}
 	}
 
@@ -68,11 +80,12 @@ const minimalValidConfig = `
 storageClusters:
   mycluster:
     dataStorage:
-      - 192.168.58.146:2000
-    metadataStorage: 192.168.58.146:2001
+      - address: 192.168.58.146:2000
+    metadataStorage:
+      address: 192.168.58.146:2001
 vdisks:
   myvdisk:
-    blocksize: 4096
+    blockSize: 4096
     size: 10
     storageCluster: mycluster
     type: boot`
@@ -86,9 +99,11 @@ func TestMinimalValidConfigFromBytes(t *testing.T) {
 	if assert.Len(t, cfg.StorageClusters, 1) {
 		if cluster, ok := cfg.StorageClusters["mycluster"]; assert.True(t, ok) {
 			if assert.Len(t, cluster.DataStorage, 1) {
-				assert.Equal(t, "192.168.58.146:2000", cluster.DataStorage[0])
+				assert.Equal(t, "192.168.58.146:2000", cluster.DataStorage[0].Address)
+				assert.Equal(t, 0, cluster.DataStorage[0].Database)
 			}
-			assert.Equal(t, "192.168.58.146:2001", cluster.MetaDataStorage)
+			assert.Equal(t, "192.168.58.146:2001", cluster.MetaDataStorage.Address)
+			assert.Equal(t, 0, cluster.MetaDataStorage.Database)
 		}
 	}
 
@@ -110,7 +125,7 @@ var invalidConfigs = []string{
 	`
 vdisks:
   myvdisk:
-    blocksize: 4096
+    blockSize: 4096
     size: 10
     storageCluster: mycluster
     type: boot
@@ -119,18 +134,20 @@ vdisks:
 	`storageClusters:
   mycluster:
     dataStorage:
-      - 192.168.58.146:2000
-      - 192.123.123.123:2001
-    metadataStorage: 192.168.58.146:2001
+      - address: 192.168.58.146:2000
+      - address: 192.123.123.123:2001
+    metadataStorage:
+      address: 192.168.58.146:2001
 `,
 	// no data storage given
 	`
 storageClusters:
   mycluster:
-    metadataStorage: 192.168.58.146:2001
+    metadataStorage:
+      address: 192.168.58.146:2001
 vdisks:
   myvdisk:
-    blocksize: 4096
+    blockSize: 4096
     size: 10
     storageCluster: mycluster
     type: boot
@@ -141,10 +158,25 @@ storageClusters:
   mycluster:
     dataStorage:
       - foo
-    metadataStorage: 192.168.58.146:2001
+    metadataStorage:
+      address: 192.168.58.146:2001
 vdisks:
   myvdisk:
-    blocksize: 4096
+    blockSize: 4096
+    size: 10
+    storageCluster: mycluster
+    type: boot
+`,
+	`
+storageClusters:
+  mycluster:
+    dataStorage:
+      - 192.168.58.146:2001
+    metadataStorage:
+      address: 192.168.58.146:2001
+vdisks:
+  myvdisk:
+    blockSize: 4096
     size: 10
     storageCluster: mycluster
     type: boot
@@ -154,11 +186,11 @@ vdisks:
 storageClusters:
   mycluster:
     dataStorage:
-      - 192.168.58.146:2000
-      - 192.123.123.123:2001
+      - address: 192.168.58.146:2000
+      - address: 192.123.123.123:2001
 vdisks:
   myvdisk:
-    blocksize: 4096
+    blockSize: 4096
     size: 10
     storageCluster: mycluster
     type: boot
@@ -168,12 +200,41 @@ vdisks:
 storageClusters:
   mycluster:
     dataStorage:
-      - 192.168.58.146:2000
-      - 192.123.123.123:2001
+      - address: 192.168.58.146:2000
+      - address: 192.123.123.123:2001
     metadataStorage: foo
 vdisks:
   myvdisk:
-    blocksize: 4096
+    blockSize: 4096
+    size: 10
+    storageCluster: mycluster
+    type: boot
+`,
+	`
+storageClusters:
+  mycluster:
+    dataStorage:
+      - address: 192.168.58.146:2000
+      - address: 192.123.123.123:2001
+    metadataStorage: 192.168.58.146:2000
+vdisks:
+  myvdisk:
+    blockSize: 4096
+    size: 10
+    storageCluster: mycluster
+    type: boot
+`,
+	`
+storageClusters:
+  mycluster:
+    dataStorage:
+      - address: 192.168.58.146:2000
+      - address: 192.123.123.123:2001
+    metadataStorage:
+      address: foo
+vdisks:
+  myvdisk:
+    blockSize: 4096
     size: 10
     storageCluster: mycluster
     type: boot
@@ -183,9 +244,9 @@ vdisks:
 storageClusters:
   mycluster:
     dataStorage:
-      - 192.168.58.146:2000
-      - 192.123.123.123:2001
-    metadataStorage: 192.168.58.146:2001
+      - address: 192.168.58.146:2000
+    metadataStorage:
+      address: 192.168.58.146:2001
 vdisks:
   myvdisk:
     size: 10
@@ -197,12 +258,12 @@ vdisks:
 storageClusters:
   mycluster:
     dataStorage:
-      - 192.168.58.146:2000
-      - 192.123.123.123:2001
-    metadataStorage: 192.168.58.146:2001
+      - address: 192.168.58.146:2000
+    metadataStorage:
+      address: 192.168.58.146:2001
 vdisks:
   myvdisk:
-    blocksize: 4096
+    blockSize: 4096
     storageCluster: mycluster
     type: boot
 `,
@@ -211,12 +272,12 @@ vdisks:
 storageClusters:
   mycluster:
     dataStorage:
-      - 192.168.58.146:2000
-      - 192.123.123.123:2001
-    metadataStorage: 192.168.58.146:2001
+      - address: 192.168.58.146:2000
+    metadataStorage:
+      address: 192.168.58.146:2001
 vdisks:
   myvdisk:
-    blocksize: 4096
+    blockSize: 4096
     readOnly: foo
     size: 10
     storageCluster: mycluster
@@ -227,12 +288,12 @@ vdisks:
 storageClusters:
   mycluster:
     dataStorage:
-      - 192.168.58.146:2000
-      - 192.123.123.123:2001
-    metadataStorage: 192.168.58.146:2001
+      - address: 192.168.58.146:2000
+    metadataStorage:
+      address: 192.168.58.146:2001
 vdisks:
   myvdisk:
-    blocksize: 4096
+    blockSize: 4096
     size: 10
     type: boot
 `,
@@ -241,12 +302,12 @@ vdisks:
 storageClusters:
   mycluster:
     dataStorage:
-      - 192.168.58.146:2000
-      - 192.123.123.123:2001
-    metadataStorage: 192.168.58.146:2001
+      - address: 192.168.58.146:2000
+    metadataStorage:
+      address: 192.168.58.146:2001
 vdisks:
   myvdisk:
-    blocksize: 4096
+    blockSize: 4096
     size: 10
     storageCluster: mycluster
     type: foo
@@ -256,12 +317,12 @@ vdisks:
 storageClusters:
   mycluster:
     dataStorage:
-      - 192.168.58.146:2000
-      - 192.123.123.123:2001
-    metadataStorage: 192.168.58.146:2001
+      - address: 192.168.58.146:2000
+    metadataStorage:
+      address: 192.168.58.146:2001
 vdisks:
   myvdisk:
-    blocksize: 4096
+    blockSize: 4096
     size: 10
     storageCluster: foo
     type: boot
@@ -271,12 +332,12 @@ vdisks:
 storageClusters:
   mycluster:
     dataStorage:
-      - 192.168.58.146:2000
-      - 192.123.123.123:2001
-    metadataStorage: 192.168.58.146:2001
+      - address: 192.168.58.146:2000
+    metadataStorage:
+      address: 192.168.58.146:2001
 vdisks:
   myvdisk:
-    blocksize: 4096
+    blockSize: 4096
     size: 10
     storageCluster: mycluster
     rootStorageCluster: foo

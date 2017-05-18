@@ -30,7 +30,7 @@ var (
 func TestEndToEnd(t *testing.T) {
 	// initate config
 	conf := testConf
-	err := conf.ValidateAndCreateObjStoreAddresses(true)
+	err := conf.ValidateAndCreateStorageAddresses(true)
 	assert.Nil(t, err)
 
 	// start the server
@@ -106,7 +106,9 @@ func TestEndToEnd(t *testing.T) {
 	wg.Wait()
 
 	// decode the message
-	dec, err := decoder.New(s.ObjStorAddresses, conf.K, conf.M, expectedVdiskID, conf.PrivKey, conf.HexNonce)
+	dec, err := decoder.New(
+		s.StorageAddresses, conf.K, conf.M,
+		expectedVdiskID, conf.PrivKey, conf.HexNonce)
 	assert.Nil(t, err)
 
 	aggChan := dec.Decode(0)
@@ -148,7 +150,7 @@ func TestEndToEnd(t *testing.T) {
 func TestUnordered(t *testing.T) {
 	// initate config
 	conf := testConf
-	err := conf.ValidateAndCreateObjStoreAddresses(true)
+	err := conf.ValidateAndCreateStorageAddresses(true)
 	assert.Nil(t, err)
 
 	// start the server
@@ -251,7 +253,9 @@ func TestUnordered(t *testing.T) {
 	}
 
 	// decode the message
-	dec, err := decoder.New(s.ObjStorAddresses, conf.K, conf.M, vdiskID, conf.PrivKey, conf.HexNonce)
+	dec, err := decoder.New(
+		s.StorageAddresses, conf.K, conf.M,
+		vdiskID, conf.PrivKey, conf.HexNonce)
 	assert.Nil(t, err)
 
 	aggChan := dec.Decode(0)

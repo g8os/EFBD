@@ -100,13 +100,19 @@ func (cfg *Config) Validate() error {
 
 // StorageClusterConfig defines the config for a storageCluster
 type StorageClusterConfig struct {
-	DataStorage     []string `yaml:"dataStorage" valid:"dialstring,required"`
-	MetaDataStorage string   `yaml:"metadataStorage" valid:"dialstring,required"`
+	DataStorage     []StorageServerConfig `yaml:"dataStorage" valid:"required"`
+	MetaDataStorage StorageServerConfig   `yaml:"metadataStorage" valid:"required"`
+}
+
+// StorageServerConfig defines the config for a storage server
+type StorageServerConfig struct {
+	Address  string `yaml:"address" valid:"dialstring,required"`
+	Database int    `yaml:"db" valid:"optional"`
 }
 
 // VdiskConfig defines the config for a vdisk
 type VdiskConfig struct {
-	Blocksize          uint64    `yaml:"blocksize" valid:"required"`
+	Blocksize          uint64    `yaml:"blockSize" valid:"required"`
 	ReadOnly           bool      `yaml:"readOnly" valid:"optional"`
 	Size               uint64    `yaml:"size" valid:"required"`
 	Storagecluster     string    `yaml:"storageCluster" valid:"required"`

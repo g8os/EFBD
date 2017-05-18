@@ -71,6 +71,9 @@ func (l *Listener) GetExportConfig(name string) (cfg *ExportConfig, err error) {
 		if err == nil && cfg != nil {
 			return
 		}
+		if err != nil {
+			log.Error(err)
+		}
 	}
 
 	// try to find it in the statically defined list, if it exists.

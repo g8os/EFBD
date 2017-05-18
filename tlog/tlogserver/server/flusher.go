@@ -35,7 +35,7 @@ type flusher struct {
 }
 
 func newFlusher(conf *Config) (*flusher, error) {
-	addresses, err := conf.ObjStoreServerAddresses()
+	addresses, err := conf.StorageServerAddresses()
 	if err != nil {
 		return nil, err
 	}

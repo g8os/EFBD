@@ -138,16 +138,16 @@ type ClusterClient struct {
 	vdiskType config.VdiskType
 
 	// used to get a redis connection
-	dataConnectionStrings []string
+	dataConnectionStrings []config.StorageServerConfig
 	numberOfServers       int64 //Keep it as a seperate variable since this is constantly needed
 
 	// used as a fallback for getting data
 	// from a remote (root/template) server
-	rootDataConnectionStrings []string
+	rootDataConnectionStrings []config.StorageServerConfig
 	numberOfRootServers       int64 //Keep it as a seperate variable since this is constantly needed
 
 	// used to store meta data
-	metaConnectionString string
+	metaConnectionString config.StorageServerConfig
 
 	// indicates if configuration is succesfully loaded
 	loaded bool
@@ -159,52 +159,52 @@ type ClusterClient struct {
 	done chan struct{}
 }
 
-// ConnectionString returns a connectionstring,
+// ConnectionConfig returns a connection config,
 // based on a given index, which will be morphed into a local index,
 // based on the available (local) storage servers available.
-func (cc *ClusterClient) ConnectionString(index int64) (string, error) {
+func (cc *ClusterClient) ConnectionConfig(index int64) (*config.StorageServerConfig, error) {
 	cc.mux.Lock()
 	defer cc.mux.Unlock()
 
 	if !cc.loaded && !cc.loadConfig() {
-		return "", errors.New("couldn't load storage cluster config")
+		return nil, errors.New("couldn't load storage cluster config")
 	}
 
 	bcIndex := index % cc.numberOfServers
-	return cc.dataConnectionStrings[bcIndex], nil
+	return &cc.dataConnectionStrings[bcIndex], nil
 }
 
-// RootConnectionString returns the root connectionstring, if available
-func (cc *ClusterClient) RootConnectionString(index int64) (string, error) {
+// RootConnectionConfig returns the root connection config, if available
+func (cc *ClusterClient) RootConnectionConfig(index int64) (*config.StorageServerConfig, error) {
 	cc.mux.Lock()
 	defer cc.mux.Unlock()
 
 	if !cc.loaded && !cc.loadConfig() {
-		return "", errors.New("couldn't load storage cluster config")
+		return nil, errors.New("couldn't load storage cluster config")
 	}
 
 	// not all vdisks have a rootStoragecluster defined,
 	// it is therefore not a guarantee that at least one server is available,
 	// a given we do have in the ConnectionString method
 	if cc.numberOfRootServers == 0 {
-		return "", fmt.Errorf("no root connection strings available for vdisk %s", cc.vdiskID)
+		return nil, fmt.Errorf("no root connection strings available for vdisk %s", cc.vdiskID)
 	}
 
 	bcIndex := index % cc.numberOfRootServers
-	return cc.rootDataConnectionStrings[bcIndex], nil
+	return &cc.rootDataConnectionStrings[bcIndex], nil
 }
 
-// MetaConnectionString returns the connectionstring (`<host>:<port>`),
+// MetaConnectionConfig returns the connection config,
 // used to connect to the meta storage server.
-func (cc *ClusterClient) MetaConnectionString() (string, error) {
+func (cc *ClusterClient) MetaConnectionConfig() (*config.StorageServerConfig, error) {
 	cc.mux.Lock()
 	defer cc.mux.Unlock()
 
 	if !cc.loaded && !cc.loadConfig() {
-		return "", errors.New("couldn't load storage cluster config")
+		return nil, errors.New("couldn't load storage cluster config")
 	}
 
-	return cc.metaConnectionString, nil
+	return &cc.metaConnectionString, nil
 }
 
 // Close the open listen goroutine,

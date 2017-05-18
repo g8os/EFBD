@@ -39,7 +39,8 @@ func SetLevel(level Level) {
 	stdMux.Lock()
 	stdLevel = level
 	stdMux.Unlock()
-	std.internal.SetHandler(newLoggerHandler(stdLevel, stdHandlers))
+
+	setGlobalHandler()
 }
 
 // GetLevel returns the level used by the std logger
@@ -56,7 +57,11 @@ func SetHandlers(handlers ...Handler) {
 	stdHandlers = handlers
 	stdMux.Unlock()
 
-	std.internal.SetHandler(newLoggerHandler(stdLevel, stdHandlers))
+	setGlobalHandler()
+}
+
+func setGlobalHandler() {
+	std.internal.SetHandler(newLoggerHandler(stdLevel, 1, stdHandlers))
 }
 
 // Debug logs a message at level Debug on the standard logger.
@@ -102,7 +107,7 @@ func Fatalf(format string, args ...interface{}) {
 // New logger, creates a new logger
 func New(module string, level Level, handlers ...Handler) Logger {
 	logger := log.New("module", module)
-	logger.SetHandler(newLoggerHandler(level, handlers))
+	logger.SetHandler(newLoggerHandler(level, 0, handlers))
 
 	return &glueLogger{logger}
 }

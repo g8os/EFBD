@@ -20,7 +20,7 @@ type Server struct {
 	bufSize              int
 	maxRespSegmentBufLen int // max len of response capnp segment buffer
 	f                    *flusher
-	ObjStorAddresses     []string
+	StorageAddresses     []string
 	listener             net.Listener
 }
 
@@ -31,7 +31,7 @@ func NewServer(conf *Config) (*Server, error) {
 		return nil, err
 	}
 
-	objstorAddrs, err := conf.ObjStoreServerAddresses()
+	storageAddrs, err := conf.StorageServerAddresses()
 	if err != nil {
 		return nil, err
 	}
@@ -51,12 +51,13 @@ func NewServer(conf *Config) (*Server, error) {
 				return nil, fmt.Errorf("failed to listen on localhost, port: %v", err)
 			}
 		}
+		log.Infof("Started listening on local address %s", listener.Addr().String())
 	}
 
 	vdiskMgr = newVdiskManager(conf.BlockSize, conf.FlushSize)
 	return &Server{
 		f:                    f,
-		ObjStorAddresses:     objstorAddrs,
+		StorageAddresses:     storageAddrs,
 		listener:             listener,
 		maxRespSegmentBufLen: schema.RawTlogRespLen(conf.FlushSize),
 	}, nil

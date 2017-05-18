@@ -72,7 +72,7 @@ func createTestDedupedStorage(t *testing.T, vdiskID string, blockSize, blockCoun
 // testDedupContentExists tests if
 // the given content exists in the database
 func testDedupContentExists(t *testing.T, memRedis *redisstub.MemoryRedis, content []byte) {
-	conn, err := memRedis.Dial("")
+	conn, err := memRedis.Dial("", 0)
 	if err != nil {
 		debug.PrintStack()
 		t.Fatal(err)
@@ -97,7 +97,7 @@ func testDedupContentExists(t *testing.T, memRedis *redisstub.MemoryRedis, conte
 // testDedupContentDoesNotExist tests if
 // the given content does not exist in the database
 func testDedupContentDoesNotExist(t *testing.T, memRedis *redisstub.MemoryRedis, content []byte) {
-	conn, err := memRedis.Dial("")
+	conn, err := memRedis.Dial("", 0)
 	if err != nil {
 		debug.PrintStack()
 		t.Fatal(err)

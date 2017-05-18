@@ -8,8 +8,8 @@ BUILD_DATE = $(shell date +%FT%T%z)
 
 PACKAGES = $(shell go list ./... | grep -v vendor)
 
-ldflags = -extldflags "-static"
-ldflagsg8stor = -X $(PACKAGE)/g8stor/cmd.CommitHash=$(COMMIT_HASH) -X $(PACKAGE)/g8stor/cmd.BuildDate=$(BUILD_DATE)
+ldflags = -extldflags "-static" -s -w
+ldflagsg8stor = -X $(PACKAGE)/g8stor/cmd.CommitHash=$(COMMIT_HASH) -X $(PACKAGE)/g8stor/cmd.BuildDate=$(BUILD_DATE) -s -w
 
 all: nbdserver tlogserver g8stor
 
