@@ -28,13 +28,14 @@ var (
 
 // Test that we can send the data to tlog and decode it again correctly
 func TestEndToEnd(t *testing.T) {
-	// initate config
+	// config
 	conf := testConf
-	err := conf.ValidateAndCreateStorageAddresses(true)
-	assert.Nil(t, err)
+
+	// create inmemory redis pool factory
+	poolFactory := tlog.InMemoryRedisPoolFactory(conf.RequiredDataServers())
 
 	// start the server
-	s, err := NewServer(conf)
+	s, err := NewServer(conf, poolFactory)
 	assert.Nil(t, err)
 
 	go s.Listen()
@@ -105,9 +106,15 @@ func TestEndToEnd(t *testing.T) {
 
 	wg.Wait()
 
+	// get the redis pool for the vdisk
+	pool, err := s.poolFactory.NewRedisPool(expectedVdiskID)
+	if !assert.Nil(t, err) {
+		return
+	}
+
 	// decode the message
 	dec, err := decoder.New(
-		s.StorageAddresses, conf.K, conf.M,
+		pool, conf.K, conf.M,
 		expectedVdiskID, conf.PrivKey, conf.HexNonce)
 	assert.Nil(t, err)
 
@@ -148,13 +155,14 @@ func TestEndToEnd(t *testing.T) {
 
 // Test tlog server ability to handle unordered message
 func TestUnordered(t *testing.T) {
-	// initate config
+	// config
 	conf := testConf
-	err := conf.ValidateAndCreateStorageAddresses(true)
-	assert.Nil(t, err)
+
+	// create inmemory redis pool factory
+	poolFactory := tlog.InMemoryRedisPoolFactory(conf.RequiredDataServers())
 
 	// start the server
-	s, err := NewServer(conf)
+	s, err := NewServer(conf, poolFactory)
 	assert.Nil(t, err)
 
 	go s.Listen()
@@ -252,9 +260,15 @@ func TestUnordered(t *testing.T) {
 		return
 	}
 
+	// get the redis pool for the vdisk
+	pool, err := s.poolFactory.NewRedisPool(vdiskID)
+	if !assert.Nil(t, err) {
+		return
+	}
+
 	// decode the message
 	dec, err := decoder.New(
-		s.StorageAddresses, conf.K, conf.M,
+		pool, conf.K, conf.M,
 		vdiskID, conf.PrivKey, conf.HexNonce)
 	assert.Nil(t, err)
 

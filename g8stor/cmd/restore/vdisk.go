@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"strings"
 
+	blockstorcfg "github.com/g8os/blockstor/config"
+
 	"github.com/g8os/blockstor/g8stor/cmd/config"
 	"github.com/g8os/blockstor/gonbdserver/nbd"
 	"github.com/g8os/blockstor/log"
 	"github.com/g8os/blockstor/nbdserver/ardb"
 	"github.com/g8os/blockstor/storagecluster"
+	"github.com/g8os/blockstor/tlog"
 	"github.com/g8os/blockstor/tlog/schema"
 	"github.com/g8os/blockstor/tlog/tlogclient/decoder"
 	"github.com/spf13/cobra"
@@ -86,11 +89,29 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create backend:%v", err)
 	}
 
+	// parse optional server configs
+	serverConfigs, err := blockstorcfg.ParseCSStorageServerConfigStrings(vdiskCfg.TlogObjStorAddresses)
+	if err != nil {
+		return fmt.Errorf(
+			"failed to parse given connection strings %q: %s",
+			vdiskCfg.TlogObjStorAddresses, err.Error())
+	}
+
+	// create redisPool, used by the tlog decoder
+	tlogRedisPool, err := tlog.AnyRedisPool(tlog.RedisPoolConfig{
+		VdiskID:                 vdiskID,
+		RequiredDataServerCount: vdiskCfg.K + vdiskCfg.M,
+		ConfigPath:              vdiskCfg.ConfigPath,
+		ServerConfigs:           serverConfigs,
+		AutoFill:                true,
+		AllowInMemory:           false,
+	})
+
 	// create tlog decoder
 	addrs := strings.Split(vdiskCfg.TlogObjStorAddresses, ",")
 	log.Infof("addr=%v", addrs)
 	dec, err := decoder.New(
-		addrs,
+		tlogRedisPool,
 		vdiskCfg.K, vdiskCfg.M,
 		vdiskID,
 		vdiskCfg.PrivKey, vdiskCfg.HexNonce)
@@ -143,9 +164,8 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 func init() {
 	VdiskCmd.Flags().StringVar(
 		&vdiskCfg.TlogObjStorAddresses,
-		"tlog-objstor-addrs",
-		"127.0.0.1:16379,127.0.0.1:16380,127.0.0.1:16381,127.0.0.1:16382,127.0.0.1:16383,127.0.0.1:16384,127.0.0.1:16385",
-		"tlog objstor addresses, from which the data will be retrieved")
+		"storage-addresses", "",
+		"comma seperated list of redis compatible connectionstrings (format: '<ip>:<port>[@<db>]', eg: 'localhost:16379,localhost:6379@2'), if given, these are used for all vdisks, ignoring the given config")
 	VdiskCmd.Flags().StringVar(
 		&vdiskCfg.ConfigPath, "config", "config.yml",
 		"blockstor config file")

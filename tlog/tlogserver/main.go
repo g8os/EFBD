@@ -4,9 +4,10 @@ import (
 	"flag"
 	"net/http"
 	_ "net/http/pprof"
-	"strings"
 
+	"github.com/g8os/blockstor/config"
 	"github.com/g8os/blockstor/log"
+	"github.com/g8os/blockstor/tlog"
 	"github.com/g8os/blockstor/tlog/tlogserver/server"
 )
 
@@ -15,7 +16,9 @@ func main() {
 
 	var verbose bool
 	var profileAddr string
+	var inMemoryStorage bool
 	var storageAddresses string
+	var configPath string
 
 	flag.StringVar(&conf.ListenAddr, "address", conf.ListenAddr, "Address to listen on")
 	flag.IntVar(&conf.FlushSize, "flush-size", conf.FlushSize, "flush size")
@@ -27,13 +30,37 @@ func main() {
 	flag.StringVar(&conf.HexNonce, "nonce", conf.HexNonce, "hex nonce used for encryption")
 	flag.StringVar(&profileAddr, "profile-address", "", "Enables profiling of this server as an http service")
 
+	flag.BoolVar(&inMemoryStorage, "memorystorage", false, "Stores the (meta)data in memory only, usefull for testing or benchmarking (overwrites the storage-addresses flag)")
+	flag.StringVar(&configPath, "config", "config.yml", "Blockstor Config YAML File")
 	flag.StringVar(&storageAddresses, "storage-addresses", "",
-		"comma seperated list of redis compatible connectionstrings, if < k+m+1 addresses are given, the missing addresses are assumed to be on the ports following the last given address")
+		"comma seperated list of redis compatible connectionstrings (format: '<ip>:<port>[@<db>]', eg: 'localhost:16379,localhost:6379@2'), if given, these are used for all vdisks, ignoring the given config")
 
 	flag.BoolVar(&verbose, "v", false, "log verbose (debug) statements")
 
 	// parse flags
 	flag.Parse()
+
+	// config logger (verbose or not)
+	if verbose {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
+
+	log.Debugf("flags parsed: address=%q flush-size=%d flush-time=%d block-size=%d k=%d m=%d priv-key=%q nonce=%q profile-address=%q memorystorage=%t config=%q storage-addresses=%q",
+		conf.ListenAddr,
+		conf.FlushSize,
+		conf.FlushTime,
+		conf.BlockSize,
+		conf.K,
+		conf.M,
+		conf.PrivKey,
+		conf.HexNonce,
+		profileAddr,
+		inMemoryStorage,
+		configPath,
+		storageAddresses,
+	)
 
 	// profiling
 	if profileAddr != "" {
@@ -45,29 +72,23 @@ func main() {
 		}()
 	}
 
-	// get objstore addresses
-	if storageAddresses != "" {
-		conf.StorageAddresses = strings.Split(storageAddresses, ",")
-	}
-
-	// config logger (verbose or not)
-	if verbose {
-		log.SetLevel(log.DebugLevel)
-	} else {
-		log.SetLevel(log.InfoLevel)
-	}
-
-	const allowStubs = true
-	err := conf.ValidateAndCreateStorageAddresses(allowStubs)
+	// return server configs based on the given storage addresses
+	serverConfigs, err := config.ParseCSStorageServerConfigStrings(storageAddresses)
 	if err != nil {
-		log.Fatalf("failed to create config: %v", err)
+		log.Fatal(err)
 	}
 
-	log.Debugf("listen addr=%v\n", conf.ListenAddr)
-	log.Debugf("k=%v, m=%v\n", conf.K, conf.M)
+	// create any kind of valid pool factory
+	poolFactory, err := tlog.AnyRedisPoolFactory(tlog.RedisPoolFactoryConfig{
+		RequiredDataServerCount: conf.RequiredDataServers(),
+		ConfigPath:              configPath,
+		ServerConfigs:           serverConfigs,
+		AutoFill:                true,
+		AllowInMemory:           true,
+	})
 
 	// create server
-	server, err := server.NewServer(conf)
+	server, err := server.NewServer(conf, poolFactory)
 	if err != nil {
 		log.Fatalf("failed to create server: %v", err)
 	}
