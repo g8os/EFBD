@@ -7,8 +7,8 @@ func RawTlogRespLen(numSeq int) int {
 		40 // capnp overhead. TODO : find the exact number.
 }
 
-// RawServerVerackLen returns length of raw ServerVerack packet
-func RawServerVerackLen() int {
+// RawServerHandshakeLen returns length of raw Handshake packet
+func RawServerHandshakeLen() int {
 	return 1 /*status:uint8*/ + 4 /*version:uint32*/ +
 		40 // capnp overhead. TODO : find the exact number
 }

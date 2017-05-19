@@ -4,9 +4,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/g8os/blockstor/config"
 	"github.com/g8os/blockstor/gonbdserver/nbd"
 	"github.com/g8os/blockstor/log"
-	"github.com/g8os/blockstor/nbdserver/config"
 )
 
 // NewExportController creates a new export config manager.

@@ -62,6 +62,9 @@ Make sure you have an ARDB server running on `localhost:16379`.
 make nbdserver && bin/nbdserver -protocol tcp -address ":6666"
 ```
 
+Note that if you don't have the `config.yml` file in your current working directory,
+you'll have to specify the config file explicitly using the `-config path` flag.
+
 Connect your `nbd-client` to the server running on `localhost:6666`:
 
 ```

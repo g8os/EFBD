@@ -3,15 +3,15 @@ using Go = import "/go.capnp";
 $Go.package("schema");
 $Go.import("github.com/g8os/blockstor/tlog/schema");
 
-# VerAck message sent from client to server.
-struct ClientVerAck {
+# Handshake message sent from client to server.
+struct HandshakeRequest {
 	version @0 :UInt32;
 	vdiskID @1 :Text;
 	firstSequence @2: UInt64;
 }
-# Response VerAck message sent from server to client,
-# after receiving a ClientVerAck message from the client.
-struct ServerVerAck {
+# Response handshake message sent from server to client,
+# after receiving a HandshakeRequest message from the client.
+struct HandshakeResponse {
 	version @0 :UInt32;
 	status @1 :Int8;
 }

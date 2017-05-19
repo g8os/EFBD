@@ -9,8 +9,8 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/g8os/blockstor/config"
 	"github.com/g8os/blockstor/log"
-	"github.com/g8os/blockstor/nbdserver/config"
 )
 
 // NewClusterClientFactory creates a ClusterClientFactory.
@@ -20,6 +20,12 @@ func NewClusterClientFactory(configPath string, logger log.Logger) (*ClusterClie
 	}
 	if logger == nil {
 		logger = log.New("cluster", log.GetLevel())
+	}
+
+	// validate the config file at startup
+	_, err := config.ReadConfig(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("invalid config file: %s", err.Error())
 	}
 
 	return &ClusterClientFactory{
