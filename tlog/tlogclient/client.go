@@ -57,20 +57,28 @@ func New(addr, vdiskID string, firstSequence uint64) (*Client, error) {
 		ctx:         ctx,
 		cancelFunc:  cancelFunc,
 	}
-	err := client.createConn()
-	if err != nil {
-		return nil, fmt.Errorf("client couldn't be created: %s", err.Error())
+	if err := client.connect(firstSequence); err != nil {
+		return nil, err
 	}
 
-	err = client.handshake(firstSequence)
-	if err != nil {
-		if err := client.Close(); err != nil {
-			log.Debug("couldn't close open connection of invalid client:", err)
-		}
-		return nil, fmt.Errorf("client handshake failed: %s", err.Error())
-	}
 	go client.resender()
 	return client, nil
+}
+
+func (c *Client) connect(firstSequence uint64) error {
+	err := c.createConn()
+	if err != nil {
+		return fmt.Errorf("client couldn't be created: %s", err.Error())
+	}
+
+	err = c.handshake(firstSequence)
+	if err != nil {
+		if err := c.Close(); err != nil {
+			log.Debug("couldn't close open connection of invalid client:", err)
+		}
+		return fmt.Errorf("client handshake failed: %s", err.Error())
+	}
+	return nil
 }
 
 // goroutine which re-send the block.
@@ -127,7 +135,7 @@ func (c *Client) Recv(chanSize int) <-chan *Result {
 	go func() {
 		for {
 			tr, err := c.recvOne()
-			if tr != nil {
+			if tr != nil && len(tr.Sequences) > 0 {
 				status := tlog.BlockStatus(tr.Status)
 				seq := tr.Sequences[0]
 
@@ -247,7 +255,7 @@ func (c *Client) send(op uint8, seq, lba, timestamp uint64,
 		// the network connection or the tlog server that need time to be recovered.
 		time.Sleep(time.Duration(i) * sendSleepTime)
 
-		if err = c.createConn(); err != nil {
+		if err = c.connect(0); err != nil {
 			okToSend = false
 		} else {
 			okToSend = true
