@@ -117,25 +117,27 @@ func (c *Client) Recv(chanSize int) <-chan *Result {
 	go func() {
 		for {
 			tr, err := c.RecvOne()
-			status := tlog.BlockStatus(tr.Status)
-			seq := tr.Sequences[0]
+			if tr != nil {
+				status := tlog.BlockStatus(tr.Status)
+				seq := tr.Sequences[0]
 
-			// if it failed to be received, promote it to be
-			// timed out as soon as possible.
-			if status == tlog.BlockStatusRecvFailed {
-				if err := c.blockBuffer.Promote(seq); err != nil {
-					// failed to promote, forward the server's response to user.
-					log.Infof("tlog client failed to promote %v, err: %v", seq, err)
-				} else {
-					// successfully promoted, ignore the response.
-					// let the client resend it
-					continue
+				// if it failed to be received, promote it to be
+				// timed out as soon as possible.
+				if status == tlog.BlockStatusRecvFailed {
+					if err := c.blockBuffer.Promote(seq); err != nil {
+						// failed to promote, forward the server's response to user.
+						log.Infof("tlog client failed to promote %v, err: %v", seq, err)
+					} else {
+						// successfully promoted, ignore the response.
+						// let the client resend it
+						continue
+					}
 				}
-			}
 
-			// if it successfully received by server, delete from buffer
-			if status == tlog.BlockStatusRecvOK {
-				c.blockBuffer.Delete(seq)
+				// if it successfully received by server, delete from buffer
+				if status == tlog.BlockStatusRecvOK {
+					c.blockBuffer.Delete(seq)
+				}
 			}
 
 			reChan <- &Result{
