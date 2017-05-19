@@ -2,6 +2,7 @@ package tlogclient
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"net"
 	"sync"
@@ -32,7 +33,7 @@ type Result struct {
 }
 
 // Client defines a Tlog Client.
-// This client is not thread/goroutine safe
+// This client is not thread/goroutine safe.
 type Client struct {
 	addr            string
 	vdiskID         string
@@ -41,15 +42,20 @@ type Client struct {
 	blockBuffer     *blockbuffer.Buffer
 	capnpSegmentBuf []byte
 	lock            sync.RWMutex
+	ctx             context.Context
+	cancelFunc      context.CancelFunc
 }
 
 // New creates a new tlog client.
 // The client is not goroutine safe.
 func New(addr, vdiskID string, firstSequence uint64) (*Client, error) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
 	client := &Client{
 		addr:        addr,
 		vdiskID:     vdiskID,
 		blockBuffer: blockbuffer.NewBuffer(resendTimeoutDur),
+		ctx:         ctx,
+		cancelFunc:  cancelFunc,
 	}
 	err := client.createConn()
 	if err != nil {
@@ -70,16 +76,20 @@ func New(addr, vdiskID string, firstSequence uint64) (*Client, error) {
 // goroutine which re-send the block.
 func (c *Client) resender() {
 	for {
-		block := <-c.blockBuffer.TimedOut()
-		data, err := block.Data()
-		if err != nil {
-			log.Errorf("client resender failed to get data:%v", err)
-			continue
-		}
+		select {
+		case <-c.ctx.Done():
+			return
+		case block := <-c.blockBuffer.TimedOut():
+			data, err := block.Data()
+			if err != nil {
+				log.Errorf("client resender failed to get data block:%v", err)
+				continue
+			}
 
-		err = c.Send(block.Operation(), block.Sequence(), block.Lba(), block.Timestamp(), data, block.Size())
-		if err != nil {
-			log.Errorf("failed to send data:%v", err)
+			err = c.Send(block.Operation(), block.Sequence(), block.Lba(), block.Timestamp(), data, block.Size())
+			if err != nil {
+				log.Errorf("client resender failed to send data:%v", err)
+			}
 		}
 	}
 }
@@ -129,7 +139,7 @@ func (c *Client) Recv(chanSize int) <-chan *Result {
 						log.Infof("tlog client failed to promote %v, err: %v", seq, err)
 					} else {
 						// successfully promoted, ignore the response.
-						// let the client resend it
+						// we will resend it
 						continue
 					}
 				}
@@ -248,6 +258,7 @@ func (c *Client) send(op uint8, seq, lba, timestamp uint64,
 
 // Close the open connection, making this client invalid
 func (c *Client) Close() error {
+	c.cancelFunc()
 	return c.conn.Close()
 }
 
