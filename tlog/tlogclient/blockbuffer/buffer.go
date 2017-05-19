@@ -3,6 +3,7 @@ package blockbuffer
 import (
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -16,11 +17,12 @@ var (
 // Buffer defines buffer of tlog blocks that already sent
 // but still waiting to be succesfully received by the server
 type Buffer struct {
-	lock      sync.Mutex
-	entries   map[uint64]*entry
-	readyChan chan *schema.TlogBlock
-	timeout   time.Duration
-	maxRetry  int
+	lock            sync.Mutex
+	entries         map[uint64]*entry
+	readyChan       chan *schema.TlogBlock
+	timeout         time.Duration
+	maxRetry        int
+	highestSequence uint64 // the highest sequence we received
 }
 
 // NewBuffer creates a new tlog blocks buffer
@@ -65,6 +67,12 @@ func (b *Buffer) Add(block *schema.TlogBlock) {
 		ent.update(b.timeout)
 		return
 	}
+
+	seq := block.Sequence()
+	if seq > b.highestSequence {
+		b.highestSequence = seq
+	}
+
 	ent = newEntry(block, b.timeout)
 
 	b.entries[key] = ent
@@ -107,4 +115,24 @@ func (b *Buffer) TimedOut() <-chan *schema.TlogBlock {
 	}()
 
 	return b.readyChan
+}
+
+// MinSequence returns min sequence that this
+// buffer will/currently has.
+func (b *Buffer) MinSequence() uint64 {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	if len(b.entries) == 0 {
+		return b.highestSequence + 1
+	}
+
+	var seq uint64 = math.MaxUint64
+	for _, ent := range b.entries {
+		blockSeq := ent.block.Sequence()
+		if blockSeq < seq {
+			seq = blockSeq
+		}
+	}
+	return seq
 }

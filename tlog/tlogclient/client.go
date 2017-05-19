@@ -15,8 +15,11 @@ import (
 	"github.com/g8os/blockstor/tlog/tlogclient/blockbuffer"
 )
 
-var (
-	resendTimeoutDur = 5 * time.Second // duration to wait before re-send the tlog.
+const (
+	sendRetryNum     = 5
+	sendSleepTime    = 500 * time.Millisecond // sleep duration before retrying the Send
+	resendTimeoutDur = 5 * time.Second        // duration to wait before re-send the tlog.
+	readTimeout      = 5 * time.Second
 )
 
 // Response defines a response from tlog server
@@ -41,9 +44,16 @@ type Client struct {
 	bw              *bufio.Writer
 	blockBuffer     *blockbuffer.Buffer
 	capnpSegmentBuf []byte
-	lock            sync.RWMutex
-	ctx             context.Context
-	cancelFunc      context.CancelFunc
+
+	// write lock, to protect against parallel Send
+	// which is not goroutine safe yet
+	wLock sync.RWMutex
+
+	// read lock, to protect it from race condition
+	// caused by 'handshake' and recvOne
+	rLock      sync.RWMutex
+	ctx        context.Context
+	cancelFunc context.CancelFunc
 }
 
 // New creates a new tlog client.
@@ -57,20 +67,28 @@ func New(addr, vdiskID string, firstSequence uint64) (*Client, error) {
 		ctx:         ctx,
 		cancelFunc:  cancelFunc,
 	}
-	err := client.createConn()
-	if err != nil {
-		return nil, fmt.Errorf("client couldn't be created: %s", err.Error())
+	if err := client.connect(firstSequence); err != nil {
+		return nil, err
 	}
 
-	err = client.handshake(firstSequence)
-	if err != nil {
-		if err := client.Close(); err != nil {
-			log.Debug("couldn't close open connection of invalid client:", err)
-		}
-		return nil, fmt.Errorf("client handshake failed: %s", err.Error())
-	}
 	go client.resender()
 	return client, nil
+}
+
+func (c *Client) connect(firstSequence uint64) error {
+	err := c.createConn()
+	if err != nil {
+		return fmt.Errorf("client couldn't be created: %s", err.Error())
+	}
+
+	err = c.handshake(firstSequence)
+	if err != nil {
+		if err := c.Close(); err != nil {
+			log.Debug("couldn't close open connection of invalid client:", err)
+		}
+		return fmt.Errorf("client handshake failed: %s", err.Error())
+	}
+	return nil
 }
 
 // goroutine which re-send the block.
@@ -127,7 +145,14 @@ func (c *Client) Recv(chanSize int) <-chan *Result {
 	go func() {
 		for {
 			tr, err := c.recvOne()
-			if tr != nil {
+
+			// it is timeout error
+			// client can't really read something
+			if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
+				continue
+			}
+
+			if tr != nil && len(tr.Sequences) > 0 {
 				status := tlog.BlockStatus(tr.Status)
 				seq := tr.Sequences[0]
 
@@ -161,6 +186,13 @@ func (c *Client) Recv(chanSize int) <-chan *Result {
 
 // recvOne receive one response
 func (c *Client) recvOne() (*Response, error) {
+	c.rLock.Lock()
+	defer c.rLock.Unlock()
+
+	// set read deadline, so we don't have deadlock
+	// for rLock
+	c.conn.SetReadDeadline(time.Now().Add(readTimeout))
+
 	// decode capnp and build response
 	tr, err := c.decodeBlockResponse()
 	if err != nil {
@@ -182,6 +214,9 @@ func (c *Client) recvOne() (*Response, error) {
 }
 
 func (c *Client) createConn() error {
+	c.rLock.Lock()
+	defer c.rLock.Unlock()
+
 	tcpAddr, err := net.ResolveTCPAddr("tcp", c.addr)
 	if err != nil {
 		return err
@@ -204,8 +239,8 @@ func (c *Client) createConn() error {
 // - failed to recover from broken network connection.
 func (c *Client) Send(op uint8, seq, lba, timestamp uint64,
 	data []byte, size uint64) error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+	c.wLock.Lock()
+	defer c.wLock.Unlock()
 
 	block, err := c.send(op, seq, lba, timestamp, data, size)
 	if err == nil && block != nil {
@@ -247,7 +282,8 @@ func (c *Client) send(op uint8, seq, lba, timestamp uint64,
 		// the network connection or the tlog server that need time to be recovered.
 		time.Sleep(time.Duration(i) * sendSleepTime)
 
-		if err = c.createConn(); err != nil {
+		if err = c.connect(c.blockBuffer.MinSequence()); err != nil {
+			log.Infof("tlog client : reconnect attemp(%v) failed:%v", i, err)
 			okToSend = false
 		} else {
 			okToSend = true
@@ -261,8 +297,3 @@ func (c *Client) Close() error {
 	c.cancelFunc()
 	return c.conn.Close()
 }
-
-const (
-	sendRetryNum  = 3
-	sendSleepTime = 500 * time.Millisecond
-)

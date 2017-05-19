@@ -2,10 +2,12 @@ package main
 
 import (
 	"flag"
+	"io"
 	"sync"
 	"time"
 
 	"github.com/g8os/blockstor/log"
+	"github.com/g8os/blockstor/tlog"
 	"github.com/g8os/blockstor/tlog/schema"
 	client "github.com/g8os/blockstor/tlog/tlogclient"
 )
@@ -39,31 +41,47 @@ func main() {
 	data[0] = 'b'
 	data[1] = 'c'
 
-	logsToSend := 25 * numFlush
+	numLogsToSend := 25 * numFlush
+	logsToSend := map[uint64]struct{}{}
+	for i := 0; i < numLogsToSend; i++ {
+		logsToSend[uint64(i)] = struct{}{}
+	}
 
 	var wg sync.WaitGroup
 
 	// start the response receiver goroutine
+	// wait for all sequences to be flushed
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 
-		respChan := client.Recv(1)
-		expectedResp := logsToSend /*response for each mesage */ + numFlush /* flush response */
-
-		for i := 0; i < expectedResp; i++ {
-			resp := <-respChan
-			if resp.Err != nil {
-				log.Fatalf("resp error:%v", resp.Err)
+		respChan := client.Recv(100)
+		for {
+			r := <-respChan
+			if r.Err != nil {
+				if r.Err == io.EOF {
+					continue
+				}
+				log.Fatalf("resp error:%v", r.Err)
 			}
+			resp := r.Resp
 			if printResp {
-				log.Infof("status=%v, seqs=%v\n", resp.Resp.Status, resp.Resp.Sequences)
+				log.Infof("status=%v, seqs=%v\n", resp.Status, resp.Sequences)
+			}
+
+			if resp.Status == tlog.BlockStatusFlushOK {
+				for _, seq := range resp.Sequences {
+					delete(logsToSend, seq)
+				}
+				if len(logsToSend) == 0 {
+					return
+				}
 			}
 		}
 	}()
 
 	// send the data
-	for i := 0; i < logsToSend; i++ {
+	for i := 0; i < numLogsToSend; i++ {
 		seq := uint64(i)
 		err := client.Send(schema.OpWrite, seq, seq*dataLen, uint64(time.Now().Unix()), data, uint64(len(data)))
 		if err != nil {
