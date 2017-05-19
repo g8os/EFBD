@@ -8,147 +8,153 @@ import (
 	schemas "zombiezen.com/go/capnproto2/schemas"
 )
 
-type ClientVerAck struct{ capnp.Struct }
+type HandshakeRequest struct{ capnp.Struct }
 
-// ClientVerAck_TypeID is the unique identifier for the type ClientVerAck.
-const ClientVerAck_TypeID = 0x89f8da619fcbb3f3
+// HandshakeRequest_TypeID is the unique identifier for the type HandshakeRequest.
+const HandshakeRequest_TypeID = 0xe0d4e6d68fa24ac0
 
-func NewClientVerAck(s *capnp.Segment) (ClientVerAck, error) {
+func NewHandshakeRequest(s *capnp.Segment) (HandshakeRequest, error) {
 	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 16, PointerCount: 1})
-	return ClientVerAck{st}, err
+	return HandshakeRequest{st}, err
 }
 
-func NewRootClientVerAck(s *capnp.Segment) (ClientVerAck, error) {
+func NewRootHandshakeRequest(s *capnp.Segment) (HandshakeRequest, error) {
 	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 16, PointerCount: 1})
-	return ClientVerAck{st}, err
+	return HandshakeRequest{st}, err
 }
 
-func ReadRootClientVerAck(msg *capnp.Message) (ClientVerAck, error) {
+func ReadRootHandshakeRequest(msg *capnp.Message) (HandshakeRequest, error) {
 	root, err := msg.RootPtr()
-	return ClientVerAck{root.Struct()}, err
+	return HandshakeRequest{root.Struct()}, err
 }
 
-func (s ClientVerAck) String() string {
-	str, _ := text.Marshal(0x89f8da619fcbb3f3, s.Struct)
+func (s HandshakeRequest) String() string {
+	str, _ := text.Marshal(0xe0d4e6d68fa24ac0, s.Struct)
 	return str
 }
 
-func (s ClientVerAck) Version() uint32 {
+func (s HandshakeRequest) Version() uint32 {
 	return s.Struct.Uint32(0)
 }
 
-func (s ClientVerAck) SetVersion(v uint32) {
+func (s HandshakeRequest) SetVersion(v uint32) {
 	s.Struct.SetUint32(0, v)
 }
 
-func (s ClientVerAck) VdiskID() (string, error) {
+func (s HandshakeRequest) VdiskID() (string, error) {
 	p, err := s.Struct.Ptr(0)
 	return p.Text(), err
 }
 
-func (s ClientVerAck) HasVdiskID() bool {
+func (s HandshakeRequest) HasVdiskID() bool {
 	p, err := s.Struct.Ptr(0)
 	return p.IsValid() || err != nil
 }
 
-func (s ClientVerAck) VdiskIDBytes() ([]byte, error) {
+func (s HandshakeRequest) VdiskIDBytes() ([]byte, error) {
 	p, err := s.Struct.Ptr(0)
 	return p.TextBytes(), err
 }
 
-func (s ClientVerAck) SetVdiskID(v string) error {
+func (s HandshakeRequest) SetVdiskID(v string) error {
 	return s.Struct.SetText(0, v)
 }
 
-func (s ClientVerAck) FirstSequence() uint64 {
+func (s HandshakeRequest) FirstSequence() uint64 {
 	return s.Struct.Uint64(8)
 }
 
-func (s ClientVerAck) SetFirstSequence(v uint64) {
+func (s HandshakeRequest) SetFirstSequence(v uint64) {
 	s.Struct.SetUint64(8, v)
 }
 
-// ClientVerAck_List is a list of ClientVerAck.
-type ClientVerAck_List struct{ capnp.List }
+// HandshakeRequest_List is a list of HandshakeRequest.
+type HandshakeRequest_List struct{ capnp.List }
 
-// NewClientVerAck creates a new list of ClientVerAck.
-func NewClientVerAck_List(s *capnp.Segment, sz int32) (ClientVerAck_List, error) {
+// NewHandshakeRequest creates a new list of HandshakeRequest.
+func NewHandshakeRequest_List(s *capnp.Segment, sz int32) (HandshakeRequest_List, error) {
 	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 16, PointerCount: 1}, sz)
-	return ClientVerAck_List{l}, err
+	return HandshakeRequest_List{l}, err
 }
 
-func (s ClientVerAck_List) At(i int) ClientVerAck { return ClientVerAck{s.List.Struct(i)} }
+func (s HandshakeRequest_List) At(i int) HandshakeRequest { return HandshakeRequest{s.List.Struct(i)} }
 
-func (s ClientVerAck_List) Set(i int, v ClientVerAck) error { return s.List.SetStruct(i, v.Struct) }
+func (s HandshakeRequest_List) Set(i int, v HandshakeRequest) error {
+	return s.List.SetStruct(i, v.Struct)
+}
 
-// ClientVerAck_Promise is a wrapper for a ClientVerAck promised by a client call.
-type ClientVerAck_Promise struct{ *capnp.Pipeline }
+// HandshakeRequest_Promise is a wrapper for a HandshakeRequest promised by a client call.
+type HandshakeRequest_Promise struct{ *capnp.Pipeline }
 
-func (p ClientVerAck_Promise) Struct() (ClientVerAck, error) {
+func (p HandshakeRequest_Promise) Struct() (HandshakeRequest, error) {
 	s, err := p.Pipeline.Struct()
-	return ClientVerAck{s}, err
+	return HandshakeRequest{s}, err
 }
 
-type ServerVerAck struct{ capnp.Struct }
+type HandshakeResponse struct{ capnp.Struct }
 
-// ServerVerAck_TypeID is the unique identifier for the type ServerVerAck.
-const ServerVerAck_TypeID = 0xb0f1edca577182a7
+// HandshakeResponse_TypeID is the unique identifier for the type HandshakeResponse.
+const HandshakeResponse_TypeID = 0xee959a7d96c96641
 
-func NewServerVerAck(s *capnp.Segment) (ServerVerAck, error) {
+func NewHandshakeResponse(s *capnp.Segment) (HandshakeResponse, error) {
 	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 0})
-	return ServerVerAck{st}, err
+	return HandshakeResponse{st}, err
 }
 
-func NewRootServerVerAck(s *capnp.Segment) (ServerVerAck, error) {
+func NewRootHandshakeResponse(s *capnp.Segment) (HandshakeResponse, error) {
 	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 0})
-	return ServerVerAck{st}, err
+	return HandshakeResponse{st}, err
 }
 
-func ReadRootServerVerAck(msg *capnp.Message) (ServerVerAck, error) {
+func ReadRootHandshakeResponse(msg *capnp.Message) (HandshakeResponse, error) {
 	root, err := msg.RootPtr()
-	return ServerVerAck{root.Struct()}, err
+	return HandshakeResponse{root.Struct()}, err
 }
 
-func (s ServerVerAck) String() string {
-	str, _ := text.Marshal(0xb0f1edca577182a7, s.Struct)
+func (s HandshakeResponse) String() string {
+	str, _ := text.Marshal(0xee959a7d96c96641, s.Struct)
 	return str
 }
 
-func (s ServerVerAck) Version() uint32 {
+func (s HandshakeResponse) Version() uint32 {
 	return s.Struct.Uint32(0)
 }
 
-func (s ServerVerAck) SetVersion(v uint32) {
+func (s HandshakeResponse) SetVersion(v uint32) {
 	s.Struct.SetUint32(0, v)
 }
 
-func (s ServerVerAck) Status() int8 {
+func (s HandshakeResponse) Status() int8 {
 	return int8(s.Struct.Uint8(4))
 }
 
-func (s ServerVerAck) SetStatus(v int8) {
+func (s HandshakeResponse) SetStatus(v int8) {
 	s.Struct.SetUint8(4, uint8(v))
 }
 
-// ServerVerAck_List is a list of ServerVerAck.
-type ServerVerAck_List struct{ capnp.List }
+// HandshakeResponse_List is a list of HandshakeResponse.
+type HandshakeResponse_List struct{ capnp.List }
 
-// NewServerVerAck creates a new list of ServerVerAck.
-func NewServerVerAck_List(s *capnp.Segment, sz int32) (ServerVerAck_List, error) {
+// NewHandshakeResponse creates a new list of HandshakeResponse.
+func NewHandshakeResponse_List(s *capnp.Segment, sz int32) (HandshakeResponse_List, error) {
 	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 8, PointerCount: 0}, sz)
-	return ServerVerAck_List{l}, err
+	return HandshakeResponse_List{l}, err
 }
 
-func (s ServerVerAck_List) At(i int) ServerVerAck { return ServerVerAck{s.List.Struct(i)} }
+func (s HandshakeResponse_List) At(i int) HandshakeResponse {
+	return HandshakeResponse{s.List.Struct(i)}
+}
 
-func (s ServerVerAck_List) Set(i int, v ServerVerAck) error { return s.List.SetStruct(i, v.Struct) }
+func (s HandshakeResponse_List) Set(i int, v HandshakeResponse) error {
+	return s.List.SetStruct(i, v.Struct)
+}
 
-// ServerVerAck_Promise is a wrapper for a ServerVerAck promised by a client call.
-type ServerVerAck_Promise struct{ *capnp.Pipeline }
+// HandshakeResponse_Promise is a wrapper for a HandshakeResponse promised by a client call.
+type HandshakeResponse_Promise struct{ *capnp.Pipeline }
 
-func (p ServerVerAck_Promise) Struct() (ServerVerAck, error) {
+func (p HandshakeResponse_Promise) Struct() (HandshakeResponse, error) {
 	s, err := p.Pipeline.Struct()
-	return ServerVerAck{s}, err
+	return HandshakeResponse{s}, err
 }
 
 type TlogResponse struct{ capnp.Struct }
@@ -485,57 +491,57 @@ func (p TlogAggregation_Promise) Struct() (TlogAggregation, error) {
 	return TlogAggregation{s}, err
 }
 
-const schema_f4533cbae6e08506 = "x\xda\x84TOHTk\x1c\xfd\x9d\xef\xbb3*\xa8" +
-	"\xf3.3\x8b\xa7\xbc\xc7<\x1e.\x9e\x8f,\xb56\x89" +
-	"\xe0\x9f\x14R\x0c\xfc4\xb2]\\\xc7\xafqr\xe6\xde" +
-	"\xf1\xde\xeb\x14m$\xc1E\x11\xb4qa\x8bHA\xa8" +
-	"\xa0\xc8H#\"\xc1@)K\xa1\xc0\xa0Z\x84A\xb4" +
-	"k!\xb5hw\xe3\x9bq\xfe4\x8a\xed~\xf7p\xf8" +
-	"~\xe7\x9c\xdf\x99\xa9_E+k\xf0\x859\x91\xa8\xf1" +
-	"\xf9\xbdo\x0f_\xdd4>\xfc\xb8L\xa2\x0a\xcc\xf3O" +
-	"n}y\xd2\xdc\xff\x9d|(!:<\x86F\x04'" +
-	"\xd5\x18\xbc\x84\xfb\x04\xafas\xa2\xf9\xe3\x85\xed\xab\x8a" +
-	"\xed+`3\xc5\xfe\x9bU#X\x97\x1ek\xd95\x10" +
-	"\xbc\xf75W\x9e\x7f\xaa~3\xad\xe8(~|\x897" +
-	"\"\xb8\xc1\xd5\xe3k\xfc<\xc1\xbb51:\xf0\xf2\xeb" +
-	"\xf6|\x11[S\xe4\xa3Z#\x82]j\x0cvj\x8a" +
-	"<\xb5U\xf5ha\xf1\xdc\xe7b\xddi\xf6\xac\xd6\x8d" +
-	"\xe0bz|\xa0\x0d\x80\xea<'2,\x13\xc6!\x97" +
-	"\xc7\xad\xe8\x99\xcc\xc7\xc1\x88\x914\x93M\xc7\xe21i" +
-	"\xba\xa7\xc2\xd2n\x8b\x8c\xf4\x02\xa2\x9ckD\x1a\x88\xf4" +
-	"\xcev\"\xd1\xca!z\x18\x80\x10\x14\xd6\xa5\xb0\x0e\x0e" +
-	"\xd1\xcb\xa03\x84\xc0\x88\xf4\x136\x91\xe8\xe1\x10\xa7\x19" +
-	"\xc6S\xd2vb\x96\x89Rb(%\x8c\xa7\x86b\xce" +
-	"HW\x07\xca\x89\xa1\x9c\xe0\x9d\x8d\xd9\x8e\xdb/G)" +
-	"<&\xcd\x88D\x191\x94\x11\xf6\x91x2nE\xdb" +
-	"\xe3\x16\xcf\xe8\xfb+\xa7o\xb1\x9bH,p\x88e\x06" +
-	"=+p\xe9_\"\xf1\x98C\xac(\x81,#\xf0\xd9" +
-	"\xffD\xe2)\x87x\xc1\x00\x1e\x02'\xd2W\x15\xb6\xcc" +
-	"!\xd6\x19t\x0d!hD\xfa\x9a\x02W8\xc4k\x06" +
-	"\xdd\xc7C\xf0\x11\xe9\x1b}Db\x9dC\xbcc\xd0\xfd" +
-	"\xff\x84\xe0'\xd2\xdf*p\x93Cl1x\x8e\x1cM" +
-	"\x9b!\xa2\xac\x9f\x92\xf8\xa0\x91\x9d\x03N\xecb\xceh" +
-	"`\xd8p\x86QA\x0c\x15\x84\xc0\x90\xe1\x1a\xd9\x0f\xcf" +
-	"\x8d%\xa4\xe3\x1a\x09B2\x17\x8b\x95\x94\xb6\xe1\xc6," +
-	"\x82\x09?1\xf8\x7f\x1bU\x9ft\xc2I\xcbt\xa4J" +
-	"\xab4\x97Vm\x93\xaa<\x87\xa8\xcf_\xb3N\x998" +
-	"\xc0!\x8e3\xb48\xae\xe1\x8e9`\xc4\xc0\xa8\xc0\x13" +
-	"\x1cT\x12z9\xd2\x9a*\xf7\xdd\xdf/\xed\x94\xb4\x0b" +
-	"\xdaT\xb0\xbf=\xbf_\x87\xb6#@\x89\xfa\x8fC\x1c" +
-	"\xd9\xdd\x9c]\x82v\xb6j{\xban\x8bFm\x19U" +
-	"I\x99Dj\xf3\x9f\xb9\xcd\xd7\xd5Q\xa78\xc4L\xde" +
-	"\xf9\x0d\x85Ms\x88\xb9\x82\x1e\xcf\xaa8f8\xc4]" +
-	"\x06\x9d#\xd3\x93;J\xf7\x1c\x87\x98W=a\x99\x9e" +
-	"\xdcS\xbao\xef\xb4,\xdb\x93\xc2\x96\x05L#!\xb3" +
-	"\x9d\xff\xe5\xfe{]\xb9\xf8G\xd22\x18\xb7\"#\xb9" +
-	"\xdc\xff\xc8\xff\xf1\x10\x14\x18H\xda2\x95\xad\xcd\xcf\x00" +
-	"\x00\x00\xff\xff/\xe4\x1b_"
+const schema_f4533cbae6e08506 = "x\xda\x8c\x94_H\x1cW\x18\xc5\xbfs\xbf\x99UA" +
+	"\xdd\x0e\xbb\x85*\x05\xdbb\xa1-\xb5\xd5\xb6Ob\xf1" +
+	"\x0f\x16T\x14\xbck\xa1\xa5/e\\\xc7\xdd\xed\xee\xce" +
+	"\xac{G-\x85\"-\xf8R\x0aR\xb0\xc5\x16\x0aZ" +
+	",\xb4Pi\x1e4\x84\x10A\xc1`\x04\x03\x09\x98\x90" +
+	"\xbc\x84\x0d\x04\x1f\x03\x81\xbcO\xb8\xbb\xee\x9f\xac\x09\xc9" +
+	"\xdb\xbd\x87\xb3{\xcfw\xbe\x1f\xd3}\x88\x01\xd1cv" +
+	"0\x91\xec4CA\xcf\xc9\x8f}\xf7\xbe}\xf43\xc9" +
+	"6\x98Ah\xb9pz\xb9o\xea1\x99\xa2\x81\xe8\xe3" +
+	"y\xb4#\xb2\x0c}\xfc\x01+ \x04w;\x7f:\xbc" +
+	"\xdf~sM\xdbQc/z^\xe5\x8f\x10y\x9b\x1b" +
+	"\x88\"o\xf2\"!\xd8\x1b\xfbk\xe5\xf6\xe9IA\xbb" +
+	"E\xbd\xfb\x17\x8e!\xf2w\xd1\xbd\xc1\xff\x13\x82\xd5B" +
+	"\xdb\xc5\xed\x9do\x1e\xd4\xbb\x0d\xed\xfe\xd4\x18CD\x16" +
+	"\x8f\x13\xc6\x17:\xca\xe0\xec\xd1o\xdf\xff\xf1\xeb\xc3\xba" +
+	"(E\xcb\x96\xf9\x15\"\xfb\xa6\xfe\xef]s\x91\xba\x02" +
+	"\x15O:Y\xfbC\x9f3^\xe2\xeb\xd2\xe5\x83\xb8\x9d" +
+	"ss\xbd\x9fg\xbc\xc4P\xc6\xe3xz\x12\x90\xaf\xb3" +
+	"Ad\x80\xc8\xda\x19#\x92\xdb\x0c\xb9'`\x01Qh" +
+	"q\xf7-\"y\x89!\x0f\x04,!\xa2\x10D\xd6\xfe" +
+	"{D\xf2\x0aC^\x13\x00G\xc1D\xd6U\xad\xed1" +
+	"\xe4\xb1\x80e \x0a\x83\xc8:\xd2\xe2\x01C\xde\x10\xb0" +
+	"L\x8e\xc2$\xb2\xae\xc7\x88\xe41C\xde\x11\xb0Bo" +
+	"D\x11\"\xb2ni\xf1\x84!\x0b\x02\x81r\xe6\xe6\x1d" +
+	"7\xee\x10\x11\x9aH\xa0\x89\xd0\x90\x99\xb6\xcb\xe7\xb0J" +
+	"}\xe7T.I[%\xd1B\x02-\x84\xf0\x8c\xed\xdb" +
+	"\xe5K\xe0\xa7\xb2\x8e\xf2\xed,!Wv\x07^\xce\xc9" +
+	"\xdb~\xca#\xb8\x08\x91@\x88\xf0\x82\xaab\x8e\xea\xc8" +
+	"y\xaert[\x8d\x95\xb6\xde\xed\xd5<1d\xb7@" +
+	"\xb9\xac.=\xc4\xfb\x0c9\"\xd0\xaf|\xdb\x9fW\x10" +
+	"$ \xa8f&(\xb4\x12&\x19\xc5L\xad5\xef\x1b" +
+	"\xe7\xde\x1f\xb1\xdd\x19\x95\xb4\xd3NL\xffZ\xc1\xd7\x19" +
+	"\x9a+\x19>\x1b\"\x92\x03\x0c9^\xcd0\xaa\xb5a" +
+	"\x86\x9c\xd4\x0bCia\x13y\"9\xce\x90_\x0a," +
+	"-8y\x95\xf2\\4\x92@#aia&\xa5\xd2" +
+	"\xa3\xc3h&\x81fB0\x9b\xca+\x7f\xca\x99\xa3\x8e" +
+	"b\xe0Ju\xcf\x8f\xa9k\x1aL$\xf2NBW\xeb" +
+	"\x12\xe9\x98\xafUb\xfe\xae)Xe\xc8\xf5j\xcc?" +
+	"\xb5\xb6\xc6\x90\x9b517t\x7f\xeb\x0c\xf9\x9f\x80\xc5" +
+	"(\x81\xf5\xaf\x1eh\x93!/h\xb0D\x09\xac-\xdd" +
+	"\xfe?gX\x96\xc1\xaa\xc52\xec\xdaY\xa7<\xd2S" +
+	"\xc0<\x0b\x8b\xfa\x0e\xfa\xa73^<]Y\xd4+\xd5" +
+	"\x8f\x06A\x8b\xe1\\\xdeY\xa8p\xf6R\xfbS9\xcf" +
+	"\xe5s\x10\x0dU!\xb2`\x9cQ\xa4g{\x87!?" +
+	"9\xbf\xac:\xaa\x9e\x04\x00\x00\xff\xffm\xbc\x1eI"
 
 func init() {
 	schemas.Register(schema_f4533cbae6e08506,
-		0x89f8da619fcbb3f3,
 		0x8cf178de3c82d431,
 		0x98d11ae1c78a24d9,
-		0xb0f1edca577182a7,
-		0xe46ab5b4b619e094)
+		0xe0d4e6d68fa24ac0,
+		0xe46ab5b4b619e094,
+		0xee959a7d96c96641)
 }

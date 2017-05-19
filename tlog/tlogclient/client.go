@@ -13,8 +13,8 @@ import (
 
 // Response defines a response from tlog server
 type Response struct {
-	Status    int8     // status of the call, negative means failed
-	Sequences []uint64 // flushed sequences number (optional)
+	Status    tlog.BlockStatus // status of the call
+	Sequences []uint64         // flushed sequences number (optional)
 }
 
 // Result defines a struct that contains
@@ -58,8 +58,8 @@ func New(addr, vdiskID string, firstSequence uint64) (*Client, error) {
 }
 
 func (c *Client) handshake(firstSequence uint64) error {
-	// send our verack
-	err := c.encodeVerackCapnp(firstSequence)
+	// send handshake request
+	err := c.encodeHandshakeCapnp(firstSequence)
 	if err != nil {
 		return err
 	}
@@ -68,14 +68,14 @@ func (c *Client) handshake(firstSequence uint64) error {
 		return err
 	}
 
-	// receive their verack
-	resp, err := c.decodeVerackResponse()
+	// receive handshake response
+	resp, err := c.decodeHandshakeResponse()
 	if err != nil {
 		return err
 	}
 
 	// check server response status
-	err = tlog.VerAckStatus(resp.Status()).Error()
+	err = tlog.HandshakeStatus(resp.Status()).Error()
 	if err != nil {
 		return err
 	}
@@ -116,7 +116,7 @@ func (c *Client) RecvOne() (*Response, error) {
 		seqs = append(seqs, capSeqs.At(i))
 	}
 	return &Response{
-		Status:    tr.Status(),
+		Status:    tlog.BlockStatus(tr.Status()),
 		Sequences: seqs,
 	}, nil
 }

@@ -89,19 +89,19 @@ func (s *Server) ListenAddr() string {
 
 // handshake stage, required prior to receiving blocks
 func (s *Server) handshake(r io.Reader, w io.Writer) (cfg *ConnectionConfig, err error) {
-	verack, err := s.readDecodeVerAck(r)
+	req, err := s.readDecodeHandshakeRequest(r)
 	if err != nil {
 		return
 	}
 
-	log.Debug("received verack of incoming connection")
+	log.Debug("received handshake request from incoming connection")
 
-	segmentBuf := make([]byte, 0, schema.RawServerVerackLen())
+	segmentBuf := make([]byte, 0, schema.RawServerHandshakeLen())
 
 	// validate version
-	clientVersion := blockstor.Version(verack.Version())
+	clientVersion := blockstor.Version(req.Version())
 	if clientVersion.Compare(tlog.MinSupportedVersion) < 0 {
-		err = s.writeVerackResponse(w, segmentBuf, tlog.VerackStatusInvalidVersion)
+		err = s.writeHandshakeResponse(w, segmentBuf, tlog.HandshakeStatusInvalidVersion)
 		if err != nil {
 			log.Infof("couldn't write server invalid-version response: %s", err.Error())
 		}
@@ -111,17 +111,17 @@ func (s *Server) handshake(r io.Reader, w io.Writer) (cfg *ConnectionConfig, err
 	log.Debug("incoming connection checks out with version:", clientVersion.String())
 
 	// make sure vdisk doesn't exist yet
-	vdiskID, err := verack.VdiskID()
+	vdiskID, err := req.VdiskID()
 	if err != nil {
-		writeErr := s.writeVerackResponse(w, segmentBuf, tlog.VerackStatusInvalidVdiskID)
+		writeErr := s.writeHandshakeResponse(w, segmentBuf, tlog.HandshakeStatusInvalidVdiskID)
 		if writeErr != nil {
 			log.Infof("couldn't write server invalid-vdiskid response: %s", writeErr.Error())
 		}
 		return
 	}
 
-	// version checks out, let's send our verack message back to client
-	err = s.writeVerackResponse(w, segmentBuf, tlog.VerackStatusOK)
+	// version checks out, let's send our req message back to client
+	err = s.writeHandshakeResponse(w, segmentBuf, tlog.HandshakeStatusOK)
 	if err != nil {
 		return
 	}
@@ -129,25 +129,25 @@ func (s *Server) handshake(r io.Reader, w io.Writer) (cfg *ConnectionConfig, err
 	// return cfg, as connection has been established
 	cfg = &ConnectionConfig{
 		VdiskID:       vdiskID,
-		FirstSequence: verack.FirstSequence(),
+		FirstSequence: req.FirstSequence(),
 	}
 	return
 }
 
-func (s *Server) writeVerackResponse(w io.Writer, segmentBuf []byte, status tlog.VerAckStatus) error {
+func (s *Server) writeHandshakeResponse(w io.Writer, segmentBuf []byte, status tlog.HandshakeStatus) error {
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(segmentBuf))
 	if err != nil {
 		return err
 	}
 
-	resp, err := schema.NewRootServerVerAck(seg)
+	resp, err := schema.NewRootHandshakeResponse(seg)
 	if err != nil {
 		return err
 	}
 
 	resp.SetVersion(blockstor.CurrentVersion.UInt32())
 
-	log.Debugf("replying verack with status: %d", status)
+	log.Debugf("replying handshake with status: %d", status)
 	resp.SetStatus(status.Int8())
 
 	return capnp.NewEncoder(w).Encode(msg)
@@ -210,19 +210,19 @@ func (s *Server) sendResp(conn *net.TCPConn, vdiskID string, respChan chan *bloc
 	}
 }
 
-// read and decode tlog verAck message from client
-func (s *Server) readDecodeVerAck(r io.Reader) (*schema.ClientVerAck, error) {
+// read and decode tlog handshake request message from client
+func (s *Server) readDecodeHandshakeRequest(r io.Reader) (*schema.HandshakeRequest, error) {
 	msg, err := capnp.NewDecoder(r).Decode()
 	if err != nil {
 		return nil, err
 	}
 
-	verack, err := schema.ReadRootClientVerAck(msg)
+	resp, err := schema.ReadRootHandshakeRequest(msg)
 	if err != nil {
 		return nil, err
 	}
 
-	return &verack, nil
+	return &resp, nil
 }
 
 // read and decode tlog block message from client

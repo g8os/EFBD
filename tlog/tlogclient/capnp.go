@@ -8,23 +8,23 @@ import (
 	"zombiezen.com/go/capnproto2"
 )
 
-func (c *Client) encodeVerackCapnp(firstSequence uint64) error {
+func (c *Client) encodeHandshakeCapnp(firstSequence uint64) error {
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(c.capnpSegmentBuf))
 	if err != nil {
-		return fmt.Errorf("failed to build (verack) capnp: %s", err.Error())
+		return fmt.Errorf("failed to build (handshake) capnp: %s", err.Error())
 	}
 
-	verack, err := schema.NewRootClientVerAck(seg)
+	handshake, err := schema.NewRootHandshakeRequest(seg)
 	if err != nil {
-		return fmt.Errorf("couldn't create verack: %s", err.Error())
+		return fmt.Errorf("couldn't create handshake: %s", err.Error())
 	}
 
-	verack.SetVersion(blockstor.CurrentVersion.UInt32())
-	verack.SetFirstSequence(firstSequence)
+	handshake.SetVersion(blockstor.CurrentVersion.UInt32())
+	handshake.SetFirstSequence(firstSequence)
 
-	err = verack.SetVdiskID(c.vdiskID)
+	err = handshake.SetVdiskID(c.vdiskID)
 	if err != nil {
-		return fmt.Errorf("couldn't set verack vdiskID: %s", err.Error())
+		return fmt.Errorf("couldn't set handshake vdiskID: %s", err.Error())
 	}
 
 	return capnp.NewEncoder(c.bw).Encode(msg)
@@ -60,14 +60,14 @@ func (c *Client) encodeBlockCapnp(op uint8, seq uint64, hash []byte,
 	return capnp.NewEncoder(c.bw).Encode(msg)
 }
 
-func (c *Client) decodeVerackResponse() (*schema.ServerVerAck, error) {
+func (c *Client) decodeHandshakeResponse() (*schema.HandshakeResponse, error) {
 	msg, err := capnp.NewDecoder(c.conn).Decode()
 	if err != nil {
 		return nil, err
 	}
 
-	tr, err := schema.ReadRootServerVerAck(msg)
-	return &tr, err
+	resp, err := schema.ReadRootHandshakeResponse(msg)
+	return &resp, err
 }
 
 func (c *Client) decodeBlockResponse() (*schema.TlogResponse, error) {

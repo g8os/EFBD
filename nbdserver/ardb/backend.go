@@ -268,9 +268,9 @@ func (ab *Backend) GoBackground(ctx context.Context) {
 				continue
 			}
 
-			if tResp.Resp.Status < 0 {
-				log.Infof("tlog call for vdisk %s failed (%d)",
-					ab.vdiskID, tResp.Resp.Status)
+			if err := tResp.Resp.Status.Error(); err != nil {
+				log.Infof("tlog call for vdisk %s failed: %s",
+					ab.vdiskID, err.Error())
 				continue
 			}
 
