@@ -10,8 +10,8 @@ import (
 	"github.com/g8os/blockstor/log"
 	"github.com/g8os/blockstor/tlog"
 	"github.com/g8os/blockstor/tlog/schema"
+	"github.com/g8os/blockstor/tlog/tlogclient/decoder"
 	"github.com/g8os/blockstor/tlog/tlogserver/erasure"
-	"github.com/garyburd/redigo/redis"
 	"github.com/golang/snappy"
 	"github.com/minio/blake2b-simd"
 	"zombiezen.com/go/capnproto2"
@@ -199,12 +199,12 @@ func (f *flusher) getLastHash(vdiskID string) ([]byte, error) {
 	rc := f.pool.MetadataConnection()
 	defer rc.Close()
 
-	hash, err := redis.Bytes(rc.Do("GET", f.lastHashKey(vdiskID)))
-	if err != nil && err != redis.ErrNil {
+	hash, err := decoder.GetLastHash(rc, vdiskID)
+	if err != nil && err != decoder.ErrNilLastHash {
 		return nil, err
 	}
 
-	if err == redis.ErrNil {
+	if err == decoder.ErrNilLastHash {
 		hash = tlog.FirstAggregateHash
 	}
 	return hash, nil
