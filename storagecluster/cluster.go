@@ -22,6 +22,12 @@ func NewClusterClientFactory(configPath string, logger log.Logger) (*ClusterClie
 		logger = log.New("cluster", log.GetLevel())
 	}
 
+	// validate the config file at startup
+	_, err := config.ReadConfig(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("invalid config file: %s", err.Error())
+	}
+
 	return &ClusterClientFactory{
 		configPath: configPath,
 		requestCh:  make(chan string),
