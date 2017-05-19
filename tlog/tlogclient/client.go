@@ -126,7 +126,7 @@ func (c *Client) Recv(chanSize int) <-chan *Result {
 	reChan := make(chan *Result, chanSize)
 	go func() {
 		for {
-			tr, err := c.RecvOne()
+			tr, err := c.recvOne()
 			if tr != nil {
 				status := tlog.BlockStatus(tr.Status)
 				seq := tr.Sequences[0]
@@ -159,8 +159,8 @@ func (c *Client) Recv(chanSize int) <-chan *Result {
 	return reChan
 }
 
-// RecvOne receive one response
-func (c *Client) RecvOne() (*Response, error) {
+// recvOne receive one response
+func (c *Client) recvOne() (*Response, error) {
 	// decode capnp and build response
 	tr, err := c.decodeBlockResponse()
 	if err != nil {
