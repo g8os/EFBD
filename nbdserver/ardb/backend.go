@@ -255,6 +255,7 @@ func (ab *Backend) GoBackground(ctx context.Context) {
 				transaction.Content,
 				transaction.Size,
 			)
+			ab.tlogCounter++
 			if err != nil {
 				log.Infof(
 					"couldn't send tlog for vdisk %s: %v",
@@ -273,9 +274,6 @@ func (ab *Backend) GoBackground(ctx context.Context) {
 					ab.vdiskID, err.Error())
 				continue
 			}
-
-			ab.tlogCounter++
-
 		case <-ctx.Done():
 			log.Debug(
 				"forcefully exit backend background thread for vdisk:",
