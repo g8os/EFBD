@@ -255,7 +255,7 @@ func (c *Client) send(op uint8, seq, lba, timestamp uint64,
 		// the network connection or the tlog server that need time to be recovered.
 		time.Sleep(time.Duration(i) * sendSleepTime)
 
-		if err = c.connect(0); err != nil {
+		if err = c.connect(c.blockBuffer.MinSequence()); err != nil {
 			okToSend = false
 		} else {
 			okToSend = true
