@@ -222,21 +222,7 @@ func (d *Decoder) getLastHash() ([]byte, error) {
 	rc := d.pool.MetadataConnection()
 	defer rc.Close()
 
-	key := tlog.LastHashPrefix + d.vdiskID
-
-	hashes, err := redis.ByteSlices(rc.Do("LRANGE", key, 0, -1))
-	if err != nil {
-		return nil, fmt.Errorf("failed to get key:%v, err:%v", key, err)
-	}
-
-	// check that the hash really valid
-	for _, hash := range hashes {
-		if _, err := rc.Do("GET", hash); err == nil {
-			return hash, nil
-		}
-	}
-
-	return nil, fmt.Errorf("no valid hash for vdiskID: %s", d.vdiskID)
+	return GetLastHash(rc, d.vdiskID)
 }
 
 func (d *Decoder) decodeCapnp(data []byte) (*schema.TlogAggregation, error) {

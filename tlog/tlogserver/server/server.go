@@ -195,7 +195,7 @@ func (s *Server) handle(conn *net.TCPConn) error {
 
 	vdisk, created, err := vdiskMgr.get(cfg.VdiskID, cfg.Flusher, cfg.FirstSequence)
 	if err != nil {
-		err = fmt.Errorf("couldn't get or create vdisk %s", cfg.VdiskID)
+		err = fmt.Errorf("couldn't get or create vdisk %s, err: %v", cfg.VdiskID, err)
 		log.Info(err)
 		return err
 	}
