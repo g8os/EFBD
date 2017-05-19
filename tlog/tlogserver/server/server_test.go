@@ -85,11 +85,9 @@ func TestEndToEnd(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		expected := numLogs + numFlush
-		received := 0
 		respChan := client.Recv(1)
-		for received < expected {
+		for i := 0; i < expected; i++ {
 			re := <-respChan
-			received++
 			if !assert.Nil(t, re.Err) {
 				continue
 			}

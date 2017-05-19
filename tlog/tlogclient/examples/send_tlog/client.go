@@ -2,6 +2,8 @@ package main
 
 import (
 	"flag"
+	"sync"
+	"time"
 
 	"github.com/g8os/blockstor/log"
 	"github.com/g8os/blockstor/tlog/schema"
@@ -22,47 +24,53 @@ func main() {
 	const (
 		vdiskID       = "1234567890"
 		firstSequence = 0
+		dataLen       = 4096
 	)
-
-	seqChan := make(chan uint64, 8)
 
 	client, err := client.New("127.0.0.1:11211", vdiskID, firstSequence)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	data := make([]byte, 4096*4)
-	for i := 0; i < (4096 * 4); i++ {
+	data := make([]byte, dataLen)
+	for i := 0; i < dataLen; i++ {
 		data[i] = 'a'
 	}
 	data[0] = 'b'
 	data[1] = 'c'
 
-	// produce the data
+	logsToSend := 25 * numFlush
+
+	var wg sync.WaitGroup
+
+	// start the response receiver goroutine
+	wg.Add(1)
 	go func() {
-		for i := 0; i < 25*numFlush; i++ {
-			seqChan <- uint64(i)
+		defer wg.Done()
+
+		respChan := client.Recv(1)
+		expectedResp := logsToSend /*response for each mesage */ + numFlush /* flush response */
+
+		for i := 0; i < expectedResp; i++ {
+			resp := <-respChan
+			if resp.Err != nil {
+				log.Fatalf("resp error:%v", resp.Err)
+			}
+			if printResp {
+				log.Infof("status=%v, seqs=%v\n", resp.Resp.Status, resp.Resp.Sequences)
+			}
 		}
 	}()
 
-	for seq := range seqChan {
-		func(j uint64) {
-			log.Infof("j=%v\n", j)
-			err := client.Send(schema.OpWrite, j, j, j, data, uint64(len(data)))
-			if err != nil {
-				log.Info("client died\n")
-				return
-			}
-			tr, err := client.RecvOne()
-			if err != nil {
-				log.Fatalf("client failed to recv:%v\n", err)
-			}
-			if printResp {
-				log.Infof("status=%v, seqs=%v\n", tr.Status, tr.Sequences)
-			}
-		}(seq)
-		if int(seq)+1 == 25*numFlush {
+	// send the data
+	for i := 0; i < logsToSend; i++ {
+		seq := uint64(i)
+		err := client.Send(schema.OpWrite, seq, seq*dataLen, uint64(time.Now().Unix()), data, uint64(len(data)))
+		if err != nil {
+			log.Fatalf("send failed at seq=%v, err= %v", seq, err)
 			return
 		}
 	}
+
+	wg.Wait() //wait until we receive all the response
 }
