@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"io"
 	"sync"
 	"time"
 
@@ -54,10 +55,13 @@ func main() {
 	go func() {
 		defer wg.Done()
 
-		respChan := client.Recv(1)
+		respChan := client.Recv(100)
 		for {
 			r := <-respChan
 			if r.Err != nil {
+				if r.Err == io.EOF {
+					continue
+				}
 				log.Fatalf("resp error:%v", r.Err)
 			}
 			resp := r.Resp
@@ -77,7 +81,8 @@ func main() {
 	}()
 
 	// send the data
-	for seq, _ := range logsToSend {
+	for i := 0; i < numLogsToSend; i++ {
+		seq := uint64(i)
 		err := client.Send(schema.OpWrite, seq, seq*dataLen, uint64(time.Now().Unix()), data, uint64(len(data)))
 		if err != nil {
 			log.Fatalf("send failed at seq=%v, err= %v", seq, err)

@@ -88,6 +88,7 @@ func (vt *vdiskManager) get(vdiskID string, f *flusher, firstSequence uint64) (*
 		if err != nil {
 			return nil, false, err
 		}
+		log.Debugf("create vdisk with expectedSequence:%v", vd.expectedSequence)
 		go vd.runFlusher()
 		go vd.runReceiver()
 	}
