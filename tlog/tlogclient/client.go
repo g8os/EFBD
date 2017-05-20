@@ -47,11 +47,11 @@ type Client struct {
 
 	// write lock, to protect against parallel Send
 	// which is not goroutine safe yet
-	wLock sync.RWMutex
+	wLock sync.Mutex
 
 	// read lock, to protect it from race condition
 	// caused by 'handshake' and recvOne
-	rLock      sync.RWMutex
+	rLock      sync.Mutex
 	ctx        context.Context
 	cancelFunc context.CancelFunc
 }

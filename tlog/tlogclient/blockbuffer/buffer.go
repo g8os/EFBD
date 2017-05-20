@@ -60,22 +60,21 @@ func (b *Buffer) Add(block *schema.TlogBlock) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	key := block.Sequence()
+	seq := block.Sequence()
 
-	ent, exist := b.entries[key]
+	ent, exist := b.entries[seq]
 	if exist {
 		ent.update(b.timeout)
 		return
 	}
 
-	seq := block.Sequence()
 	if seq > b.highestSequence {
 		b.highestSequence = seq
 	}
 
 	ent = newEntry(block, b.timeout)
 
-	b.entries[key] = ent
+	b.entries[seq] = ent
 }
 
 // Delete deletes an entry from buffer.
@@ -128,8 +127,9 @@ func (b *Buffer) MinSequence() uint64 {
 	}
 
 	var seq uint64 = math.MaxUint64
+	var blockSeq uint64
 	for _, ent := range b.entries {
-		blockSeq := ent.block.Sequence()
+		blockSeq = ent.block.Sequence()
 		if blockSeq < seq {
 			seq = blockSeq
 		}
