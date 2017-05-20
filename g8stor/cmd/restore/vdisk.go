@@ -45,10 +45,6 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 
 	vdiskID := args[0]
 
-	// redis pool
-	var poolDial ardb.DialFunc
-	redisPool := ardb.NewRedisPool(poolDial)
-
 	logLevel := log.ErrorLevel
 	if config.Verbose {
 		logLevel = log.DebugLevel
@@ -57,36 +53,10 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 
 	ctx := context.Background()
 
-	// storage cluster
-	storageClusterClientFactory, err := storagecluster.NewClusterClientFactory(
-		vdiskCfg.ConfigPath, log.New("storagecluster", logLevel))
+	// create nbd backend
+	backend, err := newBackend(ctx, nil, "", vdiskID, vdiskCfg.ConfigPath)
 	if err != nil {
-		return fmt.Errorf("failed to create storageClusterClientFactory:%v", err)
-	}
-	go storageClusterClientFactory.Listen(ctx)
-
-	config := ardb.BackendFactoryConfig{
-		Pool:            redisPool,
-		ConfigPath:      vdiskCfg.ConfigPath,
-		LBACacheLimit:   ardb.DefaultLBACacheLimit,
-		SCClientFactory: storageClusterClientFactory,
-	}
-	fact, err := ardb.NewBackendFactory(config)
-	if err != nil {
-		return fmt.Errorf("failed to create factory:%v", err)
-	}
-
-	ec := &nbd.ExportConfig{
-		Name:        vdiskID,
-		Description: "Deduped g8os blockstor",
-		Driver:      "ardb",
-		ReadOnly:    false,
-		TLSOnly:     false,
-	}
-
-	backend, err := fact.NewBackend(ctx, ec)
-	if err != nil {
-		return fmt.Errorf("failed to create backend:%v", err)
+		return err
 	}
 
 	// parse optional server configs
@@ -107,16 +77,56 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 		AllowInMemory:           false,
 	})
 
-	// create tlog decoder
-	addrs := strings.Split(vdiskCfg.TlogObjStorAddresses, ",")
-	log.Infof("addr=%v", addrs)
-	dec, err := decoder.New(
-		tlogRedisPool,
-		vdiskCfg.K, vdiskCfg.M,
-		vdiskID,
-		vdiskCfg.PrivKey, vdiskCfg.HexNonce)
+	// replay tlog core logic:
+	// decode data from tlogserver and write it to the nbd's backend
+	return decode(
+		ctx, backend, tlogRedisPool, vdiskID,
+		vdiskCfg.K, vdiskCfg.M, vdiskCfg.PrivKey, vdiskCfg.HexNonce)
+}
+
+// create a new backend, used for writing
+func newBackend(ctx context.Context, dial ardb.DialFunc, tlogrpc, vdiskID, configPath string) (nbd.Backend, error) {
+	// redis pool
+	redisPool := ardb.NewRedisPool(nil)
+
+	// storage cluster
+	storageClusterClientFactory, err := storagecluster.NewClusterClientFactory(
+		configPath, log.New("storagecluster", log.GetLevel()))
 	if err != nil {
-		return fmt.Errorf("failed to create tlog decoder:%v", err)
+		return nil, fmt.Errorf("failed to create storageClusterClientFactory:%v", err)
+	}
+	go storageClusterClientFactory.Listen(ctx)
+
+	config := ardb.BackendFactoryConfig{
+		Pool:            redisPool,
+		ConfigPath:      configPath,
+		LBACacheLimit:   ardb.DefaultLBACacheLimit,
+		SCClientFactory: storageClusterClientFactory,
+		TLogRPCAddress:  tlogrpc,
+	}
+	fact, err := ardb.NewBackendFactory(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create factory:%v", err)
+	}
+
+	ec := &nbd.ExportConfig{
+		Name:        vdiskID,
+		Description: "g8os blockstor",
+		Driver:      "ardb",
+		ReadOnly:    false,
+		TLSOnly:     false,
+	}
+
+	return fact.NewBackend(ctx, ec)
+}
+
+// replay tlog by decoding data from a tlog RedisPool
+// and writing that data into the nbdserver
+func decode(ctx context.Context, backend nbd.Backend, pool tlog.RedisPool, vdiskID string, k, m int, privKey, hexNonce string) error {
+	// create tlog decoder
+	dec, err := decoder.New(pool, k, m, vdiskID, privKey, hexNonce)
+	if err != nil {
+		return fmt.Errorf("failed to create tlog decoder: %v", err)
 	}
 
 	aggChan := dec.Decode(0)
@@ -125,12 +135,17 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 		if !more {
 			break
 		}
+
+		if da.Err != nil {
+			return fmt.Errorf("failed to get aggregation: %v", da.Err)
+		}
+
 		agg := da.Agg
 
 		// some small checking
 		storedViskID, err := agg.VdiskID()
 		if err != nil {
-			return fmt.Errorf("failed to get vdisk id from aggregation:%v", err)
+			return fmt.Errorf("failed to get vdisk id from aggregation: %v", err)
 		}
 		if strings.Compare(storedViskID, vdiskID) != 0 {
 			return fmt.Errorf("vdisk id not mactched .expected=%v, got=%v", vdiskID, storedViskID)

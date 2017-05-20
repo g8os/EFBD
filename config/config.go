@@ -95,6 +95,12 @@ func (cfg *Config) Validate() error {
 	return nil
 }
 
+// String returns this config as a YAML marshalled string
+func (cfg *Config) String() string {
+	bytes, _ := yaml.Marshal(cfg)
+	return string(bytes)
+}
+
 // StorageClusterConfig defines the config for a storageCluster
 type StorageClusterConfig struct {
 	DataStorage     []StorageServerConfig `yaml:"dataStorage" valid:"required"`
