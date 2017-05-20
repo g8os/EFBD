@@ -14,6 +14,22 @@ func (status BlockStatus) Int8() int8 {
 	return int8(status)
 }
 
+// String returns the name of the Hanshake status
+func (status BlockStatus) String() string {
+	switch status {
+	case BlockStatusRecvOK:
+		return "RecvOK"
+	case BlockStatusFlushOK:
+		return "FlushOK"
+	case BlockStatusFlushFailed:
+		return "FlushFailed"
+	case BlockStatusRecvFailed:
+		return "RecvFailed"
+	default:
+		return "Unknown"
+	}
+}
+
 // Error returns this status as an error,
 // returning nil if the status is not an error
 func (status BlockStatus) Error() error {
@@ -49,6 +65,26 @@ func (status HandshakeStatus) Int8() int8 {
 	return int8(status)
 }
 
+// String returns the name of the Hanshake status
+func (status HandshakeStatus) String() string {
+	switch status {
+	case HandshakeStatusOK:
+		return "OK"
+	case HandshakeStatusInvalidVersion:
+		return "InvalidVersion"
+	case HandshakeStatusInsufficientDataServers:
+		return "InsufficientDataServers"
+	case HandshakeStatusInvalidVdiskID:
+		return "InvalidVdiskID"
+	case HandshakeStatusInternalServerError:
+		return "InternalServerError"
+	case HandshakeStatusInvalidRequest:
+		return "InvalidRequest"
+	default:
+		return "Unknown"
+	}
+}
+
 // Error returns this status as an error,
 // returning nil if the status is not an error
 func (status HandshakeStatus) Error() error {
@@ -65,6 +101,8 @@ func (status HandshakeStatus) Error() error {
 		return errors.New("insufficient data servers available")
 	case HandshakeStatusInvalidVersion:
 		return errors.New("client version is not compatible with server")
+	case HandshakeStatusInvalidRequest:
+		return errors.New("client's HandshakeRequest could not be decoded")
 	default:
 		return fmt.Errorf("invalid connection with unknown status: %d", status)
 	}
@@ -74,17 +112,20 @@ func (status HandshakeStatus) Error() error {
 const (
 	// returned when something went wrong internally
 	// in the tlogserver during the handshake phase
-	HandshakeStatusInternalServerError HandshakeStatus = -4
+	HandshakeStatusInternalServerError HandshakeStatus = -5
 	// returned when there are not enough data servers
 	// available to store the data
-	HandshakeStatusInsufficientDataServers HandshakeStatus = -3
+	HandshakeStatusInsufficientDataServers HandshakeStatus = -4
 	// returned when the given VdiskID is not legal
 	// could be because it's not valid, or because it already
 	// exists on the server
-	HandshakeStatusInvalidVdiskID HandshakeStatus = -2
+	HandshakeStatusInvalidVdiskID HandshakeStatus = -3
 	// returned when the given version by the client
 	// was not supported by the server
-	HandshakeStatusInvalidVersion HandshakeStatus = -1
+	HandshakeStatusInvalidVersion HandshakeStatus = -2
+	// returned when the given request by the client
+	// could not be read
+	HandshakeStatusInvalidRequest HandshakeStatus = -1
 	// returned when all information was accepted
 	HandshakeStatusOK HandshakeStatus = 1
 )

@@ -44,7 +44,7 @@ type MemoryRedis struct {
 // Listen to any incoming TCP requests,
 // and process them in the embedded Go Redis Server.
 func (mr *MemoryRedis) Listen() {
-	log.Info("embedded LedisDB Server ready and listening at", mr.addr)
+	log.Info("embedded LedisDB Server ready and listening at ", mr.addr)
 	mr.app.Run()
 }
 

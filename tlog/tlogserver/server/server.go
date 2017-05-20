@@ -88,7 +88,19 @@ func (s *Server) Listen() {
 			log.Info("received conn is not tcp conn")
 			continue
 		}
-		go s.handle(tcpConn)
+		go func() {
+			defer func() {
+				// recover from handle panics,
+				// to keep server up and running at all costs
+				if r := recover(); r != nil {
+					log.Info("connection dropped because of an internal panic: ", r)
+				}
+			}()
+
+			addr := conn.RemoteAddr()
+			err := s.handle(tcpConn)
+			log.Infof("connection from %s dropped: %s", addr.String(), err.Error())
+		}()
 	}
 }
 
@@ -99,60 +111,61 @@ func (s *Server) ListenAddr() string {
 
 // handshake stage, required prior to receiving blocks
 func (s *Server) handshake(r io.Reader, w io.Writer) (cfg *connectionConfig, err error) {
+	status := tlog.HandshakeStatusInternalServerError
+
+	// always return response, even in case of a panic,
+	// but normally this is triggered because of a(n early) return
+	defer func() {
+		segmentBuf := make([]byte, 0, schema.RawServerHandshakeLen())
+		err := s.writeHandshakeResponse(w, segmentBuf, status)
+		if err != nil {
+			log.Infof("couldn't write server %s response: %s",
+				status.String(), err.Error())
+		}
+	}()
+
 	req, err := s.readDecodeHandshakeRequest(r)
 	if err != nil {
+		status = tlog.HandshakeStatusInvalidRequest
+		err = fmt.Errorf("couldn't decode client HandshakeReq: %s", err.Error())
 		return
 	}
 
 	log.Debug("received handshake request from incoming connection")
 
-	segmentBuf := make([]byte, 0, schema.RawServerHandshakeLen())
-
 	// validate version
 	clientVersion := blockstor.Version(req.Version())
 	if clientVersion.Compare(tlog.MinSupportedVersion) < 0 {
-		err = s.writeHandshakeResponse(w, segmentBuf, tlog.HandshakeStatusInvalidVersion)
-		if err != nil {
-			log.Infof("couldn't write server invalid-version response: %s", err.Error())
-		}
-		err = errors.New("client version is not supported by this server")
-		return
+		status = tlog.HandshakeStatusInvalidVersion
+		err = fmt.Errorf("client version (%s) is not supported by this server", clientVersion)
+		return // error return
 	}
-	log.Debug("incoming connection checks out with version:", clientVersion.String())
+
+	log.Debug("incoming connection checks out with version: ", clientVersion)
 
 	// make sure vdisk doesn't exist yet
 	vdiskID, err := req.VdiskID()
 	if err != nil {
-		writeErr := s.writeHandshakeResponse(w, segmentBuf, tlog.HandshakeStatusInvalidVdiskID)
-		if writeErr != nil {
-			log.Infof("couldn't write server invalid-vdiskid response: %s", writeErr.Error())
-		}
-		return
+		status = tlog.HandshakeStatusInvalidVdiskID
+		err = fmt.Errorf("couldn't get vdiskID from handshakeReq: %s", err.Error())
+		return // error return
 	}
 
 	redisPool, err := s.poolFactory.NewRedisPool(vdiskID)
 	if err != nil {
-		writeErr := s.writeHandshakeResponse(w, segmentBuf, tlog.HandshakeStatusInsufficientDataServers)
-		if writeErr != nil {
-			log.Infof("couldn't write server insufficient-dataservers response: %s", writeErr.Error())
-		}
-		return
+		status = tlog.HandshakeStatusInsufficientDataServers
+		return // error return
 	}
 
 	flusher, err := newFlusher(s.flusherConf, redisPool)
 	if err != nil {
-		writeErr := s.writeHandshakeResponse(w, segmentBuf, tlog.HandshakeStatusInternalServerError)
-		if writeErr != nil {
-			log.Infof("couldn't write server internal-server-error response: %s", writeErr.Error())
-		}
-		return
+		status = tlog.HandshakeStatusInternalServerError
+		err = fmt.Errorf("couldn't create vdisk's flusher: %s", err.Error())
+		return // error return
 	}
 
-	// version checks out, let's send our verack message back to client
-	err = s.writeHandshakeResponse(w, segmentBuf, tlog.HandshakeStatusOK)
-	if err != nil {
-		return
-	}
+	log.Debug("handshake phase successfully completed")
+	status = tlog.HandshakeStatusOK
 
 	// return cfg, as connection has been established
 	cfg = &connectionConfig{
@@ -160,7 +173,7 @@ func (s *Server) handshake(r io.Reader, w io.Writer) (cfg *connectionConfig, err
 		FirstSequence: req.FirstSequence(),
 		Flusher:       flusher,
 	}
-	return
+	return // success return
 }
 
 func (s *Server) writeHandshakeResponse(w io.Writer, segmentBuf []byte, status tlog.HandshakeStatus) error {
@@ -176,7 +189,7 @@ func (s *Server) writeHandshakeResponse(w io.Writer, segmentBuf []byte, status t
 
 	resp.SetVersion(blockstor.CurrentVersion.UInt32())
 
-	log.Debugf("replying handshake with status: %d", status)
+	log.Debug("replying handshake with status: ", status)
 	resp.SetStatus(status.Int8())
 
 	return capnp.NewEncoder(w).Encode(msg)
