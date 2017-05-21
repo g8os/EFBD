@@ -35,8 +35,7 @@ tlogserver: $(OUTPUT)
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) \
 		go build -ldflags '$(ldflags)' -o $(OUTPUT)/$@ ./tlog/tlogserver
 
-test: testgo testcgo
-	./scripts/codegeneration.sh
+test: testgo testcgo testcodegen
 
 testgo:
 	go test -timeout 5m $(PACKAGES)
@@ -44,7 +43,10 @@ testgo:
 testcgo:
 	GODEBUG=cgocheck=0 go test -timeout 5m -tags 'isal' $(PACKAGES)
 
+testcodegen:
+	./scripts/codegeneration.sh
+
 $(OUTPUT):
 	mkdir -p $(OUTPUT)
 
-.PHONY: $(OUTPUT) nbdserver tlogserver g8stor test testgo testcgo
+.PHONY: $(OUTPUT) nbdserver tlogserver g8stor test testgo testcgo testcodegen

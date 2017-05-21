@@ -2,13 +2,20 @@ sudo: required
 dist: trusty
 language: go
 
-go:
-  - 1.8
-
-install:
-  - go get -u github.com/Jumpscale/go-raml
-  - ./tlog/install_dependencies.sh
-  - ./tlog/install_capnp_0.6.0.sh
-
-script:
-  - make test
+jobs:
+  include:
+    - stage: test
+      go: 1.8
+      install: skip
+      script: make testgo
+    - stage: test
+      go: 1.8
+      install:
+        - ./tlog/install_dependencies.sh
+      script: make testcgo
+    - stage: test
+      go: 1.8
+      install:
+        - go get -u github.com/Jumpscale/go-raml
+        - ./tlog/install_capnp_0.6.0.sh
+      script: make testcodegen
