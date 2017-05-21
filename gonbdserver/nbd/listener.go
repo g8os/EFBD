@@ -72,7 +72,7 @@ func (l *Listener) GetExportConfig(name string) (cfg *ExportConfig, err error) {
 			return
 		}
 		if err != nil {
-			log.Error(err)
+			l.logger.Error(err)
 		}
 	}
 

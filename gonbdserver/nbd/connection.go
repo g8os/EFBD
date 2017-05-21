@@ -430,9 +430,10 @@ func (c *Connection) receive(ctx context.Context) {
 
 			// flush if forced and no error occured
 			if fua && nbdRep.NbdError == 0 {
-				err := c.backend.Flush(ctx)
-				c.logger.Infof("Client %s got flush I/O error: %s", c.name, err)
-				nbdRep.NbdError = errorCodeFromGolangError(err)
+				if err := c.backend.Flush(ctx); err != nil {
+					c.logger.Infof("Client %s got flush I/O error: %s", c.name, err)
+					nbdRep.NbdError = errorCodeFromGolangError(err)
+				}
 			}
 
 		case NBD_CMD_WRITE_ZEROES:
@@ -465,9 +466,10 @@ func (c *Connection) receive(ctx context.Context) {
 
 			// flush if forced and no error occured
 			if fua && nbdRep.NbdError == 0 {
-				err := c.backend.Flush(ctx)
-				c.logger.Infof("Client %s got flush I/O error: %s", c.name, err)
-				nbdRep.NbdError = errorCodeFromGolangError(err)
+				if err := c.backend.Flush(ctx); err != nil {
+					c.logger.Infof("Client %s got flush I/O error: %s", c.name, err)
+					nbdRep.NbdError = errorCodeFromGolangError(err)
+				}
 			}
 
 		case NBD_CMD_FLUSH:
