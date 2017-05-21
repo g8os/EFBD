@@ -58,14 +58,14 @@ func (cfg *Config) Validate() error {
 	// ensure all referenced storage clusters exist, O(n^2)
 	for vdiskID, vdisk := range cfg.Vdisks {
 		// collect all storageClusters
-		storageClusters := []string{vdisk.Storagecluster}
+		storageClusters := []string{vdisk.StorageCluster}
 		if vdisk.RootStorageCluster != "" {
 			storageClusters = append(
 				storageClusters, vdisk.RootStorageCluster)
 		}
-		if vdisk.TlogStoragecluster != "" {
+		if vdisk.TlogStorageCluster != "" {
 			storageClusters = append(
-				storageClusters, vdisk.TlogStoragecluster)
+				storageClusters, vdisk.TlogStorageCluster)
 		}
 
 		// go through all storageClusters
@@ -104,7 +104,7 @@ func (cfg *Config) String() string {
 // StorageClusterConfig defines the config for a storageCluster
 type StorageClusterConfig struct {
 	DataStorage     []StorageServerConfig `yaml:"dataStorage" valid:"required"`
-	MetaDataStorage StorageServerConfig   `yaml:"metadataStorage" valid:"required"`
+	MetadataStorage StorageServerConfig   `yaml:"metadataStorage" valid:"required"`
 }
 
 // ParseCSStorageServerConfigStrings allows you to parse a slice of raw dial config strings.
@@ -159,12 +159,12 @@ type StorageServerConfig struct {
 
 // VdiskConfig defines the config for a vdisk
 type VdiskConfig struct {
-	Blocksize          uint64    `yaml:"blockSize" valid:"required"`
+	BlockSize          uint64    `yaml:"blockSize" valid:"required"`
 	ReadOnly           bool      `yaml:"readOnly" valid:"optional"`
 	Size               uint64    `yaml:"size" valid:"required"`
-	Storagecluster     string    `yaml:"storageCluster" valid:"required"`
+	StorageCluster     string    `yaml:"storageCluster" valid:"required"`
 	RootStorageCluster string    `yaml:"rootStorageCluster" valid:"optional"`
-	TlogStoragecluster string    `yaml:"tlogStorageCluster" valid:"optional"`
+	TlogStorageCluster string    `yaml:"tlogStorageCluster" valid:"optional"`
 	Type               VdiskType `yaml:"type" valid:"required"`
 }
 

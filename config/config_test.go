@@ -56,8 +56,8 @@ func TestValidConfigFromBytes(t *testing.T) {
 				assert.Equal(t, "192.123.123.123:2001", cluster.DataStorage[1].Address)
 				assert.Equal(t, 0, cluster.DataStorage[1].Database)
 			}
-			assert.Equal(t, "192.168.58.146:2001", cluster.MetaDataStorage.Address)
-			assert.Equal(t, 1, cluster.MetaDataStorage.Database)
+			assert.Equal(t, "192.168.58.146:2001", cluster.MetadataStorage.Address)
+			assert.Equal(t, 1, cluster.MetadataStorage.Database)
 		}
 
 		if cluster, ok := cfg.StorageClusters["rootcluster"]; assert.True(t, ok) {
@@ -65,8 +65,8 @@ func TestValidConfigFromBytes(t *testing.T) {
 				assert.Equal(t, "192.168.58.147:2000", cluster.DataStorage[0].Address)
 				assert.Equal(t, 0, cluster.DataStorage[0].Database)
 			}
-			assert.Equal(t, "192.168.58.147:2001", cluster.MetaDataStorage.Address)
-			assert.Equal(t, 2, cluster.MetaDataStorage.Database)
+			assert.Equal(t, "192.168.58.147:2001", cluster.MetadataStorage.Address)
+			assert.Equal(t, 2, cluster.MetadataStorage.Database)
 		}
 
 		if cluster, ok := cfg.StorageClusters["tlogcluster"]; assert.True(t, ok) {
@@ -74,19 +74,19 @@ func TestValidConfigFromBytes(t *testing.T) {
 				assert.Equal(t, "192.168.58.149:2000", cluster.DataStorage[0].Address)
 				assert.Equal(t, 4, cluster.DataStorage[0].Database)
 			}
-			assert.Equal(t, "192.168.58.149:2000", cluster.MetaDataStorage.Address)
-			assert.Equal(t, 8, cluster.MetaDataStorage.Database)
+			assert.Equal(t, "192.168.58.149:2000", cluster.MetadataStorage.Address)
+			assert.Equal(t, 8, cluster.MetadataStorage.Database)
 		}
 	}
 
 	if assert.Len(t, cfg.Vdisks, 1) {
 		if vdisk, ok := cfg.Vdisks["myvdisk"]; assert.True(t, ok) {
-			assert.Equal(t, uint64(4096), vdisk.Blocksize)
+			assert.Equal(t, uint64(4096), vdisk.BlockSize)
 			assert.False(t, vdisk.ReadOnly)
 			assert.Equal(t, uint64(10), vdisk.Size)
-			assert.Equal(t, "mycluster", vdisk.Storagecluster)
+			assert.Equal(t, "mycluster", vdisk.StorageCluster)
 			assert.Equal(t, "rootcluster", vdisk.RootStorageCluster)
-			assert.Equal(t, "tlogcluster", vdisk.TlogStoragecluster)
+			assert.Equal(t, "tlogcluster", vdisk.TlogStorageCluster)
 			assert.Equal(t, VdiskTypeBoot, vdisk.Type)
 		}
 	}
@@ -118,19 +118,19 @@ func TestMinimalValidConfigFromBytes(t *testing.T) {
 				assert.Equal(t, "192.168.58.146:2000", cluster.DataStorage[0].Address)
 				assert.Equal(t, 0, cluster.DataStorage[0].Database)
 			}
-			assert.Equal(t, "192.168.58.146:2001", cluster.MetaDataStorage.Address)
-			assert.Equal(t, 0, cluster.MetaDataStorage.Database)
+			assert.Equal(t, "192.168.58.146:2001", cluster.MetadataStorage.Address)
+			assert.Equal(t, 0, cluster.MetadataStorage.Database)
 		}
 	}
 
 	if assert.Len(t, cfg.Vdisks, 1) {
 		if vdisk, ok := cfg.Vdisks["myvdisk"]; assert.True(t, ok) {
-			assert.Equal(t, uint64(4096), vdisk.Blocksize)
+			assert.Equal(t, uint64(4096), vdisk.BlockSize)
 			assert.False(t, vdisk.ReadOnly)
 			assert.Equal(t, uint64(10), vdisk.Size)
-			assert.Equal(t, "mycluster", vdisk.Storagecluster)
+			assert.Equal(t, "mycluster", vdisk.StorageCluster)
 			assert.Equal(t, "", vdisk.RootStorageCluster)
-			assert.Equal(t, "", vdisk.TlogStoragecluster)
+			assert.Equal(t, "", vdisk.TlogStorageCluster)
 			assert.Equal(t, VdiskTypeBoot, vdisk.Type)
 		}
 	}

@@ -191,12 +191,12 @@ func RedisPoolFromConfig(configPath, vdiskID string, requiredDataServerCount int
 		return nil, fmt.Errorf("no vdisk config could be found for %s", vdiskID)
 	}
 
-	if vdiskcfg.TlogStoragecluster == "" {
+	if vdiskcfg.TlogStorageCluster == "" {
 		return nil, fmt.Errorf("no tlog storage cluster defined for %s", vdiskID)
 	}
 
 	// should always be found, as this is validated during config loading
-	storageCluster := cfg.StorageClusters[vdiskcfg.TlogStoragecluster]
+	storageCluster := cfg.StorageClusters[vdiskcfg.TlogStorageCluster]
 
 	if len(storageCluster.DataStorage) < requiredDataServerCount {
 		return nil, fmt.Errorf("storageCluster of vdisk %s has not enough dataservers", vdiskID)
@@ -204,7 +204,7 @@ func RedisPoolFromConfig(configPath, vdiskID string, requiredDataServerCount int
 
 	// create redis pool based on the given valid storage cluster
 	return newRedisPool(
-		storageCluster.MetaDataStorage,
+		storageCluster.MetadataStorage,
 		storageCluster.DataStorage[1:],
 	), nil
 }
@@ -322,12 +322,12 @@ func (factory *configRedisPoolFactory) NewRedisPool(vdiskID string) (RedisPool, 
 		return nil, fmt.Errorf("no vdisk config could be found for %s", vdiskID)
 	}
 
-	if vdiskcfg.TlogStoragecluster == "" {
+	if vdiskcfg.TlogStorageCluster == "" {
 		return nil, fmt.Errorf("no tlog storage cluster defined for %s", vdiskID)
 	}
 
 	// should always be found, as this is validated during config loading
-	storageCluster := factory.cfg.StorageClusters[vdiskcfg.TlogStoragecluster]
+	storageCluster := factory.cfg.StorageClusters[vdiskcfg.TlogStorageCluster]
 
 	if len(storageCluster.DataStorage) < factory.requiredDataServerCount {
 		return nil, fmt.Errorf("storageCluster of vdisk %s has not enough dataservers", vdiskID)
@@ -335,7 +335,7 @@ func (factory *configRedisPoolFactory) NewRedisPool(vdiskID string) (RedisPool, 
 
 	// create redis pool based on the given valid storage cluster
 	return newRedisPool(
-		storageCluster.MetaDataStorage,
+		storageCluster.MetadataStorage,
 		storageCluster.DataStorage[:factory.requiredDataServerCount-1],
 	), nil
 }

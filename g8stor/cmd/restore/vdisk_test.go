@@ -205,10 +205,10 @@ func newTestBackend(ctx context.Context, t *testing.T, vdiskID string, vdiskType
 	nbdConfig := &blockstorcfg.Config{
 		Vdisks: map[string]blockstorcfg.VdiskConfig{
 			vdiskID: blockstorcfg.VdiskConfig{
-				Blocksize:      blockSize,
+				BlockSize:      blockSize,
 				ReadOnly:       false,
 				Size:           size,
-				Storagecluster: "mycluster",
+				StorageCluster: "mycluster",
 				Type:           vdiskType,
 			},
 		},
@@ -217,7 +217,7 @@ func newTestBackend(ctx context.Context, t *testing.T, vdiskID string, vdiskType
 				DataStorage: []blockstorcfg.StorageServerConfig{
 					blockstorcfg.StorageServerConfig{Address: ardbStorage.Address()},
 				},
-				MetaDataStorage: blockstorcfg.StorageServerConfig{Address: ardbStorage.Address()},
+				MetadataStorage: blockstorcfg.StorageServerConfig{Address: ardbStorage.Address()},
 			},
 		},
 	}

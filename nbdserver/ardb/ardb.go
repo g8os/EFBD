@@ -108,7 +108,7 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	redisProvider, err := newRedisProvider(f.backendPool, storageClusterClient)
 
 	var storage backendStorage
-	blockSize := int64(vdisk.Blocksize)
+	blockSize := int64(vdisk.BlockSize)
 
 	// GridAPI returns the vdisk size in GiB
 	vdiskSize := int64(vdisk.Size) * gibibyteAsBytes

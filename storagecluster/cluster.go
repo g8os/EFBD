@@ -295,7 +295,7 @@ func (cc *ClusterClient) loadConfig() bool {
 	} else {
 		// StorageCluster is a /required/ property in the vdisk config,
 		// thus this can always be used as a fallback
-		storageClusterName = vdisk.Storagecluster
+		storageClusterName = vdisk.StorageCluster
 	}
 
 	//Get information about the backend storage nodes
@@ -331,7 +331,7 @@ func (cc *ClusterClient) loadConfig() bool {
 	// that at least 1 data storage server is defined
 
 	// used to store metadata (required by config)
-	cc.metaConnectionString = storageCluster.MetaDataStorage
+	cc.metaConnectionString = storageCluster.MetadataStorage
 
 	cc.loaded = true
 	return cc.loaded
