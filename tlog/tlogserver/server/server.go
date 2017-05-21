@@ -93,7 +93,7 @@ func (s *Server) Listen() {
 				// recover from handle panics,
 				// to keep server up and running at all costs
 				if r := recover(); r != nil {
-					log.Info("connection dropped because of an internal panic: ", r)
+					log.Error("connection dropped because of an internal panic: ", r)
 				}
 			}()
 

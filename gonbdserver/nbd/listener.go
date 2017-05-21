@@ -172,7 +172,7 @@ func (l *Listener) Listen(parentCtx context.Context, sessionParentCtx context.Co
 						// keep server up and running,
 						// even if we panic while handling this connection
 						if r := recover(); r != nil {
-							l.logger.Info("connection dropped because of an internal panic: ", r)
+							l.logger.Error("connection dropped because of an internal panic: ", r)
 						}
 					}()
 
