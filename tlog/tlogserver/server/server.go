@@ -133,7 +133,7 @@ func (s *Server) handshake(r io.Reader, w io.Writer) (cfg *connectionConfig, err
 
 	log.Debug("received handshake request from incoming connection")
 
-	// validate version
+	// get the version from the handshake req and validate it
 	clientVersion := blockstor.Version(req.Version())
 	if clientVersion.Compare(tlog.MinSupportedVersion) < 0 {
 		status = tlog.HandshakeStatusInvalidVersion
@@ -143,7 +143,7 @@ func (s *Server) handshake(r io.Reader, w io.Writer) (cfg *connectionConfig, err
 
 	log.Debug("incoming connection checks out with version: ", clientVersion)
 
-	// make sure vdisk doesn't exist yet
+	// get the vdiskID from the handshake req
 	vdiskID, err := req.VdiskID()
 	if err != nil {
 		status = tlog.HandshakeStatusInvalidVdiskID
@@ -151,12 +151,12 @@ func (s *Server) handshake(r io.Reader, w io.Writer) (cfg *connectionConfig, err
 		return // error return
 	}
 
+	// create the redis pool and flusher for this vdisk
 	redisPool, err := s.poolFactory.NewRedisPool(vdiskID)
 	if err != nil {
 		status = tlog.HandshakeStatusInsufficientDataServers
 		return // error return
 	}
-
 	flusher, err := newFlusher(s.flusherConf, redisPool)
 	if err != nil {
 		status = tlog.HandshakeStatusInternalServerError
