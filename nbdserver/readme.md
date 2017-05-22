@@ -81,6 +81,10 @@ using the `--config path` optional CLI flag.
 [clusterclientfactory]: /storagecluster/cluster.go#L32-#L40
 [backendfactory]: /nbdserver/ardb/ardb.go#L67-L75
 
+### Live reloading of the configuration
+
+A running nbdserver in a production environment can not simply be restarted since this will break the connection to any client.
+When the configuration file is modified, send a `SIGHUP` signal to the nbdserver to make it pick up the changes.
 
 ## Usage
 
