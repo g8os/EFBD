@@ -72,8 +72,6 @@ func (status HandshakeStatus) String() string {
 		return "OK"
 	case HandshakeStatusInvalidVersion:
 		return "InvalidVersion"
-	case HandshakeStatusInsufficientDataServers:
-		return "InsufficientDataServers"
 	case HandshakeStatusInvalidVdiskID:
 		return "InvalidVdiskID"
 	case HandshakeStatusInternalServerError:
@@ -97,8 +95,6 @@ func (status HandshakeStatus) Error() error {
 		return errors.New("given vdisk is not accepted by the server")
 	case HandshakeStatusInternalServerError:
 		return errors.New("internal server error")
-	case HandshakeStatusInsufficientDataServers:
-		return errors.New("insufficient data servers available")
 	case HandshakeStatusInvalidVersion:
 		return errors.New("client version is not compatible with server")
 	case HandshakeStatusInvalidRequest:
@@ -112,10 +108,7 @@ func (status HandshakeStatus) Error() error {
 const (
 	// returned when something went wrong internally
 	// in the tlogserver during the handshake phase
-	HandshakeStatusInternalServerError HandshakeStatus = -5
-	// returned when there are not enough data servers
-	// available to store the data
-	HandshakeStatusInsufficientDataServers HandshakeStatus = -4
+	HandshakeStatusInternalServerError HandshakeStatus = -4
 	// returned when the given VdiskID is not legal
 	// could be because it's not valid, or because it already
 	// exists on the server

@@ -110,14 +110,14 @@ func (s *Server) ListenAddr() string {
 }
 
 // handshake stage, required prior to receiving blocks
-func (s *Server) handshake(r io.Reader, w io.Writer) (cfg *connectionConfig, err error) {
+func (s *Server) handshake(r io.Reader, conn net.Conn) (vd *vdisk, err error) {
 	status := tlog.HandshakeStatusInternalServerError
 
 	// always return response, even in case of a panic,
 	// but normally this is triggered because of a(n early) return
 	defer func() {
 		segmentBuf := make([]byte, 0, schema.RawServerHandshakeLen())
-		err := s.writeHandshakeResponse(w, segmentBuf, status)
+		err := s.writeHandshakeResponse(conn, segmentBuf, status)
 		if err != nil {
 			log.Infof("couldn't write server %s response: %s",
 				status.String(), err.Error())
@@ -151,29 +151,29 @@ func (s *Server) handshake(r io.Reader, w io.Writer) (cfg *connectionConfig, err
 		return // error return
 	}
 
-	// create the redis pool and flusher for this vdisk
-	redisPool, err := s.poolFactory.NewRedisPool(vdiskID)
-	if err != nil {
-		status = tlog.HandshakeStatusInsufficientDataServers
-		return // error return
-	}
-	flusher, err := newFlusher(s.flusherConf, redisPool)
+	vd, created, err := vdiskMgr.get(vdiskID, req.FirstSequence(), s.createFlusher)
 	if err != nil {
 		status = tlog.HandshakeStatusInternalServerError
-		err = fmt.Errorf("couldn't create vdisk's flusher: %s", err.Error())
-		return // error return
+		err = fmt.Errorf("couldn't create vdisk %s: %s", vdiskID, err.Error())
+		return
+	}
+	if created {
+		// start response sender for vdisk
+		go s.sendResp(conn, vd.vdiskID, vd.respChan)
 	}
 
 	log.Debug("handshake phase successfully completed")
 	status = tlog.HandshakeStatusOK
-
-	// return cfg, as connection has been established
-	cfg = &connectionConfig{
-		VdiskID:       vdiskID,
-		FirstSequence: req.FirstSequence(),
-		Flusher:       flusher,
-	}
 	return // success return
+}
+
+func (s *Server) createFlusher(vdiskID string) (*flusher, error) {
+	redisPool, err := s.poolFactory.NewRedisPool(vdiskID)
+	if err != nil {
+		return nil, err
+	}
+
+	return newFlusher(s.flusherConf, redisPool)
 }
 
 func (s *Server) writeHandshakeResponse(w io.Writer, segmentBuf []byte, status tlog.HandshakeStatus) error {
@@ -199,22 +199,11 @@ func (s *Server) handle(conn *net.TCPConn) error {
 	defer conn.Close()
 	br := bufio.NewReader(conn)
 
-	cfg, err := s.handshake(br, conn)
+	vdisk, err := s.handshake(br, conn)
 	if err != nil {
 		err = fmt.Errorf("handshake failed: %s", err.Error())
 		log.Info(err)
 		return err
-	}
-
-	vdisk, created, err := vdiskMgr.get(cfg.VdiskID, cfg.Flusher, cfg.FirstSequence)
-	if err != nil {
-		err = fmt.Errorf("couldn't get or create vdisk %s, err: %v", cfg.VdiskID, err)
-		log.Info(err)
-		return err
-	}
-	if created {
-		// start response sender for vdisk
-		go s.sendResp(conn, vdisk.vdiskID, vdisk.respChan)
 	}
 
 	for {
@@ -240,7 +229,7 @@ func (s *Server) handle(conn *net.TCPConn) error {
 	}
 }
 
-func (s *Server) sendResp(conn *net.TCPConn, vdiskID string, respChan chan *BlockResponse) {
+func (s *Server) sendResp(conn net.Conn, vdiskID string, respChan chan *BlockResponse) {
 	segmentBuf := make([]byte, 0, s.maxRespSegmentBufLen)
 	for {
 		resp := <-respChan
