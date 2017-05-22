@@ -101,7 +101,7 @@ func (lba *LBA) Delete(blockIndex int64) (err error) {
 
 //Get returns the hash for a block, nil if no hash registered
 // If the shard containing this blockindex is not present, it is fetched from the external metadaserver
-func (lba *LBA) Get(blockIndex int64) (h blockstor.Hash, err error) {
+func (lba *LBA) Get(blockIndex int64) (h blockstor.Hash) {
 	shard, err := func(shardIndex int64) (*shard, error) {
 		lba.shardMux[shardIndex].Lock()
 		defer lba.shardMux[shardIndex].Unlock()

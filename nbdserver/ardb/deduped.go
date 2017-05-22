@@ -55,7 +55,7 @@ func (ds *dedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 
 // Merge implements backendStorage.Merge
 func (ds *dedupedStorage) Merge(blockIndex, offset int64, content []byte) (mergedContent []byte, err error) {
-	hash, _ := ds.lba.Get(blockIndex)
+	hash := ds.lba.Get(blockIndex)
 
 	if hash != nil && !hash.Equals(blockstor.NilHash) {
 		mergedContent, err = ds.getContent(hash)
@@ -83,8 +83,8 @@ func (ds *dedupedStorage) Merge(blockIndex, offset int64, content []byte) (merge
 
 // Get implements backendStorage.Get
 func (ds *dedupedStorage) Get(blockIndex int64) (content []byte, err error) {
-	hash, err := ds.lba.Get(blockIndex)
-	if err == nil && hash != nil && !hash.Equals(blockstor.NilHash) {
+	hash := ds.lba.Get(blockIndex)
+	if hash != nil && !hash.Equals(blockstor.NilHash) {
 		content, err = ds.getContent(hash)
 	}
 	return
@@ -93,7 +93,7 @@ func (ds *dedupedStorage) Get(blockIndex int64) (content []byte, err error) {
 // Delete implements backendStorage.Delete
 func (ds *dedupedStorage) Delete(blockIndex int64) (err error) {
 	// first get hash
-	hash, _ := ds.lba.Get(blockIndex)
+	hash := ds.lba.Get(blockIndex)
 	if hash == nil {
 		// content didn't exist yet,
 		// so we've nothing to do here
