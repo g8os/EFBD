@@ -23,29 +23,24 @@ func GetLashHashKey(vdiskID string) []byte {
 // GetLastHash returns valid last hash of a vdisk.
 // It checks all data shards to get latest valid hash
 func (d *Decoder) GetLastHash() ([]byte, error) {
-	latests := map[uint64][]byte{}
+	var maxSeq uint64
+	var lastHash []byte
 
 	// get all valid hashes from all data storages
 	for i := 0; i < d.k+d.m; i++ {
 		hash, lastSeq, err := d.getLastHashFromShard(i)
-		if err == nil {
-			latests[lastSeq] = hash
+		if err != nil {
+			continue
+		}
+		if lastSeq > maxSeq {
+			maxSeq = lastSeq
+			lastHash = hash
 		}
 	}
 
 	// no hash found, return Nil
-	if len(latests) == 0 {
+	if len(lastHash) == 0 {
 		return nil, ErrNilLastHash
-	}
-
-	// get the latest valid hash
-	var maxSeq uint64
-	var lastHash []byte
-	for seq, hash := range latests {
-		if seq > maxSeq {
-			maxSeq = seq
-			lastHash = hash
-		}
 	}
 
 	return lastHash, nil
@@ -88,19 +83,12 @@ func (d *Decoder) checkLastHash(hash []byte) (uint64, error) {
 		return 0, err
 	}
 
-	var lastSeq uint64
-
 	// check latest sequence
 	blocks, err := agg.Blocks()
 	if blocks.Len() == 0 {
 		return 0, fmt.Errorf("empty block")
 	}
 
-	for i := 0; i < blocks.Len(); i++ {
-		block := blocks.At(i)
-		if block.Sequence() > lastSeq {
-			lastSeq = block.Sequence()
-		}
-	}
-	return lastSeq, nil
+	// last block always the last sequence
+	return blocks.At(blocks.Len() - 1).Sequence(), nil
 }

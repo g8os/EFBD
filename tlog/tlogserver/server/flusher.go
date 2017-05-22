@@ -245,7 +245,7 @@ func (f *flusher) store(idx int, hash, lastHashKey, data []byte) errStore {
 		return es
 	}
 
-	// flush the command
+	// flush the commands
 	if err := rc.Flush(); err != nil {
 		es.errSend = err
 		return es

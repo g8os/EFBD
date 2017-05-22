@@ -24,16 +24,14 @@ import (
 //   an inmemory redis pool will be created instead;
 func AnyRedisPoolFactory(cfg RedisPoolFactoryConfig) (RedisPoolFactory, error) {
 	if length := len(cfg.ServerConfigs); length > 0 {
-		requiredServers := cfg.RequiredDataServerCount
-
 		serverConfigs := cfg.ServerConfigs
-		if length < requiredServers {
+		if length < cfg.RequiredDataServerCount {
 			if !cfg.AutoFill {
 				return nil, errors.New("not enough storage server configs are given")
 			}
 
 			var err error
-			serverConfigs, err = autoFillStorageServerConfigs(requiredServers, serverConfigs)
+			serverConfigs, err = autoFillStorageServerConfigs(cfg.RequiredDataServerCount, serverConfigs)
 			if err != nil {
 				return nil, err
 			}
@@ -101,16 +99,14 @@ func ConfigRedisPoolFactory(requiredDataServerCount int, configPath string) (Red
 //   and allowInMemory is true, an inmemory redis pool will be created instead;
 func AnyRedisPool(cfg RedisPoolConfig) (RedisPool, error) {
 	if length := len(cfg.ServerConfigs); length > 0 {
-		requiredServers := cfg.RequiredDataServerCount
-
 		serverConfigs := cfg.ServerConfigs
-		if length < requiredServers {
+		if length < cfg.RequiredDataServerCount {
 			if !cfg.AutoFill {
 				return nil, errors.New("not enough storage server configs are given")
 			}
 
 			var err error
-			serverConfigs, err = autoFillStorageServerConfigs(requiredServers, serverConfigs)
+			serverConfigs, err = autoFillStorageServerConfigs(cfg.RequiredDataServerCount, serverConfigs)
 			if err != nil {
 				return nil, err
 			}
@@ -147,9 +143,7 @@ func NewRedisPool(requiredDataServerCount int, storageServers []config.StorageSe
 func InMemoryRedisPool(requiredDataServerCount int) RedisPool {
 	var serverConfigs []config.StorageServerConfig
 
-	requiredServers := requiredDataServerCount
-
-	for i := 0; i < requiredServers; i++ {
+	for i := 0; i < requiredDataServerCount; i++ {
 		memoryRedis := redisstub.NewMemoryRedis()
 		memoryAddress := memoryRedis.Address()
 
