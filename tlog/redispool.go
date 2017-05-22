@@ -24,8 +24,7 @@ import (
 //   an inmemory redis pool will be created instead;
 func AnyRedisPoolFactory(cfg RedisPoolFactoryConfig) (RedisPoolFactory, error) {
 	if length := len(cfg.ServerConfigs); length > 0 {
-		// one extra (as we require also a metaDataServer)
-		requiredServers := cfg.RequiredDataServerCount + 1
+		requiredServers := cfg.RequiredDataServerCount
 
 		serverConfigs := cfg.ServerConfigs
 		if length < requiredServers {
@@ -66,8 +65,6 @@ func InMemoryRedisPoolFactory(requiredDataServerCount int) RedisPoolFactory {
 // StaticRedisPoolFactory creates a RedisPoolFactory,
 // which returns the same valid RedisPool for all vdisks,
 // and thus it will always return a valid RedisPool.
-// The first storage server is used metadata usage,
-// and the rest of available servers are used as storage servers.
 func StaticRedisPoolFactory(requiredDataServerCount int, storageServers []config.StorageServerConfig) (RedisPoolFactory, error) {
 	redisPool, err := NewRedisPool(requiredDataServerCount, storageServers)
 	if err != nil {
@@ -104,8 +101,7 @@ func ConfigRedisPoolFactory(requiredDataServerCount int, configPath string) (Red
 //   and allowInMemory is true, an inmemory redis pool will be created instead;
 func AnyRedisPool(cfg RedisPoolConfig) (RedisPool, error) {
 	if length := len(cfg.ServerConfigs); length > 0 {
-		// one extra (as we require also a metaDataServer)
-		requiredServers := cfg.RequiredDataServerCount + 1
+		requiredServers := cfg.RequiredDataServerCount
 
 		serverConfigs := cfg.ServerConfigs
 		if length < requiredServers {
@@ -137,15 +133,13 @@ func AnyRedisPool(cfg RedisPoolConfig) (RedisPool, error) {
 	return nil, errors.New("either a config path or server config has to be given")
 }
 
-// NewRedisPool creates a redis pool using the given servers,
-// seperating the first one for metadata usage,
-// and using the rest as storage servers.
+// NewRedisPool creates a redis pool using the given servers.
 func NewRedisPool(requiredDataServerCount int, storageServers []config.StorageServerConfig) (RedisPool, error) {
-	if len(storageServers)-1 < requiredDataServerCount {
+	if len(storageServers) < requiredDataServerCount {
 		return nil, errors.New("insufficient data servers given")
 	}
 
-	return newRedisPool(storageServers[0], storageServers[1:]), nil
+	return newRedisPool(storageServers), nil
 }
 
 // InMemoryRedisPool creates a redis pool using in-memory
@@ -153,8 +147,7 @@ func NewRedisPool(requiredDataServerCount int, storageServers []config.StorageSe
 func InMemoryRedisPool(requiredDataServerCount int) RedisPool {
 	var serverConfigs []config.StorageServerConfig
 
-	// one extra for metadata server
-	requiredServers := requiredDataServerCount + 1
+	requiredServers := requiredDataServerCount
 
 	for i := 0; i < requiredServers; i++ {
 		memoryRedis := redisstub.NewMemoryRedis()
@@ -174,7 +167,7 @@ func InMemoryRedisPool(requiredDataServerCount int) RedisPool {
 		})
 	}
 
-	return newRedisPool(serverConfigs[0], serverConfigs[1:])
+	return newRedisPool(serverConfigs)
 }
 
 // RedisPoolFromConfig creates a redis pool for a vdisk,
@@ -203,10 +196,7 @@ func RedisPoolFromConfig(configPath, vdiskID string, requiredDataServerCount int
 	}
 
 	// create redis pool based on the given valid storage cluster
-	return newRedisPool(
-		storageCluster.MetadataStorage,
-		storageCluster.DataStorage[1:],
-	), nil
+	return newRedisPool(storageCluster.DataStorage), nil
 }
 
 // RedisPoolConfig used to create any kind
@@ -283,7 +273,6 @@ type RedisPoolFactory interface {
 }
 
 // RedisPool maintains a collection of premade redis.Pool's,
-// one pool per predefined (meta)data connection.
 type RedisPool interface {
 	// returns amount of DataConnection servers available
 	DataConnectionCount() int
@@ -292,11 +281,6 @@ type RedisPool interface {
 	// It is important that the caller of this function closes the
 	// received connection to return the connection's resources back to the pool.
 	DataConnection(index int) redis.Conn
-	// The application calls the MetadataConnection
-	// to get a connection from the metadataServer pool.
-	// It is important that the caller of this function closes the
-	// received connection to return the connection's resources back to the pool.
-	MetadataConnection() redis.Conn
 	// Close all open resources.
 	Close()
 }
@@ -335,7 +319,6 @@ func (factory *configRedisPoolFactory) NewRedisPool(vdiskID string) (RedisPool, 
 
 	// create redis pool based on the given valid storage cluster
 	return newRedisPool(
-		storageCluster.MetadataStorage,
 		storageCluster.DataStorage[:factory.requiredDataServerCount-1],
 	), nil
 }
@@ -343,22 +326,20 @@ func (factory *configRedisPoolFactory) NewRedisPool(vdiskID string) (RedisPool, 
 // redisPool is the internal structure used as the RedisPool
 // in development/production code.
 type redisPool struct {
-	lock         sync.Mutex //protects following
-	dataPools    map[int]*redis.Pool
-	metaDataPool *redis.Pool
+	lock      sync.Mutex //protects following
+	dataPools map[int]*redis.Pool
 }
 
 // newRedisPool creates a new pool for multiple redis servers,
 // the number of pools defined by the number of given connection strings.
-func newRedisPool(metadataServer config.StorageServerConfig, dataServers []config.StorageServerConfig) RedisPool {
+func newRedisPool(dataServers []config.StorageServerConfig) RedisPool {
 	dataPools := make(map[int]*redis.Pool, len(dataServers))
 	for index, dataServerConfig := range dataServers {
 		dataPools[index] = newConnectionPool(dataServerConfig)
 	}
 
 	return &redisPool{
-		dataPools:    dataPools,
-		metaDataPool: newConnectionPool(metadataServer),
+		dataPools: dataPools,
 	}
 }
 
@@ -373,13 +354,6 @@ func newConnectionPool(cfg config.StorageServerConfig) *redis.Pool {
 			return redis.Dial("tcp", cfg.Address, redis.DialDatabase(cfg.Database))
 		},
 	}
-}
-
-// MetadataConnection implements RedisPool.MetadataConnection
-func (p *redisPool) MetadataConnection() redis.Conn {
-	p.lock.Lock()
-	defer p.lock.Unlock()
-	return p.metaDataPool.Get()
 }
 
 // DataConnectionCount implements RedisPool.DataConnectionCount
@@ -411,9 +385,8 @@ func (p *redisPool) Close() {
 	for _, c := range p.dataPools {
 		c.Close()
 	}
-	p.metaDataPool.Close()
 
-	p.dataPools, p.metaDataPool = nil, nil
+	p.dataPools = nil
 }
 
 // errorConnection taken from
