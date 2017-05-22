@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -101,62 +102,6 @@ func (f *flusher) flush(blocks []*schema.TlogBlock, vd *vdisk) ([]uint64, error)
 	return seqs[:], nil
 }
 
-func (f *flusher) storeEncoded(vd *vdisk, key []byte, encoded [][]byte) error {
-	var wg sync.WaitGroup
-
-	length := f.k + f.m
-	wg.Add(length + 1)
-
-	var allErr []error
-
-	// store encoded data
-	for i := 0; i < length; i++ {
-		go func(idx int) {
-			defer wg.Done()
-
-			blocks := encoded[idx]
-			err := f.storeData(idx, "SET", key, blocks)
-			if err != nil {
-				err = fmt.Errorf("error during flush idx %v: %v", idx, err)
-				allErr = append(allErr, err)
-			}
-		}(i)
-	}
-
-	// store last hash name
-	lastHashStored := false
-	go func() {
-		defer wg.Done()
-		err := f.storeLastHash(vd.vdiskID, key)
-		if err != nil {
-			err = fmt.Errorf("error when setting last hash name: %v", err)
-			allErr = append(allErr, err)
-		} else {
-			lastHashStored = true
-		}
-	}()
-
-	wg.Wait()
-
-	if lastHashStored && len(allErr) > 0 {
-		// if last hash successfully stored but we had error in data pieces,
-		// we need to roolback the last_hash
-		//
-		// FIXME : what to do if the rollback itself got error?
-		// - need to use other data structure?
-		// - only store last hash after we successfully store all pieces?
-		if err := f.storeLastHash(vd.vdiskID, vd.lastHash); err != nil {
-			log.Infof("WARNING: failed to rollback last hash of %s to %v, err: %s",
-				vd.vdiskID, vd.lastHash, err.Error())
-		}
-	}
-	if len(allErr) > 0 {
-		log.Infof("flush of vdiskID=%s failed: %v", vd.vdiskID, allErr)
-		return fmt.Errorf("flush vdiskID=%s failed", vd.vdiskID)
-	}
-	return nil
-}
-
 func (f *flusher) encodeCapnp(blocks []*schema.TlogBlock, vd *vdisk) ([]byte, error) {
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(vd.segmentBuf))
 	if err != nil {
@@ -195,11 +140,142 @@ func (f *flusher) encodeCapnp(blocks []*schema.TlogBlock, vd *vdisk) ([]byte, er
 	return buf.Bytes(), err
 }
 
-func (f *flusher) getLastHash(vdiskID string) ([]byte, error) {
-	rc := f.pool.MetadataConnection()
+func (f *flusher) storeEncoded(vd *vdisk, key []byte, encoded [][]byte) error {
+	var wg sync.WaitGroup
+
+	length := f.k + f.m
+	wg.Add(length)
+
+	var allErr []error
+
+	// store encoded data
+	for i := 0; i < length; i++ {
+		go func(idx int) {
+			defer wg.Done()
+
+			blocks := encoded[idx]
+			ef := f.storeAndRetry(idx, key, vd.lastHashKey, blocks)
+			if !ef.Nil() {
+				err := fmt.Errorf("error during flush idx %v: %v", idx, ef)
+				allErr = append(allErr, err)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	if len(allErr) > 0 {
+		log.Infof("flush of vdiskID=%s failed: %v", vd.vdiskID, allErr)
+		return fmt.Errorf("flush vdiskID=%s failed", vd.vdiskID)
+	}
+
+	return nil
+}
+
+type errStore struct {
+	errSend     error
+	errData     error
+	errLastHash error
+}
+
+func (es errStore) Nil() bool {
+	return es.errSend == nil && es.errData == nil && es.errLastHash == nil
+}
+
+func (es errStore) Error() string {
+	if es.Nil() {
+		return ""
+	}
+
+	var errs []string
+
+	if es.errSend != nil {
+		errs = append(errs, fmt.Sprintf("redis Send failed: %v", es.errSend))
+	}
+	if es.errData != nil {
+		errs = append(errs, fmt.Sprintf("failed to send data pieces: %v", es.errData))
+	}
+	if es.errLastHash != nil {
+		errs = append(errs, fmt.Sprintf("failed to update last hash: %v", es.errLastHash))
+	}
+	return strings.Join(errs, ",")
+}
+
+// store data to redis and retry it if failed
+func (f *flusher) storeAndRetry(idx int, hash, lastHashKey, data []byte) errStore {
+	var es errStore
+
+	sleepMs := time.Duration(500) * time.Millisecond
+
+	for i := 0; i < 4; i++ {
+		es = f.store(idx, hash, lastHashKey, data)
+		if es.Nil() {
+			return es
+		}
+		log.Infof("error to store data in server idx:%v, err: %v", idx, es.Error())
+
+		// sleep for a while
+		time.Sleep(sleepMs * time.Duration(i))
+	}
+	return es
+}
+
+// store data to redis and retry it if failed
+func (f *flusher) store(idx int, hash, lastHashKey, data []byte) errStore {
+	var es errStore
+
+	// get new connection inside this function.
+	// so in case of error, we got new connection that hopefully better
+	rc := f.pool.DataConnection(idx)
 	defer rc.Close()
 
-	hash, err := decoder.GetLastHash(rc, vdiskID)
+	// send command to store the data
+	if err := rc.Send("SET", hash, data); err != nil {
+		es.errSend = err
+		return es
+	}
+
+	// send command to store the last hash
+	if err := rc.Send("LPUSH", lastHashKey, hash); err != nil {
+		es.errSend = err
+		return es
+	}
+
+	// flush the command
+	if err := rc.Flush(); err != nil {
+		es.errSend = err
+		return es
+	}
+
+	// reply of set data
+	if _, err := rc.Receive(); err != nil {
+		es.errData = err
+	}
+
+	// reply of lpush last hash
+	if _, err := rc.Receive(); err != nil {
+		es.errLastHash = err
+	}
+
+	if !es.Nil() {
+		return es
+	}
+
+	// we don't need to wait for the trim operation because it won't harm us
+	// if failed
+	go func() {
+		rc := f.pool.DataConnection(idx)
+		defer rc.Close()
+		if _, err := rc.Do("LTRIM", lastHashKey, 0, lastHashNum); err != nil {
+			log.Errorf("failed to trim lasth hash of %s: %s", lastHashKey, err.Error())
+		}
+	}()
+
+	return es
+}
+
+func (f *flusher) getLastHash(vdiskID string) ([]byte, error) {
+	hash, err := decoder.GetLastHash(f.pool, vdiskID)
 	if err != nil && err != decoder.ErrNilLastHash {
 		return nil, err
 	}
@@ -209,87 +285,4 @@ func (f *flusher) getLastHash(vdiskID string) ([]byte, error) {
 	}
 	return hash, nil
 
-}
-
-// we store last hash as array of lastHashNum last hashes.
-func (f *flusher) storeLastHash(vdiskID string, lastHash []byte) error {
-	key := []byte(f.lastHashKey(vdiskID))
-
-	// we don't need to wait for the trim operation because it won't harm us
-	// if failed
-	go func() {
-		rc := f.pool.MetadataConnection()
-		defer rc.Close()
-		if _, err := rc.Do("LTRIM", key, 0, lastHashNum); err != nil {
-			log.Errorf("failed to trim lasth hash of %s: %s", vdiskID, err.Error())
-		}
-	}()
-
-	return f.storeMetadataAndRetry("LPUSH", key, lastHash)
-}
-
-func (f *flusher) lastHashKey(vdiskID string) string {
-	return tlog.LastHashPrefix + vdiskID
-}
-
-// store data to redis and retry it if failed
-func (f *flusher) storeDataAndRetry(idx int, cmd string, key, data []byte) error {
-	var err error
-
-	sleepMs := time.Duration(500) * time.Millisecond
-
-	for i := 0; i < 4; i++ {
-		err = f.storeData(idx, cmd, key, data)
-		if err == nil {
-			return nil
-		}
-		log.Infof("error to store data in server idx:%v, err: %v", idx, err)
-
-		// sleep for a while
-		time.Sleep(sleepMs)
-		sleepMs *= 2 // double the sleep time for the next iteration
-	}
-	return err
-}
-
-// store data to redis and retry it if failed
-func (f *flusher) storeData(idx int, cmd string, key, data []byte) error {
-	// get new connection inside this function.
-	// so in case of error, we got new connection that hopefully better
-	rc := f.pool.DataConnection(idx)
-	defer rc.Close()
-
-	_, err := rc.Do(cmd, key, data)
-	return err
-}
-
-// store metadata to redis and retry it if failed
-func (f *flusher) storeMetadataAndRetry(cmd string, key, data []byte) error {
-	var err error
-
-	sleepMs := time.Duration(500) * time.Millisecond
-
-	for i := 0; i < 4; i++ {
-		err = f.storeMetadata(cmd, key, data)
-		if err == nil {
-			return nil
-		}
-		log.Infof("error to store metadata, err: %v", err)
-
-		// sleep for a while
-		time.Sleep(sleepMs)
-		sleepMs *= 2 // double the sleep time for the next iteration
-	}
-	return err
-}
-
-// store metadata to redis and retry it if failed
-func (f *flusher) storeMetadata(cmd string, key, data []byte) error {
-	// get new connection inside this function.
-	// so in case of error, we got new connection that hopefully better
-	rc := f.pool.MetadataConnection()
-	defer rc.Close()
-
-	_, err := rc.Do(cmd, key, data)
-	return err
 }

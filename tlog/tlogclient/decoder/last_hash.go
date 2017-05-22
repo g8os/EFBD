@@ -15,9 +15,20 @@ var (
 	ErrNilLastHash = errors.New("nil last hash")
 )
 
+// GetLashHashKey returns last hash key of
+// a given vdisk ID
+func GetLashHashKey(vdiskID string) []byte {
+	return []byte(tlog.LastHashPrefix + vdiskID)
+}
+
 // GetLastHash returns valid last hash of a vdisk.
-func GetLastHash(rc redis.Conn, vdiskID string) ([]byte, error) {
-	key := tlog.LastHashPrefix + vdiskID
+func GetLastHash(pool tlog.RedisPool, vdiskID string) ([]byte, error) {
+	return getLastHashFromShard(pool, 1, vdiskID)
+}
+
+func getLastHashFromShard(pool tlog.RedisPool, idx int, vdiskID string) ([]byte, error) {
+	rc := pool.DataConnection(idx)
+	key := GetLashHashKey(vdiskID)
 
 	hashes, err := redis.ByteSlices(rc.Do("LRANGE", key, 0, -1))
 	if err == redis.ErrNil {

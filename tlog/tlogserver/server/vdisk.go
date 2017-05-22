@@ -9,6 +9,7 @@ import (
 	"github.com/g8os/blockstor/log"
 	"github.com/g8os/blockstor/tlog"
 	"github.com/g8os/blockstor/tlog/schema"
+	"github.com/g8os/blockstor/tlog/tlogclient/decoder"
 )
 
 const (
@@ -25,7 +26,8 @@ var vdiskMgr *vdiskManager
 
 type vdisk struct {
 	vdiskID          string
-	lastHash         []byte
+	lastHash         []byte // current in memory last hash
+	lastHashKey      []byte
 	inputChan        chan *schema.TlogBlock // input channel received from client
 	orderedChan      chan *schema.TlogBlock // ordered blocks from inputChan
 	respChan         chan *blockResponse
@@ -47,6 +49,7 @@ func newVdisk(vdiskID string, f *flusher, firstSequence uint64) (*vdisk, error) 
 
 	return &vdisk{
 		vdiskID:          vdiskID,
+		lastHashKey:      decoder.GetLashHashKey(vdiskID),
 		lastHash:         lastHash,
 		inputChan:        make(chan *schema.TlogBlock, maxTlbInBuffer),
 		orderedChan:      make(chan *schema.TlogBlock, maxTlbInBuffer),
