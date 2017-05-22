@@ -219,7 +219,7 @@ func (d *Decoder) getAllPieces(key []byte) ([]byte, error) {
 
 // get last hash of a vdisk
 func (d *Decoder) getLastHash() ([]byte, error) {
-	return GetLastHash(d.pool, d.vdiskID)
+	return d.GetLastHash()
 }
 
 func (d *Decoder) decodeCapnp(data []byte) (*schema.TlogAggregation, error) {

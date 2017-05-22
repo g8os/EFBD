@@ -27,6 +27,8 @@ type flusher struct {
 	m         int
 	flushSize int
 	flushTime int
+	privKey   string
+	hexNonce  string
 
 	pool tlog.RedisPool
 
@@ -46,6 +48,8 @@ func newFlusher(conf *flusherConfig, pool tlog.RedisPool) (*flusher, error) {
 		m:         conf.M,
 		flushSize: conf.FlushSize,
 		flushTime: conf.FlushTime,
+		privKey:   conf.PrivKey,
+		hexNonce:  conf.HexNonce,
 		pool:      pool,
 		erasure:   erasure.NewErasurer(conf.K, conf.M),
 		encrypter: encrypter,
@@ -275,7 +279,12 @@ func (f *flusher) store(idx int, hash, lastHashKey, data []byte) errStore {
 }
 
 func (f *flusher) getLastHash(vdiskID string) ([]byte, error) {
-	hash, err := decoder.GetLastHash(f.pool, vdiskID)
+	dec, err := decoder.New(f.pool, f.k, f.m, vdiskID, f.privKey, f.hexNonce)
+	if err != nil {
+		return nil, err
+	}
+
+	hash, err := dec.GetLastHash()
 	if err != nil && err != decoder.ErrNilLastHash {
 		return nil, err
 	}
