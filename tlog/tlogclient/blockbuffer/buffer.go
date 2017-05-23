@@ -64,7 +64,6 @@ func (b *Buffer) Add(block *schema.TlogBlock) {
 
 	ent, exist := b.entries[seq]
 	if exist {
-		ent.update(b.timeout)
 		return
 	}
 
@@ -96,6 +95,7 @@ func (b *Buffer) getTimedOut() []*entry {
 	for _, ent := range b.entries {
 		if ent.isTimeout(now) {
 			ents = append(ents, ent)
+			ent.update(b.timeout)
 		}
 	}
 	return ents
