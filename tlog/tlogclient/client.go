@@ -158,6 +158,8 @@ func (c *Client) Recv(chanSize int) <-chan *Result {
 				status := tlog.BlockStatus(tr.Status)
 				seq := tr.Sequences[0]
 
+				/* comment this code because we currently doesn't
+				  have this case in server.
 				// if it failed to be received, promote it to be
 				// timed out as soon as possible.
 				if status == tlog.BlockStatusRecvFailed {
@@ -170,6 +172,7 @@ func (c *Client) Recv(chanSize int) <-chan *Result {
 						continue
 					}
 				}
+				*/
 
 				// if it successfully received by server, delete from buffer
 				if status == tlog.BlockStatusRecvOK {

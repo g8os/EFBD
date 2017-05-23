@@ -74,9 +74,9 @@ func TestResend(t *testing.T) {
 		numLogs       = 500
 	)
 
-	// only used in connect
+	// only used in client.connect
 	// TODO : remove the need to this unused server
-	unusedServer, err := createUnusedServer()
+	unusedServer, _, err := createTestServer()
 	assert.Nil(t, err)
 	go unusedServer.Listen()
 
@@ -145,15 +145,4 @@ func TestResend(t *testing.T) {
 	}
 
 	wg.Wait()
-}
-
-func createUnusedServer() (*server.Server, error) {
-	conf := server.DefaultConfig()
-	conf.ListenAddr = "127.0.0.1:0"
-
-	// create inmemory redis pool factory
-	poolFactory := tlog.InMemoryRedisPoolFactory(conf.RequiredDataServers())
-
-	// start the server
-	return server.NewServer(conf, poolFactory)
 }
