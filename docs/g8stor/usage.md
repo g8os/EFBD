@@ -13,13 +13,15 @@ Available Commands:
   copy        Copy a g8os resource
   delete      Delete a g8os resource
   help        Help about any command
+  list        List g8os resources
   restore     Restore a g8os resource
   version     Output the version information
 
 Flags:
+  -h, --help      help for g8stor
   -v, --verbose   log available information
 
-Use "g8stor [command] --help" for more information about a command
+Use "g8stor [command] --help" for more information about a command.
 ```
 
 ## Examples
@@ -50,6 +52,11 @@ vdisks:
     storageCluster: clusterB
     type: boot
 ```
+
+Note that the examples below don't show all available flags.
+Please use `g8stor [command] --help` to see the flags of a specific command,
+`g8stor copy vdisk --help` will for example show all information available for the
+command used to copy a vdisk.
 
 ## Copy a vdisk
 
@@ -119,6 +126,19 @@ $ g8stor restore vdisk a
 
 **Note**: this requires that you have a `config.yml` file in the current working directory.
 
+### List all available vdisks
+
+list vdisks available on `localhost:16379`:
+
+```
+$ g8stor list vdisks localhost:16379
+```
+
+#### WARNING
+
+This command is slow, and might take a while to finish!
+It might also decrease the performance of the ardb server
+in question, by locking the server down for each operation.
 
 ## Legacy Examples
 
