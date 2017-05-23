@@ -219,7 +219,7 @@ func (s *Server) handle(conn *net.TCPConn) error {
 
 	for {
 		// decode
-		block, err := s.readDecodeBlock(br)
+		block, err := s.ReadDecodeBlock(br)
 		if err != nil {
 			log.Errorf("failed to decode tlog: %v", err)
 			return err
@@ -233,18 +233,18 @@ func (s *Server) handle(conn *net.TCPConn) error {
 
 		// store
 		vdisk.inputChan <- block
-		vdisk.respChan <- &blockResponse{
+		vdisk.respChan <- &BlockResponse{
 			Status:    tlog.BlockStatusRecvOK.Int8(),
 			Sequences: []uint64{block.Sequence()},
 		}
 	}
 }
 
-func (s *Server) sendResp(conn *net.TCPConn, vdiskID string, respChan chan *blockResponse) {
+func (s *Server) sendResp(conn *net.TCPConn, vdiskID string, respChan chan *BlockResponse) {
 	segmentBuf := make([]byte, 0, s.maxRespSegmentBufLen)
 	for {
 		resp := <-respChan
-		if err := resp.write(conn, segmentBuf); err != nil {
+		if err := resp.Write(conn, segmentBuf); err != nil {
 			log.Infof("failed to send resp to :%v, err:%v", vdiskID, err)
 			conn.Close()
 			return
@@ -267,8 +267,8 @@ func (s *Server) readDecodeHandshakeRequest(r io.Reader) (*schema.HandshakeReque
 	return &resp, nil
 }
 
-// read and decode tlog block message from client
-func (s *Server) readDecodeBlock(r io.Reader) (*schema.TlogBlock, error) {
+// ReadDecodeBlock reads and decodes tlog block message from client
+func (s *Server) ReadDecodeBlock(r io.Reader) (*schema.TlogBlock, error) {
 	msg, err := capnp.NewDecoder(r).Decode()
 	if err != nil {
 		return nil, err

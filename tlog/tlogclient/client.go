@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"sync"
 	"time"
@@ -41,7 +42,8 @@ type Client struct {
 	addr            string
 	vdiskID         string
 	conn            *net.TCPConn
-	bw              *bufio.Writer
+	bw              BufferedWriter
+	rd              io.Reader // reader of this client
 	blockBuffer     *blockbuffer.Buffer
 	capnpSegmentBuf []byte
 
@@ -230,6 +232,7 @@ func (c *Client) createConn() error {
 	conn.SetKeepAlive(true)
 	c.conn = conn
 	c.bw = bufio.NewWriter(conn)
+	c.rd = conn
 	return nil
 }
 

@@ -71,7 +71,7 @@ func (c *Client) decodeHandshakeResponse() (*schema.HandshakeResponse, error) {
 }
 
 func (c *Client) decodeBlockResponse() (*schema.TlogResponse, error) {
-	msg, err := capnp.NewDecoder(c.conn).Decode()
+	msg, err := capnp.NewDecoder(c.rd).Decode()
 	if err != nil {
 		return nil, err
 	}
