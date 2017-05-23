@@ -23,8 +23,8 @@ func newEntry(block *schema.TlogBlock, timeoutDur time.Duration) *entry {
 }
 
 // update states of this entry
-func (ent *entry) update(timeoutDur time.Duration) {
-	ent.retryNum++
+func (ent *entry) update(timeoutDur time.Duration, retryInc int) {
+	ent.retryNum += retryInc
 	ent.timeout = time.Now().Add(timeoutDur)
 }
 

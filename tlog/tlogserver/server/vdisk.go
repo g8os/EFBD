@@ -30,7 +30,7 @@ type vdisk struct {
 	lastHashKey      []byte
 	inputChan        chan *schema.TlogBlock // input channel received from client
 	orderedChan      chan *schema.TlogBlock // ordered blocks from inputChan
-	respChan         chan *blockResponse
+	respChan         chan *BlockResponse
 	flusher          *flusher
 	segmentBuf       []byte
 	expectedSequence uint64 // expected sequence to be received
@@ -53,7 +53,7 @@ func newVdisk(vdiskID string, f *flusher, firstSequence uint64) (*vdisk, error) 
 		lastHash:         lastHash,
 		inputChan:        make(chan *schema.TlogBlock, maxTlbInBuffer),
 		orderedChan:      make(chan *schema.TlogBlock, maxTlbInBuffer),
-		respChan:         make(chan *blockResponse, respChanSize),
+		respChan:         make(chan *BlockResponse, respChanSize),
 		expectedSequence: firstSequence,
 		flusher:          f,
 	}, nil
@@ -205,7 +205,7 @@ func (vd *vdisk) runFlusher() {
 			status = tlog.BlockStatusFlushFailed
 		}
 
-		vd.respChan <- &blockResponse{
+		vd.respChan <- &BlockResponse{
 			Status:    status.Int8(),
 			Sequences: seqs,
 		}
