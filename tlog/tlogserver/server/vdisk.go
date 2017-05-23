@@ -36,6 +36,16 @@ type vdisk struct {
 	expectedSequence uint64 // expected sequence to be received
 }
 
+// ID returns the ID of this vdisk
+func (vd *vdisk) ID() string {
+	return vd.vdiskID
+}
+
+// ResponseChan returns the channel to which Block Responses get sent
+func (vd *vdisk) ResponseChan() <-chan *BlockResponse {
+	return vd.respChan
+}
+
 // creates vdisk with given vdiskID, flusher, and first sequence.
 // firstSequence is the very first sequence that this vdisk will receive.
 // blocks with sequence < firstSequence are going to be ignored.
@@ -81,7 +91,7 @@ func newVdiskManager(blockSize, flushSize int) *vdiskManager {
 type flusherFactory func(vdiskID string) (*flusher, error)
 
 // get or create the vdisk
-func (vt *vdiskManager) get(vdiskID string, firstSequence uint64, ff flusherFactory) (vd *vdisk, created bool, err error) {
+func (vt *vdiskManager) Get(vdiskID string, firstSequence uint64, ff flusherFactory) (vd *vdisk, err error) {
 	vt.lock.Lock()
 	defer vt.lock.Unlock()
 
@@ -100,7 +110,6 @@ func (vt *vdiskManager) get(vdiskID string, firstSequence uint64, ff flusherFact
 		return
 	}
 	vt.vdisks[vdiskID] = vd
-	created = true
 
 	log.Debugf("create vdisk with expectedSequence:%v", vd.expectedSequence)
 

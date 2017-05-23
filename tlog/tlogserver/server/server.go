@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -110,14 +111,14 @@ func (s *Server) ListenAddr() string {
 }
 
 // handshake stage, required prior to receiving blocks
-func (s *Server) handshake(r io.Reader, conn net.Conn) (vd *vdisk, err error) {
+func (s *Server) handshake(r io.Reader, w io.Writer) (vd *vdisk, err error) {
 	status := tlog.HandshakeStatusInternalServerError
 
 	// always return response, even in case of a panic,
 	// but normally this is triggered because of a(n early) return
 	defer func() {
 		segmentBuf := make([]byte, 0, schema.RawServerHandshakeLen())
-		err := s.writeHandshakeResponse(conn, segmentBuf, status)
+		err := s.writeHandshakeResponse(w, segmentBuf, status)
 		if err != nil {
 			log.Infof("couldn't write server %s response: %s",
 				status.String(), err.Error())
@@ -151,15 +152,11 @@ func (s *Server) handshake(r io.Reader, conn net.Conn) (vd *vdisk, err error) {
 		return // error return
 	}
 
-	vd, created, err := vdiskMgr.get(vdiskID, req.FirstSequence(), s.createFlusher)
+	vd, err = vdiskMgr.Get(vdiskID, req.FirstSequence(), s.createFlusher)
 	if err != nil {
 		status = tlog.HandshakeStatusInternalServerError
 		err = fmt.Errorf("couldn't create vdisk %s: %s", vdiskID, err.Error())
 		return
-	}
-	if created {
-		// start response sender for vdisk
-		go s.sendResp(conn, vd.vdiskID, vd.respChan)
 	}
 
 	log.Debug("handshake phase successfully completed")
@@ -197,6 +194,10 @@ func (s *Server) writeHandshakeResponse(w io.Writer, segmentBuf []byte, status t
 
 func (s *Server) handle(conn *net.TCPConn) error {
 	defer conn.Close()
+
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
 	br := bufio.NewReader(conn)
 
 	vdisk, err := s.handshake(br, conn)
@@ -205,6 +206,7 @@ func (s *Server) handle(conn *net.TCPConn) error {
 		log.Info(err)
 		return err
 	}
+	go s.sendResp(ctx, conn, vdisk.ID(), vdisk.ResponseChan())
 
 	for {
 		// decode
@@ -229,13 +231,17 @@ func (s *Server) handle(conn *net.TCPConn) error {
 	}
 }
 
-func (s *Server) sendResp(conn net.Conn, vdiskID string, respChan chan *BlockResponse) {
+func (s *Server) sendResp(ctx context.Context, w io.Writer, vdiskID string, respChan <-chan *BlockResponse) {
 	segmentBuf := make([]byte, 0, s.maxRespSegmentBufLen)
 	for {
-		resp := <-respChan
-		if err := resp.Write(conn, segmentBuf); err != nil {
-			log.Infof("failed to send resp to :%v, err:%v", vdiskID, err)
-			conn.Close()
+		select {
+		case resp := <-respChan:
+			if err := resp.Write(w, segmentBuf); err != nil {
+				log.Infof("failed to send resp to :%v, err:%v", vdiskID, err)
+				return
+			}
+		case <-ctx.Done():
+			log.Debugf("abort current sendResp goroutine for vdisk:%v", vdiskID)
 			return
 		}
 	}
