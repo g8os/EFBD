@@ -42,7 +42,7 @@ type Client struct {
 	addr            string
 	vdiskID         string
 	conn            *net.TCPConn
-	bw              bufferedWriter
+	bw              writerFlusher
 	rd              io.Reader // reader of this client
 	blockBuffer     *blockbuffer.Buffer
 	capnpSegmentBuf []byte
@@ -155,10 +155,12 @@ func (c *Client) Recv(chanSize int) <-chan *Result {
 			}
 
 			if tr != nil && len(tr.Sequences) > 0 {
-				status := tlog.BlockStatus(tr.Status)
-				seq := tr.Sequences[0]
+				// if it successfully received by server, delete from buffer
+				if tr.Status == tlog.BlockStatusRecvOK {
+					c.blockBuffer.Delete(tr.Sequences[0])
+				}
 
-				/* comment this code because we currently doesn't
+				/* enclose this code part with comment because we currently doesn't
 				  have this case in server.
 				// if it failed to be received, promote it to be
 				// timed out as soon as possible.
@@ -173,11 +175,6 @@ func (c *Client) Recv(chanSize int) <-chan *Result {
 					}
 				}
 				*/
-
-				// if it successfully received by server, delete from buffer
-				if status == tlog.BlockStatusRecvOK {
-					c.blockBuffer.Delete(seq)
-				}
 			}
 
 			reChan <- &Result{

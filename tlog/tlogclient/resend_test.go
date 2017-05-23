@@ -12,6 +12,7 @@ import (
 	"github.com/g8os/blockstor/tlog/tlogserver/server"
 )
 
+// implements the writerFlusher
 type pipeWriterFlush struct {
 	*io.PipeWriter
 }
@@ -20,6 +21,9 @@ func (pwf pipeWriterFlush) Flush() error {
 	return nil
 }
 
+// dummy tlog server that only receive request
+// and give response.
+// It use io.Pipe to simulate TCP connection.
 type dummyServer struct {
 	serv          *server.Server
 	reqPipeWriter pipeWriterFlush
@@ -43,7 +47,8 @@ func newDummyServer(s *server.Server) *dummyServer {
 	}
 }
 
-func (ds *dummyServer) handle(t *testing.T, logsToIgnore map[uint64]struct{}) error {
+// run this dummy server.
+func (ds *dummyServer) run(t *testing.T, logsToIgnore map[uint64]struct{}) error {
 	for {
 		// receive the message
 		block, err := ds.serv.ReadDecodeBlock(ds.reqPipeReader)
@@ -53,6 +58,7 @@ func (ds *dummyServer) handle(t *testing.T, logsToIgnore map[uint64]struct{}) er
 		}
 		seq := block.Sequence()
 
+		// ignore this log, if it exist in logsToIgnore map
 		if _, ok := logsToIgnore[seq]; ok {
 			delete(logsToIgnore, seq)
 			continue
@@ -67,7 +73,8 @@ func (ds *dummyServer) handle(t *testing.T, logsToIgnore map[uint64]struct{}) er
 	}
 }
 
-func TestResend(t *testing.T) {
+// TestResendTimeout test client resend in case of timeout
+func TestResendTimeout(t *testing.T) {
 	const (
 		vdisk         = "12345"
 		firstSequence = 0
@@ -90,15 +97,15 @@ func TestResend(t *testing.T) {
 	}
 
 	ds := newDummyServer(unusedServer)
-	go ds.handle(t, logsToIgnore)
+	go ds.run(t, logsToIgnore)
 
 	client, err := New(unusedServer.ListenAddr(), vdisk, firstSequence)
 	assert.Nil(t, err)
 
 	data := make([]byte, 4096)
 
-	// fake client writer to server's request buffer
-	client.bw = ds.reqPipeWriter
+	client.bw = ds.reqPipeWriter  // fake client writer
+	client.rd = ds.respPipeReader // fake the reader
 
 	var wg sync.WaitGroup
 
@@ -106,7 +113,6 @@ func TestResend(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		client.rd = ds.respPipeReader // fake the reader
 
 		// map of sequence we want to wait for the response to come
 		logsToRecv := map[uint64]struct{}{}
