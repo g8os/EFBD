@@ -1,7 +1,7 @@
 package tlogclient
 
 import (
-	"bytes"
+	"io"
 	"sync"
 	"testing"
 
@@ -12,45 +12,41 @@ import (
 	"github.com/g8os/blockstor/tlog/tlogserver/server"
 )
 
-type bufWriter struct {
-	*bytes.Buffer
-	notifChan chan struct{}
+type pipeWriterFlush struct {
+	*io.PipeWriter
 }
 
-func (bw bufWriter) Flush() error {
-	bw.notifChan <- struct{}{}
+func (pwf pipeWriterFlush) Flush() error {
 	return nil
 }
 
 type dummyServer struct {
-	serv         *server.Server
-	reqBuf       bufWriter     // request buffer
-	reqNotifChan chan struct{} // request availability notification channel
+	serv          *server.Server
+	reqPipeWriter pipeWriterFlush
+	reqPipeReader *io.PipeReader
 
-	respBuf       *bytes.Buffer // resp buffer
-	respNotifChan chan struct{} // resp availability notification channel
+	respPipeWriter *io.PipeWriter
+	respPipeReader *io.PipeReader
 }
 
 func newDummyServer(s *server.Server) *dummyServer {
-	reqNotifChan := make(chan struct{}, 1)
-	respNotifChan := make(chan struct{}, 1)
+	reqRd, reqW := io.Pipe()
+	respRd, respW := io.Pipe()
 	return &dummyServer{
 		serv: s,
-		reqBuf: bufWriter{
-			Buffer:    new(bytes.Buffer),
-			notifChan: reqNotifChan,
+		reqPipeWriter: pipeWriterFlush{
+			PipeWriter: reqW,
 		},
-		respBuf:       new(bytes.Buffer),
-		reqNotifChan:  reqNotifChan,
-		respNotifChan: respNotifChan,
+		reqPipeReader:  reqRd,
+		respPipeWriter: respW,
+		respPipeReader: respRd,
 	}
 }
 
 func (ds *dummyServer) handle(t *testing.T, logsToIgnore map[uint64]struct{}) error {
 	for {
 		// receive the message
-		<-ds.reqNotifChan
-		block, err := ds.serv.ReadDecodeBlock(ds.reqBuf)
+		block, err := ds.serv.ReadDecodeBlock(ds.reqPipeReader)
 		if err != nil {
 			t.Fatalf("error decode block:%v", err)
 			continue
@@ -67,8 +63,7 @@ func (ds *dummyServer) handle(t *testing.T, logsToIgnore map[uint64]struct{}) er
 			Status:    int8(tlog.BlockStatusRecvOK),
 			Sequences: []uint64{block.Sequence()},
 		}
-		resp.Write(ds.respBuf, nil)
-		ds.respNotifChan <- struct{}{}
+		resp.Write(ds.respPipeWriter, nil)
 	}
 }
 
@@ -103,7 +98,7 @@ func TestResend(t *testing.T) {
 	data := make([]byte, 4096)
 
 	// fake client writer to server's request buffer
-	client.bw = ds.reqBuf
+	client.bw = ds.reqPipeWriter
 
 	var wg sync.WaitGroup
 
@@ -111,7 +106,7 @@ func TestResend(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		client.rd = ds.respBuf // fake the reader
+		client.rd = ds.respPipeReader // fake the reader
 
 		// map of sequence we want to wait for the response to come
 		logsToRecv := map[uint64]struct{}{}
@@ -119,14 +114,10 @@ func TestResend(t *testing.T) {
 			logsToRecv[uint64(i)] = struct{}{}
 		}
 
-		<-ds.respNotifChan
-		respChan := client.Recv(0) // make it blocking by setting channel size to 0
+		respChan := client.Recv(1)
 
-		// TODO: because of the limitation of this test (need ds.respNotifChan)
-		// there will be always one message we can't wait
-		for len(logsToRecv) > 1 {
+		for len(logsToRecv) > 0 {
 			// recv
-			<-ds.respNotifChan
 			resp := <-respChan
 
 			assert.Nil(t, resp.Err)

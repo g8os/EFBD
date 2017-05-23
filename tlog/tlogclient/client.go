@@ -42,7 +42,7 @@ type Client struct {
 	addr            string
 	vdiskID         string
 	conn            *net.TCPConn
-	bw              BufferedWriter
+	bw              bufferedWriter
 	rd              io.Reader // reader of this client
 	blockBuffer     *blockbuffer.Buffer
 	capnpSegmentBuf []byte

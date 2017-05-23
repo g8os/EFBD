@@ -4,7 +4,7 @@ import (
 	"io"
 )
 
-type BufferedWriter interface {
+type bufferedWriter interface {
 	io.Writer
 	Flush() error
 }
