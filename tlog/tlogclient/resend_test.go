@@ -101,6 +101,7 @@ func TestResendTimeout(t *testing.T) {
 
 	client, err := New(unusedServer.ListenAddr(), vdisk, firstSequence)
 	assert.Nil(t, err)
+	defer client.Close()
 
 	data := make([]byte, 4096)
 

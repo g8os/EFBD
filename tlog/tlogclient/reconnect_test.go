@@ -25,6 +25,7 @@ func TestSimpleReconnect(t *testing.T) {
 
 	client, err := New(serv.ListenAddr(), vdisk, firstSequence)
 	assert.Nil(t, err)
+	defer client.Close()
 
 	data := make([]byte, 4096)
 

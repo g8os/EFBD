@@ -33,6 +33,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer client.Close()
 
 	data := make([]byte, dataLen)
 	for i := 0; i < dataLen; i++ {

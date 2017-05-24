@@ -304,7 +304,8 @@ func (c *Client) send(op uint8, seq, lba, timestamp uint64,
 	return
 }
 
-// Close the open connection, making this client invalid
+// Close the open connection, making this client invalid.
+// It is user responsibility to call this function.
 func (c *Client) Close() error {
 	c.cancelFunc()
 	return c.conn.Close()
