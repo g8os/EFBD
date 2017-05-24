@@ -36,6 +36,16 @@ type vdisk struct {
 	expectedSequence uint64 // expected sequence to be received
 }
 
+// ID returns the ID of this vdisk
+func (vd *vdisk) ID() string {
+	return vd.vdiskID
+}
+
+// ResponseChan returns the channel to which Block Responses get sent
+func (vd *vdisk) ResponseChan() <-chan *BlockResponse {
+	return vd.respChan
+}
+
 // creates vdisk with given vdiskID, flusher, and first sequence.
 // firstSequence is the very first sequence that this vdisk will receive.
 // blocks with sequence < firstSequence are going to be ignored.
@@ -78,25 +88,35 @@ func newVdiskManager(blockSize, flushSize int) *vdiskManager {
 	}
 }
 
-// get a vdisk and initialize it if not exist yet
-func (vt *vdiskManager) get(vdiskID string, f *flusher, firstSequence uint64) (*vdisk, bool, error) {
+type flusherFactory func(vdiskID string) (*flusher, error)
+
+// get or create the vdisk
+func (vt *vdiskManager) Get(vdiskID string, firstSequence uint64, ff flusherFactory) (vd *vdisk, err error) {
 	vt.lock.Lock()
 	defer vt.lock.Unlock()
 
-	vd, exists := vt.vdisks[vdiskID]
-
-	if !exists {
-		var err error
-		vd, err = newVdisk(vdiskID, f, firstSequence)
-		if err != nil {
-			return nil, false, err
-		}
-		log.Debugf("create vdisk with expectedSequence:%v", vd.expectedSequence)
-		go vd.runFlusher()
-		go vd.runReceiver()
+	vd, ok := vt.vdisks[vdiskID]
+	if ok {
+		return
 	}
 
-	return vd, !exists, nil
+	f, err := ff(vdiskID)
+	if err != nil {
+		return
+	}
+
+	vd, err = newVdisk(vdiskID, f, firstSequence)
+	if err != nil {
+		return
+	}
+	vt.vdisks[vdiskID] = vd
+
+	log.Debugf("create vdisk with expectedSequence:%v", vd.expectedSequence)
+
+	go vd.runFlusher()
+	go vd.runReceiver()
+
+	return
 }
 
 // the comparator function needed by https://godoc.org/github.com/emirpasic/gods/sets/treeset#NewWith
