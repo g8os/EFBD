@@ -113,32 +113,7 @@ func TestResendTimeout(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-
-		// map of sequence we want to wait for the response to come
-		logsToRecv := map[uint64]struct{}{}
-		for i := 0; i < numLogs; i++ {
-			logsToRecv[uint64(i)] = struct{}{}
-		}
-
-		respChan := client.Recv(1)
-
-		for len(logsToRecv) > 0 {
-			// recv
-			resp := <-respChan
-
-			assert.Nil(t, resp.Err)
-
-			// check response content
-			if resp != nil && resp.Resp.Status == tlog.BlockStatusRecvOK {
-				assert.Equal(t, 1, len(resp.Resp.Sequences))
-				seqResp := resp.Resp.Sequences[0]
-
-				if _, ok := logsToRecv[seqResp]; ok {
-					delete(logsToRecv, seqResp)
-				}
-			}
-
-		}
+		waitForBlockReceivedResponse(t, client, 0, numLogs-1)
 	}()
 
 	// send the logs
