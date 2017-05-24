@@ -86,7 +86,7 @@ func TestEndToEnd(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		expected := numLogs + numFlush
-		respChan := client.Recv(1)
+		respChan := client.Recv()
 		for i := 0; i < expected; i++ {
 			re := <-respChan
 			if !assert.Nil(t, re.Err) {
@@ -235,7 +235,7 @@ func TestUnordered(t *testing.T) {
 	go func() {
 		defer wg.Done()
 
-		respChan := client.Recv(1)
+		respChan := client.Recv()
 		for received < expected {
 			select {
 			case re := <-respChan:

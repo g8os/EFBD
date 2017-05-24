@@ -55,7 +55,7 @@ func main() {
 	go func() {
 		defer wg.Done()
 
-		respChan := client.Recv(100)
+		respChan := client.Recv()
 		for {
 			r := <-respChan
 			if r.Err != nil {

@@ -237,7 +237,7 @@ func (ab *Backend) GoBackground(ctx context.Context) {
 		return
 	}
 
-	respChan := ab.tlogClient.Recv(transactionChCapacity)
+	respChan := ab.tlogClient.Recv()
 
 	log.Debug(
 		"starting backend background thread for vdisk:",

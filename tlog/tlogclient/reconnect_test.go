@@ -60,7 +60,7 @@ func waitForBlockReceivedResponse(t *testing.T, client *Client, minSequence, max
 		logsToRecv[i] = struct{}{}
 	}
 
-	respChan := client.Recv(1)
+	respChan := client.Recv()
 
 	for len(logsToRecv) > 0 {
 		// recv

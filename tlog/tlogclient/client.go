@@ -58,7 +58,8 @@ type Client struct {
 	cancelFunc context.CancelFunc
 }
 
-// New creates a new tlog client.
+// New creates a new tlog client for a vdisk with 'addr' is the tlogserver address.
+// 'firstSequence' is the first sequence number this client is going to send.
 // The client is not goroutine safe.
 func New(addr, vdiskID string, firstSequence uint64) (*Client, error) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
@@ -142,8 +143,15 @@ func (c *Client) handshake(firstSequence uint64) error {
 }
 
 // Recv get channel of responses and errors (Result)
-func (c *Client) Recv(chanSize int) <-chan *Result {
-	reChan := make(chan *Result, chanSize)
+func (c *Client) Recv() <-chan *Result {
+	// response channel
+	// three is big enough size:
+	// - one waiting to be fetched by application/user
+	// - one for the response we just received
+	// - one for (hopefully) optimization, so we can read from network
+	//	 before needed and then put it to this channel.
+	reChan := make(chan *Result, 3)
+
 	go func() {
 		for {
 			tr, err := c.recvOne()
