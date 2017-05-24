@@ -37,7 +37,7 @@ func TestSimpleReconnect(t *testing.T) {
 	for i := 0; i < numLogs; i++ {
 		x := uint64(i)
 
-		if numLogs%oneTenth == 0 { // close the connection every one-tenth of numLogs
+		if i%oneTenth == 0 { // close the connection every one-tenth of numLogs
 			client.conn.Close() // simulate closed connection by closing the socket
 		}
 
