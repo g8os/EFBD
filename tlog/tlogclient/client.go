@@ -79,6 +79,9 @@ func New(addr, vdiskID string, firstSequence uint64) (*Client, error) {
 }
 
 func (c *Client) connect(firstSequence uint64) error {
+	c.rLock.Lock()
+	defer c.rLock.Unlock()
+
 	err := c.createConn()
 	if err != nil {
 		return fmt.Errorf("client couldn't be created: %s", err.Error())
@@ -86,7 +89,7 @@ func (c *Client) connect(firstSequence uint64) error {
 
 	err = c.handshake(firstSequence)
 	if err != nil {
-		if err := c.Close(); err != nil {
+		if err := c.conn.Close(); err != nil {
 			log.Debug("couldn't close open connection of invalid client:", err)
 		}
 		return fmt.Errorf("client handshake failed: %s", err.Error())
@@ -224,8 +227,6 @@ func (c *Client) recvOne() (*Response, error) {
 }
 
 func (c *Client) createConn() error {
-	c.rLock.Lock()
-	defer c.rLock.Unlock()
 
 	tcpAddr, err := net.ResolveTCPAddr("tcp", c.addr)
 	if err != nil {
