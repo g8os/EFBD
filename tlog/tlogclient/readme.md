@@ -4,11 +4,11 @@ Tlog client is asynchronous tlog client library. It is currently not goroutine s
 
 ## API
 
-The main APIs are : `New`, `Send` and `Recv`
+The main APIs are : `New`, `Send` and `Recv`:
 
-[New](https://godoc.org/github.com/g8os/blockstor/tlog/tlogclient#New) to create new client instance.
-[Send](https://godoc.org/github.com/g8os/blockstor/tlog/tlogclient#Client.Send) to send transaction to server.
-[Recv](https://godoc.org/github.com/g8os/blockstor/tlog/tlogclient#Client.Recv) to get the channel to receive the server
+- [New](https://godoc.org/github.com/g8os/blockstor/tlog/tlogclient#New) to create new client instance.
+- [Send](https://godoc.org/github.com/g8os/blockstor/tlog/tlogclient#Client.Send) to send transaction to server.
+- [Recv](https://godoc.org/github.com/g8os/blockstor/tlog/tlogclient#Client.Recv) to get the channel to receive the server
 response.
 
 ## usage example
