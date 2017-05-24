@@ -50,12 +50,13 @@ See the [README](tlogclient/readme.md) there for more details.
 
 ### Flush Settings
 
-flush-size: minimum number of blocks to be flushed
-flush-time: maximum time we can wait entries before flushing it.
-k : number of erasure encoded data pieces
-m : number of erasure encoded coding/parity pieces
-nonce: hex nonce used for encryption 
-priv-key: encryption private key
+settings directly related to flush:
+- flush-size: minimum number of blocks to be flushed
+- flush-time: maximum time we can wait entries before flushing it.
+- k : number of erasure encoded data pieces
+- m : number of erasure encoded coding/parity pieces
+- nonce: hex nonce used for encryption 
+- priv-key: encryption private key
 
 ### Tlog Aggregation structure:
 Tlog aggregation per vdisk
