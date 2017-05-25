@@ -6,14 +6,14 @@ import (
 )
 
 // get 1 or 2 ardb connection(s) based on the given input
-func getARDBConnections(input *userInputPair, sourcedb, targetdb int, logger log.Logger) (connA, connB redis.Conn, err error) {
+func getARDBConnections(input *userInputPair, sourcedb, targetdb int) (connA, connB redis.Conn, err error) {
 	// dial first (source) connection string
 	connA, err = redis.Dial("tcp", input.Source.URL, redis.DialDatabase(sourcedb))
 	if err != nil {
 		return // early return if exit
 	}
 	if input.Source.URL == input.Target.URL && sourcedb == targetdb {
-		logger.Infof("only 1 TCP connection is required: %s@%d", input.Source.URL, sourcedb)
+		log.Infof("only 1 TCP connection is required: %s@%d", input.Source.URL, sourcedb)
 		return
 	}
 
@@ -24,7 +24,7 @@ func getARDBConnections(input *userInputPair, sourcedb, targetdb int, logger log
 		connA = nil // reset connA again
 		return      // early return if exit
 	}
-	logger.Infof("2 TCP connections required: %s@%d => %s@%d",
+	log.Infof("2 TCP connections required: %s@%d => %s@%d",
 		input.Source.URL, sourcedb, input.Target.URL, targetdb)
 	return
 }

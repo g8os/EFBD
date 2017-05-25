@@ -23,48 +23,48 @@ var DedupedCmd = &cobra.Command{
 }
 
 func copyDeduped(cmd *cobra.Command, args []string) error {
-	// create logger
 	logLevel := log.ErrorLevel
 	if config.Verbose {
-		logLevel = log.DebugLevel
+		logLevel = log.InfoLevel
 	}
-	logger := log.New("copy-deduped", logLevel)
+	log.SetLevel(logLevel)
 
 	// parse user input
-	logger.Info("parsing positional arguments...")
+	log.Info("parsing positional arguments...")
 	input, err := parseUserInput(args)
 	if err != nil {
 		return err
 	}
 
 	// get ardb connections
-	logger.Info("get the redis connection(s)...")
+	log.Info("get the redis connection(s)...")
 	connA, connB, err := getARDBConnections(
 		input,
-		dedupedCfg.SourceDatabase, dedupedCfg.TargetDatabase,
-		logger)
+		dedupedCfg.SourceDatabase, dedupedCfg.TargetDatabase)
 	if err != nil {
 		return err
 	}
 
-	logger.Infof("copy vdisk %q as %q",
+	log.Infof("copy vdisk %q as %q",
 		input.Source.VdiskID, input.Target.VdiskID)
 
 	if connB == nil {
-		err = copyDedupedSameConnection(input, connA, logger)
+		err = copyDedupedSameConnection(
+			input.Source.VdiskID, input.Target.VdiskID, connA)
 	} else {
-		err = copyDedupedDifferentConnections(input, connA, connB, logger)
+		err = copyDedupedDifferentConnections(
+			input.Source.VdiskID, input.Target.VdiskID, connA, connB)
 	}
 	if err != nil {
 		return err
 	}
 
-	logger.Infof("copied succesfully vdisk %q to vdisk %q",
+	log.Infof("copied succesfully vdisk %q to vdisk %q",
 		input.Source.VdiskID, input.Target.VdiskID)
 	return nil
 }
 
-func copyDedupedSameConnection(input *userInputPair, conn redis.Conn, logger log.Logger) (err error) {
+func copyDedupedSameConnection(sourceID, targetID string, conn redis.Conn) (err error) {
 	defer conn.Close()
 
 	script := redis.NewScript(0, `
@@ -90,40 +90,38 @@ redis.call("RESTORE", destination, 0, redis.call("DUMP", source))
 return redis.call("HLEN", destination)
 `)
 
-	logger.Infof("dumping vdisk %q and restoring it as vdisk %q",
-		input.Source.VdiskID, input.Target.VdiskID)
+	log.Infof("dumping vdisk %q and restoring it as vdisk %q",
+		sourceID, targetID)
 
-	indexCount, err := redis.Int64(script.Do(conn,
-		input.Source.VdiskID, input.Target.VdiskID))
+	indexCount, err := redis.Int64(script.Do(conn, sourceID, targetID))
 	if err == nil {
-		logger.Infof("copied %d meta indices to vdisk %q",
-			indexCount, input.Target.VdiskID)
+		log.Infof("copied %d meta indices to vdisk %q", indexCount, targetID)
 	}
 
 	return
 }
 
-func copyDedupedDifferentConnections(input *userInputPair, connA, connB redis.Conn, logger log.Logger) (err error) {
+func copyDedupedDifferentConnections(sourceID, targetID string, connA, connB redis.Conn) (err error) {
 	defer func() {
 		connA.Close()
 		connB.Close()
 	}()
 
 	// get data from source connection
-	logger.Infof("collecting all metadata from source vdisk %q...", input.Source.VdiskID)
-	data, err := redis.StringMap(connA.Do("HGETALL", input.Source.VdiskID))
+	log.Infof("collecting all metadata from source vdisk %q...", sourceID)
+	data, err := redis.StringMap(connA.Do("HGETALL", sourceID))
 	if err != nil {
 		return
 	}
 	if len(data) == 0 {
-		err = fmt.Errorf("%q does not exist", input.Source.VdiskID)
+		err = fmt.Errorf("%q does not exist", sourceID)
 		return
 	}
-	logger.Infof("collected %d meta indices from source vdisk %q",
-		len(data), input.Source.VdiskID)
+	log.Infof("collected %d meta indices from source vdisk %q",
+		len(data), sourceID)
 
 	// ensure the vdisk isn't touched while we're creating it
-	if err = connB.Send("WATCH", input.Target.VdiskID); err != nil {
+	if err = connB.Send("WATCH", targetID); err != nil {
 		return
 	}
 
@@ -133,13 +131,13 @@ func copyDedupedDifferentConnections(input *userInputPair, connA, connB redis.Co
 	}
 
 	// delete any existing vdisk
-	if err = connB.Send("DEL", input.Target.VdiskID); err != nil {
+	if err = connB.Send("DEL", targetID); err != nil {
 		return
 	}
 
 	// buffer all data on target connection
-	logger.Infof("buffering %d meta indices for target vdisk %q...",
-		len(data), input.Target.VdiskID)
+	log.Infof("buffering %d meta indices for target vdisk %q...",
+		len(data), targetID)
 	var index int64
 	for rawIndex, hash := range data {
 		index, err = strconv.ParseInt(rawIndex, 10, 64)
@@ -147,16 +145,16 @@ func copyDedupedDifferentConnections(input *userInputPair, connA, connB redis.Co
 			return
 		}
 
-		connB.Send("HSET", input.Target.VdiskID, index, []byte(hash))
+		connB.Send("HSET", targetID, index, []byte(hash))
 	}
 
 	// send all data to target connection (execute the transaction)
-	logger.Infof("flushing buffered metadata for target vdisk %q...", input.Target.VdiskID)
+	log.Infof("flushing buffered metadata for target vdisk %q...", targetID)
 	response, err := connB.Do("EXEC")
 	if err == nil && response == nil {
 		// if response == <nil> the transaction has failed
 		// more info: https://redis.io/topics/transactions
-		err = fmt.Errorf("vdisk %q was busy and couldn't be modified", input.Target.VdiskID)
+		err = fmt.Errorf("vdisk %q was busy and couldn't be modified", targetID)
 	}
 
 	return

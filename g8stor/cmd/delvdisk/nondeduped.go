@@ -3,7 +3,8 @@ package delvdisk
 import (
 	"fmt"
 
-	"github.com/g8os/blockstor/g8stor/cmd/config"
+	"github.com/g8os/blockstor/config"
+	cmdconfig "github.com/g8os/blockstor/g8stor/cmd/config"
 	"github.com/g8os/blockstor/log"
 	"github.com/garyburd/redigo/redis"
 	"github.com/spf13/cobra"
@@ -19,33 +20,79 @@ var NondedupedCmd = &cobra.Command{
 func deleteNondeduped(cmd *cobra.Command, args []string) error {
 	// create logger
 	logLevel := log.ErrorLevel
-	if config.Verbose {
-		logLevel = log.DebugLevel
+	if cmdconfig.Verbose {
+		logLevel = log.InfoLevel
 	}
-	logger := log.New("copy-deduped", logLevel)
+	log.SetLevel(logLevel)
 
 	// parse user input
-	logger.Info("parsing positional arguments...")
+	log.Info("parsing positional arguments...")
 	input, err := parseUserInput(args)
 	if err != nil {
 		return err
 	}
 
-	// get ardb connections
-	logger.Info("get the redis connection...")
-	conn, err := redis.Dial("tcp", input.URL)
+	storageServer := config.StorageServerConfig{
+		Address:  input.URL,
+		Database: 0,
+	}
+	return deleleNondedupedVdisks(false, storageServer, input.VdiskID)
+}
+
+// delete the data of nondeduped vdisks
+func deleleNondedupedVdisks(force bool, cfg config.StorageServerConfig, vdiskids ...string) error {
+	if len(vdiskids) == 0 {
+		return nil
+	}
+
+	// open redis connection
+	log.Infof("dialing redis TCP connection at: %s (%d)", cfg.Address, cfg.Database)
+	conn, err := redis.Dial("tcp", cfg.Address, redis.DialDatabase(cfg.Database))
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
 
-	// ensure vdisk exists
-	if exists, _ := redis.Bool(conn.Do("EXISTS", input.VdiskID)); !exists {
-		return fmt.Errorf("vdisk %q does not exist", input.VdiskID)
+	// cache delete request of each vdisk
+	var delVdisks []string
+	for _, vdiskID := range vdiskids {
+		log.Infof("deleting data of nondeduped vdisk %s...", vdiskID)
+		err := conn.Send("DEL", vdiskID)
+		if err != nil {
+			if !force {
+				return err
+			}
+			log.Error("could not delete nondeduped vdisk: ", vdiskID)
+			continue
+		}
+		delVdisks = append(delVdisks, vdiskID)
 	}
 
-	// delete nondeduped data
-	logger.Infof("deleting vdisk %q...", input.VdiskID)
-	_, err = conn.Do("DEL", input.VdiskID)
-	return err
+	// flush all delete requests
+	err = conn.Flush()
+	if err != nil {
+		return fmt.Errorf("could not delete nondeduped vdisks %v: %s", delVdisks, err.Error())
+	}
+
+	// check if all vdisks have actually been deleted
+	for _, vdiskID := range delVdisks {
+		deleted, err := redis.Bool(conn.Receive())
+		if err != nil {
+			if !force {
+				return err
+			}
+
+			log.Errorf("could not delete nondeduped vdisk %s: %s", vdiskID, err.Error())
+			continue
+		}
+
+		// it's not an error if it did not exist yet,
+		// as this is possible due to the multiple ardbs in use
+		if !deleted {
+			log.Infof("could not delete nondeduped vdisk %s: did not exist at %s (%d)",
+				vdiskID, cfg.Address, cfg.Database)
+		}
+	}
+
+	return nil
 }

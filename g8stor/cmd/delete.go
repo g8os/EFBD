@@ -15,5 +15,6 @@ func init() {
 	DeleteCmd.AddCommand(
 		delvdisk.DedupedCmd,
 		delvdisk.NondedupedCmd,
+		delvdisk.VdisksCmd,
 	)
 }

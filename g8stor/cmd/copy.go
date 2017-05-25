@@ -15,5 +15,6 @@ func init() {
 	CopyCmd.AddCommand(
 		copyvdisk.DedupedCmd,
 		copyvdisk.NondedupedCmd,
+		copyvdisk.VdiskCmd,
 	)
 }
