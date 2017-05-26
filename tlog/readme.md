@@ -22,9 +22,9 @@ Tlog block as tlog entry
 ```
 Block:
   - sequence : uint64    # block sequence number
-  - lba :uint64          # block lba
+  - offset :uint64       # data offset
   - size :uint64         # data size
-  - hash :Data           # hash of the data      
+  - hash :Data           # hash of the data
   - data :Data           # payload data
   - timestamp :uint64    # timestamp of the transaction
   - operation :uint8     # the type of the transaction

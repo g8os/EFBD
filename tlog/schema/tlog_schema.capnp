@@ -23,7 +23,7 @@ struct TlogResponse {
 }
 struct TlogBlock {
 	sequence @0 :UInt64;
-	lba @1 :UInt64;
+	offset @1 :UInt64;
 	size @2 :UInt64;
 	hash  @3 :Data;
 	data @4 :Data;
