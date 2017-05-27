@@ -20,6 +20,20 @@ func TestInMemoryStorage(t *testing.T) {
 	testBackendStorage(t, storage)
 }
 
+func TestInMemoryStorageForceFlush(t *testing.T) {
+	const (
+		vdiskID   = "a"
+		blockSize = 8
+	)
+
+	storage := newInMemoryStorage(vdiskID, blockSize)
+	if !assert.NotNil(t, storage) {
+		return
+	}
+
+	testBackendStorageForceFlush(t, storage)
+}
+
 func TestInMemoryStorageDeadlock(t *testing.T) {
 	const (
 		vdiskID    = "a"

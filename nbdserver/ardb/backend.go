@@ -2,32 +2,21 @@ package ardb
 
 import (
 	"context"
-	"time"
 
 	"github.com/g8os/blockstor/log"
 
 	"github.com/g8os/blockstor/gonbdserver/nbd"
 	"github.com/g8os/blockstor/storagecluster"
-	"github.com/g8os/blockstor/tlog/schema"
-	"github.com/g8os/blockstor/tlog/tlogclient"
-	tlogserver "github.com/g8os/blockstor/tlog/tlogserver/server"
 )
 
-func newBackend(vdiskID string, blockSize int64, size uint64, storage backendStorage, storageClusterClient *storagecluster.ClusterClient, tlogClient *tlogclient.Client) (backend *Backend) {
-	backend = &Backend{
+func newBackend(vdiskID string, blockSize int64, size uint64, storage backendStorage, storageClusterClient *storagecluster.ClusterClient) *Backend {
+	return &Backend{
 		vdiskID:              vdiskID,
 		blockSize:            blockSize,
 		size:                 size,
 		storage:              storage,
 		storageClusterClient: storageClusterClient,
 	}
-
-	if tlogClient != nil {
-		backend.tlogClient = tlogClient
-		backend.transactionCh = make(chan transaction, transactionChCapacity)
-	}
-
-	return
 }
 
 //Backend is a nbd.Backend implementation on top of ARDB
@@ -38,19 +27,6 @@ type Backend struct {
 	storage              backendStorage
 	storageClusterClient *storagecluster.ClusterClient
 	backgroundCancelFn   context.CancelFunc
-
-	// tlog properties
-	tlogClient    *tlogclient.Client
-	tlogCounter   uint64
-	transactionCh chan transaction
-}
-
-type transaction struct {
-	Operation uint8
-	Content   []byte
-	Offset    uint64
-	Timestamp uint64
-	Size      uint64
 }
 
 //WriteAt implements nbd.Backend.WriteAt
@@ -69,7 +45,7 @@ func (ab *Backend) WriteAt(ctx context.Context, b []byte, offset int64) (bytesWr
 		// Option 2.
 		// We need to merge both contents.
 		// the length can't be bigger, as that is guaranteed by gonbdserver
-		_, err = ab.storage.Merge(blockIndex, offsetInsideBlock, b)
+		err = ab.storage.Merge(blockIndex, offsetInsideBlock, b)
 	}
 
 	if err != nil {
@@ -77,11 +53,6 @@ func (ab *Backend) WriteAt(ctx context.Context, b []byte, offset int64) (bytesWr
 			"backend failed to WriteAt %d (offset=%d): %s",
 			blockIndex, offsetInsideBlock, err.Error())
 		return
-	}
-
-	// send tlog async
-	if ab.tlogClient != nil {
-		ab.sendTransaction(uint64(offset), schema.OpWrite, b, uint64(length))
 	}
 
 	bytesWritten = int64(len(b))
@@ -111,11 +82,6 @@ func (ab *Backend) WriteZeroesAt(ctx context.Context, offset, length int64) (byt
 			"backend failed to WriteZeroesAt %d (offset=%d, length=%d): %s",
 			blockIndex, offsetInsideBlock, length, err.Error())
 		return
-	}
-
-	// send tlog async
-	if ab.tlogClient != nil {
-		ab.sendTransaction(uint64(offset), schema.OpWriteZeroesAt, nil, uint64(length))
 	}
 
 	bytesWritten = length
@@ -193,16 +159,7 @@ func (ab *Backend) Flush(ctx context.Context) (err error) {
 func (ab *Backend) Close(ctx context.Context) (err error) {
 	ab.storageClusterClient.Close()
 
-	if ab.tlogClient != nil {
-		err = ab.tlogClient.Close()
-		if err != nil {
-			return
-		}
-	}
-	if ab.backgroundCancelFn != nil {
-		ab.backgroundCancelFn()
-	}
-
+	err = ab.storage.Close()
 	return
 }
 
@@ -231,68 +188,5 @@ func (ab *Backend) HasFlush(ctx context.Context) bool {
 // GoBackground implements Backend.GoBackground
 // and the actual work is delegated to the underlying storage
 func (ab *Backend) GoBackground(ctx context.Context) {
-	if ab.tlogClient == nil {
-		// when no tlog client is defined,
-		// we do not require a background thread
-		return
-	}
-
-	respChan := ab.tlogClient.Recv()
-
-	log.Debug(
-		"starting backend background thread for vdisk:",
-		ab.vdiskID)
-
-	ctx, ab.backgroundCancelFn = context.WithCancel(ctx)
-	for {
-		select {
-		case transaction := <-ab.transactionCh:
-			err := ab.tlogClient.Send(
-				transaction.Operation,
-				ab.tlogCounter,
-				transaction.Offset,
-				transaction.Timestamp,
-				transaction.Content,
-				transaction.Size,
-			)
-			ab.tlogCounter++
-			if err != nil {
-				log.Infof(
-					"couldn't send tlog for vdisk %s: %v",
-					ab.vdiskID, err)
-				continue
-			}
-		case tResp := <-respChan:
-			if tResp.Err != nil {
-				log.Infof("tlog for vdisk %s failed to recv: %v",
-					ab.vdiskID, tResp.Err)
-				continue
-			}
-
-			if err := tResp.Resp.Status.Error(); err != nil {
-				log.Infof("tlog call for vdisk %s failed: %s",
-					ab.vdiskID, err.Error())
-				continue
-			}
-		case <-ctx.Done():
-			log.Debug(
-				"forcefully exit backend background thread for vdisk:",
-				ab.vdiskID)
-			return
-		}
-	}
+	ab.storage.GoBackground(ctx)
 }
-
-func (ab *Backend) sendTransaction(offset uint64, op uint8, content []byte, length uint64) {
-	ab.transactionCh <- transaction{
-		Operation: op,
-		Content:   content,
-		Timestamp: uint64(time.Now().Unix()),
-		Offset:    offset,
-		Size:      length,
-	}
-}
-
-var (
-	transactionChCapacity = tlogserver.DefaultConfig().FlushSize * 2
-)

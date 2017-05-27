@@ -14,7 +14,7 @@ func (status BlockStatus) Int8() int8 {
 	return int8(status)
 }
 
-// String returns the name of the Hanshake status
+// String returns the name of the block status
 func (status BlockStatus) String() string {
 	switch status {
 	case BlockStatusRecvOK:

@@ -1,6 +1,7 @@
 package ardb
 
 import (
+	"context"
 	"sync"
 
 	"github.com/g8os/blockstor/log"
@@ -46,11 +47,11 @@ func (ms *inMemoryStorage) Set(blockIndex int64, content []byte) (err error) {
 }
 
 // Merge implements backendStorage.Merge
-func (ms *inMemoryStorage) Merge(blockIndex, offset int64, content []byte) (mergedContent []byte, err error) {
+func (ms *inMemoryStorage) Merge(blockIndex, offset int64, content []byte) (err error) {
 	ms.mux.Lock()
 	defer ms.mux.Unlock()
 
-	mergedContent, _ = ms.vdisk[blockIndex]
+	mergedContent, _ := ms.vdisk[blockIndex]
 	if ocl := int64(len(mergedContent)); ocl == 0 {
 		mergedContent = make([]byte, ms.blockSize)
 	} else if ocl < ms.blockSize {
@@ -101,3 +102,9 @@ func (ms *inMemoryStorage) isZeroContent(content []byte) bool {
 
 	return true
 }
+
+// Close implements backendStorage.Close
+func (ms *inMemoryStorage) Close() error { return nil }
+
+// GoBackground implements backendStorage.GoBackground
+func (ms *inMemoryStorage) GoBackground(context.Context) {}
