@@ -154,20 +154,20 @@ func decode(ctx context.Context, backend nbd.Backend, pool tlog.RedisPool, vdisk
 		blocks, err := agg.Blocks()
 		for i := 0; i < blocks.Len(); i++ {
 			block := blocks.At(i)
-			lba := block.Lba()
+			offset := block.Offset()
 
 			switch block.Operation() {
 			case schema.OpWrite:
 				data, err := block.Data()
 				if err != nil {
-					return fmt.Errorf("failed to get data block of lba=%v, err=%v", lba, err)
+					return fmt.Errorf("failed to get data block of offset=%v, err=%v", offset, err)
 				}
-				if _, err := backend.WriteAt(ctx, data, int64(lba)); err != nil {
-					return fmt.Errorf("failed to WriteAt lba=%v, err=%v", lba, err)
+				if _, err := backend.WriteAt(ctx, data, int64(offset)); err != nil {
+					return fmt.Errorf("failed to WriteAt offset=%v, err=%v", offset, err)
 				}
 			case schema.OpWriteZeroesAt:
-				if _, err := backend.WriteZeroesAt(ctx, int64(lba), int64(block.Size())); err != nil {
-					return fmt.Errorf("failed to WriteAt lba=%v, err=%v", lba, err)
+				if _, err := backend.WriteZeroesAt(ctx, int64(offset), int64(block.Size())); err != nil {
+					return fmt.Errorf("failed to WriteAt offset=%v, err=%v", offset, err)
 				}
 			}
 		}

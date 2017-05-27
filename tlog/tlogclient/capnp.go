@@ -31,7 +31,7 @@ func (c *Client) encodeHandshakeCapnp(firstSequence uint64) error {
 }
 
 func (c *Client) encodeBlockCapnp(op uint8, seq uint64, hash []byte,
-	lba, timestamp uint64, data []byte, size uint64) (*schema.TlogBlock, error) {
+	offset, timestamp uint64, data []byte, size uint64) (*schema.TlogBlock, error) {
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(c.capnpSegmentBuf))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build build (block) capnp: %s", err.Error())
@@ -53,7 +53,7 @@ func (c *Client) encodeBlockCapnp(op uint8, seq uint64, hash []byte,
 
 	block.SetOperation(op)
 	block.SetSequence(seq)
-	block.SetLba(lba)
+	block.SetOffset(offset)
 	block.SetTimestamp(timestamp)
 	block.SetSize(size)
 

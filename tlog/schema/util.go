@@ -16,7 +16,7 @@ func RawServerHandshakeLen() int {
 // CopyBlock copies content of block 'src' to 'dst'
 func CopyBlock(dst, src *TlogBlock) error {
 	dst.SetSequence(src.Sequence())
-	dst.SetLba(src.Lba())
+	dst.SetOffset(src.Offset())
 	dst.SetSize(src.Size())
 
 	hash, err := src.Hash()
