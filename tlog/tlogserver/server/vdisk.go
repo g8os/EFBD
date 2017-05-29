@@ -22,8 +22,6 @@ const (
 	tlogBlockFactorSize = 5
 )
 
-var vdiskMgr *vdiskManager
-
 type vdisk struct {
 	vdiskID          string
 	lastHash         []byte // current in memory last hash
@@ -49,7 +47,7 @@ func (vd *vdisk) ResponseChan() <-chan *BlockResponse {
 // creates vdisk with given vdiskID, flusher, and first sequence.
 // firstSequence is the very first sequence that this vdisk will receive.
 // blocks with sequence < firstSequence are going to be ignored.
-func newVdisk(vdiskID string, f *flusher, firstSequence uint64) (*vdisk, error) {
+func newVdisk(vdiskID string, f *flusher, firstSequence uint64, segmentBufLen int) (*vdisk, error) {
 	// get last hash from storage
 	lastHash, err := f.getLastHash(vdiskID)
 	if err != nil {
@@ -65,6 +63,7 @@ func newVdisk(vdiskID string, f *flusher, firstSequence uint64) (*vdisk, error) 
 		orderedChan:      make(chan *schema.TlogBlock, maxTlbInBuffer),
 		respChan:         make(chan *BlockResponse, respChanSize),
 		expectedSequence: firstSequence,
+		segmentBuf:       make([]byte, 0, segmentBufLen),
 		flusher:          f,
 	}, nil
 }
@@ -105,7 +104,7 @@ func (vt *vdiskManager) Get(vdiskID string, firstSequence uint64, ff flusherFact
 		return
 	}
 
-	vd, err = newVdisk(vdiskID, f, firstSequence)
+	vd, err = newVdisk(vdiskID, f, firstSequence, vt.maxSegmentBufLen)
 	if err != nil {
 		return
 	}
@@ -230,17 +229,4 @@ func (vd *vdisk) runFlusher() {
 			Sequences: seqs,
 		}
 	}
-}
-
-// resize segmentBuf to new length
-func (vd *vdisk) resizeSegmentBuf(length int) {
-	if length > vdiskMgr.maxSegmentBufLen {
-		length = vdiskMgr.maxSegmentBufLen
-	}
-
-	if length <= cap(vd.segmentBuf) {
-		return
-	}
-
-	vd.segmentBuf = make([]byte, 0, length)
 }
