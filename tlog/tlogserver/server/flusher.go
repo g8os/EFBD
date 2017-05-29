@@ -139,8 +139,6 @@ func (f *flusher) encodeCapnp(blocks []*schema.TlogBlock, vd *vdisk) ([]byte, er
 
 	err = capnp.NewEncoder(buf).Encode(msg)
 
-	vd.resizeSegmentBuf(buf.Len())
-
 	return buf.Bytes(), err
 }
 

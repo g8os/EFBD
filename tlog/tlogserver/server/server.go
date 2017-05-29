@@ -23,6 +23,7 @@ type Server struct {
 	poolFactory          tlog.RedisPoolFactory
 	listener             net.Listener
 	flusherConf          *flusherConfig
+	vdiskMgr             *vdiskManager
 }
 
 // NewServer creates a new tlog server
@@ -54,8 +55,6 @@ func NewServer(conf *Config, poolFactory tlog.RedisPoolFactory) (*Server, error)
 		log.Infof("Started listening on local address %s", listener.Addr().String())
 	}
 
-	vdiskMgr = newVdiskManager(conf.BlockSize, conf.FlushSize)
-
 	// used to created a flusher on rumtime
 	flusherConf := &flusherConfig{
 		K:         conf.K,
@@ -71,6 +70,7 @@ func NewServer(conf *Config, poolFactory tlog.RedisPoolFactory) (*Server, error)
 		listener:             listener,
 		flusherConf:          flusherConf,
 		maxRespSegmentBufLen: schema.RawTlogRespLen(conf.FlushSize),
+		vdiskMgr:             newVdiskManager(conf.BlockSize, conf.FlushSize),
 	}, nil
 }
 
@@ -152,7 +152,7 @@ func (s *Server) handshake(r io.Reader, w io.Writer) (vd *vdisk, err error) {
 		return // error return
 	}
 
-	vd, err = vdiskMgr.Get(vdiskID, req.FirstSequence(), s.createFlusher)
+	vd, err = s.vdiskMgr.Get(vdiskID, req.FirstSequence(), s.createFlusher)
 	if err != nil {
 		status = tlog.HandshakeStatusInternalServerError
 		err = fmt.Errorf("couldn't create vdisk %s: %s", vdiskID, err.Error())
