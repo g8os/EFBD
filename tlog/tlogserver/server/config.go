@@ -32,15 +32,6 @@ func (conf *Config) RequiredDataServers() int {
 	return conf.K + conf.M
 }
 
-// connectionConfig is created using the info
-// given by the client to the server,
-// during the handshake phase.
-type connectionConfig struct {
-	VdiskID       string
-	FirstSequence uint64
-	Flusher       *flusher
-}
-
 // flusherConfig is used by the server to create a flusher
 // for a specific vdisk.
 type flusherConfig struct {
