@@ -1,4 +1,4 @@
-# Using g8stor
+# Using the 0-Disk Command Line Tool
 
 ```
 $ g8stor -h
@@ -60,25 +60,25 @@ command used to copy a vdisk.
 
 ## Copy a vdisk
 
-to copy `vdiskA` as a new vdisk (`vdiskB`) on the _same_ storage cluster (`clusterA`), I would do:
+To copy `vdiskA` as a new vdisk (`vdiskB`) on the _same_ storage cluster (`clusterA`), I would do:
 
 ```
 $ g8stor copy vdisk vdiskA vdiskB
 ```
 
-which would be the same as the more explicit version:
+Which would be the same as the more explicit version:
 
 ```
 $ g8stor copy vdisk vdiskA vdiskB clusterA --config config.yml
 ```
 
-to copy `vdiskA` as a new vdisk (`vdiskA`) on a _different_ storage cluster (`clusterB`), I would do:
+To copy `vdiskA` as a new vdisk (`vdiskA`) on a _different_ storage cluster (`clusterB`), I would do:
 
 ```
 $ g8stor copy vdisk vdiskA vdiskA clusterB
 ```
 
-the following command would be illegal, and abort with an error:
+The following command would be illegal, and abort with an error:
 
 ```
 $ g8stor copy vdisk vdiskA vdiskA
@@ -86,31 +86,31 @@ $ g8stor copy vdisk vdiskA vdiskA
 
 ## Delete vdisks
 
-to delete all vdisks listed in the config file:
+To delete all vdisks listed in the config file:
 
 ```
 $ g8stor delete vdisks
 ```
 
-which is the less explicit version of:
+Which is the less explicit version of:
 
 ```
 $ g8stor delete vdisks --config config.yml
 ```
 
-to delete only 1 (or more) vdisks, rather then all, we can specify their id(s):
+To delete only 1 (or more) vdisks, rather then all, we can specify their id(s):
 
 ```
 $ g8stor delete vdisks vdiskC --config.yml
 ```
 
-with this knowledge we can write the first delete example even more explicit:
+With this knowledge we can write the first delete example even more explicit:
 
 ```
 $ g8stor delete vdisks vdiskA vdiskC --config.yml
 ```
 
-the following would succeed for the found vdisk, but log an error for the other vdisk as that one can't be found:
+The following would succeed for the found vdisk, but log an error for the other vdisk as that one can't be found:
 
 ```
 $ g8stor delete vdisks foo vdiskA # vdiskA will be deleted correctly, even though foo doesn't exist
@@ -118,7 +118,7 @@ $ g8stor delete vdisks foo vdiskA # vdiskA will be deleted correctly, even thoug
 
 ### Restore a (deduped or nondeduped) vdisk
 
-restore vdisk `a`:
+Restore vdisk `a`:
 
 ```
 $ g8stor restore vdisk a
@@ -128,7 +128,7 @@ $ g8stor restore vdisk a
 
 ### List all available vdisks
 
-list vdisks available on `localhost:16379`:
+List vdisks available on `localhost:16379`:
 
 ```
 $ g8stor list vdisks localhost:16379
@@ -137,7 +137,7 @@ $ g8stor list vdisks localhost:16379
 #### WARNING
 
 This command is slow, and might take a while to finish!
-It might also decrease the performance of the ardb server
+It might also decrease the performance of the ARDB server
 in question, by locking the server down for each operation.
 
 ## Legacy Examples
@@ -164,7 +164,7 @@ $ g8stor copy deduped a b localhost:16379 --targetdb 1
 
 ### Delete metadata of a deduped vdisk
 
-delete vdisk `a`:
+Delete vdisk `a`:
 
 ```
 $ g8stor delete deduped a localhost:16379
