@@ -245,9 +245,13 @@ func (c *Client) createConn() error {
 	return nil
 }
 
-// send message type to the server
-func (c *Client) sendMessageType(mType uint8) error {
-	return tlog.WriteMessageType(c.bw, mType)
+// ForceFlush send force flush command to server
+func (c *Client) ForceFlush() error {
+	if err := tlog.WriteMessageType(c.bw, tlog.MessageForceFlush); err != nil {
+		return err
+	}
+	c.bw.Flush()
+	return nil
 }
 
 // Send sends the transaction tlog to server.
@@ -266,12 +270,13 @@ func (c *Client) Send(op uint8, seq, offset, timestamp uint64,
 	return err
 }
 
+// send tlog block to server
 func (c *Client) send(op uint8, seq, offset, timestamp uint64,
 	data []byte, size uint64) (block *schema.TlogBlock, err error) {
 	hash := blockstor.HashBytes(data)
 
 	send := func() (*schema.TlogBlock, error) {
-		if err := c.sendMessageType(tlog.MessageTlogBlock); err != nil {
+		if err := tlog.WriteMessageType(c.bw, tlog.MessageTlogBlock); err != nil {
 			return nil, err
 		}
 
