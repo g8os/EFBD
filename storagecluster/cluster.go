@@ -332,7 +332,7 @@ func (cc *ClusterClient) loadConfig() bool {
 
 	// used to store metadata (required by config)
 	cc.metaConnectionString = storageCluster.MetadataStorage
-
+	log.Debugf("Loaded storagecluster '%s' configuration (%d servers)", storageClusterName, cc.numberOfServers)
 	cc.loaded = true
 	return cc.loaded
 }
