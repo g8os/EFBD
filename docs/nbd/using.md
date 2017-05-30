@@ -112,7 +112,7 @@ In case you don't have a storage pool available yet, create one using the Zero-O
 This requires of course a Zero-OS cluster, which you can setup as documented in [Zero-OS REST API Development Setup](https://github.com/zero-os/0-rest-api/blob/master/docs/setup/dev.md)
 
 Once you have your storage cluster available you can:
-- Manually setup a NBD server connecting, as documented above
+- Manually setup a NBD server connecting to this storage cluster, as documented above
 - Or create a vdisk through the Zero-OS REST API, which will automatically launch a NBD container in the Zero-OS cluster
 
 For the second option, you'll again use the Zero-OS REST API: https://rawgit.com/zero-os/0-rest-api/1.1.0-alpha/raml/api.html
@@ -135,4 +135,4 @@ cd zero-os/0-rest-api/pyclient/
 pip install .
 ```
 
-See the example demo script: https://docs.greenitglobe.com/g8os/demo/src/master/packet.net-resourcepool-10nodes-100vms/scripts/deployvms.py
+See the example demo script: https://docs.greenitglobe.com/zero-os/demo/src/master/packet.net-resourcepool-10nodes-100vms/scripts/deployvms.py

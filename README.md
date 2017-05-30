@@ -1,4 +1,4 @@
-# Zero-OS Block Storage [![Build Status](https://travis-ci.org/g8os/blockstor.svg?branch=master)](https://travis-ci.org/g8os/blockstor)
+# Zero-OS 0-Disk [![Build Status](https://travis-ci.org/g8os/blockstor.svg?branch=master)](https://travis-ci.org/g8os/blockstor)
 
 This repository implements the components required for supporting block storage in Zero-OS nodes.
 
