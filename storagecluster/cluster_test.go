@@ -88,7 +88,7 @@ vdisks:
     type: db
 `
 
-func TestNewClusterClient(t *testing.T) {
+func TestClusterClient(t *testing.T) {
 	//Create a temporary configfile
 	configFile, _ := ioutil.TempFile("", "nbdconfig")
 	configPath := configFile.Name()
@@ -102,4 +102,18 @@ func TestNewClusterClient(t *testing.T) {
 	cc, err := NewClusterClient(cfg, log.New("storagecluster", log.DebugLevel))
 	assert.NoError(t, err)
 	assert.Equal(t, int64(63), cc.numberOfServers, "Wrong number of servers loaded from the configfile")
+
+	//See if the correct connectionstrings are returned
+	redisConnectionConfig, err := cc.ConnectionConfig(0)
+	assert.NoError(t, err)
+	assert.Equal(t, "10.107.3.19:2000", redisConnectionConfig.Address)
+
+	redisConnectionConfig, err = cc.ConnectionConfig(62)
+	assert.NoError(t, err)
+	assert.Equal(t, "10.107.3.16:2062", redisConnectionConfig.Address)
+
+	//And if the modulo is applied to stay within range
+	redisConnectionConfig, err = cc.ConnectionConfig(63)
+	assert.NoError(t, err)
+	assert.Equal(t, "10.107.3.19:2000", redisConnectionConfig.Address)
 }
