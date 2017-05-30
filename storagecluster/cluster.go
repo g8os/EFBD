@@ -313,10 +313,10 @@ func (cc *ClusterClient) loadConfig() bool {
 		cc.numberOfRootServers = 0
 	} else {
 		// get (root) storage cluster
-		// the config ensures referenced storageClusters exist exists
-		storageCluster, _ := cfg.StorageClusters[vdisk.RootStorageCluster]
+		// the config ensures referenced storageClusters exist
+		rootStorageCluster, _ := cfg.StorageClusters[vdisk.RootStorageCluster]
 
-		cc.rootDataConnectionStrings = storageCluster.DataStorage
+		cc.rootDataConnectionStrings = rootStorageCluster.DataStorage
 		cc.numberOfRootServers = int64(len(cc.rootDataConnectionStrings))
 		// no need to check length of root servers,
 		// as the storage cluster config validation ensures
