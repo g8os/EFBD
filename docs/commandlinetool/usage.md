@@ -2,19 +2,19 @@
 
 ```
 $ g8stor -h
-g8stor controls the g8os resources
+g8stor manages the Zero-OS visks
 
-Find more information at github.com/g8os/blockstor/g8stor.
+Find more information at github.com/zero-os/0-Disk/g8stor.
 
 Usage:
   g8stor [command]
 
 Available Commands:
-  copy        Copy a g8os resource
-  delete      Delete a g8os resource
+  copy        Copy a Zero-OS vdisk
+  delete      Delete a Zero-OS resource
   help        Help about any command
-  list        List g8os resources
-  restore     Restore a g8os resource
+  list        List Zero-OS resources
+  restore     Restore a Zero-OS resource
   version     Output the version information
 
 Flags:

@@ -1,8 +1,8 @@
-# G8OS Block Storage [![Build Status](https://travis-ci.org/g8os/blockstor.svg?branch=master)](https://travis-ci.org/g8os/blockstor)
+# Zero-OS Block Storage [![Build Status](https://travis-ci.org/g8os/blockstor.svg?branch=master)](https://travis-ci.org/g8os/blockstor)
 
-This repository implements the components required for supporting block storage in G8OS nodes.
+This repository implements the components required for supporting block storage in Zero-OS nodes.
 
-The G8OS block storage components allow you to create and use block devices (vdisks) from within virtual machines hosted on a G8OS node.
+The Zero-OS block storage components allow you to create and use block devices (vdisks) from within virtual machines hosted on a Zero-OS node.
 
 A vdisk can be deduped, have various block sizes and depending on the underlying storage cluster, have different speed characteristics.
 
@@ -13,8 +13,8 @@ Components:
   - An NBD server written in Go, integrated within the [NBD Server](nbdserver/)
 * [TLOG Server](tlog/)
   - A transaction log server to record block changes
-* [g8stor](g8stor/)
-  - A CLI tool suite to control g8os resources
+* [Command Line Tool](g8stor/)
+  - A command line tool to control vdisks
 
 Make sure to have [Golang](https://golang.org/) version 1.8 or above installed.
 

@@ -2,8 +2,8 @@
 
 Test setup:
 * 1 vm with 1 cpu and 2GB memory on a deduped vdisk
-* Host = g8os with nbdserver on the same Host
-* Storagecluster on a different host (g8os) running 8 storage ardb's on ssd and 1 metadata ardb on nvme
+* Host = Zero-OS with NBD server on the same Host
+* Storage cluster on a different host (Zero-OS) running 8 storage ARDB's on SSD and 1 metadata ARDB on NVMe
 
 ## Filesystem fio test:
 

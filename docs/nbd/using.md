@@ -4,8 +4,8 @@ This documentation supplements the usage instructions in the [README](/nbdserver
 
 Options:
 - [Using with local ARDB server](#local-ardb)
-- [Using an ARDB Server running in a container on a single G8OS node](#ardb-container)
-- [Using with a G8OS Storage Pool](#storage-pool)
+- [Using an ARDB Server running in a container on a single Zero-OS node](#ardb-container)
+- [Using with a Zero-OS Storage Pool](#storage-pool)
 - [Using the Python Client](#python-client)
 
 <a id="local-ardb"></a>
@@ -99,39 +99,39 @@ qemu-img convert -p -n ubuntu-16.04-server-cloudimg-amd64-disk1.img -q nbd nbd+u
 ```
 
 <a id="ardb-container"></a>
-## Using an ARDB Server running in a container on a single G8OS node
+## Using an ARDB Server running in a container on a single Zero-OS node
 
 @todo
 
 
 <a id="storage-pool"></a>
-## Using with a G8OS Storage Pool
+## Using with a Zero-OS Storage Pool
 
-In case you don't have a storage pool available yet, create one using the Resource Pool API, as documented in [G8OS Storage Cluster](https://github.com/g8os/resourcepool/blob/master/docs/storagecluster/storagecluster.md)
+In case you don't have a storage pool available yet, create one using the Zero-OS REST API, as documented in [Zero-OS Storage Cluster](https://github.com/zero-os/0-rest-api/blob/master/docs/storagecluster/storagecluster.md)
 
-This requires of course G8OS Resource Pool, which you can setup as documented in [Resource Pool Development Setup](https://github.com/g8os/resourcepool/blob/master/docs/setup/dev.md)
+This requires of course a Zero-OS cluster, which you can setup as documented in [Zero-OS REST API Development Setup](https://github.com/zero-os/0-rest-api/blob/master/docs/setup/dev.md)
 
 Once you have your storage cluster available you can:
 - Manually setup a NBD server connecting, as documented above
-- Or create a vdisk through the G8OS Resource Pool API, which will automatically launch a NBD container in the Resource Pool
+- Or create a vdisk through the Zero-OS REST API, which will automatically launch a NBD container in the Zero-OS cluster
 
-For the second option, you'll again use the Resource Pool API: https://rawgit.com/g8os/resourcepool/1.1.0-alpha/raml/api.html
+For the second option, you'll again use the Zero-OS REST API: https://rawgit.com/zero-os/0-rest-api/1.1.0-alpha/raml/api.html
 
 One of the arguments for creating a vdisk is `templatevdisk`, get one from the central ARDB server, documented in [Creating vdisk Templates](vdisktemplate.md)
 
 <a id="python-client"></a>
 ## Using the Python Client
 
-The Python client `pyclient` basically wraps the G8OS Resource Pool API.
+The Python client `pyclient` basically wraps the Zero-OS REST API.
 
 First:
 ```
-pip install g8os-resourcepool
+pip install zero-os-rest-api
 ```
 
-Or if from `g8os/resourcepool/pyclient/` directory:
+Or if from `zero-os/0-rest-api/pyclient/` directory:
 ```
-cd g8os/resourcepool/pyclient/
+cd zero-os/0-rest-api/pyclient/
 pip install .
 ```
 

@@ -55,16 +55,16 @@ export GOPATH=/opt/go/proj
 
 Clone the code to your GOPATH:
 ```
-go get -d github.com/g8os/blockstor/nbdserver
+go get -d github.com/zero-os/0-Disk/nbdserver
 ```
 
 Build (totally static) the binary:
 ```
-cd $GOPATH/src/github.com/g8os/blockstor
+cd $GOPATH/src/github.com/zero-os/0-Disk
 make nbdserver
 ```
 
-Optionally you can now create a flist for your NBD server so you can easily start a container on a G8OS with your NBD server. Below the steps.
+Optionally you can now create a flist for your NBD server so you can easily start a container on a Zero-OS with your NBD server. Below the steps.
 
 First put 'nbdserver' binary somewhere alone:
 ```
