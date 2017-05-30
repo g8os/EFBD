@@ -209,26 +209,51 @@ func (s *Server) handle(conn *net.TCPConn) error {
 	go s.sendResp(ctx, conn, vdisk.ID(), vdisk.ResponseChan())
 
 	for {
-		// decode
-		block, err := s.ReadDecodeBlock(br)
+		msgType, err := tlog.ReadCheckMessageType(br)
 		if err != nil {
-			log.Errorf("failed to decode tlog: %v", err)
+			if err != io.EOF { // EOF in this stage is not an error
+				log.Errorf("failed to read message type: %v", err)
+			}
 			return err
 		}
 
-		// check hash
-		if err := s.hash(block, vdisk.vdiskID); err != nil {
-			log.Debugf("hash check failed:%v\n", err)
+		switch msgType {
+		case tlog.MessageForceFlush:
+			vdisk.cmdChan <- msgType
+		case tlog.MessageTlogBlock:
+			if err := s.handleBlock(vdisk, br); err != nil {
+				return err
+			}
+		default:
+			err := fmt.Errorf("unhandled message type:%v", msgType)
+			log.Error(err)
 			return err
 		}
 
-		// store
-		vdisk.inputChan <- block
-		vdisk.respChan <- &BlockResponse{
-			Status:    tlog.BlockStatusRecvOK.Int8(),
-			Sequences: []uint64{block.Sequence()},
-		}
 	}
+}
+
+func (s *Server) handleBlock(vd *vdisk, br *bufio.Reader) error {
+	// decode
+	block, err := s.ReadDecodeBlock(br)
+	if err != nil {
+		log.Errorf("failed to decode tlog: %v", err)
+		return err
+	}
+
+	// check hash
+	if err := s.hash(block, vd.vdiskID); err != nil {
+		log.Debugf("hash check failed:%v\n", err)
+		return err
+	}
+
+	// store
+	vd.blockInputChan <- block
+	vd.respChan <- &BlockResponse{
+		Status:    tlog.BlockStatusRecvOK.Int8(),
+		Sequences: []uint64{block.Sequence()},
+	}
+	return nil
 }
 
 func (s *Server) sendResp(ctx context.Context, w io.Writer, vdiskID string, respChan <-chan *BlockResponse) {

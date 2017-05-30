@@ -245,6 +245,11 @@ func (c *Client) createConn() error {
 	return nil
 }
 
+// send message type to the server
+func (c *Client) sendMessageType(mType uint8) error {
+	return tlog.WriteMessageType(c.bw, mType)
+}
+
 // Send sends the transaction tlog to server.
 // It returns error in these cases:
 // - failed to encode the capnp.
@@ -263,14 +268,18 @@ func (c *Client) Send(op uint8, seq, offset, timestamp uint64,
 
 func (c *Client) send(op uint8, seq, offset, timestamp uint64,
 	data []byte, size uint64) (block *schema.TlogBlock, err error) {
-
 	hash := blockstor.HashBytes(data)
 
 	send := func() (*schema.TlogBlock, error) {
+		if err := c.sendMessageType(tlog.MessageTlogBlock); err != nil {
+			return nil, err
+		}
+
 		block, err := c.encodeBlockCapnp(op, seq, hash[:], offset, timestamp, data, size)
 		if err != nil {
 			return block, err
 		}
+
 		return block, c.bw.Flush()
 	}
 
