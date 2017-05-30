@@ -245,6 +245,13 @@ func (c *Client) createConn() error {
 	return nil
 }
 
+// ForceFlush send force flush command to server
+func (c *Client) ForceFlush() error {
+	// we use c.conn directly because buffered writer
+	// won't help anything to write one byte of message
+	return tlog.WriteMessageType(c.conn, tlog.MessageForceFlush)
+}
+
 // Send sends the transaction tlog to server.
 // It returns error in these cases:
 // - failed to encode the capnp.
@@ -261,16 +268,21 @@ func (c *Client) Send(op uint8, seq, offset, timestamp uint64,
 	return err
 }
 
+// send tlog block to server
 func (c *Client) send(op uint8, seq, offset, timestamp uint64,
 	data []byte, size uint64) (block *schema.TlogBlock, err error) {
-
 	hash := blockstor.HashBytes(data)
 
 	send := func() (*schema.TlogBlock, error) {
+		if err := tlog.WriteMessageType(c.bw, tlog.MessageTlogBlock); err != nil {
+			return nil, err
+		}
+
 		block, err := c.encodeBlockCapnp(op, seq, hash[:], offset, timestamp, data, size)
 		if err != nil {
 			return block, err
 		}
+
 		return block, c.bw.Flush()
 	}
 

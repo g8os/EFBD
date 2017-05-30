@@ -24,14 +24,16 @@ const (
 
 type vdisk struct {
 	vdiskID          string
-	lastHash         []byte // current in memory last hash
-	lastHashKey      []byte
-	inputChan        chan *schema.TlogBlock // input channel received from client
-	orderedChan      chan *schema.TlogBlock // ordered blocks from inputChan
-	respChan         chan *BlockResponse
+	lastHash         []byte                 // current in memory last hash
+	lastHashKey      []byte                 // redis key of the last hash
+	blockInputChan   chan *schema.TlogBlock // input channel of block received from client
+	orderedBlockChan chan *schema.TlogBlock // ordered blocks from blockInputChan
+	cmdChan          chan uint8             // channel of command
+	respChan         chan *BlockResponse    // channel of responses to be sent to client
 	flusher          *flusher
-	segmentBuf       []byte
+	segmentBuf       []byte // capnp segment buffer used by the flusher
 	expectedSequence uint64 // expected sequence to be received
+	lastSeqFlushed   uint64 // last sequence flushed
 }
 
 // ID returns the ID of this vdisk
@@ -59,8 +61,9 @@ func newVdisk(vdiskID string, f *flusher, firstSequence uint64, segmentBufLen in
 		vdiskID:          vdiskID,
 		lastHashKey:      decoder.GetLashHashKey(vdiskID),
 		lastHash:         lastHash,
-		inputChan:        make(chan *schema.TlogBlock, maxTlbInBuffer),
-		orderedChan:      make(chan *schema.TlogBlock, maxTlbInBuffer),
+		blockInputChan:   make(chan *schema.TlogBlock, maxTlbInBuffer),
+		orderedBlockChan: make(chan *schema.TlogBlock, maxTlbInBuffer),
+		cmdChan:          make(chan uint8, 3),
 		respChan:         make(chan *BlockResponse, respChanSize),
 		expectedSequence: firstSequence,
 		segmentBuf:       make([]byte, 0, segmentBufLen),
@@ -140,13 +143,13 @@ func (vd *vdisk) runReceiver() {
 	buffer := treeset.NewWith(tlogBlockComparator)
 
 	for {
-		tlb := <-vd.inputChan
+		tlb := <-vd.blockInputChan
 
 		curSeq := tlb.Sequence()
 
 		if curSeq == vd.expectedSequence {
 			// it is the next sequence we wait
-			vd.orderedChan <- tlb
+			vd.orderedBlockChan <- tlb
 			vd.expectedSequence++
 		} else if curSeq > vd.expectedSequence {
 			// if this is not what we wait, buffer it
@@ -176,7 +179,7 @@ func (vd *vdisk) runReceiver() {
 
 		for _, block := range blocks {
 			buffer.Remove(block) // we can only do it here because the iterator is read only
-			vd.orderedChan <- block
+			vd.orderedBlockChan <- block
 			vd.expectedSequence++
 		}
 	}
@@ -193,7 +196,7 @@ func (vd *vdisk) runFlusher() {
 	var toFlushLen int
 	for {
 		select {
-		case tlb := <-vd.orderedChan:
+		case tlb := <-vd.orderedBlockChan:
 			tlogs = append(tlogs, tlb)
 			if len(tlogs) < vd.flusher.flushSize { // only flush if it > f.flushSize
 				continue
@@ -209,6 +212,20 @@ func (vd *vdisk) runFlusher() {
 				continue
 			}
 			toFlushLen = len(tlogs)
+
+		case cmd := <-vd.cmdChan:
+			if cmd != tlog.MessageForceFlush {
+				log.Errorf("invalid command to runFlusher: %v", cmd)
+				continue
+			}
+
+			if len(tlogs) == 0 {
+				continue
+			}
+			pfTimer.Stop()
+			pfTimer.Reset(dur)
+
+			toFlushLen = len(tlogs)
 		}
 
 		// get the blocks
@@ -222,6 +239,8 @@ func (vd *vdisk) runFlusher() {
 		if err != nil {
 			log.Infof("flush %v failed: %v", vd.vdiskID, err)
 			status = tlog.BlockStatusFlushFailed
+		} else {
+			vd.lastSeqFlushed = seqs[len(seqs)-1] // update our last sequence flushed
 		}
 
 		vd.respChan <- &BlockResponse{
