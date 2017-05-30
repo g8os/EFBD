@@ -247,11 +247,9 @@ func (c *Client) createConn() error {
 
 // ForceFlush send force flush command to server
 func (c *Client) ForceFlush() error {
-	if err := tlog.WriteMessageType(c.bw, tlog.MessageForceFlush); err != nil {
-		return err
-	}
-	c.bw.Flush()
-	return nil
+	// we use c.conn directly because buffered writer
+	// won't help anything to write one byte of message
+	return tlog.WriteMessageType(c.conn, tlog.MessageForceFlush)
 }
 
 // Send sends the transaction tlog to server.

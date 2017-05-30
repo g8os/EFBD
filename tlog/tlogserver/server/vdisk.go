@@ -33,6 +33,7 @@ type vdisk struct {
 	flusher          *flusher
 	segmentBuf       []byte // capnp segment buffer used by the flusher
 	expectedSequence uint64 // expected sequence to be received
+	lastSeqFlushed   uint64 // last sequence flushed
 }
 
 // ID returns the ID of this vdisk
@@ -238,6 +239,8 @@ func (vd *vdisk) runFlusher() {
 		if err != nil {
 			log.Infof("flush %v failed: %v", vd.vdiskID, err)
 			status = tlog.BlockStatusFlushFailed
+		} else {
+			vd.lastSeqFlushed = seqs[len(seqs)-1] // update our last sequence flushed
 		}
 
 		vd.respChan <- &BlockResponse{

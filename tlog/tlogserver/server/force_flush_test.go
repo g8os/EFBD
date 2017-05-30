@@ -63,12 +63,13 @@ func TestForceFlush(t *testing.T) {
 					cancelFunc()
 					return
 				}
-				if !assert.Equal(t, true, re.Resp.Status > 0) {
+				status := re.Resp.Status
+				if !assert.Equal(t, true, status > 0) {
 					cancelFunc()
 					return
 				}
 
-				if re.Resp.Status == tlog.BlockStatusFlushOK {
+				if status == tlog.BlockStatusFlushOK || status == tlog.BlockStatusForceFlushReceived {
 					seqs := re.Resp.Sequences
 					seq := seqs[len(seqs)-1]
 					lastSeqFlushedChan <- seq

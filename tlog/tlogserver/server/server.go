@@ -220,6 +220,11 @@ func (s *Server) handle(conn *net.TCPConn) error {
 		switch msgType {
 		case tlog.MessageForceFlush:
 			vdisk.cmdChan <- msgType
+			vdisk.respChan <- &BlockResponse{
+				Status:    tlog.BlockStatusForceFlushReceived.Int8(),
+				Sequences: []uint64{vdisk.lastSeqFlushed},
+			}
+
 		case tlog.MessageTlogBlock:
 			if err := s.handleBlock(vdisk, br); err != nil {
 				return err
