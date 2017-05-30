@@ -1,10 +1,10 @@
-# g8stor tool suite
+# 0-stor Tool Suite
 
-g8stor controls the g8os resources.
+The `g8stor` command line tool allows you to manage the Zero-OS resources.
 
 It can be used to copy and delete vdisks.
 
 Discussed here:
 
-* [g8stor installation](installation.md)
+* [Installation](installation.md)
 * [Using g8stor](usage.md)
