@@ -61,7 +61,7 @@ type Client struct {
 // New creates a new tlog client for a vdisk with 'addr' is the tlogserver address.
 // 'firstSequence' is the first sequence number this client is going to send.
 // The client is not goroutine safe.
-func New(addr, vdiskID string, firstSequence uint64) (*Client, error) {
+func New(addr, vdiskID string, firstSequence uint64, resetFirstSeq bool) (*Client, error) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	client := &Client{
 		addr:        addr,
@@ -70,7 +70,8 @@ func New(addr, vdiskID string, firstSequence uint64) (*Client, error) {
 		ctx:         ctx,
 		cancelFunc:  cancelFunc,
 	}
-	if err := client.connect(firstSequence); err != nil {
+
+	if err := client.connect(firstSequence, resetFirstSeq); err != nil {
 		return nil, err
 	}
 
@@ -78,7 +79,7 @@ func New(addr, vdiskID string, firstSequence uint64) (*Client, error) {
 	return client, nil
 }
 
-func (c *Client) connect(firstSequence uint64) error {
+func (c *Client) connect(firstSequence uint64, resetFirstSeq bool) error {
 	c.rLock.Lock()
 	defer c.rLock.Unlock()
 
@@ -87,7 +88,7 @@ func (c *Client) connect(firstSequence uint64) error {
 		return fmt.Errorf("client couldn't be created: %s", err.Error())
 	}
 
-	err = c.handshake(firstSequence)
+	err = c.handshake(firstSequence, resetFirstSeq)
 	if err != nil {
 		if err := c.conn.Close(); err != nil {
 			log.Debug("couldn't close open connection of invalid client:", err)
@@ -118,9 +119,9 @@ func (c *Client) resender() {
 	}
 }
 
-func (c *Client) handshake(firstSequence uint64) error {
+func (c *Client) handshake(firstSequence uint64, resetFirstSeq bool) error {
 	// send handshake request
-	err := c.encodeHandshakeCapnp(firstSequence)
+	err := c.encodeHandshakeCapnp(firstSequence, resetFirstSeq)
 	if err != nil {
 		return err
 	}
@@ -306,7 +307,7 @@ func (c *Client) send(op uint8, seq, offset, timestamp uint64,
 		// the network connection or the tlog server that need time to be recovered.
 		time.Sleep(time.Duration(i) * sendSleepTime)
 
-		if err = c.connect(c.blockBuffer.MinSequence()); err != nil {
+		if err = c.connect(c.blockBuffer.MinSequence(), false); err != nil {
 			log.Infof("tlog client : reconnect attemp(%v) failed:%v", i, err)
 			okToSend = false
 		} else {

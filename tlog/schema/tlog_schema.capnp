@@ -8,7 +8,9 @@ struct HandshakeRequest {
 	version @0 :UInt32;
 	vdiskID @1 :Text;
 	firstSequence @2: UInt64;
+	resetFirstSequence @3: Bool;
 }
+
 # Response handshake message sent from server to client,
 # after receiving a HandshakeRequest message from the client.
 struct HandshakeResponse {

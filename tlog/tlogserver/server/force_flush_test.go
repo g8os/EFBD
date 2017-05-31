@@ -37,7 +37,7 @@ func TestForceFlush(t *testing.T) {
 	)
 
 	// create tlog client
-	client, err := tlogclient.New(s.ListenAddr(), vdiskID, firstSequence)
+	client, err := tlogclient.New(s.ListenAddr(), vdiskID, firstSequence, false)
 	if !assert.Nil(t, err) {
 		return
 	}
@@ -106,7 +106,7 @@ func TestForceFlush(t *testing.T) {
 								if lastSeqFlushed >= uint64(i)-1 {
 									return
 								}
-							case <-time.After(5 * time.Second):
+							case <-time.After(2 * time.Second):
 								// resend force flush if time out after few seconds
 							}
 						}

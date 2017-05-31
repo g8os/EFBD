@@ -1,6 +1,8 @@
 package server
 
 import (
+	"fmt"
+	"net"
 	"sync"
 	"time"
 
@@ -22,18 +24,33 @@ const (
 	tlogBlockFactorSize = 5
 )
 
+const (
+	vdiskCmdForceFlush                   = iota // force flush
+	vdiskCmdForceFlushBlocking                  // blocking force flush
+	vdiskCmdClearUnorderedBlocksBlocking        // blocking clear all unordered blocks
+)
+
 type vdisk struct {
-	vdiskID          string
-	lastHash         []byte                 // current in memory last hash
-	lastHashKey      []byte                 // redis key of the last hash
-	blockInputChan   chan *schema.TlogBlock // input channel of block received from client
-	orderedBlockChan chan *schema.TlogBlock // ordered blocks from blockInputChan
-	cmdChan          chan uint8             // channel of command
-	respChan         chan *BlockResponse    // channel of responses to be sent to client
+	vdiskID     string
+	lastHash    []byte // current in memory last hash
+	lastHashKey []byte // redis key of the last hash
+
+	// channels block receiver
+	blockInputChan       chan *schema.TlogBlock // input channel of block received from client
+	blockRecvCmdChan     chan uint8             // channel of block receiver command
+	blockRecvCmdRespChan chan struct{}          // channel of block receiver command response
+
+	// channels for flusher
+	orderedBlockChan   chan *schema.TlogBlock // ordered blocks from blockInputChan
+	flusherCmdChan     chan uint8             // channel of flusher command
+	flusherCmdRespChan chan struct{}          // channel of flusher command response
+	respChan           chan *BlockResponse    // channel of responses to be sent to client
+
 	flusher          *flusher
 	segmentBuf       []byte // capnp segment buffer used by the flusher
 	expectedSequence uint64 // expected sequence to be received
 	lastSeqFlushed   uint64 // last sequence flushed
+	clients          map[string]struct{}
 }
 
 // ID returns the ID of this vdisk
@@ -58,16 +75,19 @@ func newVdisk(vdiskID string, f *flusher, firstSequence uint64, segmentBufLen in
 	maxTlbInBuffer := f.flushSize * tlogBlockFactorSize
 
 	return &vdisk{
-		vdiskID:          vdiskID,
-		lastHashKey:      decoder.GetLashHashKey(vdiskID),
-		lastHash:         lastHash,
-		blockInputChan:   make(chan *schema.TlogBlock, maxTlbInBuffer),
-		orderedBlockChan: make(chan *schema.TlogBlock, maxTlbInBuffer),
-		cmdChan:          make(chan uint8, 3),
-		respChan:         make(chan *BlockResponse, respChanSize),
-		expectedSequence: firstSequence,
-		segmentBuf:       make([]byte, 0, segmentBufLen),
-		flusher:          f,
+		vdiskID:              vdiskID,
+		lastHashKey:          decoder.GetLashHashKey(vdiskID),
+		lastHash:             lastHash,
+		blockInputChan:       make(chan *schema.TlogBlock, maxTlbInBuffer),
+		blockRecvCmdChan:     make(chan uint8, 1),
+		blockRecvCmdRespChan: make(chan struct{}, 1),
+		orderedBlockChan:     make(chan *schema.TlogBlock, maxTlbInBuffer),
+		flusherCmdChan:       make(chan uint8, 1),
+		respChan:             make(chan *BlockResponse, respChanSize),
+		expectedSequence:     firstSequence,
+		segmentBuf:           make([]byte, 0, segmentBufLen),
+		flusher:              f,
+		clients:              make(map[string]struct{}),
 	}, nil
 }
 
@@ -116,9 +136,26 @@ func (vt *vdiskManager) Get(vdiskID string, firstSequence uint64, ff flusherFact
 	log.Debugf("create vdisk with expectedSequence:%v", vd.expectedSequence)
 
 	go vd.runFlusher()
-	go vd.runReceiver()
+	go vd.runBlockReceiver()
 
 	return
+}
+
+func (vd *vdisk) numConnectedClient() int {
+	return len(vd.clients)
+}
+
+func (vd *vdisk) addClient(conn *net.TCPConn) {
+	vd.clients[conn.RemoteAddr().String()] = struct{}{}
+}
+
+func (vd *vdisk) removeClient(conn *net.TCPConn) {
+	addr := conn.RemoteAddr().String()
+	if _, ok := vd.clients[addr]; !ok {
+		log.Errorf("vdisk failed to remove client:%v", addr)
+	} else {
+		delete(vd.clients, addr)
+	}
 }
 
 // the comparator function needed by https://godoc.org/github.com/emirpasic/gods/sets/treeset#NewWith
@@ -138,49 +175,81 @@ func tlogBlockComparator(a, b interface{}) int {
 	}
 }
 
+// reset first sequence, what we need to do:
+// - make sure we only have single connections for this vdisk
+// - ignore all unordered blocks (blocking)
+// - flush all unflushed ordered blocks (blocking)
+// - reset it
+func (vd *vdisk) resetFirstSequence(newSeq uint64) error {
+	if newSeq == vd.expectedSequence { // we already in same page, do nothing
+		return nil
+	}
+
+	if len(vd.clients) != 1 {
+		return fmt.Errorf("vdisk failed to reset first sequence, num client : %v", len(vd.clients))
+	}
+
+	vd.blockRecvCmdChan <- vdiskCmdClearUnorderedBlocksBlocking
+	<-vd.blockRecvCmdRespChan
+
+	vd.flusherCmdChan <- vdiskCmdForceFlushBlocking
+	<-vd.flusherCmdRespChan
+
+	vd.expectedSequence = newSeq
+	return nil
+}
+
 // this is the flusher routine that receive the blocks and order it.
-func (vd *vdisk) runReceiver() {
+func (vd *vdisk) runBlockReceiver() {
 	buffer := treeset.NewWith(tlogBlockComparator)
 
 	for {
-		tlb := <-vd.blockInputChan
-
-		curSeq := tlb.Sequence()
-
-		if curSeq == vd.expectedSequence {
-			// it is the next sequence we wait
-			vd.orderedBlockChan <- tlb
-			vd.expectedSequence++
-		} else if curSeq > vd.expectedSequence {
-			// if this is not what we wait, buffer it
-			buffer.Add(tlb)
-		} else { // tlb.Sequence() < vd.expectedSequence -> duplicated message
-			continue // drop it and no need to check the buffer because all condition doesn't change
-		}
-
-		if buffer.Empty() {
-			continue
-		}
-
-		// lets see the buffer again, check if we have blocks that
-		// can be sent to the flusher.
-		it := buffer.Iterator()
-		blocks := []*schema.TlogBlock{}
-
-		expected := vd.expectedSequence
-		for it.Next() {
-			block := it.Value().(*schema.TlogBlock)
-			if block.Sequence() != expected {
-				break
+		select {
+		case cmd := <-vd.blockRecvCmdChan:
+			if cmd == vdiskCmdClearUnorderedBlocksBlocking {
+				buffer.Clear()
+				vd.blockRecvCmdRespChan <- struct{}{}
+			} else {
+				log.Errorf("invalid block receiver command = %v", cmd)
 			}
-			expected++
-			blocks = append(blocks, block)
-		}
+		case tlb := <-vd.blockInputChan:
+			curSeq := tlb.Sequence()
 
-		for _, block := range blocks {
-			buffer.Remove(block) // we can only do it here because the iterator is read only
-			vd.orderedBlockChan <- block
-			vd.expectedSequence++
+			if curSeq == vd.expectedSequence {
+				// it is the next sequence we wait
+				vd.orderedBlockChan <- tlb
+				vd.expectedSequence++
+			} else if curSeq > vd.expectedSequence {
+				// if this is not what we wait, buffer it
+				buffer.Add(tlb)
+			} else { // tlb.Sequence() < vd.expectedSequence -> duplicated message
+				continue // drop it and no need to check the buffer because all condition doesn't change
+			}
+
+			if buffer.Empty() {
+				continue
+			}
+
+			// lets see the buffer again, check if we have blocks that
+			// can be sent to the flusher.
+			it := buffer.Iterator()
+			blocks := []*schema.TlogBlock{}
+
+			expected := vd.expectedSequence
+			for it.Next() {
+				block := it.Value().(*schema.TlogBlock)
+				if block.Sequence() != expected {
+					break
+				}
+				expected++
+				blocks = append(blocks, block)
+			}
+
+			for _, block := range blocks {
+				buffer.Remove(block) // we can only do it here because the iterator is read only
+				vd.orderedBlockChan <- block
+				vd.expectedSequence++
+			}
 		}
 	}
 }
@@ -194,6 +263,7 @@ func (vd *vdisk) runFlusher() {
 	pfTimer := time.NewTimer(dur) // periodic flush timer
 
 	var toFlushLen int
+	var flusherCmd uint8
 	for {
 		select {
 		case tlb := <-vd.orderedBlockChan:
@@ -213,9 +283,9 @@ func (vd *vdisk) runFlusher() {
 			}
 			toFlushLen = len(tlogs)
 
-		case cmd := <-vd.cmdChan:
-			if cmd != tlog.MessageForceFlush {
-				log.Errorf("invalid command to runFlusher: %v", cmd)
+		case flusherCmd = <-vd.flusherCmdChan:
+			if flusherCmd != vdiskCmdForceFlush && flusherCmd != vdiskCmdForceFlushBlocking {
+				log.Errorf("invalid command to runFlusher: %v", flusherCmd)
 				continue
 			}
 
@@ -246,6 +316,9 @@ func (vd *vdisk) runFlusher() {
 		vd.respChan <- &BlockResponse{
 			Status:    status.Int8(),
 			Sequences: seqs,
+		}
+		if flusherCmd == vdiskCmdForceFlushBlocking {
+			vd.flusherCmdRespChan <- struct{}{}
 		}
 	}
 }

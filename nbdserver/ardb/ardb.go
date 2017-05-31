@@ -154,7 +154,7 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 		if f.tlogRPCAddress != "" {
 			log.Debugf("creating tlogclient for backend %v (%v)",
 				vdiskID, vdisk.Type)
-			tlogClient, err = tlogclient.New(f.tlogRPCAddress, vdiskID, 0)
+			tlogClient, err = tlogclient.New(f.tlogRPCAddress, vdiskID, 0, true)
 			if err != nil {
 				log.Infof("couldn't create tlogclient: %s", err.Error())
 				return

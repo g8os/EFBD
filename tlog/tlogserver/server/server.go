@@ -164,6 +164,14 @@ func (s *Server) handshake(r io.Reader, w io.Writer) (vd *vdisk, err error) {
 		return
 	}
 
+	if req.ResetFirstSequence() {
+		if err = vd.resetFirstSequence(req.FirstSequence()); err != nil {
+			status = tlog.HandshakeStatusInternalServerError
+			err = fmt.Errorf("couldn't reset vdisk first sequence %s: %s", vdiskID, err.Error())
+			return
+		}
+	}
+
 	log.Debug("handshake phase successfully completed")
 	status = tlog.HandshakeStatusOK
 	return // success return
@@ -224,7 +232,7 @@ func (s *Server) handle(conn *net.TCPConn) error {
 
 		switch msgType {
 		case tlog.MessageForceFlush:
-			vdisk.cmdChan <- msgType
+			vdisk.flusherCmdChan <- vdiskCmdForceFlush
 			vdisk.respChan <- &BlockResponse{
 				Status:    tlog.BlockStatusForceFlushReceived.Int8(),
 				Sequences: []uint64{vdisk.lastSeqFlushed},

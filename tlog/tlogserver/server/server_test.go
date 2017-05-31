@@ -48,7 +48,7 @@ func TestEndToEnd(t *testing.T) {
 	)
 
 	// create tlog client
-	client, err := tlogclient.New(s.ListenAddr(), expectedVdiskID, firstSequence)
+	client, err := tlogclient.New(s.ListenAddr(), expectedVdiskID, firstSequence, false)
 	if !assert.Nil(t, err) {
 		return
 	}
@@ -173,7 +173,7 @@ func TestUnordered(t *testing.T) {
 	)
 
 	// create tlog client
-	client, err := tlogclient.New(s.ListenAddr(), vdiskID, firstSequence)
+	client, err := tlogclient.New(s.ListenAddr(), vdiskID, firstSequence, false)
 	if !assert.Nil(t, err) {
 		return
 	}
