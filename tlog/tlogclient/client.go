@@ -60,6 +60,8 @@ type Client struct {
 
 // New creates a new tlog client for a vdisk with 'addr' is the tlogserver address.
 // 'firstSequence' is the first sequence number this client is going to send.
+// Set 'resetFirstSeq' to true to force reset the vdisk first/expected sequence.
+
 // The client is not goroutine safe.
 func New(addr, vdiskID string, firstSequence uint64, resetFirstSeq bool) (*Client, error) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
