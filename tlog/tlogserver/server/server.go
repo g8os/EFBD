@@ -99,8 +99,13 @@ func (s *Server) Listen() {
 			}()
 
 			addr := conn.RemoteAddr()
+
 			err := s.handle(tcpConn)
-			log.Infof("connection from %s dropped: %s", addr.String(), err.Error())
+			if err == nil {
+				log.Infof("connection from %s dropped", addr.String())
+			} else {
+				log.Errorf("connection from %s dropped with an error: %s", addr.String(), err.Error())
+			}
 		}()
 	}
 }
@@ -203,7 +208,6 @@ func (s *Server) handle(conn *net.TCPConn) error {
 	vdisk, err := s.handshake(br, conn)
 	if err != nil {
 		err = fmt.Errorf("handshake failed: %s", err.Error())
-		log.Info(err)
 		return err
 	}
 	go s.sendResp(ctx, conn, vdisk.ID(), vdisk.ResponseChan())
@@ -211,9 +215,10 @@ func (s *Server) handle(conn *net.TCPConn) error {
 	for {
 		msgType, err := tlog.ReadCheckMessageType(br)
 		if err != nil {
-			if err != io.EOF { // EOF in this stage is not an error
-				log.Errorf("failed to read message type: %v", err)
+			if err == io.EOF { // EOF in this stage is not an error
+				err = nil
 			}
+
 			return err
 		}
 
@@ -229,10 +234,9 @@ func (s *Server) handle(conn *net.TCPConn) error {
 			if err := s.handleBlock(vdisk, br); err != nil {
 				return err
 			}
+
 		default:
-			err := fmt.Errorf("unhandled message type:%v", msgType)
-			log.Error(err)
-			return err
+			return fmt.Errorf("unhandled message type:%v", msgType)
 		}
 
 	}
