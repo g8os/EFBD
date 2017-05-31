@@ -250,6 +250,8 @@ func (c *Client) createConn() error {
 
 // ForceFlush send force flush command to server
 func (c *Client) ForceFlush() error {
+	c.wLock.Lock()
+	defer c.wLock.Unlock()
 	// we use c.conn directly because buffered writer
 	// won't help anything to write one byte of message
 	return tlog.WriteMessageType(c.conn, tlog.MessageForceFlush)
