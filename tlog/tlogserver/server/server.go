@@ -116,7 +116,7 @@ func (s *Server) ListenAddr() string {
 }
 
 // handshake stage, required prior to receiving blocks
-func (s *Server) handshake(r io.Reader, w io.Writer) (vd *vdisk, err error) {
+func (s *Server) handshake(r io.Reader, w io.Writer, conn *net.TCPConn) (vd *vdisk, err error) {
 	status := tlog.HandshakeStatusInternalServerError
 
 	// always return response, even in case of a panic,
@@ -157,11 +157,19 @@ func (s *Server) handshake(r io.Reader, w io.Writer) (vd *vdisk, err error) {
 		return // error return
 	}
 
-	vd, err = s.vdiskMgr.Get(vdiskID, req.FirstSequence(), s.createFlusher)
+	vd, err = s.vdiskMgr.Get(vdiskID, req.FirstSequence(), s.createFlusher, conn)
 	if err != nil {
 		status = tlog.HandshakeStatusInternalServerError
 		err = fmt.Errorf("couldn't create vdisk %s: %s", vdiskID, err.Error())
 		return
+	}
+
+	if req.ResetFirstSequence() {
+		if err = vd.resetFirstSequence(req.FirstSequence(), conn); err != nil {
+			status = tlog.HandshakeStatusInternalServerError
+			err = fmt.Errorf("couldn't reset vdisk first sequence %s: %s", vdiskID, err.Error())
+			return
+		}
 	}
 
 	log.Debug("handshake phase successfully completed")
@@ -205,11 +213,12 @@ func (s *Server) handle(conn *net.TCPConn) error {
 
 	br := bufio.NewReader(conn)
 
-	vdisk, err := s.handshake(br, conn)
+	vdisk, err := s.handshake(br, conn, conn)
 	if err != nil {
 		err = fmt.Errorf("handshake failed: %s", err.Error())
 		return err
 	}
+	defer vdisk.removeClient(conn)
 	go s.sendResp(ctx, conn, vdisk.ID(), vdisk.ResponseChan())
 
 	for {
@@ -224,7 +233,7 @@ func (s *Server) handle(conn *net.TCPConn) error {
 
 		switch msgType {
 		case tlog.MessageForceFlush:
-			vdisk.cmdChan <- msgType
+			vdisk.flusherCmdChan <- vdiskCmdForceFlush
 			vdisk.respChan <- &BlockResponse{
 				Status:    tlog.BlockStatusForceFlushReceived.Int8(),
 				Sequences: []uint64{vdisk.lastSeqFlushed},

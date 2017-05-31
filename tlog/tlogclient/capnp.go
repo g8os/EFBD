@@ -8,7 +8,7 @@ import (
 	"zombiezen.com/go/capnproto2"
 )
 
-func (c *Client) encodeHandshakeCapnp(firstSequence uint64) error {
+func (c *Client) encodeHandshakeCapnp(firstSequence uint64, resetFirstSeq bool) error {
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(c.capnpSegmentBuf))
 	if err != nil {
 		return fmt.Errorf("failed to build (handshake) capnp: %s", err.Error())
@@ -21,6 +21,7 @@ func (c *Client) encodeHandshakeCapnp(firstSequence uint64) error {
 
 	handshake.SetVersion(blockstor.CurrentVersion.UInt32())
 	handshake.SetFirstSequence(firstSequence)
+	handshake.SetResetFirstSequence(resetFirstSeq)
 
 	err = handshake.SetVdiskID(c.vdiskID)
 	if err != nil {

@@ -23,7 +23,7 @@ func TestSimpleReconnect(t *testing.T) {
 	assert.Nil(t, err)
 	go serv.Listen()
 
-	client, err := New(serv.ListenAddr(), vdisk, firstSequence)
+	client, err := New(serv.ListenAddr(), vdisk, firstSequence, false)
 	assert.Nil(t, err)
 	defer client.Close()
 

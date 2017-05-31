@@ -29,7 +29,7 @@ func main() {
 		dataLen       = 4096
 	)
 
-	client, err := client.New("127.0.0.1:11211", vdiskID, firstSequence)
+	client, err := client.New("127.0.0.1:11211", vdiskID, firstSequence, false)
 	if err != nil {
 		log.Fatal(err)
 	}
