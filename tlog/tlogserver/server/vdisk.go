@@ -1,7 +1,6 @@
 package server
 
 import (
-	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -50,7 +49,8 @@ type vdisk struct {
 	segmentBuf       []byte // capnp segment buffer used by the flusher
 	expectedSequence uint64 // expected sequence to be received
 	lastSeqFlushed   uint64 // last sequence flushed
-	clients          map[string]struct{}
+	clientsTab       map[string]*net.TCPConn
+	clientsTabLock   sync.Mutex
 }
 
 // ID returns the ID of this vdisk
@@ -88,7 +88,7 @@ func newVdisk(vdiskID string, f *flusher, firstSequence uint64, segmentBufLen in
 		expectedSequence:     firstSequence,
 		segmentBuf:           make([]byte, 0, segmentBufLen),
 		flusher:              f,
-		clients:              make(map[string]struct{}),
+		clientsTab:           make(map[string]*net.TCPConn),
 	}, nil
 }
 
@@ -146,19 +146,41 @@ func (vt *vdiskManager) Get(vdiskID string, firstSequence uint64, ff flusherFact
 }
 
 func (vd *vdisk) numConnectedClient() int {
-	return len(vd.clients)
+	return len(vd.clientsTab)
 }
 
 func (vd *vdisk) addClient(conn *net.TCPConn) {
-	vd.clients[conn.RemoteAddr().String()] = struct{}{}
+	vd.clientsTabLock.Lock()
+	defer vd.clientsTabLock.Unlock()
+
+	vd.clientsTab[conn.RemoteAddr().String()] = conn
 }
 
 func (vd *vdisk) removeClient(conn *net.TCPConn) {
+	vd.clientsTabLock.Lock()
+	defer vd.clientsTabLock.Unlock()
+
 	addr := conn.RemoteAddr().String()
-	if _, ok := vd.clients[addr]; !ok {
+	if _, ok := vd.clientsTab[addr]; !ok {
 		log.Errorf("vdisk failed to remove client:%v", addr)
 	} else {
-		delete(vd.clients, addr)
+		delete(vd.clientsTab, addr)
+	}
+}
+
+func (vd *vdisk) removeExcept(exceptConn *net.TCPConn) {
+	vd.clientsTabLock.Lock()
+	defer vd.clientsTabLock.Unlock()
+
+	var conns []*net.TCPConn
+	for _, conn := range vd.clientsTab {
+		if conn != exceptConn {
+			conns = append(conns, conn)
+			conn.Close()
+		}
+	}
+	for _, conn := range conns {
+		delete(vd.clientsTab, conn.RemoteAddr().String())
 	}
 }
 
@@ -184,14 +206,14 @@ func tlogBlockComparator(a, b interface{}) int {
 // - ignore all unordered blocks (blocking)
 // - flush all unflushed ordered blocks (blocking)
 // - reset it
-func (vd *vdisk) resetFirstSequence(newSeq uint64) error {
+func (vd *vdisk) resetFirstSequence(newSeq uint64, conn *net.TCPConn) error {
 	log.Infof("vdisk %v reset first sequence to %v", vd.vdiskID, newSeq)
 	if newSeq == vd.expectedSequence { // we already in same page, do nothing
 		return nil
 	}
 
-	if len(vd.clients) != 1 {
-		return fmt.Errorf("vdisk failed to reset first sequence, num client : %v", len(vd.clients))
+	if vd.numConnectedClient() != 1 {
+		vd.removeExcept(conn)
 	}
 
 	vd.blockRecvCmdChan <- vdiskCmdClearUnorderedBlocksBlocking

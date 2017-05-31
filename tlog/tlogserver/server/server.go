@@ -165,7 +165,7 @@ func (s *Server) handshake(r io.Reader, w io.Writer, conn *net.TCPConn) (vd *vdi
 	}
 
 	if req.ResetFirstSequence() {
-		if err = vd.resetFirstSequence(req.FirstSequence()); err != nil {
+		if err = vd.resetFirstSequence(req.FirstSequence(), conn); err != nil {
 			status = tlog.HandshakeStatusInternalServerError
 			err = fmt.Errorf("couldn't reset vdisk first sequence %s: %s", vdiskID, err.Error())
 			return
