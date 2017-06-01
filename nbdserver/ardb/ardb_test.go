@@ -441,11 +441,12 @@ func testBackendStorageDeadlock(t *testing.T, blockSize, blockCount int64, stora
 
 		for i := int64(0); i < blockCount; i++ {
 			wg.Add(1)
+
+			preContent := make([]byte, blockSize)
+			rand.Read(preContent)
+
 			go func(blockIndex int64) {
 				defer wg.Done()
-
-				preContent := make([]byte, blockSize)
-				rand.Read(preContent)
 
 				// set content
 				err = storage.Set(blockIndex, preContent)

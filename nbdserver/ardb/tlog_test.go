@@ -446,33 +446,23 @@ func testSequenceCacheMassEviction(t *testing.T, sq sequenceCache, lengthTest fu
 		var allData [][][]byte
 
 		for innerRepitition := int64(0); innerRepitition < innerRepeatCount; innerRepitition++ {
+			var wg sync.WaitGroup
+
 			var sequenceArr []uint64
 			var dataArr [][]byte
 
 			for blockIndex := int64(0); blockIndex < blockCount; blockIndex++ {
-				content := make([]byte, blockSize)
-				rand.Read(content)
-
-				dataArr = append(dataArr, content)
-				sequenceArr = append(sequenceArr, sequence)
-				sequence++
-			}
-
-			allSequences = append(allSequences, sequenceArr)
-			allData = append(allData, dataArr)
-		}
-
-		for innerRepitition := int64(0); innerRepitition < innerRepeatCount; innerRepitition++ {
-			var wg sync.WaitGroup
-
-			for blockIndex := int64(0); blockIndex < blockCount; blockIndex++ {
 				wg.Add(1)
 
-				blockIndex := blockIndex
-				sequence := allSequences[innerRepitition][blockIndex]
-				preContent := allData[innerRepitition][blockIndex]
+				preContent := make([]byte, blockSize)
+				rand.Read(preContent)
+				dataArr = append(dataArr, preContent)
 
-				go func() {
+				sequenceArr = append(sequenceArr, sequence)
+				sequence++
+				sequence := sequenceArr[blockIndex]
+
+				go func(blockIndex int64) {
 					defer wg.Done()
 
 					// add content
@@ -490,8 +480,11 @@ func testSequenceCacheMassEviction(t *testing.T, sq sequenceCache, lengthTest fu
 					if bytes.Compare(preContent, postContent) != 0 {
 						t.Fatal(repetiton, blockIndex, " unexpected content received")
 					}
-				}()
+				}(blockIndex)
 			}
+
+			allSequences = append(allSequences, sequenceArr)
+			allData = append(allData, dataArr)
 
 			wg.Wait()
 		}
