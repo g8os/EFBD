@@ -136,6 +136,24 @@ func TestDedupedContent(t *testing.T) {
 	testBackendStorage(t, storage)
 }
 
+func TestDedupedContentForceFlush(t *testing.T) {
+	memRedis := redisstub.NewMemoryRedis()
+	go memRedis.Listen()
+	defer memRedis.Close()
+
+	const (
+		vdiskID = "a"
+	)
+
+	redisProvider := newTestRedisProvider(memRedis, nil) // root = nil
+	storage := createTestDedupedStorage(t, vdiskID, 8, 8, redisProvider)
+	if storage == nil {
+		t.Fatal("storage is nil")
+	}
+
+	testBackendStorageForceFlush(t, storage)
+}
+
 // test in a response to https://github.com/g8os/blockstor/issues/89
 func TestDedupedDeadlock(t *testing.T) {
 	memRedis := redisstub.NewMemoryRedis()

@@ -28,6 +28,24 @@ func TestNondedupedContent(t *testing.T) {
 	testBackendStorage(t, storage)
 }
 
+func TestNondedupedContentForceFlush(t *testing.T) {
+	memRedis := redisstub.NewMemoryRedis()
+	go memRedis.Listen()
+	defer memRedis.Close()
+
+	const (
+		vdiskID = "a"
+	)
+
+	redisProvider := newTestRedisProvider(memRedis, nil) // root = nil
+	storage := createTestNondedupedStorage(t, vdiskID, 8, redisProvider)
+	if storage == nil {
+		t.Fatal("storage is nil")
+	}
+
+	testBackendStorageForceFlush(t, storage)
+}
+
 // test in a response to https://github.com/g8os/blockstor/issues/89
 func TestNonDedupedDeadlock(t *testing.T) {
 	memRedis := redisstub.NewMemoryRedis()

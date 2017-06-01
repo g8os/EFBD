@@ -43,10 +43,29 @@ This makes the [nondeduped storage][ardb.nondeduped] and its operations very str
 
 See [the nondeduped code](/nbdserver/ardb/nondeduped.go) for more information.
 
+## Tlog Storage
+
+All vdisk types which support the `replay/restore` feature, have their internal storage type wrapped in the [tlog storage][ardb.tlog] type. That is to say, the backend will for those types communicate with the [tlog storage][ardb.tlog] rather then the actual underlying storage (for example [deduped storage][ardb.deduped]).
+
+All content stored in the underlying storage has strong consistency, and it is guaranteed that all content which is stored on the underlying storage, is safely stored as transactions on the tlog server. Meaning that from that moment on, the content can be restored to any stored point in time.
+
+To get a better idea on how the tlog storage works, here is its flow graph:
+
+![tlogStorage](/docs/assets/tlog_storage.png)
+
+As you can see, when modifying content it is stored in the sequence cache, and sent as a transaction to the tlog server. This way, each step is recorded in the tlog server, while at the same time the modified content is already available in the cache for immediate usage.
+
+Content is stored in the sequence cache, linked to its sequence index and block index. When retrieving content from the sequence cache it always returns the content with the highest sequence index, available for that block index. Content is only removed from the sequence cache, when the tlog server confirms that the relevant transactions have been securely stored.
+
+See [the tlog storage code](/nbdserver/ardb/tlog.go) for more information about its internal workings.
+
+See [the tlog docs](/docs/tlog/tlog.md) for more information about the tlog ecosystem.
+
 [ardb]: /nbdserver/ardb
 [ardb.backend]: /nbdserver/ardb/backend.go#L10-L16
 [ardb.deduped]: /nbdserver/ardb/deduped.go#L23-L32
 [ardb.nondeduped]: /nbdserver/ardb/nondeduped.go#L18-L25
+[ardb.tlog]: /nbdserver/ardb/tlog.go#L43-L53
 [lba]: /nbdserver/lba
 [lba.nilhash]: /nbdserver/lba/hash.go#L15-L16
 [vdisk]: https://en.wikipedia.org/wiki/Virtual_disk

@@ -7,8 +7,6 @@ import (
 
 	"github.com/g8os/blockstor/log"
 
-	"github.com/g8os/blockstor/tlog/tlogclient"
-
 	"github.com/g8os/blockstor/config"
 	"github.com/g8os/blockstor/gonbdserver/nbd"
 	"github.com/g8os/blockstor/nbdserver/lba"
@@ -113,10 +111,10 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	// GridAPI returns the vdisk size in GiB
 	vdiskSize := int64(vdisk.Size) * gibibyteAsBytes
 
-	switch vdisk.Type {
-	case config.VdiskTypeDB, config.VdiskTypeCache:
+	switch storageType := vdisk.StorageType(); storageType {
+	case config.StorageNondeduped:
 		storage = newNonDedupedStorage(vdiskID, blockSize, redisProvider)
-	case config.VdiskTypeBoot:
+	case config.StorageDeduped:
 		cacheLimit := f.lbaCacheLimit
 		if cacheLimit < lba.BytesPerShard {
 			log.Infof(
@@ -144,26 +142,25 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 
 		storage = newDedupedStorage(vdiskID, blockSize, redisProvider, vlba)
 	default:
-		err = fmt.Errorf("unsupported vdisk type %q", vdisk.Type)
+		err = fmt.Errorf("unsupported vdisk storage type %q", storageType)
 	}
 
-	var tlogClient *tlogclient.Client
-
-	switch vdisk.Type {
-	case config.VdiskTypeDB, config.VdiskTypeBoot:
-		if f.tlogRPCAddress != "" {
-			log.Debugf("creating tlogclient for backend %v (%v)",
+	if f.tlogRPCAddress != "" {
+		switch vdisk.Type {
+		case config.VdiskTypeDB, config.VdiskTypeBoot:
+			log.Debugf("creating tlogStorage for backend %v (%v)",
 				vdiskID, vdisk.Type)
-			tlogClient, err = tlogclient.New(f.tlogRPCAddress, vdiskID, 0, true)
+			storage, err = newTlogStorage(
+				vdiskID, f.tlogRPCAddress, blockSize, storage)
 			if err != nil {
-				log.Infof("couldn't create tlogclient: %s", err.Error())
+				log.Infof("couldn't create tlog storage: %s", err.Error())
 				return
 			}
-		}
 
-	default:
-		log.Debugf("not creating tlogclient for backend %v (%v)",
-			vdiskID, vdisk.Type)
+		default:
+			log.Debugf("not creating tlogStorage for backend %v (%v)",
+				vdiskID, vdisk.Type)
+		}
 	}
 
 	backend = newBackend(
@@ -171,7 +168,6 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 		blockSize, uint64(vdiskSize),
 		storage,
 		storageClusterClient,
-		tlogClient,
 	)
 
 	return

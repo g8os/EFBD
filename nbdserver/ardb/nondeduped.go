@@ -1,6 +1,8 @@
 package ardb
 
 import (
+	"context"
+
 	"github.com/g8os/blockstor/log"
 
 	"github.com/garyburd/redigo/redis"
@@ -48,14 +50,14 @@ func (ss *nonDedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 }
 
 // Merge implements backendStorage.Merge
-func (ss *nonDedupedStorage) Merge(blockIndex, offset int64, content []byte) (mergedContent []byte, err error) {
+func (ss *nonDedupedStorage) Merge(blockIndex, offset int64, content []byte) (err error) {
 	conn, err := ss.provider.RedisConnection(blockIndex)
 	if err != nil {
 		return
 	}
 	defer conn.Close()
 
-	mergedContent, _ = redis.Bytes(conn.Do("HGET", ss.vdiskID, blockIndex))
+	mergedContent, _ := redis.Bytes(conn.Do("HGET", ss.vdiskID, blockIndex))
 	if ocl := int64(len(mergedContent)); ocl == 0 {
 		mergedContent = make([]byte, ss.blockSize)
 	} else if ocl < ss.blockSize {
@@ -101,6 +103,12 @@ func (ss *nonDedupedStorage) Flush() (err error) {
 	// nothing to do for the nonDeduped backendStorage
 	return
 }
+
+// Close implements backendStorage.Close
+func (ss *nonDedupedStorage) Close() error { return nil }
+
+// GoBackground implements backendStorage.GoBackground
+func (ss *nonDedupedStorage) GoBackground(context.Context) {}
 
 // isZeroContent detects if a given content buffer is completely filled with 0s
 func (ss *nonDedupedStorage) isZeroContent(content []byte) bool {

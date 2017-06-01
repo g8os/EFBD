@@ -223,6 +223,23 @@ const (
 // StorageType represents the type of storage of a vdisk
 type StorageType uint8
 
+// UInt8 returns the storage type as an uint8 value
+func (st StorageType) UInt8() uint8 {
+	return uint8(st)
+}
+
+// String returns the name of the storage type
+func (st StorageType) String() string {
+	switch st {
+	case StorageDeduped:
+		return "deduped"
+	case StorageNondeduped:
+		return "nondeduped"
+	default:
+		return "Unknown"
+	}
+}
+
 // Different types of storage
 const (
 	StorageNil     StorageType = 0

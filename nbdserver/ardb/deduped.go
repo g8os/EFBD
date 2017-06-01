@@ -1,6 +1,7 @@
 package ardb
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/g8os/blockstor/log"
@@ -54,9 +55,10 @@ func (ds *dedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 }
 
 // Merge implements backendStorage.Merge
-func (ds *dedupedStorage) Merge(blockIndex, offset int64, content []byte) (mergedContent []byte, err error) {
+func (ds *dedupedStorage) Merge(blockIndex, offset int64, content []byte) (err error) {
 	hash, _ := ds.lba.Get(blockIndex)
 
+	var mergedContent []byte
 	if hash != nil && !hash.Equals(blockstor.NilHash) {
 		mergedContent, err = ds.getContent(hash)
 		if err != nil {
@@ -200,3 +202,9 @@ func (ds *dedupedStorage) setContent(hash blockstor.Hash, content []byte) (succe
 
 	return
 }
+
+// Close implements backendStorage.Close
+func (ds *dedupedStorage) Close() error { return nil }
+
+// GoBackground implements backendStorage.GoBackground
+func (ds *dedupedStorage) GoBackground(context.Context) {}
