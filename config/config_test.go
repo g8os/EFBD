@@ -397,6 +397,7 @@ var validVDiskTypeCases = []struct {
 	{string(VdiskTypeBoot), VdiskTypeBoot},
 	{string(VdiskTypeCache), VdiskTypeCache},
 	{string(VdiskTypeDB), VdiskTypeDB},
+	{string(VdiskTypeTmp), VdiskTypeTmp},
 }
 
 func TestValidVdiskTypeDeserialization(t *testing.T) {

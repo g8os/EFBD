@@ -173,7 +173,7 @@ func (cfg *VdiskConfig) StorageType() StorageType {
 	switch cfg.Type {
 	case VdiskTypeBoot:
 		return StorageDeduped
-	case VdiskTypeCache, VdiskTypeDB:
+	case VdiskTypeCache, VdiskTypeDB, VdiskTypeTmp:
 		return StorageNondeduped
 	default:
 		return StorageNil
@@ -203,7 +203,7 @@ func (t *VdiskType) UnmarshalYAML(unmarshal func(interface{}) error) (err error)
 
 	vtype := VdiskType(rawType)
 	switch vtype {
-	case VdiskTypeBoot, VdiskTypeDB, VdiskTypeCache:
+	case VdiskTypeBoot, VdiskTypeDB, VdiskTypeCache, VdiskTypeTmp:
 		*t = vtype
 	default:
 		err = fmt.Errorf("%q is not a valid VdiskType", t)
@@ -218,6 +218,7 @@ const (
 	VdiskTypeBoot  = VdiskType("boot")
 	VdiskTypeDB    = VdiskType("db")
 	VdiskTypeCache = VdiskType("cache")
+	VdiskTypeTmp   = VdiskType("tmp")
 )
 
 // StorageType represents the type of storage of a vdisk

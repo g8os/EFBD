@@ -67,7 +67,7 @@ vdisks: # A required map of vdisks,
                                     # you have a tlogserver connected to your nbdserver
     type: boot # Required (VdiskType) type of this vdisk
                # which also defines if its deduped or nondeduped,
-               # valid types are: `boot`, `db` and `cache`
+               # valid types are: `boot`, `db`, `cache` and `tmp`
   # ... more (optional) vdisks
 ```
 
