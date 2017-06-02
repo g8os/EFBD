@@ -38,7 +38,15 @@ func ObjectsAreEqual(expected, actual interface{}) bool {
 	if expected == nil || actual == nil {
 		return expected == actual
 	}
-
+	if exp, ok := expected.([]byte); ok {
+		act, ok := actual.([]byte)
+		if !ok {
+			return false
+		} else if exp == nil || act == nil {
+			return exp == nil && act == nil
+		}
+		return bytes.Equal(exp, act)
+	}
 	return reflect.DeepEqual(expected, actual)
 
 }
@@ -108,10 +116,12 @@ func CallerInfo() []string {
 		}
 
 		parts := strings.Split(file, "/")
-		dir := parts[len(parts)-2]
 		file = parts[len(parts)-1]
-		if (dir != "assert" && dir != "mock" && dir != "require") || file == "mock_test.go" {
-			callers = append(callers, fmt.Sprintf("%s:%d", file, line))
+		if len(parts) > 1 {
+			dir := parts[len(parts)-2]
+			if (dir != "assert" && dir != "mock" && dir != "require") || file == "mock_test.go" {
+				callers = append(callers, fmt.Sprintf("%s:%d", file, line))
+			}
 		}
 
 		// Drop the package
@@ -223,7 +233,7 @@ func Fail(t TestingT, failureMessage string, msgAndArgs ...interface{}) bool {
 		content = append(content, labeledContent{"Messages", message})
 	}
 
-	t.Errorf("\r" + getWhitespaceString() + labeledOutput(content...))
+	t.Errorf("%s", "\r"+getWhitespaceString()+labeledOutput(content...))
 
 	return false
 }
@@ -296,7 +306,7 @@ func Equal(t TestingT, expected, actual interface{}, msgAndArgs ...interface{}) 
 		expected, actual = formatUnequalValues(expected, actual)
 		return Fail(t, fmt.Sprintf("Not equal: \n"+
 			"expected: %s\n"+
-			"received: %s%s", expected, actual, diff), msgAndArgs...)
+			"actual: %s%s", expected, actual, diff), msgAndArgs...)
 	}
 
 	return true
@@ -332,7 +342,7 @@ func EqualValues(t TestingT, expected, actual interface{}, msgAndArgs ...interfa
 		expected, actual = formatUnequalValues(expected, actual)
 		return Fail(t, fmt.Sprintf("Not equal: \n"+
 			"expected: %s\n"+
-			"received: %s%s", expected, actual, diff), msgAndArgs...)
+			"actual: %s%s", expected, actual, diff), msgAndArgs...)
 	}
 
 	return true
@@ -898,7 +908,7 @@ func InDeltaSlice(t TestingT, expected, actual interface{}, delta float64, msgAn
 	expectedSlice := reflect.ValueOf(expected)
 
 	for i := 0; i < actualSlice.Len(); i++ {
-		result := InDelta(t, actualSlice.Index(i).Interface(), expectedSlice.Index(i).Interface(), delta)
+		result := InDelta(t, actualSlice.Index(i).Interface(), expectedSlice.Index(i).Interface(), delta, msgAndArgs...)
 		if !result {
 			return result
 		}
@@ -968,7 +978,7 @@ func InEpsilonSlice(t TestingT, expected, actual interface{}, epsilon float64, m
 //
 //   actualObj, err := SomeFunction()
 //   if assert.NoError(t, err) {
-//	   assert.Equal(t, actualObj, expectedObj)
+//	   assert.Equal(t, expectedObj, actualObj)
 //   }
 //
 // Returns whether the assertion was successful (true) or not (false).
@@ -984,7 +994,7 @@ func NoError(t TestingT, err error, msgAndArgs ...interface{}) bool {
 //
 //   actualObj, err := SomeFunction()
 //   if assert.Error(t, err, "An error was expected") {
-//	   assert.Equal(t, err, expectedError)
+//	   assert.Equal(t, expectedError, err)
 //   }
 //
 // Returns whether the assertion was successful (true) or not (false).
@@ -1014,7 +1024,7 @@ func EqualError(t TestingT, theError error, errString string, msgAndArgs ...inte
 	if expected != actual {
 		return Fail(t, fmt.Sprintf("Error message not equal:\n"+
 			"expected: %q\n"+
-			"received: %q", expected, actual), msgAndArgs...)
+			"actual: %q", expected, actual), msgAndArgs...)
 	}
 	return true
 }

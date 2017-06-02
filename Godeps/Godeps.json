@@ -13,8 +13,8 @@
 		},
 		{
 			"ImportPath": "github.com/asaskevich/govalidator",
-			"Comment": "v6-13-g065ea97",
-			"Rev": "065ea97278837088c52c0cd0d963473f61b2d98c"
+			"Comment": "v6-20-gaa5cce4",
+			"Rev": "aa5cce4a76edb1a5acecab1870c17abbffb5419e"
 		},
 		{
 			"ImportPath": "github.com/cupcake/rdb",
@@ -69,13 +69,13 @@
 		},
 		{
 			"ImportPath": "github.com/garyburd/redigo/internal",
-			"Comment": "v1.0.0-26-g4339695",
-			"Rev": "433969511232c397de61b1442f9fd49ec06ae9ba"
+			"Comment": "v1.1.0-3-g95d11db",
+			"Rev": "95d11dba2d44531bdb8022752b98912baafae03a"
 		},
 		{
 			"ImportPath": "github.com/garyburd/redigo/redis",
-			"Comment": "v1.0.0-26-g4339695",
-			"Rev": "433969511232c397de61b1442f9fd49ec06ae9ba"
+			"Comment": "v1.1.0-3-g95d11db",
+			"Rev": "95d11dba2d44531bdb8022752b98912baafae03a"
 		},
 		{
 			"ImportPath": "github.com/glendc/gopher-json",
@@ -101,8 +101,8 @@
 		},
 		{
 			"ImportPath": "github.com/gorilla/mux",
-			"Comment": "v1.3.0-6-g4c1c395",
-			"Rev": "4c1c3952b7d9d0a061a3fa7b36fd373ba0398ebc"
+			"Comment": "v1.4.0-6-g043ee65",
+			"Rev": "043ee6597c29786140136a5747b6a886364f5282"
 		},
 		{
 			"ImportPath": "github.com/inconshreveable/log15",
@@ -143,40 +143,40 @@
 		},
 		{
 			"ImportPath": "github.com/sevlyar/go-daemon",
-			"Comment": "v0.1.0-5-g8577c7d",
-			"Rev": "8577c7ddef908e104dae56c9e46f0956cb33c844"
+			"Comment": "v0.1.1",
+			"Rev": "1ae26ef5036ad04968706917222a23c535673d8c"
 		},
 		{
 			"ImportPath": "github.com/siddontang/go/bson",
-			"Rev": "6463c3972685bfea94e6dc1f6817bee41b20269f"
+			"Rev": "cb568a3e5cc06256f91a2da5a87455f717eb33f4"
 		},
 		{
 			"ImportPath": "github.com/siddontang/go/filelock",
-			"Rev": "6463c3972685bfea94e6dc1f6817bee41b20269f"
+			"Rev": "cb568a3e5cc06256f91a2da5a87455f717eb33f4"
 		},
 		{
 			"ImportPath": "github.com/siddontang/go/hack",
-			"Rev": "6463c3972685bfea94e6dc1f6817bee41b20269f"
+			"Rev": "cb568a3e5cc06256f91a2da5a87455f717eb33f4"
 		},
 		{
 			"ImportPath": "github.com/siddontang/go/ioutil2",
-			"Rev": "6463c3972685bfea94e6dc1f6817bee41b20269f"
+			"Rev": "cb568a3e5cc06256f91a2da5a87455f717eb33f4"
 		},
 		{
 			"ImportPath": "github.com/siddontang/go/log",
-			"Rev": "6463c3972685bfea94e6dc1f6817bee41b20269f"
+			"Rev": "cb568a3e5cc06256f91a2da5a87455f717eb33f4"
 		},
 		{
 			"ImportPath": "github.com/siddontang/go/num",
-			"Rev": "6463c3972685bfea94e6dc1f6817bee41b20269f"
+			"Rev": "cb568a3e5cc06256f91a2da5a87455f717eb33f4"
 		},
 		{
 			"ImportPath": "github.com/siddontang/go/snappy",
-			"Rev": "6463c3972685bfea94e6dc1f6817bee41b20269f"
+			"Rev": "cb568a3e5cc06256f91a2da5a87455f717eb33f4"
 		},
 		{
 			"ImportPath": "github.com/siddontang/go/sync2",
-			"Rev": "6463c3972685bfea94e6dc1f6817bee41b20269f"
+			"Rev": "cb568a3e5cc06256f91a2da5a87455f717eb33f4"
 		},
 		{
 			"ImportPath": "github.com/siddontang/goredis",
@@ -184,48 +184,48 @@
 		},
 		{
 			"ImportPath": "github.com/siddontang/ledisdb/config",
-			"Comment": "v0.5-80-g5835ab9",
-			"Rev": "5835ab9b2b80e1e3f7dd31b7526836c4a0cbf8b2"
+			"Comment": "v0.5-81-g0b1b6de",
+			"Rev": "0b1b6de120e1ed3e2b369dec21e250b982b21c31"
 		},
 		{
 			"ImportPath": "github.com/siddontang/ledisdb/ledis",
-			"Comment": "v0.5-80-g5835ab9",
-			"Rev": "5835ab9b2b80e1e3f7dd31b7526836c4a0cbf8b2"
+			"Comment": "v0.5-81-g0b1b6de",
+			"Rev": "0b1b6de120e1ed3e2b369dec21e250b982b21c31"
 		},
 		{
 			"ImportPath": "github.com/siddontang/ledisdb/rpl",
-			"Comment": "v0.5-80-g5835ab9",
-			"Rev": "5835ab9b2b80e1e3f7dd31b7526836c4a0cbf8b2"
+			"Comment": "v0.5-81-g0b1b6de",
+			"Rev": "0b1b6de120e1ed3e2b369dec21e250b982b21c31"
 		},
 		{
 			"ImportPath": "github.com/siddontang/ledisdb/server",
-			"Comment": "v0.5-80-g5835ab9",
-			"Rev": "5835ab9b2b80e1e3f7dd31b7526836c4a0cbf8b2"
+			"Comment": "v0.5-81-g0b1b6de",
+			"Rev": "0b1b6de120e1ed3e2b369dec21e250b982b21c31"
 		},
 		{
 			"ImportPath": "github.com/siddontang/ledisdb/store",
-			"Comment": "v0.5-80-g5835ab9",
-			"Rev": "5835ab9b2b80e1e3f7dd31b7526836c4a0cbf8b2"
+			"Comment": "v0.5-81-g0b1b6de",
+			"Rev": "0b1b6de120e1ed3e2b369dec21e250b982b21c31"
 		},
 		{
 			"ImportPath": "github.com/siddontang/ledisdb/store/driver",
-			"Comment": "v0.5-80-g5835ab9",
-			"Rev": "5835ab9b2b80e1e3f7dd31b7526836c4a0cbf8b2"
+			"Comment": "v0.5-81-g0b1b6de",
+			"Rev": "0b1b6de120e1ed3e2b369dec21e250b982b21c31"
 		},
 		{
 			"ImportPath": "github.com/siddontang/ledisdb/store/goleveldb",
-			"Comment": "v0.5-80-g5835ab9",
-			"Rev": "5835ab9b2b80e1e3f7dd31b7526836c4a0cbf8b2"
+			"Comment": "v0.5-81-g0b1b6de",
+			"Rev": "0b1b6de120e1ed3e2b369dec21e250b982b21c31"
 		},
 		{
 			"ImportPath": "github.com/siddontang/ledisdb/store/leveldb",
-			"Comment": "v0.5-80-g5835ab9",
-			"Rev": "5835ab9b2b80e1e3f7dd31b7526836c4a0cbf8b2"
+			"Comment": "v0.5-81-g0b1b6de",
+			"Rev": "0b1b6de120e1ed3e2b369dec21e250b982b21c31"
 		},
 		{
 			"ImportPath": "github.com/siddontang/ledisdb/store/rocksdb",
-			"Comment": "v0.5-80-g5835ab9",
-			"Rev": "5835ab9b2b80e1e3f7dd31b7526836c4a0cbf8b2"
+			"Comment": "v0.5-81-g0b1b6de",
+			"Rev": "0b1b6de120e1ed3e2b369dec21e250b982b21c31"
 		},
 		{
 			"ImportPath": "github.com/siddontang/rdb",
@@ -233,7 +233,7 @@
 		},
 		{
 			"ImportPath": "github.com/spf13/cobra",
-			"Rev": "4cdb38c072b86bf795d2c81de50784d9fdd6eb77"
+			"Rev": "8d4ce3549a0bf0e3569df3aae7423b7743cd05a9"
 		},
 		{
 			"ImportPath": "github.com/spf13/pflag",
@@ -241,8 +241,8 @@
 		},
 		{
 			"ImportPath": "github.com/stretchr/testify/assert",
-			"Comment": "v1.1.4-26-ga30d470",
-			"Rev": "a30d47007ef19da43c69f24ed5e40ccc5b6cbb6f"
+			"Comment": "v1.1.4-50-g3a59a58",
+			"Rev": "3a59a58abc349531d81978e3380346a3828cee73"
 		},
 		{
 			"ImportPath": "github.com/syndtr/goleveldb/leveldb",
@@ -318,11 +318,11 @@
 		},
 		{
 			"ImportPath": "golang.org/x/net/context",
-			"Rev": "34057069f4ab13dc4433c68d368737ebeafcccdc"
+			"Rev": "3da985ce5951d99de868be4385f21ea6c2b22f24"
 		},
 		{
 			"ImportPath": "golang.org/x/sys/unix",
-			"Rev": "1e99a4f9d247b28c670884b9a8d6801f39a47b77"
+			"Rev": "b90f89a1e7a9c1f6b918820b3daa7f08488c8594"
 		},
 		{
 			"ImportPath": "gopkg.in/validator.v2",
