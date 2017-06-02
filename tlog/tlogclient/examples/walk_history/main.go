@@ -3,11 +3,11 @@ package main
 import (
 	"flag"
 
-	blockstorcfg "github.com/g8os/blockstor/config"
-	"github.com/g8os/blockstor/log"
-	"github.com/g8os/blockstor/tlog"
+	blockstorcfg "github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/tlog"
 
-	"github.com/g8os/blockstor/tlog/tlogclient/decoder"
+	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 )
 
 type config struct {

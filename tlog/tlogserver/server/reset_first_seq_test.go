@@ -7,9 +7,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/g8os/blockstor/tlog"
-	"github.com/g8os/blockstor/tlog/schema"
-	"github.com/g8os/blockstor/tlog/tlogclient"
+	"github.com/zero-os/0-Disk/tlog"
+	"github.com/zero-os/0-Disk/tlog/schema"
+	"github.com/zero-os/0-Disk/tlog/tlogclient"
 )
 
 // TestResetFirstSequence tests the scenario

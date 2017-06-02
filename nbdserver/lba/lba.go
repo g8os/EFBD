@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/g8os/blockstor"
-	"github.com/g8os/blockstor/log"
+	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/log"
 	"github.com/garyburd/redigo/redis"
 )
 

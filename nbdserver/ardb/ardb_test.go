@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/g8os/blockstor/log"
-	"github.com/g8os/blockstor/redisstub"
+	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/redisstub"
 	"github.com/garyburd/redigo/redis"
 )
 
@@ -424,7 +424,7 @@ func testBackendStorageForceFlush(t *testing.T, storage backendStorage) {
 
 // shared test function to test all types of backendStorage equally,
 // and make sure they don't get in a deadlock situation, after being used for a while.
-// test in a response to https://github.com/g8os/blockstor/issues/89
+// test in a response to https://github.com/zero-os/0-Disk/issues/89
 func testBackendStorageDeadlock(t *testing.T, blockSize, blockCount int64, storage backendStorage) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()

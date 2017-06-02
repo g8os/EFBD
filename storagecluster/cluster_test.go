@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/g8os/blockstor/log"
+	"github.com/zero-os/0-Disk/log"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -4,16 +4,16 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/g8os/blockstor/g8stor/cmd/config"
 	"github.com/spf13/cobra"
+	"github.com/zero-os/0-Disk/zerodisk/cmd/config"
 )
 
 // RootCmd represents the base command when called without any subcommands
 var RootCmd = &cobra.Command{
 	Use: "g8stor",
 	Long: `g8stor controls the g8os resources
-	
-Find more information at github.com/g8os/blockstor/g8stor.`,
+
+Find more information at github.com/zero-os/0-Disk/g8stor.`,
 }
 
 // Execute adds all child commands to the root command sets flags appropriately.

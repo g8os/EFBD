@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/g8os/blockstor/g8stor/cmd/config"
-	"github.com/g8os/blockstor/log"
 	"github.com/garyburd/redigo/redis"
 	"github.com/spf13/cobra"
+	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/zerodisk/cmd/config"
 )
 
 var vdiskCfg struct {

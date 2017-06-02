@@ -6,9 +6,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/g8os/blockstor/tlog"
-	"github.com/g8os/blockstor/tlog/schema"
-	"github.com/g8os/blockstor/tlog/tlogserver/server"
+	"github.com/zero-os/0-Disk/tlog"
+	"github.com/zero-os/0-Disk/tlog/schema"
+	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
 )
 
 // TestSimpleReconnect test that client can connect again after getting disconnected

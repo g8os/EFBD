@@ -9,15 +9,15 @@ import (
 
 	_ "net/http/pprof"
 
-	"github.com/g8os/blockstor/log"
+	"github.com/zero-os/0-Disk/log"
 
-	"github.com/g8os/blockstor/gonbdserver/nbd"
-	"github.com/g8os/blockstor/nbdserver/ardb"
-	"github.com/g8os/blockstor/nbdserver/lba"
-	"github.com/g8os/blockstor/redisstub"
-	"github.com/g8os/blockstor/storagecluster"
-	"github.com/g8os/blockstor/tlog"
-	tlogserver "github.com/g8os/blockstor/tlog/tlogserver/server"
+	"github.com/zero-os/0-Disk/gonbdserver/nbd"
+	"github.com/zero-os/0-Disk/nbdserver/ardb"
+	"github.com/zero-os/0-Disk/nbdserver/lba"
+	"github.com/zero-os/0-Disk/redisstub"
+	"github.com/zero-os/0-Disk/storagecluster"
+	"github.com/zero-os/0-Disk/tlog"
+	tlogserver "github.com/zero-os/0-Disk/tlog/tlogserver/server"
 )
 
 func main() {

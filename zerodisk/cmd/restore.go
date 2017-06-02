@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"github.com/g8os/blockstor/g8stor/cmd/restore"
 	"github.com/spf13/cobra"
+	"github.com/zero-os/0-Disk/zerodisk/cmd/restore"
 )
 
 // RestoreCmd represents the restore subcommand

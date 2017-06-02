@@ -1,6 +1,6 @@
 package tlog
 
-import "github.com/g8os/blockstor"
+import "github.com/zero-os/0-Disk"
 
 var (
 	// FirstAggregateHash is used as the prevHash value

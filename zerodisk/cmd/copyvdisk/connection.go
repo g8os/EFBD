@@ -1,7 +1,7 @@
 package copyvdisk
 
 import (
-	"github.com/g8os/blockstor/log"
+	"github.com/zero-os/0-Disk/log"
 	"github.com/garyburd/redigo/redis"
 )
 

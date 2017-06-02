@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 
-	"github.com/g8os/blockstor/gonbdserver/nbd"
+	"github.com/zero-os/0-Disk/gonbdserver/nbd"
 )
 
 // main() is the main program entry

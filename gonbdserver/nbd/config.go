@@ -19,7 +19,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/g8os/blockstor/log"
+	"github.com/zero-os/0-Disk/log"
 
 	"github.com/sevlyar/go-daemon"
 	"gopkg.in/yaml.v2"

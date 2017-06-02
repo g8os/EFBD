@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/g8os/blockstor/config"
-	"github.com/g8os/blockstor/log"
-	"github.com/g8os/blockstor/redisstub"
+	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/redisstub"
 	"github.com/garyburd/redigo/redis"
 )
 

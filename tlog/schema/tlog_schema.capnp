@@ -1,7 +1,7 @@
 using Go = import "/go.capnp";
 @0xf4533cbae6e08506;
 $Go.package("schema");
-$Go.import("github.com/g8os/blockstor/tlog/schema");
+$Go.import("github.com/zero-os/0-Disk/tlog/schema");
 
 # Handshake message sent from client to server.
 struct HandshakeRequest {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/g8os/blockstor"
+	"github.com/zero-os/0-Disk"
 )
 
 const (

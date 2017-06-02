@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/g8os/blockstor/tlog/schema"
+	"github.com/zero-os/0-Disk/tlog/schema"
 )
 
 var (

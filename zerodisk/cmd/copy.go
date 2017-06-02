@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"github.com/g8os/blockstor/g8stor/cmd/copyvdisk"
 	"github.com/spf13/cobra"
+	"github.com/zero-os/0-Disk/zerodisk/cmd/copyvdisk"
 )
 
 // CopyCmd represents the copy subcommand

@@ -5,10 +5,10 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 
-	"github.com/g8os/blockstor/config"
-	"github.com/g8os/blockstor/log"
-	"github.com/g8os/blockstor/tlog"
-	"github.com/g8os/blockstor/tlog/tlogserver/server"
+	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/tlog"
+	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
 )
 
 func main() {

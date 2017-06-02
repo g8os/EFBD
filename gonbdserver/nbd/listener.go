@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/g8os/blockstor/log"
+	"github.com/zero-os/0-Disk/log"
 )
 
 // ExportConfigManager is the interface,

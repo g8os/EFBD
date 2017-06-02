@@ -3,7 +3,7 @@ package ardb
 import (
 	"testing"
 
-	"github.com/g8os/blockstor/redisstub"
+	"github.com/zero-os/0-Disk/redisstub"
 )
 
 func createTestNondedupedStorage(t *testing.T, vdiskID string, blockSize int64, provider *testRedisProvider) *nonDedupedStorage {
@@ -46,7 +46,7 @@ func TestNondedupedContentForceFlush(t *testing.T) {
 	testBackendStorageForceFlush(t, storage)
 }
 
-// test in a response to https://github.com/g8os/blockstor/issues/89
+// test in a response to https://github.com/zero-os/0-Disk/issues/89
 func TestNonDedupedDeadlock(t *testing.T) {
 	memRedis := redisstub.NewMemoryRedis()
 	go memRedis.Listen()

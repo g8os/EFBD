@@ -113,7 +113,7 @@ func (handler *emailHandler) Log(r Record) error {
 		"To: " + strings.Join(handler.to, ","),
 		"Subject: " + level + " statement in g8os/blockster mod " + handler.module + "!",
 		"",
-		"Log " + level + " statement has occured in the g8os/blockstor mod " + handler.module + "!",
+		"Log " + level + " statement has occured in the zero-os/0-Disk mod " + handler.module + "!",
 		"",
 		"Time (UTC): " + r.Time.UTC().String(),
 		"Level: " + level,
@@ -124,7 +124,7 @@ func (handler *emailHandler) Log(r Record) error {
 		callstack,
 		"- - -",
 		"",
-		"This is an automated Email send by the g8os/blockstor email handler,",
+		"This is an automated Email send by the zero-os/0-Disk email handler,",
 		"please do no respond.",
 		"",
 	}

@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/g8os/blockstor/log"
-	"github.com/g8os/blockstor/tlog"
-	"github.com/g8os/blockstor/tlog/schema"
-	client "github.com/g8os/blockstor/tlog/tlogclient"
+	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/tlog"
+	"github.com/zero-os/0-Disk/tlog/schema"
+	client "github.com/zero-os/0-Disk/tlog/tlogclient"
 )
 
 var (

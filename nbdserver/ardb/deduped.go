@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/g8os/blockstor/log"
+	"github.com/zero-os/0-Disk/log"
 	"github.com/garyburd/redigo/redis"
 
-	"github.com/g8os/blockstor"
-	"github.com/g8os/blockstor/nbdserver/lba"
+	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/nbdserver/lba"
 )
 
 // newDedupedStorage returns the deduped backendStorage implementation

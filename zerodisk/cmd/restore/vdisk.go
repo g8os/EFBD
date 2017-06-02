@@ -6,17 +6,17 @@ import (
 	"fmt"
 	"strings"
 
-	blockstorcfg "github.com/g8os/blockstor/config"
+	blockstorcfg "github.com/zero-os/0-Disk/config"
 
-	"github.com/g8os/blockstor/g8stor/cmd/config"
-	"github.com/g8os/blockstor/gonbdserver/nbd"
-	"github.com/g8os/blockstor/log"
-	"github.com/g8os/blockstor/nbdserver/ardb"
-	"github.com/g8os/blockstor/storagecluster"
-	"github.com/g8os/blockstor/tlog"
-	"github.com/g8os/blockstor/tlog/schema"
-	"github.com/g8os/blockstor/tlog/tlogclient/decoder"
 	"github.com/spf13/cobra"
+	"github.com/zero-os/0-Disk/gonbdserver/nbd"
+	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/nbdserver/ardb"
+	"github.com/zero-os/0-Disk/storagecluster"
+	"github.com/zero-os/0-Disk/tlog"
+	"github.com/zero-os/0-Disk/tlog/schema"
+	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
+	"github.com/zero-os/0-Disk/zerodisk/cmd/config"
 )
 
 var vdiskCfg struct {

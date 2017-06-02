@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/g8os/blockstor/log"
+	"github.com/zero-os/0-Disk/log"
 )
 
 // newInMemoryStorage returns the in-memory backendStorage implementation

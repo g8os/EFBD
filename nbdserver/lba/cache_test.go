@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/g8os/blockstor"
+	"github.com/zero-os/0-Disk"
 	"github.com/stretchr/testify/assert"
 )
 

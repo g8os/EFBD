@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"github.com/g8os/blockstor/g8stor/cmd/delvdisk"
 	"github.com/spf13/cobra"
+	"github.com/zero-os/0-Disk/zerodisk/cmd/delvdisk"
 )
 
 // DeleteCmd represents the delete subcommand

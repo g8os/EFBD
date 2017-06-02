@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/g8os/blockstor"
-	"github.com/g8os/blockstor/tlog/schema"
+	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/tlog/schema"
 	"zombiezen.com/go/capnproto2"
 )
 

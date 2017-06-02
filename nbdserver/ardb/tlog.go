@@ -8,11 +8,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/g8os/blockstor/log"
-	"github.com/g8os/blockstor/tlog"
-	"github.com/g8os/blockstor/tlog/schema"
-	"github.com/g8os/blockstor/tlog/tlogclient"
-	tlogserver "github.com/g8os/blockstor/tlog/tlogserver/server"
+	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/tlog"
+	"github.com/zero-os/0-Disk/tlog/schema"
+	"github.com/zero-os/0-Disk/tlog/tlogclient"
+	tlogserver "github.com/zero-os/0-Disk/tlog/tlogserver/server"
 )
 
 func newTlogStorage(vdiskID, tlogrpc string, blockSize int64, storage backendStorage) (backendStorage, error) {

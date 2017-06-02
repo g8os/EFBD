@@ -6,10 +6,10 @@ Tlog client is asynchronous tlog client library. It is currently not goroutine s
 
 The main APIs are : `New`, `Send` and `Recv`:
 
-- [New](https://godoc.org/github.com/g8os/blockstor/tlog/tlogclient#New) to create new client instance.
-- [Send](https://godoc.org/github.com/g8os/blockstor/tlog/tlogclient#Client.Send) to send transaction to server.
-- [Recv](https://godoc.org/github.com/g8os/blockstor/tlog/tlogclient#Client.Recv) to get the channel to receive the server
-- [Close](https://godoc.org/github.com/g8os/blockstor/tlog/tlogclient#Client.Close) make this client invalid. It is user responsibility to call this func.
+- [New](https://godoc.org/github.com/zero-os/0-Disk/tlog/tlogclient#New) to create new client instance.
+- [Send](https://godoc.org/github.com/zero-os/0-Disk/tlog/tlogclient#Client.Send) to send transaction to server.
+- [Recv](https://godoc.org/github.com/zero-os/0-Disk/tlog/tlogclient#Client.Recv) to get the channel to receive the server
+- [Close](https://godoc.org/github.com/zero-os/0-Disk/tlog/tlogclient#Client.Close) make this client invalid. It is user responsibility to call this func.
 
 response.
 
@@ -25,10 +25,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/g8os/blockstor/log"
-	"github.com/g8os/blockstor/tlog"
-	"github.com/g8os/blockstor/tlog/schema"
-	client "github.com/g8os/blockstor/tlog/tlogclient"
+	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/tlog"
+	"github.com/zero-os/0-Disk/tlog/schema"
+	client "github.com/zero-os/0-Disk/tlog/tlogclient"
 )
 
 var (

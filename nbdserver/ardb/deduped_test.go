@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/g8os/blockstor"
-	"github.com/g8os/blockstor/nbdserver/lba"
-	"github.com/g8os/blockstor/redisstub"
+	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/nbdserver/lba"
+	"github.com/zero-os/0-Disk/redisstub"
 	"github.com/garyburd/redigo/redis"
 )
 
@@ -154,7 +154,7 @@ func TestDedupedContentForceFlush(t *testing.T) {
 	testBackendStorageForceFlush(t, storage)
 }
 
-// test in a response to https://github.com/g8os/blockstor/issues/89
+// test in a response to https://github.com/zero-os/0-Disk/issues/89
 func TestDedupedDeadlock(t *testing.T) {
 	memRedis := redisstub.NewMemoryRedis()
 	go memRedis.Listen()
@@ -356,7 +356,7 @@ func TestGetDedupedRootContent(t *testing.T) {
 	testDedupContentExists(t, memRedisA, testContent)
 }
 
-// test in a response to https://github.com/g8os/blockstor/issues/89
+// test in a response to https://github.com/zero-os/0-Disk/issues/89
 func TestGetDedupedRootContentDeadlock(t *testing.T) {
 	// create storageA
 	memRedisA := redisstub.NewMemoryRedis()

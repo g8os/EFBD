@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"github.com/g8os/blockstor/g8stor/cmd/list"
 	"github.com/spf13/cobra"
+	"github.com/zero-os/0-Disk/zerodisk/cmd/list"
 )
 
 // ListCmd represents the list subcommand

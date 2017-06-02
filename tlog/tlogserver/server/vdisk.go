@@ -7,10 +7,10 @@ import (
 
 	"github.com/emirpasic/gods/sets/treeset"
 
-	"github.com/g8os/blockstor/log"
-	"github.com/g8os/blockstor/tlog"
-	"github.com/g8os/blockstor/tlog/schema"
-	"github.com/g8os/blockstor/tlog/tlogclient/decoder"
+	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/tlog"
+	"github.com/zero-os/0-Disk/tlog/schema"
+	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 )
 
 const (

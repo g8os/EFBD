@@ -6,14 +6,14 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/g8os/blockstor/log"
+	"github.com/zero-os/0-Disk/log"
 	"github.com/garyburd/redigo/redis"
 	"github.com/golang/snappy"
 	"github.com/templexxx/reedsolomon"
 	"zombiezen.com/go/capnproto2"
 
-	"github.com/g8os/blockstor/tlog"
-	"github.com/g8os/blockstor/tlog/schema"
+	"github.com/zero-os/0-Disk/tlog"
+	"github.com/zero-os/0-Disk/tlog/schema"
 )
 
 // Decoder defines tlog data decoder

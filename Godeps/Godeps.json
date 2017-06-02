@@ -1,5 +1,5 @@
 {
-	"ImportPath": "github.com/g8os/blockstor",
+	"ImportPath": "github.com/zero-os/0-Disk",
 	"GoVersion": "go1.8",
 	"GodepVersion": "v79",
 	"Packages": [

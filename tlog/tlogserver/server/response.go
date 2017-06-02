@@ -5,7 +5,7 @@ import (
 
 	"zombiezen.com/go/capnproto2"
 
-	"github.com/g8os/blockstor/tlog/schema"
+	"github.com/zero-os/0-Disk/tlog/schema"
 )
 
 // BlockResponse defines response for block operations(recv, flush)

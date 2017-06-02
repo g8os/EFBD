@@ -2,7 +2,7 @@ OUTPUT ?= bin
 GOOS ?= linux
 GOARCH ?= amd64
 
-PACKAGE = github.com/g8os/blockstor
+PACKAGE = github.com/zero-os/0-Disk
 COMMIT_HASH = $(shell git rev-parse --short HEAD 2>/dev/null)
 BUILD_DATE = $(shell date +%FT%T%z)
 

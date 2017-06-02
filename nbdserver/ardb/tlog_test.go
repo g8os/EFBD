@@ -6,10 +6,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/g8os/blockstor/log"
-	"github.com/g8os/blockstor/redisstub"
-	"github.com/g8os/blockstor/tlog"
-	"github.com/g8os/blockstor/tlog/tlogserver/server"
+	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/redisstub"
+	"github.com/zero-os/0-Disk/tlog"
+	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
 	"github.com/stretchr/testify/assert"
 )
 

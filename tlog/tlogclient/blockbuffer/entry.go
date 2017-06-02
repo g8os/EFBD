@@ -3,7 +3,7 @@ package blockbuffer
 import (
 	"time"
 
-	"github.com/g8os/blockstor/tlog/schema"
+	"github.com/zero-os/0-Disk/tlog/schema"
 )
 
 // entry defines a buffer entry

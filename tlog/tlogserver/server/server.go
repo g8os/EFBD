@@ -8,10 +8,10 @@ import (
 	"io"
 	"net"
 
-	"github.com/g8os/blockstor"
-	"github.com/g8os/blockstor/log"
-	"github.com/g8os/blockstor/tlog"
-	"github.com/g8os/blockstor/tlog/schema"
+	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/tlog"
+	"github.com/zero-os/0-Disk/tlog/schema"
 	"zombiezen.com/go/capnproto2"
 )
 

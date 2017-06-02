@@ -6,7 +6,7 @@ import (
 
 	"github.com/garyburd/redigo/redis"
 
-	"github.com/g8os/blockstor/tlog"
+	"github.com/zero-os/0-Disk/tlog"
 )
 
 var (

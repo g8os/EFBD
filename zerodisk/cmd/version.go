@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/g8os/blockstor"
+	"github.com/zero-os/0-Disk"
 	"github.com/spf13/cobra"
 )
 

@@ -3,10 +3,10 @@ package ardb
 import (
 	"context"
 
-	"github.com/g8os/blockstor/log"
+	"github.com/zero-os/0-Disk/log"
 
-	"github.com/g8os/blockstor/gonbdserver/nbd"
-	"github.com/g8os/blockstor/storagecluster"
+	"github.com/zero-os/0-Disk/gonbdserver/nbd"
+	"github.com/zero-os/0-Disk/storagecluster"
 )
 
 func newBackend(vdiskID string, blockSize int64, size uint64, storage backendStorage, storageClusterClient *storagecluster.ClusterClient) *Backend {
