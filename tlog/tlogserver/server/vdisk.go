@@ -24,10 +24,17 @@ const (
 )
 
 const (
-	vdiskCmdForceFlush                   = iota // force flush
+	vdiskCmdForceFlush                   = iota // non-blocking force flush
 	vdiskCmdForceFlushBlocking                  // blocking force flush
+	vdiskCmdForceFlushWithSeq                   // non-blocking force flush with sequence param
 	vdiskCmdClearUnorderedBlocksBlocking        // blocking clear all unordered blocks
 )
+
+// command for vdisk flusher
+type vdiskFlusherCmd struct {
+	cmdType  uint8
+	sequence uint64
+}
 
 type vdisk struct {
 	vdiskID     string
@@ -41,7 +48,7 @@ type vdisk struct {
 
 	// channels for flusher
 	orderedBlockChan   chan *schema.TlogBlock // ordered blocks from blockInputChan
-	flusherCmdChan     chan uint8             // channel of flusher command
+	flusherCmdChan     chan vdiskFlusherCmd   // channel of flusher command
 	flusherCmdRespChan chan struct{}          // channel of flusher command response
 	respChan           chan *BlockResponse    // channel of responses to be sent to client
 
@@ -82,7 +89,7 @@ func newVdisk(vdiskID string, f *flusher, firstSequence uint64, segmentBufLen in
 		blockRecvCmdChan:     make(chan uint8, 1),
 		blockRecvCmdRespChan: make(chan struct{}, 1),
 		orderedBlockChan:     make(chan *schema.TlogBlock, maxTlbInBuffer),
-		flusherCmdChan:       make(chan uint8, 1),
+		flusherCmdChan:       make(chan vdiskFlusherCmd, 1),
 		flusherCmdRespChan:   make(chan struct{}, 1),
 		respChan:             make(chan *BlockResponse, respChanSize),
 		expectedSequence:     firstSequence,
@@ -145,6 +152,7 @@ func (vt *vdiskManager) Get(vdiskID string, firstSequence uint64, ff flusherFact
 	return
 }
 
+// number of connected clients to this vdisk
 func (vd *vdisk) numConnectedClient() int {
 	return len(vd.clientsTab)
 }
@@ -168,7 +176,9 @@ func (vd *vdisk) removeClient(conn *net.TCPConn) {
 	}
 }
 
-func (vd *vdisk) removeExcept(exceptConn *net.TCPConn) {
+// disconnect all connected clients except the
+// given exceptConn connection
+func (vd *vdisk) disconnectExcept(exceptConn *net.TCPConn) {
 	vd.clientsTabLock.Lock()
 	defer vd.clientsTabLock.Unlock()
 
@@ -213,17 +223,36 @@ func (vd *vdisk) resetFirstSequence(newSeq uint64, conn *net.TCPConn) error {
 	}
 
 	if vd.numConnectedClient() != 1 {
-		vd.removeExcept(conn)
+		vd.disconnectExcept(conn)
 	}
 
+	// send ignore all unordered blocks command
 	vd.blockRecvCmdChan <- vdiskCmdClearUnorderedBlocksBlocking
 	<-vd.blockRecvCmdRespChan
 
-	vd.flusherCmdChan <- vdiskCmdForceFlushBlocking
+	// send flush command
+	vd.flusherCmdChan <- vdiskFlusherCmd{
+		cmdType: vdiskCmdForceFlushBlocking,
+	}
 	<-vd.flusherCmdRespChan
 
 	vd.expectedSequence = newSeq
 	return nil
+}
+
+// force flush right now
+func (vd *vdisk) forceFlush() {
+	vd.flusherCmdChan <- vdiskFlusherCmd{
+		cmdType: vdiskCmdForceFlush,
+	}
+}
+
+// force flush when vdisk receive the given sequence
+func (vd *vdisk) forceFlushForSeq(seq uint64) {
+	vd.flusherCmdChan <- vdiskFlusherCmd{
+		cmdType:  vdiskCmdForceFlush,
+		sequence: seq,
+	}
 }
 
 // this is the flusher routine that receive the blocks and order it.
@@ -285,45 +314,80 @@ func (vd *vdisk) runBlockReceiver() {
 func (vd *vdisk) runFlusher() {
 	var err error
 
+	// buffer of all ordered tlog blocks
 	tlogs := []*schema.TlogBlock{}
-	dur := time.Duration(vd.flusher.flushTime) * time.Second
-	pfTimer := time.NewTimer(dur) // periodic flush timer
+
+	// periodic flush interval
+	pfDur := time.Duration(vd.flusher.flushTime) * time.Second
+
+	// periodic flush timer
+	pfTimer := time.NewTimer(pfDur)
 
 	var toFlushLen int
-	var flusherCmd uint8
+	var flusherCmd vdiskFlusherCmd
+	var cmdType uint8
+
+	var seqToForceFlush uint64 // sequence to be force flushed
+	var needForceFlushSeq bool // true if we wait for a sequence to be force flushed
+
 	for {
 		select {
 		case tlb := <-vd.orderedBlockChan:
 			tlogs = append(tlogs, tlb)
-			if len(tlogs) < vd.flusher.flushSize { // only flush if it > f.flushSize
+
+			// check if we need to flush
+			if needForceFlushSeq && tlb.Sequence() >= seqToForceFlush {
+				// reset the flag and flush right now
+				needForceFlushSeq = false
+				toFlushLen = len(tlogs)
+			} else if len(tlogs) < vd.flusher.flushSize {
+				// only flush if it > f.flushSize
 				continue
+			} else {
+				toFlushLen = vd.flusher.flushSize
 			}
-			toFlushLen = vd.flusher.flushSize
 
 			pfTimer.Stop()
-			pfTimer.Reset(dur)
+			pfTimer.Reset(pfDur)
 
 		case <-pfTimer.C:
-			pfTimer.Reset(dur)
+			pfTimer.Reset(pfDur)
 			if len(tlogs) == 0 {
 				continue
 			}
 			toFlushLen = len(tlogs)
 
 		case flusherCmd = <-vd.flusherCmdChan:
-			if flusherCmd != vdiskCmdForceFlush && flusherCmd != vdiskCmdForceFlushBlocking {
+			cmdType = flusherCmd.cmdType
+
+			switch cmdType {
+			case vdiskCmdForceFlushWithSeq:
+				seqToForceFlush = flusherCmd.sequence
+				if vd.expectedSequence <= seqToForceFlush { // we don't have it yet
+					needForceFlushSeq = true
+					continue
+				} else {
+					needForceFlushSeq = false
+					// we already have it, do force flush right now if possible
+					if len(tlogs) == 0 { // oh, tlogs buffer is empty, it means it already flushed
+					}
+				}
+
+			case vdiskCmdForceFlush, vdiskCmdForceFlushBlocking:
+				if len(tlogs) == 0 {
+					if cmdType == vdiskCmdForceFlushBlocking {
+						vd.flusherCmdRespChan <- struct{}{}
+					}
+					continue
+				}
+
+			default:
 				log.Errorf("invalid command to runFlusher: %v", flusherCmd)
 				continue
 			}
 
-			if len(tlogs) == 0 {
-				if flusherCmd == vdiskCmdForceFlushBlocking {
-					vd.flusherCmdRespChan <- struct{}{}
-				}
-				continue
-			}
 			pfTimer.Stop()
-			pfTimer.Reset(dur)
+			pfTimer.Reset(pfDur)
 
 			toFlushLen = len(tlogs)
 		}
@@ -343,7 +407,8 @@ func (vd *vdisk) runFlusher() {
 			vd.lastSeqFlushed = seqs[len(seqs)-1] // update our last sequence flushed
 		}
 
-		if flusherCmd == vdiskCmdForceFlushBlocking {
+		if cmdType == vdiskCmdForceFlushBlocking {
+			// if it is blocking cmd, something else is waiting, notify him!
 			vd.flusherCmdRespChan <- struct{}{}
 		}
 

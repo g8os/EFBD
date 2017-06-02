@@ -18,11 +18,14 @@ struct HandshakeResponse {
 	status @1 :Int8;
 }
 
+# Response from server to client
 struct TlogResponse {
 	status @0 :Int8;
 	sequences @1 :List(UInt64);
 	# only exist in flush response
 }
+
+# a tlog block
 struct TlogBlock {
 	sequence @0 :UInt64;
 	offset @1 :UInt64;
@@ -33,6 +36,7 @@ struct TlogBlock {
 	operation @6 :UInt8; # disk operation  1=WriteAt,2=WriteZeroesAt
 }
 
+# tlog block aggregation
 struct TlogAggregation {
 	name @0 :Text; # unused now
 	size @1 :UInt64; # number of blocks in this aggregation
@@ -40,4 +44,10 @@ struct TlogAggregation {
 	vdiskID @3 :Text;
 	blocks @4 :List(TlogBlock);
 	prev @5 :Data; # hash of the previous aggregation
+}
+
+# Command to tlog server.
+struct Command {
+   type @0 :UInt8; 				# command type
+   sequences @1 :List(UInt64);	# blocks sequence
 }

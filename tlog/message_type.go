@@ -8,9 +8,10 @@ import (
 
 // Type of message sent from client to server
 const (
-	messageTypeStart  = iota
-	MessageForceFlush // force flush
-	MessageTlogBlock  // tlog block
+	messageTypeStart         = iota
+	MessageTlogBlock         // tlog block
+	MessageForceFlush        // force flush
+	MessageForceFlushWithSeq // force flush with sequence param
 	messageTypeEnd
 )
 
