@@ -9,25 +9,25 @@ import (
 	"testing"
 	"time"
 
-	blockstorcfg "github.com/zero-os/0-Disk/config"
+	zerodiskcfg "github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/gonbdserver/nbd"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/zero-os/0-Disk/redisstub"
 	"github.com/zero-os/0-Disk/tlog"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestEndToEndReplayBootVdisk(t *testing.T) {
-	testEndToEndReplay(t, blockstorcfg.VdiskTypeBoot)
+	testEndToEndReplay(t, zerodiskcfg.VdiskTypeBoot)
 }
 
 func TestEndToEndReplayDBdisk(t *testing.T) {
-	testEndToEndReplay(t, blockstorcfg.VdiskTypeDB)
+	testEndToEndReplay(t, zerodiskcfg.VdiskTypeDB)
 }
 
-func testEndToEndReplay(t *testing.T, vdiskType blockstorcfg.VdiskType) {
+func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 	// 1. Start a tlogserver;
 
 	testConf := &server.Config{
@@ -187,10 +187,10 @@ func testEndToEndReplay(t *testing.T, vdiskType blockstorcfg.VdiskType) {
 }
 
 // create a test backend
-func newTestBackend(ctx context.Context, t *testing.T, vdiskID string, vdiskType blockstorcfg.VdiskType, tlogrpc string, blockSize, size uint64) (nbd.Backend, error) {
+func newTestBackend(ctx context.Context, t *testing.T, vdiskID string, vdiskType zerodiskcfg.VdiskType, tlogrpc string, blockSize, size uint64) (nbd.Backend, error) {
 	ardbStorage := redisstub.NewMemoryRedis()
 
-	nbdConfigFile, err := ioutil.TempFile("", "blockstor")
+	nbdConfigFile, err := ioutil.TempFile("", "zerodisk")
 	if err != nil {
 		return nil, err
 	}
@@ -202,9 +202,9 @@ func newTestBackend(ctx context.Context, t *testing.T, vdiskID string, vdiskType
 	}()
 
 	// create nbd config
-	nbdConfig := &blockstorcfg.Config{
-		Vdisks: map[string]blockstorcfg.VdiskConfig{
-			vdiskID: blockstorcfg.VdiskConfig{
+	nbdConfig := &zerodiskcfg.Config{
+		Vdisks: map[string]zerodiskcfg.VdiskConfig{
+			vdiskID: zerodiskcfg.VdiskConfig{
 				BlockSize:      blockSize,
 				ReadOnly:       false,
 				Size:           size,
@@ -212,12 +212,12 @@ func newTestBackend(ctx context.Context, t *testing.T, vdiskID string, vdiskType
 				Type:           vdiskType,
 			},
 		},
-		StorageClusters: map[string]blockstorcfg.StorageClusterConfig{
-			"mycluster": blockstorcfg.StorageClusterConfig{
-				DataStorage: []blockstorcfg.StorageServerConfig{
-					blockstorcfg.StorageServerConfig{Address: ardbStorage.Address()},
+		StorageClusters: map[string]zerodiskcfg.StorageClusterConfig{
+			"mycluster": zerodiskcfg.StorageClusterConfig{
+				DataStorage: []zerodiskcfg.StorageServerConfig{
+					zerodiskcfg.StorageServerConfig{Address: ardbStorage.Address()},
 				},
-				MetadataStorage: blockstorcfg.StorageServerConfig{Address: ardbStorage.Address()},
+				MetadataStorage: zerodiskcfg.StorageServerConfig{Address: ardbStorage.Address()},
 			},
 		},
 	}

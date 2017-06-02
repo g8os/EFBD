@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/zero-os/0-Disk"
 	"github.com/stretchr/testify/assert"
+	"github.com/zero-os/0-Disk"
 )
 
 func TestCreateCacheInvalid(t *testing.T) {
@@ -69,11 +69,11 @@ func TestCreateSingletonCache(t *testing.T) {
 
 func TestSerializeAndClearCache(t *testing.T) {
 	shard1 := newShard()
-	hash1 := blockstor.HashBytes([]byte{4, 2})
+	hash1 := zerodisk.HashBytes([]byte{4, 2})
 	shard1.Set(1, hash1)
 
 	shard2 := newShard()
-	hash2 := blockstor.HashBytes([]byte{2, 4})
+	hash2 := zerodisk.HashBytes([]byte{2, 4})
 	shard2.Set(2, hash2)
 
 	cache, err := newShardCache(BytesPerShard*2, nil)
@@ -98,7 +98,7 @@ func TestSerializeAndClearCache(t *testing.T) {
 	assert.NoError(t, cache.Serialize(func(index int64, raw []byte) error {
 		assert.Equal(t, int64(1), index)
 		assert.Len(t, raw, BytesPerShard)
-		h1 := raw[blockstor.HashSize : blockstor.HashSize*2]
+		h1 := raw[zerodisk.HashSize : zerodisk.HashSize*2]
 		assert.Equal(t, 0, bytes.Compare(hash1, h1))
 		return nil
 	}), "no error thrown")
@@ -152,21 +152,21 @@ func TestSerializeAndClearCache(t *testing.T) {
 	s := shard1
 	hash := hash1
 	si := int64(3)
-	offset := blockstor.HashSize
+	offset := zerodisk.HashSize
 
 	// should serialize shard1 first, as it's last added on index 3, and then shard2,
 	// as that's the current order
 	assert.NoError(t, cache.Serialize(func(index int64, raw []byte) error {
 		assert.Equal(t, si, index)
 		assert.Len(t, raw, BytesPerShard)
-		h := raw[offset : offset+blockstor.HashSize]
+		h := raw[offset : offset+zerodisk.HashSize]
 		assert.Equal(t, 0, bytes.Compare(hash, h))
 
 		// set for next serialize call
 		s = shard2
 		hash = hash2
 		si = int64(2)
-		offset = blockstor.HashSize * 2
+		offset = zerodisk.HashSize * 2
 		return nil
 	}), "no error thrown")
 
@@ -179,14 +179,14 @@ func TestSerializeAndClearCache(t *testing.T) {
 	assert.NoError(t, cache.Serialize(func(index int64, raw []byte) error {
 		assert.Equal(t, si, index)
 		assert.Len(t, raw, BytesPerShard)
-		h := raw[offset : offset+blockstor.HashSize]
+		h := raw[offset : offset+zerodisk.HashSize]
 		assert.Equal(t, 0, bytes.Compare(hash, h))
 
 		// set for next serialize call
 		s = shard1
 		hash = hash1
 		si = int64(3)
-		offset = blockstor.HashSize
+		offset = zerodisk.HashSize
 		return nil
 	}), "no error thrown")
 

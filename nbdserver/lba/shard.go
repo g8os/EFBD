@@ -12,7 +12,7 @@ const (
 	//NumberOfRecordsPerLBAShard is the fixed length of the LBAShards
 	NumberOfRecordsPerLBAShard = 128
 	// BytesPerShard defines how many bytes each shards requires
-	BytesPerShard = NumberOfRecordsPerLBAShard * blockstor.HashSize
+	BytesPerShard = NumberOfRecordsPerLBAShard * zerodisk.HashSize
 )
 
 var (
@@ -51,21 +51,21 @@ func (s *shard) UnsetDirty() {
 	s.dirty = false
 }
 
-func (s *shard) Set(hashIndex int64, hash blockstor.Hash) {
-	offset := hashIndex * blockstor.HashSize
+func (s *shard) Set(hashIndex int64, hash zerodisk.Hash) {
+	offset := hashIndex * zerodisk.HashSize
 
 	if hash == nil {
-		hash = blockstor.NilHash
+		hash = zerodisk.NilHash
 	}
 
-	copy(s.hashes[offset:offset+blockstor.HashSize], hash)
+	copy(s.hashes[offset:offset+zerodisk.HashSize], hash)
 	s.dirty = true
 	return
 }
 
-func (s *shard) Get(hashIndex int64) (hash blockstor.Hash) {
-	hash = blockstor.NewHash()
-	offset := hashIndex * blockstor.HashSize
+func (s *shard) Get(hashIndex int64) (hash zerodisk.Hash) {
+	hash = zerodisk.NewHash()
+	offset := hashIndex * zerodisk.HashSize
 	copy(hash[:], s.hashes[offset:])
 	return
 }

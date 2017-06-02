@@ -1,10 +1,10 @@
-package blockstor
+package zerodisk
 
 import "fmt"
 
 var (
 	// CurrentVersion represents the current global
-	// version of the blockstor modules
+	// version of the zerodisk modules
 	CurrentVersion = NewVersion(1, 1, 0, VersionStageAlpha)
 )
 

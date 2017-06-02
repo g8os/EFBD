@@ -10,11 +10,11 @@ import (
 	"github.com/go-yaml/yaml"
 )
 
-// ReadConfig reads the config used to configure the blockstor
+// ReadConfig reads the config used to configure the zerodisk
 func ReadConfig(path string) (*Config, error) {
 	bytes, err := ioutil.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't read blockstor config: %s", err.Error())
+		return nil, fmt.Errorf("couldn't read zerodisk config: %s", err.Error())
 	}
 
 	return FromBytes(bytes)
@@ -28,7 +28,7 @@ func FromBytes(bytes []byte) (*Config, error) {
 	// which will give us basic validation guarantees
 	err := yaml.Unmarshal(bytes, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't create blockstor config: %s", err.Error())
+		return nil, fmt.Errorf("couldn't create zerodisk config: %s", err.Error())
 	}
 
 	// now apply an extra validation layer,
@@ -36,13 +36,13 @@ func FromBytes(bytes []byte) (*Config, error) {
 	// are also valid
 	err = cfg.Validate()
 	if err != nil {
-		return nil, fmt.Errorf("couldn't create blockstor config: %s", err.Error())
+		return nil, fmt.Errorf("couldn't create zerodisk config: %s", err.Error())
 	}
 
 	return cfg, nil
 }
 
-// Config for the blockstor backends
+// Config for the zerodisk backends
 type Config struct {
 	StorageClusters map[string]StorageClusterConfig `yaml:"storageClusters" valid:"required"`
 	Vdisks          map[string]VdiskConfig          `yaml:"vdisks" valid:"required"`

@@ -150,7 +150,7 @@ WARNING: until issue #88 has been resolved,
 
 	VdisksCmd.Flags().StringVar(
 		&vdisksCfg.ConfigPath, "config", "config.yml",
-		"blockstor config file")
+		"zerodisk config file")
 	VdisksCmd.Flags().BoolVarP(
 		&vdisksCfg.Force, "force", "f", false,
 		"when enabled non-fatal errors are logged instead of aborting the command")

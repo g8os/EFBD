@@ -1,4 +1,4 @@
-package blockstor
+package zerodisk
 
 import (
 	"testing"

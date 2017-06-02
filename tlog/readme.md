@@ -4,7 +4,7 @@ Transaction Log
 
 ## TLOG Client
 
-- TLOG Client library is a client lib that works on GIG BLOCKSTOR (NBD Server)
+- TLOG Client library is a client lib that works on zero-os's zerodisk (NBD Server)
 - TLOG Client communicates with TLOG Server via tcp and might be optimized by using dpdk stack.
 - Communication between client and server use binary capnp stream (no RPC).
 

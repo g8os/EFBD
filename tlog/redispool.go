@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/garyburd/redigo/redis"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/redisstub"
-	"github.com/garyburd/redigo/redis"
 )
 
 // AnyRedisPoolFactory creates any kind of RedisPoolFactory based on the given parameters.
@@ -73,7 +73,7 @@ func StaticRedisPoolFactory(requiredDataServerCount int, storageServers []config
 }
 
 // ConfigRedisPoolFactory creates a RedisPoolFactory
-// using a blockstor config file.
+// using a zerodisk config file.
 // The required amount of data servers is specified upfront,
 // such that at creation of a RedisPool, it is validated that the
 // storage cluster in question has sufficient data servers available.

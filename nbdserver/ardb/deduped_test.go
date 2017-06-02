@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/garyburd/redigo/redis"
 	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/nbdserver/lba"
 	"github.com/zero-os/0-Disk/redisstub"
-	"github.com/garyburd/redigo/redis"
 )
 
 // simplified algorithm based on `cmd/copyvdisk/copy_different.go`
@@ -79,7 +79,7 @@ func testDedupContentExists(t *testing.T, memRedis *redisstub.MemoryRedis, conte
 	}
 	defer conn.Close()
 
-	hash := blockstor.HashBytes(content)
+	hash := zerodisk.HashBytes(content)
 
 	contentReceived, err := redis.Bytes(conn.Do("GET", hash.Bytes()))
 	if err != nil {
@@ -104,7 +104,7 @@ func testDedupContentDoesNotExist(t *testing.T, memRedis *redisstub.MemoryRedis,
 	}
 	defer conn.Close()
 
-	hash := blockstor.HashBytes(content)
+	hash := zerodisk.HashBytes(content)
 
 	exists, err := redis.Bool(conn.Do("EXISTS", hash.Bytes()))
 	if err != nil {

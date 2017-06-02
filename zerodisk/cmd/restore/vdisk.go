@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	blockstorcfg "github.com/zero-os/0-Disk/config"
+	zerodiskcfg "github.com/zero-os/0-Disk/config"
 
 	"github.com/spf13/cobra"
 	"github.com/zero-os/0-Disk/gonbdserver/nbd"
@@ -60,7 +60,7 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 	}
 
 	// parse optional server configs
-	serverConfigs, err := blockstorcfg.ParseCSStorageServerConfigStrings(vdiskCfg.TlogObjStorAddresses)
+	serverConfigs, err := zerodiskcfg.ParseCSStorageServerConfigStrings(vdiskCfg.TlogObjStorAddresses)
 	if err != nil {
 		return fmt.Errorf(
 			"failed to parse given connection strings %q: %s",
@@ -111,7 +111,7 @@ func newBackend(ctx context.Context, dial ardb.DialFunc, tlogrpc, vdiskID, confi
 
 	ec := &nbd.ExportConfig{
 		Name:        vdiskID,
-		Description: "g8os blockstor",
+		Description: "zero-os/zerodisk",
 		Driver:      "ardb",
 		ReadOnly:    false,
 		TLSOnly:     false,
@@ -183,7 +183,7 @@ func init() {
 		"comma seperated list of redis compatible connectionstrings (format: '<ip>:<port>[@<db>]', eg: 'localhost:16379,localhost:6379@2'), if given, these are used for all vdisks, ignoring the given config")
 	VdiskCmd.Flags().StringVar(
 		&vdiskCfg.ConfigPath, "config", "config.yml",
-		"blockstor config file")
+		"zerodisk config file")
 	VdiskCmd.Flags().IntVar(
 		&vdiskCfg.K,
 		"k", 4,

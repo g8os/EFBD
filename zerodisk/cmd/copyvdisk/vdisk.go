@@ -193,5 +193,5 @@ WARNING: when copying nondeduped vdisks,
 
 	VdiskCmd.Flags().StringVar(
 		&vdiskCfg.ConfigPath, "config", "config.yml",
-		"blockstor config file")
+		"zerodisk config file")
 }

@@ -31,7 +31,7 @@ func main() {
 	flag.StringVar(&profileAddr, "profile-address", "", "Enables profiling of this server as an http service")
 
 	flag.BoolVar(&inMemoryStorage, "memorystorage", false, "Stores the (meta)data in memory only, usefull for testing or benchmarking (overwrites the storage-addresses flag)")
-	flag.StringVar(&configPath, "config", "config.yml", "Blockstor Config YAML File")
+	flag.StringVar(&configPath, "config", "config.yml", "Zerodisk Config YAML File")
 	flag.StringVar(&storageAddresses, "storage-addresses", "",
 		"comma seperated list of redis compatible connectionstrings (format: '<ip>:<port>[@<db>]', eg: 'localhost:16379,localhost:6379@2'), if given, these are used for all vdisks, ignoring the given config")
 

@@ -289,7 +289,7 @@ func (c *Client) Send(op uint8, seq, offset, timestamp uint64,
 // send tlog block to server
 func (c *Client) send(op uint8, seq, offset, timestamp uint64,
 	data []byte, size uint64) (block *schema.TlogBlock, err error) {
-	hash := blockstor.HashBytes(data)
+	hash := zerodisk.HashBytes(data)
 
 	send := func() (*schema.TlogBlock, error) {
 		if err := tlog.WriteMessageType(c.bw, tlog.MessageTlogBlock); err != nil {

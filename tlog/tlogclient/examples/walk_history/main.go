@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 
-	blockstorcfg "github.com/zero-os/0-Disk/config"
+	zerodiskcfg "github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 
@@ -30,12 +30,12 @@ func main() {
 	flag.StringVar(&conf.nonce, "nonce", "37b8e8a308c354048d245f6d", "encryption nonce")
 	flag.StringVar(&conf.TlogObjStorAddresses, "storage-addresses", "",
 		"comma seperated list of redis compatible connectionstrings (format: '<ip>:<port>[@<db>]', eg: 'localhost:16379,localhost:6379@2'), if given, these are used for all vdisks, ignoring the given config")
-	flag.StringVar(&conf.ConfigPath, "config", "config.yml", "blockstor config file")
+	flag.StringVar(&conf.ConfigPath, "config", "config.yml", "zerodisk config file")
 
 	flag.Parse()
 
 	// parse optional server configs
-	serverConfigs, err := blockstorcfg.ParseCSStorageServerConfigStrings(conf.TlogObjStorAddresses)
+	serverConfigs, err := zerodiskcfg.ParseCSStorageServerConfigStrings(conf.TlogObjStorAddresses)
 	exitOnErr(err)
 
 	// create redisPool, used by the tlog decoder

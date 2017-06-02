@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/zero-os/0-Disk"
 	"github.com/spf13/cobra"
+	"github.com/zero-os/0-Disk"
 )
 
 var (
@@ -25,7 +25,7 @@ var VersionCmd = &cobra.Command{
 
 func outputVersion(*cobra.Command, []string) {
 	// Tool Version
-	version := "Version: " + blockstor.CurrentVersion.String()
+	version := "Version: " + zerodisk.CurrentVersion.String()
 
 	// Build (Git) Commit Hash
 	if CommitHash != "" {

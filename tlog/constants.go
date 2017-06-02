@@ -5,7 +5,7 @@ import "github.com/zero-os/0-Disk"
 var (
 	// FirstAggregateHash is used as the prevHash value
 	// for the first aggregation
-	FirstAggregateHash = blockstor.NilHash
+	FirstAggregateHash = zerodisk.NilHash
 )
 
 const (
@@ -16,5 +16,5 @@ const (
 var (
 	// MinSupportedVersion is the minimum supported version
 	// that the tlog client and server of this version supports
-	MinSupportedVersion = blockstor.NewVersion(1, 1, 0, blockstor.VersionStageAlpha)
+	MinSupportedVersion = zerodisk.NewVersion(1, 1, 0, zerodisk.VersionStageAlpha)
 )

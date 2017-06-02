@@ -20,7 +20,7 @@ func (c *Client) encodeHandshakeCapnp(firstSequence uint64, resetFirstSeq bool) 
 		return fmt.Errorf("couldn't create handshake: %s", err.Error())
 	}
 
-	handshake.SetVersion(blockstor.CurrentVersion.UInt32())
+	handshake.SetVersion(zerodisk.CurrentVersion.UInt32())
 	handshake.SetFirstSequence(firstSequence)
 	handshake.SetResetFirstSequence(resetFirstSeq)
 

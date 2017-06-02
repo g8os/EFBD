@@ -59,7 +59,7 @@ func (c *ExportController) GetConfig(name string) (*nbd.ExportConfig, error) {
 
 	return &nbd.ExportConfig{
 		Name:               name,
-		Description:        "Deduped g8os blockstor",
+		Description:        "Deduped g8os zerodisk",
 		Driver:             "ardb",
 		ReadOnly:           vdisk.ReadOnly,
 		TLSOnly:            c.tlsOnly,

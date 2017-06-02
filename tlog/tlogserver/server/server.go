@@ -140,7 +140,7 @@ func (s *Server) handshake(r io.Reader, w io.Writer, conn *net.TCPConn) (vd *vdi
 	log.Debug("received handshake request from incoming connection")
 
 	// get the version from the handshake req and validate it
-	clientVersion := blockstor.Version(req.Version())
+	clientVersion := zerodisk.Version(req.Version())
 	if clientVersion.Compare(tlog.MinSupportedVersion) < 0 {
 		status = tlog.HandshakeStatusInvalidVersion
 		err = fmt.Errorf("client version (%s) is not supported by this server", clientVersion)
@@ -197,7 +197,7 @@ func (s *Server) writeHandshakeResponse(w io.Writer, segmentBuf []byte, status t
 		return err
 	}
 
-	resp.SetVersion(blockstor.CurrentVersion.UInt32())
+	resp.SetVersion(zerodisk.CurrentVersion.UInt32())
 
 	log.Debug("replying handshake with status: ", status)
 	resp.SetStatus(status.Int8())
@@ -351,10 +351,10 @@ func (s *Server) hash(tlb *schema.TlogBlock, vdiskID string) (err error) {
 	if err != nil {
 		return
 	}
-	expectedHash := blockstor.Hash(rawHash)
+	expectedHash := zerodisk.Hash(rawHash)
 
 	// compute hashs based on given data
-	hash := blockstor.HashBytes(data)
+	hash := zerodisk.HashBytes(data)
 
 	if !expectedHash.Equals(hash) {
 		err = errors.New("data hash is incorrect")

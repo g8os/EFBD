@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/zero-os/0-Disk/log"
 	"github.com/garyburd/redigo/redis"
 
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbdserver/lba"
 )
 
@@ -16,7 +16,7 @@ func newDedupedStorage(vdiskID string, blockSize int64, provider redisConnection
 	return &dedupedStorage{
 		blockSize:       blockSize,
 		vdiskID:         vdiskID,
-		zeroContentHash: blockstor.HashBytes(make([]byte, blockSize)),
+		zeroContentHash: zerodisk.HashBytes(make([]byte, blockSize)),
 		provider:        provider,
 		lba:             vlba,
 	}
@@ -28,14 +28,14 @@ func newDedupedStorage(vdiskID string, blockSize int64, provider redisConnection
 type dedupedStorage struct {
 	blockSize       int64
 	vdiskID         string
-	zeroContentHash blockstor.Hash
+	zeroContentHash zerodisk.Hash
 	provider        redisConnectionProvider
 	lba             *lba.LBA
 }
 
 // Set implements backendStorage.Set
 func (ds *dedupedStorage) Set(blockIndex int64, content []byte) (err error) {
-	hash := blockstor.HashBytes(content)
+	hash := zerodisk.HashBytes(content)
 	if ds.zeroContentHash.Equals(hash) {
 		log.Debugf(
 			"deleting hash @ %d from LBA for deduped vdisk %s as it's an all zeroes block",
@@ -59,7 +59,7 @@ func (ds *dedupedStorage) Merge(blockIndex, offset int64, content []byte) (err e
 	hash, _ := ds.lba.Get(blockIndex)
 
 	var mergedContent []byte
-	if hash != nil && !hash.Equals(blockstor.NilHash) {
+	if hash != nil && !hash.Equals(zerodisk.NilHash) {
 		mergedContent, err = ds.getContent(hash)
 		if err != nil {
 			err = fmt.Errorf("LBA hash refered to non-existing content: %s", err)
@@ -86,7 +86,7 @@ func (ds *dedupedStorage) Merge(blockIndex, offset int64, content []byte) (err e
 // Get implements backendStorage.Get
 func (ds *dedupedStorage) Get(blockIndex int64) (content []byte, err error) {
 	hash, err := ds.lba.Get(blockIndex)
-	if err == nil && hash != nil && !hash.Equals(blockstor.NilHash) {
+	if err == nil && hash != nil && !hash.Equals(zerodisk.NilHash) {
 		content, err = ds.getContent(hash)
 	}
 	return
@@ -113,11 +113,11 @@ func (ds *dedupedStorage) Flush() (err error) {
 	return
 }
 
-func (ds *dedupedStorage) getRedisConnection(hash blockstor.Hash) (redis.Conn, error) {
+func (ds *dedupedStorage) getRedisConnection(hash zerodisk.Hash) (redis.Conn, error) {
 	return ds.provider.RedisConnection(int64(hash[0]))
 }
 
-func (ds *dedupedStorage) getFallbackRedisConnection(hash blockstor.Hash) (redis.Conn, error) {
+func (ds *dedupedStorage) getFallbackRedisConnection(hash zerodisk.Hash) (redis.Conn, error) {
 	return ds.provider.FallbackRedisConnection(int64(hash[0]))
 }
 
@@ -125,7 +125,7 @@ func (ds *dedupedStorage) getFallbackRedisConnection(hash blockstor.Hash) (redis
 // if the content can't be found locally, we'll try to fetch it from the root (remote) storage.
 // if the content is available in the remote storage,
 // we'll also try to store it in the local storage before returning that content
-func (ds *dedupedStorage) getContent(hash blockstor.Hash) (content []byte, err error) {
+func (ds *dedupedStorage) getContent(hash zerodisk.Hash) (content []byte, err error) {
 	// try to fetch it from the local storage
 	content, err = func() (content []byte, err error) {
 		conn, err := ds.getRedisConnection(hash)
@@ -187,7 +187,7 @@ func (ds *dedupedStorage) getContent(hash blockstor.Hash) (content []byte, err e
 
 // setContent if it doesn't exist yet,
 // and increase the reference counter, by adding this vdiskID
-func (ds *dedupedStorage) setContent(hash blockstor.Hash, content []byte) (success bool, err error) {
+func (ds *dedupedStorage) setContent(hash zerodisk.Hash, content []byte) (success bool, err error) {
 	conn, err := ds.getRedisConnection(hash)
 	if err != nil {
 		return
