@@ -2,6 +2,7 @@ package tlogclient
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/g8os/blockstor"
 	"github.com/g8os/blockstor/tlog/schema"
@@ -31,7 +32,7 @@ func (c *Client) encodeHandshakeCapnp(firstSequence uint64, resetFirstSeq bool) 
 	return capnp.NewEncoder(c.bw).Encode(msg)
 }
 
-func (c *Client) encodeBlockCapnp(op uint8, seq uint64, hash []byte,
+func (c *Client) encodeBlockCapnp(w io.Writer, op uint8, seq uint64, hash []byte,
 	offset, timestamp uint64, data []byte, size uint64) (*schema.TlogBlock, error) {
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(c.capnpSegmentBuf))
 	if err != nil {
@@ -58,7 +59,23 @@ func (c *Client) encodeBlockCapnp(op uint8, seq uint64, hash []byte,
 	block.SetTimestamp(timestamp)
 	block.SetSize(size)
 
-	return &block, capnp.NewEncoder(c.bw).Encode(msg)
+	return &block, capnp.NewEncoder(w).Encode(msg)
+}
+
+// encode and send command
+func (c *Client) encodeSendCommand(w io.Writer, cmdType uint8, seq uint64) error {
+	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
+	if err != nil {
+		return err
+	}
+	cmd, err := schema.NewRootCommand(seg)
+	if err != nil {
+		return err
+	}
+	cmd.SetType(cmdType)
+	cmd.SetSequence(seq)
+
+	return capnp.NewEncoder(w).Encode(msg)
 }
 
 func (c *Client) decodeHandshakeResponse() (*schema.HandshakeResponse, error) {

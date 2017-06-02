@@ -61,7 +61,6 @@ type Client struct {
 // New creates a new tlog client for a vdisk with 'addr' is the tlogserver address.
 // 'firstSequence' is the first sequence number this client is going to send.
 // Set 'resetFirstSeq' to true to force reset the vdisk first/expected sequence.
-
 // The client is not goroutine safe.
 func New(addr, vdiskID string, firstSequence uint64, resetFirstSeq bool) (*Client, error) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
@@ -257,6 +256,20 @@ func (c *Client) ForceFlush() error {
 	return tlog.WriteMessageType(c.conn, tlog.MessageForceFlush)
 }
 
+// ForceFlushAtSeq force flush at given sequence
+func (c *Client) ForceFlushAtSeq(seq uint64) error {
+	c.wLock.Lock()
+	defer c.wLock.Unlock()
+
+	if err := tlog.WriteMessageType(c.bw, tlog.MessageForceFlushAtSeq); err != nil {
+		return err
+	}
+	if err := c.encodeSendCommand(c.bw, tlog.MessageForceFlushAtSeq, seq); err != nil {
+		return err
+	}
+	return c.bw.Flush()
+}
+
 // Send sends the transaction tlog to server.
 // It returns error in these cases:
 // - failed to encode the capnp.
@@ -283,7 +296,7 @@ func (c *Client) send(op uint8, seq, offset, timestamp uint64,
 			return nil, err
 		}
 
-		block, err := c.encodeBlockCapnp(op, seq, hash[:], offset, timestamp, data, size)
+		block, err := c.encodeBlockCapnp(c.bw, op, seq, hash[:], offset, timestamp, data, size)
 		if err != nil {
 			return block, err
 		}

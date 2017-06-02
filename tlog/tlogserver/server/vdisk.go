@@ -26,7 +26,7 @@ const (
 const (
 	vdiskCmdForceFlush                   = iota // non-blocking force flush
 	vdiskCmdForceFlushBlocking                  // blocking force flush
-	vdiskCmdForceFlushWithSeq                   // non-blocking force flush with sequence param
+	vdiskCmdForceFlushAtSeq                     // non-blocking force flush with sequence param
 	vdiskCmdClearUnorderedBlocksBlocking        // blocking clear all unordered blocks
 )
 
@@ -248,9 +248,9 @@ func (vd *vdisk) forceFlush() {
 }
 
 // force flush when vdisk receive the given sequence
-func (vd *vdisk) forceFlushForSeq(seq uint64) {
+func (vd *vdisk) forceFlushAtSeq(seq uint64) {
 	vd.flusherCmdChan <- vdiskFlusherCmd{
-		cmdType:  vdiskCmdForceFlush,
+		cmdType:  vdiskCmdForceFlushAtSeq,
 		sequence: seq,
 	}
 }
@@ -361,7 +361,7 @@ func (vd *vdisk) runFlusher() {
 			cmdType = flusherCmd.cmdType
 
 			switch cmdType {
-			case vdiskCmdForceFlushWithSeq:
+			case vdiskCmdForceFlushAtSeq:
 				seqToForceFlush = flusherCmd.sequence
 				if vd.expectedSequence <= seqToForceFlush { // we don't have it yet
 					needForceFlushSeq = true

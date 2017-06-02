@@ -232,7 +232,7 @@ func (s *Server) handle(conn *net.TCPConn) error {
 		}
 
 		switch msgType {
-		case tlog.MessageForceFlush, tlog.MessageForceFlushWithSeq:
+		case tlog.MessageForceFlush, tlog.MessageForceFlushAtSeq:
 			err = s.handleForceFlush(vdisk, br, msgType)
 		case tlog.MessageTlogBlock:
 			err = s.handleBlock(vdisk, br)
@@ -260,15 +260,7 @@ func (s *Server) handleForceFlush(vd *vdisk, br *bufio.Reader, mType uint8) erro
 			return err
 		}
 
-		seqs, err := cmd.Sequences()
-		if err != nil {
-			return err
-		}
-		if seqs.Len() != 1 {
-			return fmt.Errorf("invalid number of sequences in force flush: %v", seqs.Len())
-		}
-
-		vd.forceFlushForSeq(seqs.At(0))
+		vd.forceFlushAtSeq(cmd.Sequence())
 	}
 
 	vd.respChan <- &BlockResponse{

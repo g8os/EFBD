@@ -49,5 +49,5 @@ struct TlogAggregation {
 # Command to tlog server.
 struct Command {
    type @0 :UInt8; 				# command type
-   sequences @1 :List(UInt64);	# blocks sequence
+   sequence @1 :UInt64;			# sequence number
 }

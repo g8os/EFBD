@@ -128,3 +128,74 @@ func TestForceFlush(t *testing.T) {
 
 	wg.Wait()
 }
+
+// Test server's force flush feature
+// Steps:
+// 1. set flushTime to very high value to avoid flush by timeout
+// 2. sequence that will be force flushed must not be multiple of FlushSize
+// 3. client force flushed that sequence
+// 4. create goroutine to wait for force flushed seq
+// 5. client send the logs
+func TestForceFlushAtSeq(t *testing.T) {
+	// config
+	conf := testConf
+
+	// Step #1
+	conf.FlushTime = 1000
+
+	// create inmemory redis pool factory
+	poolFactory := tlog.InMemoryRedisPoolFactory(conf.RequiredDataServers())
+
+	// start the server
+	s, err := NewServer(conf, poolFactory)
+	assert.Nil(t, err)
+
+	go s.Listen()
+
+	t.Logf("listen addr=%v", s.ListenAddr())
+	const (
+		vdiskID       = "12345"
+		firstSequence = 0
+	)
+
+	// #Step 2
+	numLogs := conf.FlushSize + 10
+
+	// sequence where we want to do force flush.
+	// we force flush before numLogs to test that the flushing
+	// happens at that sequence, not after
+	forceFlushedSeq := uint64(numLogs - 5)
+
+	// create tlog client
+	client, err := tlogclient.New(s.ListenAddr(), vdiskID, firstSequence, false)
+	if !assert.Nil(t, err) {
+		return
+	}
+
+	// Step 3
+	err = client.ForceFlushAtSeq(forceFlushedSeq)
+	assert.Nil(t, err)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	ctx, cancelFunc := context.WithCancel(context.Background())
+
+	respChan := client.Recv()
+
+	// Step #4
+	go func() {
+		defer wg.Done()
+		testClientWaitSeqFlushed(ctx, t, respChan, cancelFunc, forceFlushedSeq, true)
+	}()
+
+	// Step #5
+	go func() {
+		defer wg.Done()
+		data := make([]byte, 4096)
+		testClientSendLog(ctx, t, client, cancelFunc, 0, numLogs, data)
+	}()
+
+	wg.Wait()
+
+	// we still have some blocks to be flushed, but it is not important for this test
+}
