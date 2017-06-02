@@ -232,23 +232,42 @@ func (s *Server) handle(conn *net.TCPConn) error {
 		}
 
 		switch msgType {
-		case tlog.MessageForceFlush:
-			vdisk.flusherCmdChan <- vdiskCmdForceFlush
-			vdisk.respChan <- &BlockResponse{
-				Status:    tlog.BlockStatusForceFlushReceived.Int8(),
-				Sequences: []uint64{vdisk.lastSeqFlushed},
-			}
-
+		case tlog.MessageForceFlush, tlog.MessageForceFlushAtSeq:
+			err = s.handleForceFlush(vdisk, br, msgType)
 		case tlog.MessageTlogBlock:
-			if err := s.handleBlock(vdisk, br); err != nil {
-				return err
-			}
-
+			err = s.handleBlock(vdisk, br)
 		default:
-			return fmt.Errorf("unhandled message type:%v", msgType)
+			err = fmt.Errorf("unhandled message type:%v", msgType)
+		}
+		if err != nil {
+			return err
 		}
 
 	}
+}
+
+func (s *Server) handleForceFlush(vd *vdisk, br *bufio.Reader, mType uint8) error {
+	if mType == tlog.MessageForceFlush {
+		vd.forceFlush()
+	} else {
+		msg, err := capnp.NewDecoder(br).Decode()
+		if err != nil {
+			return err
+		}
+
+		cmd, err := schema.ReadRootCommand(msg)
+		if err != nil {
+			return err
+		}
+
+		vd.forceFlushAtSeq(cmd.Sequence())
+	}
+
+	vd.respChan <- &BlockResponse{
+		Status:    tlog.BlockStatusForceFlushReceived.Int8(),
+		Sequences: []uint64{vd.lastSeqFlushed},
+	}
+	return nil
 }
 
 func (s *Server) handleBlock(vd *vdisk, br *bufio.Reader) error {

@@ -94,52 +94,69 @@ func testClientSendWaitFlushResp(t *testing.T, c *tlogclient.Client, respChan <-
 	// recv it
 	go func() {
 		defer wg.Done()
-
-		for {
-			select {
-			case re := <-respChan:
-				if !assert.Nil(t, re.Err) {
-					cancelFunc()
-					return
-				}
-				status := re.Resp.Status
-				if !assert.Equal(t, true, status > 0) {
-					cancelFunc()
-					return
-				}
-
-				if status == tlog.BlockStatusFlushOK || status == tlog.BlockStatusForceFlushReceived {
-					seqs := re.Resp.Sequences
-					seq := seqs[len(seqs)-1]
-
-					if seq >= lastSeqToFlush { // we've received all sequences
-						return
-					}
-				}
-			case <-ctx.Done():
-				return
-			}
-		}
+		testClientWaitSeqFlushed(ctx, t, respChan, cancelFunc, lastSeqToFlush, false)
 	}()
 
 	// send tlog
 	go func() {
 		defer wg.Done()
-
-		for i := 0; i < numLogs; i++ {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				x := uint64(i)
-				err := c.Send(schema.OpWrite, x, x, x, data, uint64(len(data)))
-				if !assert.Nil(t, err) {
-					cancelFunc()
-					return
-				}
-			}
-		}
+		testClientSendLog(ctx, t, c, cancelFunc, startSeq, numLogs, data)
 	}()
 
 	wg.Wait()
+}
+
+// wait for sequence seqWait to be flushed
+func testClientWaitSeqFlushed(ctx context.Context, t *testing.T, respChan <-chan *tlogclient.Result,
+	cancelFunc func(), seqWait uint64, exactSeq bool) {
+
+	for {
+		select {
+		case re := <-respChan:
+			if !assert.Nil(t, re.Err) {
+				cancelFunc()
+				return
+			}
+			status := re.Resp.Status
+			if !assert.Equal(t, true, status > 0) {
+				cancelFunc()
+				return
+			}
+
+			if status == tlog.BlockStatusFlushOK || status == tlog.BlockStatusForceFlushReceived {
+				seqs := re.Resp.Sequences
+				seq := seqs[len(seqs)-1]
+
+				if exactSeq && seq == seqWait {
+					return
+				}
+				if !exactSeq && seq >= seqWait { // we've received all sequences
+					return
+				}
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+
+}
+
+// send `numLogs` of logs, starting from sequence number=seq
+func testClientSendLog(ctx context.Context, t *testing.T, c *tlogclient.Client, cancelFunc func(),
+	startSeq uint64, numLogs int, data []byte) {
+
+	for i := startSeq; i < uint64(numLogs); i++ {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			x := uint64(i)
+			err := c.Send(schema.OpWrite, x, x, x, data, uint64(len(data)))
+			if !assert.Nil(t, err) {
+				cancelFunc()
+				return
+			}
+		}
+	}
+
 }
