@@ -369,20 +369,19 @@ func (vd *vdisk) runFlusher() {
 				} else {
 					needForceFlushSeq = false
 					// we already have it, do force flush right now if possible
-					if len(tlogs) == 0 { // oh, tlogs buffer is empty, it means it already flushed
-					}
 				}
 
 			case vdiskCmdForceFlush, vdiskCmdForceFlushBlocking:
-				if len(tlogs) == 0 {
-					if cmdType == vdiskCmdForceFlushBlocking {
-						vd.flusherCmdRespChan <- struct{}{}
-					}
-					continue
-				}
-
 			default:
 				log.Errorf("invalid command to runFlusher: %v", flusherCmd)
+				continue
+			}
+
+			if len(tlogs) == 0 {
+				if cmdType == vdiskCmdForceFlushBlocking {
+					// if it is blocking cmd, something else is waiting, notify him!
+					vd.flusherCmdRespChan <- struct{}{}
+				}
 				continue
 			}
 
