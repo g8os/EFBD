@@ -8,7 +8,7 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"github.com/spf13/cobra"
 	"github.com/zero-os/0-Disk/log"
-	"github.com/zero-os/0-Disk/zerodisk/cmd/config"
+	"github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
 
 var vdiskCfg struct {

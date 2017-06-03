@@ -9,17 +9,17 @@ BUILD_DATE = $(shell date +%FT%T%z)
 PACKAGES = $(shell go list ./... | grep -v vendor)
 
 ldflags = -extldflags "-static" -s -w
-ldflagsg8stor = -X $(PACKAGE)/g8stor/cmd.CommitHash=$(COMMIT_HASH) -X $(PACKAGE)/g8stor/cmd.BuildDate=$(BUILD_DATE) -s -w
+ldflagszeroctl = -X $(PACKAGE)/zeroctl/cmd.CommitHash=$(COMMIT_HASH) -X $(PACKAGE)/zeroctl/cmd.BuildDate=$(BUILD_DATE) -s -w
 
-all: nbdserver tlogserver g8stor
+all: nbdserver tlogserver zeroctl
 
-g8stor: $(OUTPUT)
+zeroctl: $(OUTPUT)
 ifeq ($(GOOS), darwin)
 	GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -ldflags '$(ldflagsg8stor)' -o $(OUTPUT)/$@ ./g8stor
+		go build -ldflags '$(ldflagszeroctl)' -o $(OUTPUT)/$@ ./zeroctl
 else
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -ldflags '$(ldflags) $(ldflagsg8stor)' -o $(OUTPUT)/$@ ./g8stor
+		go build -ldflags '$(ldflags) $(ldflagszeroctl)' -o $(OUTPUT)/$@ ./zeroctl
 endif
 
 nbdserver: $(OUTPUT)
@@ -49,4 +49,4 @@ testcodegen:
 $(OUTPUT):
 	mkdir -p $(OUTPUT)
 
-.PHONY: $(OUTPUT) nbdserver tlogserver g8stor test testgo testcgo testcodegen
+.PHONY: $(OUTPUT) nbdserver tlogserver zeroctl test testgo testcgo testcodegen

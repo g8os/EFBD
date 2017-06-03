@@ -5,15 +5,15 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/zero-os/0-Disk/zerodisk/cmd/config"
+	"github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
 
 // RootCmd represents the base command when called without any subcommands
 var RootCmd = &cobra.Command{
-	Use: "g8stor",
-	Long: `g8stor controls the g8os resources
+	Use: "zeroctl",
+	Long: `zeroctl controls the zero-os resources
 
-Find more information at github.com/zero-os/0-Disk/g8stor.`,
+Find more information at github.com/zero-os/0-Disk/zeroctl.`,
 }
 
 // Execute adds all child commands to the root command sets flags appropriately.

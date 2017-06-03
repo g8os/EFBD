@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
-	cmdconfig "github.com/zero-os/0-Disk/zerodisk/cmd/config"
+	cmdconfig "github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
 
 var vdisksCfg struct {
@@ -150,7 +150,7 @@ WARNING: until issue #88 has been resolved,
 
 	VdisksCmd.Flags().StringVar(
 		&vdisksCfg.ConfigPath, "config", "config.yml",
-		"zerodisk config file")
+		"zeroctl config file")
 	VdisksCmd.Flags().BoolVarP(
 		&vdisksCfg.Force, "force", "f", false,
 		"when enabled non-fatal errors are logged instead of aborting the command")

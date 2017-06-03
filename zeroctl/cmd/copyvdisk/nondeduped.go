@@ -7,22 +7,22 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"github.com/spf13/cobra"
 	"github.com/zero-os/0-Disk/log"
-	"github.com/zero-os/0-Disk/zerodisk/cmd/config"
+	"github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
 
-var dedupedCfg struct {
+var nondedupedCfg struct {
 	SourceDatabase int
 	TargetDatabase int
 }
 
-// DedupedCmd represents the deduped copy subcommand
-var DedupedCmd = &cobra.Command{
-	Use:   "deduped source_vdisk target_vdisk source_url [target_url]",
-	Short: "Copy the metadata of a deduped vdisk",
-	RunE:  copyDeduped,
+// NondedupedCmd represents the nondeduped copy subcommand
+var NondedupedCmd = &cobra.Command{
+	Use:   "nondeduped source_vdisk target_vdisk source_url [target_url]",
+	Short: "Copy the data (blocks) of a nondeduped vdisk",
+	RunE:  copyNondeduped,
 }
 
-func copyDeduped(cmd *cobra.Command, args []string) error {
+func copyNondeduped(cmd *cobra.Command, args []string) error {
 	logLevel := log.ErrorLevel
 	if config.Verbose {
 		logLevel = log.InfoLevel
@@ -40,7 +40,7 @@ func copyDeduped(cmd *cobra.Command, args []string) error {
 	log.Info("get the redis connection(s)...")
 	connA, connB, err := getARDBConnections(
 		input,
-		dedupedCfg.SourceDatabase, dedupedCfg.TargetDatabase)
+		nondedupedCfg.SourceDatabase, nondedupedCfg.TargetDatabase)
 	if err != nil {
 		return err
 	}
@@ -49,10 +49,10 @@ func copyDeduped(cmd *cobra.Command, args []string) error {
 		input.Source.VdiskID, input.Target.VdiskID)
 
 	if connB == nil {
-		err = copyDedupedSameConnection(
+		err = copyNondedupedSameConnection(
 			input.Source.VdiskID, input.Target.VdiskID, connA)
 	} else {
-		err = copyDedupedDifferentConnections(
+		err = copyNondedupedDifferentConnections(
 			input.Source.VdiskID, input.Target.VdiskID, connA, connB)
 	}
 	if err != nil {
@@ -64,14 +64,14 @@ func copyDeduped(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func copyDedupedSameConnection(sourceID, targetID string, conn redis.Conn) (err error) {
+func copyNondedupedSameConnection(sourceID, targetID string, conn redis.Conn) (err error) {
 	defer conn.Close()
 
 	script := redis.NewScript(0, `
 if #ARGV ~= 2 then
-    local usage = "copyDedupedSameConnection script usage: source destination"
+    local usage = "copyNondedupedSameConnection script usage: source destination"
     redis.log(redis.LOG_NOTICE, usage)
-    error("copyDedupedSameConnection script requires 2 arguments (source destination)")
+    error("copyNondedupedSameConnection script requires 2 arguments (source destination)")
 end
 
 local source = ARGV[1]
@@ -95,20 +95,21 @@ return redis.call("HLEN", destination)
 
 	indexCount, err := redis.Int64(script.Do(conn, sourceID, targetID))
 	if err == nil {
-		log.Infof("copied %d meta indices to vdisk %q", indexCount, targetID)
+		log.Infof("copied %d block indices to vdisk %q",
+			indexCount, targetID)
 	}
 
 	return
 }
 
-func copyDedupedDifferentConnections(sourceID, targetID string, connA, connB redis.Conn) (err error) {
+func copyNondedupedDifferentConnections(sourceID, targetID string, connA, connB redis.Conn) (err error) {
 	defer func() {
 		connA.Close()
 		connB.Close()
 	}()
 
 	// get data from source connection
-	log.Infof("collecting all metadata from source vdisk %q...", sourceID)
+	log.Infof("collecting all data from source vdisk %q...", sourceID)
 	data, err := redis.StringMap(connA.Do("HGETALL", sourceID))
 	if err != nil {
 		return
@@ -117,7 +118,7 @@ func copyDedupedDifferentConnections(sourceID, targetID string, connA, connB red
 		err = fmt.Errorf("%q does not exist", sourceID)
 		return
 	}
-	log.Infof("collected %d meta indices from source vdisk %q",
+	log.Infof("collected %d block indices from source vdisk %q",
 		len(data), sourceID)
 
 	// ensure the vdisk isn't touched while we're creating it
@@ -136,20 +137,20 @@ func copyDedupedDifferentConnections(sourceID, targetID string, connA, connB red
 	}
 
 	// buffer all data on target connection
-	log.Infof("buffering %d meta indices for target vdisk %q...",
+	log.Infof("buffering %d block indices for target vdisk %q...",
 		len(data), targetID)
 	var index int64
-	for rawIndex, hash := range data {
+	for rawIndex, content := range data {
 		index, err = strconv.ParseInt(rawIndex, 10, 64)
 		if err != nil {
 			return
 		}
 
-		connB.Send("HSET", targetID, index, []byte(hash))
+		connB.Send("HSET", targetID, index, []byte(content))
 	}
 
 	// send all data to target connection (execute the transaction)
-	log.Infof("flushing buffered metadata for target vdisk %q...", targetID)
+	log.Infof("flushing buffered data for target vdisk %q...", targetID)
 	response, err := connB.Do("EXEC")
 	if err == nil && response == nil {
 		// if response == <nil> the transaction has failed
@@ -165,12 +166,12 @@ func init() {
 
 When no target_url is given, the target_url is the same as the source_url.`
 
-	DedupedCmd.Flags().IntVar(
-		&dedupedCfg.SourceDatabase,
+	NondedupedCmd.Flags().IntVar(
+		&nondedupedCfg.SourceDatabase,
 		"sourcedb", 0,
 		"database to use for the source connection (0 by default)")
-	DedupedCmd.Flags().IntVar(
-		&dedupedCfg.TargetDatabase,
+	NondedupedCmd.Flags().IntVar(
+		&nondedupedCfg.TargetDatabase,
 		"targetdb", 0,
 		"database to use for the target connection (0 by default)")
 }

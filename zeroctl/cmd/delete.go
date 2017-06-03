@@ -2,13 +2,13 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
-	"github.com/zero-os/0-Disk/zerodisk/cmd/delvdisk"
+	"github.com/zero-os/0-Disk/zeroctl/cmd/delvdisk"
 )
 
 // DeleteCmd represents the delete subcommand
 var DeleteCmd = &cobra.Command{
 	Use:   "delete",
-	Short: "Delete a g8os resource",
+	Short: "Delete a zero-os resource",
 }
 
 func init() {

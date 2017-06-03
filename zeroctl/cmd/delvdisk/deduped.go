@@ -7,17 +7,17 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
-	cmdconfig "github.com/zero-os/0-Disk/zerodisk/cmd/config"
+	cmdconfig "github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
 
-// NondedupedCmd represents the nondeduped delete subcommand
-var NondedupedCmd = &cobra.Command{
-	Use:   "nondeduped vdiskid ardb_url",
-	Short: "Delete the data (blocks) of a nondeduped vdisk",
-	RunE:  deleteNondeduped,
+// DedupedCmd represents the deduped delete subcommand
+var DedupedCmd = &cobra.Command{
+	Use:   "deduped vdiskid ardb_url",
+	Short: "Delete the metadata of a deduped vdisk",
+	RunE:  deleteDeduped,
 }
 
-func deleteNondeduped(cmd *cobra.Command, args []string) error {
+func deleteDeduped(cmd *cobra.Command, args []string) error {
 	// create logger
 	logLevel := log.ErrorLevel
 	if cmdconfig.Verbose {
@@ -36,11 +36,11 @@ func deleteNondeduped(cmd *cobra.Command, args []string) error {
 		Address:  input.URL,
 		Database: 0,
 	}
-	return deleleNondedupedVdisks(false, storageServer, input.VdiskID)
+	return deleleDedupedVdisksMetadata(false, storageServer, input.VdiskID)
 }
 
-// delete the data of nondeduped vdisks
-func deleleNondedupedVdisks(force bool, cfg config.StorageServerConfig, vdiskids ...string) error {
+// delete the metadata of deduped vdisks
+func deleleDedupedVdisksMetadata(force bool, cfg config.StorageServerConfig, vdiskids ...string) error {
 	if len(vdiskids) == 0 {
 		return nil
 	}
@@ -56,13 +56,13 @@ func deleleNondedupedVdisks(force bool, cfg config.StorageServerConfig, vdiskids
 	// cache delete request of each vdisk
 	var delVdisks []string
 	for _, vdiskID := range vdiskids {
-		log.Infof("deleting data of nondeduped vdisk %s...", vdiskID)
+		log.Infof("deleting metadata of vdisk %s...", vdiskID)
 		err := conn.Send("DEL", vdiskID)
 		if err != nil {
 			if !force {
 				return err
 			}
-			log.Error("could not delete nondeduped vdisk: ", vdiskID)
+			log.Error("could not delete metadata of deduped vdisk: ", vdiskID)
 			continue
 		}
 		delVdisks = append(delVdisks, vdiskID)
@@ -71,7 +71,7 @@ func deleleNondedupedVdisks(force bool, cfg config.StorageServerConfig, vdiskids
 	// flush all delete requests
 	err = conn.Flush()
 	if err != nil {
-		return fmt.Errorf("could not delete nondeduped vdisks %v: %s", delVdisks, err.Error())
+		return fmt.Errorf("could not delete metadata of deduped vdisks %v: %s", delVdisks, err.Error())
 	}
 
 	// check if all vdisks have actually been deleted
@@ -82,14 +82,14 @@ func deleleNondedupedVdisks(force bool, cfg config.StorageServerConfig, vdiskids
 				return err
 			}
 
-			log.Errorf("could not delete nondeduped vdisk %s: %s", vdiskID, err.Error())
+			log.Errorf("could not delete metadata of deduped vdisk %s: %s", vdiskID, err.Error())
 			continue
 		}
 
 		// it's not an error if it did not exist yet,
 		// as this is possible due to the multiple ardbs in use
 		if !deleted {
-			log.Infof("could not delete nondeduped vdisk %s: did not exist at %s (%d)",
+			log.Infof("could not delete metadata of deduped vdisk %s: did not exist at %s (%d)",
 				vdiskID, cfg.Address, cfg.Database)
 		}
 	}

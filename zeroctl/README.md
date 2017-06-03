@@ -1,8 +1,8 @@
-# zerodisk
+# zeroctl
 
-zerodisk controls the 0-Disk resources.
+zeroctl controls the 0-Disk resources.
 
-It can be used to copy, delete and restore vdisks.
+It can be used to copy, delete, list and restore vdisks.
 
 ## More
 

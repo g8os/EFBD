@@ -2,13 +2,13 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
-	"github.com/zero-os/0-Disk/zerodisk/cmd/restore"
+	"github.com/zero-os/0-Disk/zeroctl/cmd/restore"
 )
 
 // RestoreCmd represents the restore subcommand
 var RestoreCmd = &cobra.Command{
 	Use:   "restore",
-	Short: "Restore a g8os resource",
+	Short: "Restore a zero-os resource",
 }
 
 func init() {

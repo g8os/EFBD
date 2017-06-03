@@ -16,7 +16,7 @@ import (
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
-	"github.com/zero-os/0-Disk/zerodisk/cmd/config"
+	"github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
 
 var vdiskCfg struct {
@@ -183,7 +183,7 @@ func init() {
 		"comma seperated list of redis compatible connectionstrings (format: '<ip>:<port>[@<db>]', eg: 'localhost:16379,localhost:6379@2'), if given, these are used for all vdisks, ignoring the given config")
 	VdiskCmd.Flags().StringVar(
 		&vdiskCfg.ConfigPath, "config", "config.yml",
-		"zerodisk config file")
+		"zeroctl config file")
 	VdiskCmd.Flags().IntVar(
 		&vdiskCfg.K,
 		"k", 4,

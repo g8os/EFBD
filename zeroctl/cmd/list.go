@@ -2,13 +2,13 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
-	"github.com/zero-os/0-Disk/zerodisk/cmd/list"
+	"github.com/zero-os/0-Disk/zeroctl/cmd/list"
 )
 
 // ListCmd represents the list subcommand
 var ListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List g8os resources",
+	Short: "List zero-os resources",
 }
 
 func init() {

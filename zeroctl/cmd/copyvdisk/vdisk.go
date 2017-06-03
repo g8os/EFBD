@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
-	cmdconfig "github.com/zero-os/0-Disk/zerodisk/cmd/config"
+	cmdconfig "github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
 
 var vdiskCfg struct {
@@ -193,5 +193,5 @@ WARNING: when copying nondeduped vdisks,
 
 	VdiskCmd.Flags().StringVar(
 		&vdiskCfg.ConfigPath, "config", "config.yml",
-		"zerodisk config file")
+		"zeroctl config file")
 }
