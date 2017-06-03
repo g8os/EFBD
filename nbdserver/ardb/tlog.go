@@ -50,6 +50,14 @@ type tlogStorage struct {
 	sequence      uint64
 	sequenceMux   sync.Mutex
 	transactionCh chan *transaction
+	// used to lock getting content,
+	// while it is being transferred from cache to storage,
+	// during which time there is a gap,
+	// where the content is not any longer available in the cache,
+	// but it is not yet written to the storage.
+	// this only however brings getting content in danger,
+	// so only that operation has to be publicacly protected.
+	contentTransferMux sync.Mutex
 }
 
 type transaction struct {
@@ -300,6 +308,9 @@ func (tls *tlogStorage) flushCachedContent(sequences []uint64) error {
 		return nil // no work to do
 	}
 
+	tls.contentTransferMux.Lock()
+	defer tls.contentTransferMux.Unlock()
+
 	elements := tls.cache.Evict(sequences...)
 
 	for blockIndex, data := range elements {
@@ -321,6 +332,9 @@ func (tls *tlogStorage) flushCachedContent(sequences []uint64) error {
 
 // get content from either cache, or internal storage
 func (tls *tlogStorage) get(blockIndex int64) (content []byte, err error) {
+	tls.contentTransferMux.Lock()
+	defer tls.contentTransferMux.Unlock()
+
 	content, found := tls.cache.Get(blockIndex)
 	if found {
 		return
