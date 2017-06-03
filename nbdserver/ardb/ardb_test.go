@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/garyburd/redigo/redis"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/redisstub"
-	"github.com/garyburd/redigo/redis"
 )
 
 // use pool in testRedisProvider
@@ -431,8 +431,6 @@ func testBackendStorageDeadlock(t *testing.T, blockSize, blockCount int64, stora
 	go storage.GoBackground(ctx)
 	defer storage.Close()
 
-	var err error
-
 	// store random content eight times
 	// each time we do all storage async at once,
 	// and wait for them all to be done
@@ -449,8 +447,7 @@ func testBackendStorageDeadlock(t *testing.T, blockSize, blockCount int64, stora
 				defer wg.Done()
 
 				// set content
-				err = storage.Set(blockIndex, preContent)
-				if err != nil {
+				if err := storage.Set(blockIndex, preContent); err != nil {
 					t.Fatal(time, blockIndex, err)
 					return
 				}
@@ -472,8 +469,7 @@ func testBackendStorageDeadlock(t *testing.T, blockSize, blockCount int64, stora
 		wg.Wait()
 
 		// let's flush each time
-		err = storage.Flush()
-		if err != nil {
+		if err := storage.Flush(); err != nil {
 			t.Fatal(time, err)
 		}
 	}
@@ -509,8 +505,7 @@ func testBackendStorageDeadlock(t *testing.T, blockSize, blockCount int64, stora
 	wg.Wait()
 
 	// let's flush the merged content
-	err = storage.Flush()
-	if err != nil {
+	if err := storage.Flush(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -520,8 +515,7 @@ func testBackendStorageDeadlock(t *testing.T, blockSize, blockCount int64, stora
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err = storage.Delete(blockIndex)
-			if err != nil {
+			if err := storage.Delete(blockIndex); err != nil {
 				t.Fatal(blockIndex, err)
 				return
 			}
@@ -543,8 +537,7 @@ func testBackendStorageDeadlock(t *testing.T, blockSize, blockCount int64, stora
 	wg.Wait()
 
 	// let's flush the deleted content
-	err = storage.Flush()
-	if err != nil {
+	if err := storage.Flush(); err != nil {
 		t.Fatal(err)
 	}
 

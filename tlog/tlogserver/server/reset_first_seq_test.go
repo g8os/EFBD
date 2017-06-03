@@ -123,7 +123,7 @@ func testClientWaitSeqFlushed(ctx context.Context, t *testing.T, respChan <-chan
 				return
 			}
 
-			if status == tlog.BlockStatusFlushOK || status == tlog.BlockStatusForceFlushReceived {
+			if status == tlog.BlockStatusFlushOK {
 				seqs := re.Resp.Sequences
 				seq := seqs[len(seqs)-1]
 
