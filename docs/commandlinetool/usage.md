@@ -1,27 +1,27 @@
 # Using the 0-Disk Command Line Tool
 
 ```
-$ g8stor -h
-g8stor manages the Zero-OS visks
+$ zeroctl -h
+zeroctl controls the zero-os resources
 
-Find more information at github.com/zero-os/0-Disk/g8stor.
+Find more information at github.com/zero-os/0-Disk/zeroctl.
 
 Usage:
-  g8stor [command]
+  zeroctl [command]
 
 Available Commands:
-  copy        Copy a Zero-OS vdisk
-  delete      Delete a Zero-OS resource
+  copy        Copy a zero-os resource
+  delete      Delete a zero-os resource
   help        Help about any command
-  list        List Zero-OS resources
-  restore     Restore a Zero-OS resource
+  list        List zero-os resources
+  restore     Restore a zero-os resource
   version     Output the version information
 
 Flags:
-  -h, --help      help for g8stor
+  -h, --help      help for zeroctl
   -v, --verbose   log available information
 
-Use "g8stor [command] --help" for more information about a command.
+Use "zeroctl [command] --help" for more information about a command.
 ```
 
 ## Examples
@@ -54,8 +54,8 @@ vdisks:
 ```
 
 Note that the examples below don't show all available flags.
-Please use `g8stor [command] --help` to see the flags of a specific command,
-`g8stor copy vdisk --help` will for example show all information available for the
+Please use `zeroctl [command] --help` to see the flags of a specific command,
+`zeroctl copy vdisk --help` will for example show all information available for the
 command used to copy a vdisk.
 
 ## Copy a vdisk
@@ -63,25 +63,25 @@ command used to copy a vdisk.
 To copy `vdiskA` as a new vdisk (`vdiskB`) on the _same_ storage cluster (`clusterA`), I would do:
 
 ```
-$ g8stor copy vdisk vdiskA vdiskB
+$ zeroctl copy vdisk vdiskA vdiskB
 ```
 
 Which would be the same as the more explicit version:
 
 ```
-$ g8stor copy vdisk vdiskA vdiskB clusterA --config config.yml
+$ zeroctl copy vdisk vdiskA vdiskB clusterA --config config.yml
 ```
 
 To copy `vdiskA` as a new vdisk (`vdiskA`) on a _different_ storage cluster (`clusterB`), I would do:
 
 ```
-$ g8stor copy vdisk vdiskA vdiskA clusterB
+$ zeroctl copy vdisk vdiskA vdiskA clusterB
 ```
 
 The following command would be illegal, and abort with an error:
 
 ```
-$ g8stor copy vdisk vdiskA vdiskA
+$ zeroctl copy vdisk vdiskA vdiskA
 ```
 
 ## Delete vdisks
@@ -89,31 +89,31 @@ $ g8stor copy vdisk vdiskA vdiskA
 To delete all vdisks listed in the config file:
 
 ```
-$ g8stor delete vdisks
+$ zeroctl delete vdisks
 ```
 
 Which is the less explicit version of:
 
 ```
-$ g8stor delete vdisks --config config.yml
+$ zeroctl delete vdisks --config config.yml
 ```
 
 To delete only 1 (or more) vdisks, rather then all, we can specify their id(s):
 
 ```
-$ g8stor delete vdisks vdiskC --config.yml
+$ zeroctl delete vdisks vdiskC --config.yml
 ```
 
 With this knowledge we can write the first delete example even more explicit:
 
 ```
-$ g8stor delete vdisks vdiskA vdiskC --config.yml
+$ zeroctl delete vdisks vdiskA vdiskC --config.yml
 ```
 
 The following would succeed for the found vdisk, but log an error for the other vdisk as that one can't be found:
 
 ```
-$ g8stor delete vdisks foo vdiskA # vdiskA will be deleted correctly, even though foo doesn't exist
+$ zeroctl delete vdisks foo vdiskA # vdiskA will be deleted correctly, even though foo doesn't exist
 ```
 
 ### Restore a (deduped or nondeduped) vdisk
@@ -121,7 +121,7 @@ $ g8stor delete vdisks foo vdiskA # vdiskA will be deleted correctly, even thoug
 Restore vdisk `a`:
 
 ```
-$ g8stor restore vdisk a
+$ zeroctl restore vdisk a
 ```
 
 **Note**: this requires that you have a `config.yml` file in the current working directory.
@@ -131,7 +131,7 @@ $ g8stor restore vdisk a
 List vdisks available on `localhost:16379`:
 
 ```
-$ g8stor list vdisks localhost:16379
+$ zeroctl list vdisks localhost:16379
 ```
 
 #### WARNING
@@ -147,19 +147,19 @@ in question, by locking the server down for each operation.
 vdisk `a` and `b` are in the same ardb (`localhost:16379`):
 
 ```
-$ g8stor copy deduped a b localhost:16379
+$ zeroctl copy deduped a b localhost:16379
 ```
 
 vdisk `a` and `b` are in different ardbs (`localhost:16379` -> `localhost:16380`):
 
 ```
-$ g8stor copy deduped a b localhost:16379 localhost:16380
+$ zeroctl copy deduped a b localhost:16379 localhost:16380
 ```
 
 vdisk `a` and `b` are in different ardb databases (`localhost:16379 DB=0` -> `localhost:16379 DB=1`):
 
 ```
-$ g8stor copy deduped a b localhost:16379 --targetdb 1
+$ zeroctl copy deduped a b localhost:16379 --targetdb 1
 ```
 
 ### Delete metadata of a deduped vdisk
@@ -167,5 +167,5 @@ $ g8stor copy deduped a b localhost:16379 --targetdb 1
 Delete vdisk `a`:
 
 ```
-$ g8stor delete deduped a localhost:16379
+$ zeroctl delete deduped a localhost:16379
 ```
