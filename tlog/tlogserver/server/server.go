@@ -264,8 +264,7 @@ func (s *Server) handleForceFlush(vd *vdisk, br *bufio.Reader, mType uint8) erro
 	}
 
 	vd.respChan <- &BlockResponse{
-		Status:    tlog.BlockStatusForceFlushReceived.Int8(),
-		Sequences: []uint64{vd.lastSeqFlushed},
+		Status: tlog.BlockStatusForceFlushReceived.Int8(),
 	}
 	return nil
 }

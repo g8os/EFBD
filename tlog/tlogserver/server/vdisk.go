@@ -52,12 +52,13 @@ type vdisk struct {
 	flusherCmdRespChan chan struct{}          // channel of flusher command response
 	respChan           chan *BlockResponse    // channel of responses to be sent to client
 
-	flusher          *flusher
-	segmentBuf       []byte // capnp segment buffer used by the flusher
-	expectedSequence uint64 // expected sequence to be received
-	lastSeqFlushed   uint64 // last sequence flushed
-	clientsTab       map[string]*net.TCPConn
-	clientsTabLock   sync.Mutex
+	flusher              *flusher
+	segmentBuf           []byte // capnp segment buffer used by the flusher
+	expectedSequence     uint64 // expected sequence to be received
+	expectedSequenceLock sync.Mutex
+
+	clientsTab     map[string]*net.TCPConn
+	clientsTabLock sync.Mutex
 }
 
 // ID returns the ID of this vdisk
@@ -218,10 +219,12 @@ func tlogBlockComparator(a, b interface{}) int {
 // - reset it
 func (vd *vdisk) resetFirstSequence(newSeq uint64, conn *net.TCPConn) error {
 	log.Infof("vdisk %v reset first sequence to %v", vd.vdiskID, newSeq)
+	vd.expectedSequenceLock.Lock()
+	defer vd.expectedSequenceLock.Unlock()
+
 	if newSeq == vd.expectedSequence { // we already in same page, do nothing
 		return nil
 	}
-
 	if vd.numConnectedClient() != 1 {
 		vd.disconnectExcept(conn)
 	}
@@ -269,43 +272,48 @@ func (vd *vdisk) runBlockReceiver() {
 				log.Errorf("invalid block receiver command = %v", cmd)
 			}
 		case tlb := <-vd.blockInputChan:
-			curSeq := tlb.Sequence()
+			func() {
+				vd.expectedSequenceLock.Lock()
+				defer vd.expectedSequenceLock.Unlock()
 
-			if curSeq == vd.expectedSequence {
-				// it is the next sequence we wait
-				vd.orderedBlockChan <- tlb
-				vd.expectedSequence++
-			} else if curSeq > vd.expectedSequence {
-				// if this is not what we wait, buffer it
-				buffer.Add(tlb)
-			} else { // tlb.Sequence() < vd.expectedSequence -> duplicated message
-				continue // drop it and no need to check the buffer because all condition doesn't change
-			}
+				curSeq := tlb.Sequence()
 
-			if buffer.Empty() {
-				continue
-			}
-
-			// lets see the buffer again, check if we have blocks that
-			// can be sent to the flusher.
-			it := buffer.Iterator()
-			blocks := []*schema.TlogBlock{}
-
-			expected := vd.expectedSequence
-			for it.Next() {
-				block := it.Value().(*schema.TlogBlock)
-				if block.Sequence() != expected {
-					break
+				if curSeq == vd.expectedSequence {
+					// it is the next sequence we wait
+					vd.orderedBlockChan <- tlb
+					vd.expectedSequence++
+				} else if curSeq > vd.expectedSequence {
+					// if this is not what we wait, buffer it
+					buffer.Add(tlb)
+				} else { // tlb.Sequence() < vd.expectedSequence -> duplicated message
+					return // drop it and no need to check the buffer because all condition doesn't change
 				}
-				expected++
-				blocks = append(blocks, block)
-			}
 
-			for _, block := range blocks {
-				buffer.Remove(block) // we can only do it here because the iterator is read only
-				vd.orderedBlockChan <- block
-				vd.expectedSequence++
-			}
+				if buffer.Empty() {
+					return
+				}
+
+				// lets see the buffer again, check if we have blocks that
+				// can be sent to the flusher.
+				it := buffer.Iterator()
+				blocks := []*schema.TlogBlock{}
+
+				expected := vd.expectedSequence
+				for it.Next() {
+					block := it.Value().(*schema.TlogBlock)
+					if block.Sequence() != expected {
+						break
+					}
+					expected++
+					blocks = append(blocks, block)
+				}
+
+				for _, block := range blocks {
+					buffer.Remove(block) // we can only do it here because the iterator is read only
+					vd.orderedBlockChan <- block
+					vd.expectedSequence++
+				}
+			}()
 		}
 	}
 }
@@ -403,8 +411,6 @@ func (vd *vdisk) runFlusher() {
 		if err != nil {
 			log.Infof("flush %v failed: %v", vd.vdiskID, err)
 			status = tlog.BlockStatusFlushFailed
-		} else {
-			vd.lastSeqFlushed = seqs[len(seqs)-1] // update our last sequence flushed
 		}
 
 		if cmdType == vdiskCmdForceFlushBlocking {

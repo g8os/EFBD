@@ -62,7 +62,7 @@ func TestForceFlush(t *testing.T) {
 					return
 				}
 
-				if status == tlog.BlockStatusFlushOK || status == tlog.BlockStatusForceFlushReceived {
+				if status == tlog.BlockStatusFlushOK {
 					seqs := re.Resp.Sequences
 					seq := seqs[len(seqs)-1]
 					lastSeqFlushedChan <- seq
