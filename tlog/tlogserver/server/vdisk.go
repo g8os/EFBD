@@ -316,6 +316,7 @@ func (vd *vdisk) runFlusher() {
 
 	// buffer of all ordered tlog blocks
 	tlogs := []*schema.TlogBlock{}
+	var maxSeq uint64
 
 	// periodic flush interval
 	pfDur := time.Duration(vd.flusher.flushTime) * time.Second
@@ -335,6 +336,7 @@ func (vd *vdisk) runFlusher() {
 		case tlb := <-vd.orderedBlockChan:
 			tlogs = append(tlogs, tlb)
 
+			maxSeq = tlb.Sequence()
 			// check if we need to flush
 			if needForceFlushSeq && tlb.Sequence() >= seqToForceFlush {
 				// reset the flag and flush right now
@@ -363,14 +365,13 @@ func (vd *vdisk) runFlusher() {
 			switch cmdType {
 			case vdiskCmdForceFlushAtSeq:
 				seqToForceFlush = flusherCmd.sequence
-				if vd.expectedSequence <= seqToForceFlush { // we don't have it yet
+				if maxSeq < seqToForceFlush { // we don't have it yet
 					needForceFlushSeq = true
 					continue
-				} else {
-					needForceFlushSeq = false
-					// we already have it, do force flush right now if possible
 				}
-
+				// we already have the wanted sequence
+				// flush right now if possible
+				needForceFlushSeq = false
 			case vdiskCmdForceFlush, vdiskCmdForceFlushBlocking:
 			default:
 				log.Errorf("invalid command to runFlusher: %v", flusherCmd)
