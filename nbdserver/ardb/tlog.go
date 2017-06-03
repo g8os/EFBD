@@ -50,14 +50,14 @@ type tlogStorage struct {
 	sequence      uint64
 	sequenceMux   sync.Mutex
 	transactionCh chan *transaction
-	// used to lock getting content,
-	// while it is being transferred from cache to storage,
-	// during which time there is a gap,
-	// where the content is not any longer available in the cache,
-	// but it is not yet written to the storage.
-	// this only however brings getting content in danger,
-	// so only that operation has to be publicacly protected.
-	contentTransferMux sync.Mutex
+	// used to make sure that different threads
+	// are not interacting with the thread-safe internal storage
+	// as the same time, as this could lead to unexpected situations.
+	//
+	// For example getting content from the internal storage,
+	// while that content is still being transfered from cache to storage,
+	// would mean that no or old data would be retrieved instead.
+	storageMux sync.Mutex
 }
 
 type transaction struct {
@@ -187,6 +187,9 @@ func (tls *tlogStorage) Flush() (err error) {
 		return
 	}
 
+	tls.storageMux.Lock()
+	defer tls.storageMux.Unlock()
+
 	// flush actual storage
 	err = tls.storage.Flush()
 	return
@@ -200,6 +203,9 @@ func (tls *tlogStorage) Close() (err error) {
 
 	tls.cancelFunc()
 	tls.cancelFunc = nil
+
+	tls.storageMux.Lock()
+	defer tls.storageMux.Unlock()
 
 	err = tls.storage.Close()
 	if err != nil {
@@ -308,11 +314,12 @@ func (tls *tlogStorage) flushCachedContent(sequences []uint64) error {
 		return nil // no work to do
 	}
 
-	tls.contentTransferMux.Lock()
-	defer tls.contentTransferMux.Unlock()
-
 	elements := tls.cache.Evict(sequences...)
 
+	tls.storageMux.Lock()
+	defer tls.storageMux.Unlock()
+
+	var errs flushErrors
 	for blockIndex, data := range elements {
 		var err error
 
@@ -323,22 +330,45 @@ func (tls *tlogStorage) flushCachedContent(sequences []uint64) error {
 		}
 
 		if err != nil {
-			return err
+			errs = append(errs, err)
 		}
+	}
+
+	if len(errs) > 0 {
+		return errs
 	}
 
 	return nil
 }
 
+type flushErrors []error
+
+func (err flushErrors) Error() string {
+	l := len(err)
+	if l == 0 {
+		return "unknown flush error"
+	}
+
+	var msg string
+
+	l--
+	for i := 0; i < l; i++ {
+		msg += err[i].Error() + "; "
+	}
+	msg += err[l].Error()
+
+	return msg
+}
+
 // get content from either cache, or internal storage
 func (tls *tlogStorage) get(blockIndex int64) (content []byte, err error) {
-	tls.contentTransferMux.Lock()
-	defer tls.contentTransferMux.Unlock()
-
 	content, found := tls.cache.Get(blockIndex)
 	if found {
 		return
 	}
+
+	tls.storageMux.Lock()
+	defer tls.storageMux.Unlock()
 
 	// return content from internal storage if possible
 	content, err = tls.storage.Get(blockIndex)
