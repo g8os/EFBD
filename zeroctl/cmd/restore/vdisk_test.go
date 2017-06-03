@@ -217,7 +217,7 @@ func newTestBackend(ctx context.Context, t *testing.T, vdiskID string, vdiskType
 				DataStorage: []zerodiskcfg.StorageServerConfig{
 					zerodiskcfg.StorageServerConfig{Address: ardbStorage.Address()},
 				},
-				MetadataStorage: zerodiskcfg.StorageServerConfig{Address: ardbStorage.Address()},
+				MetadataStorage: &zerodiskcfg.StorageServerConfig{Address: ardbStorage.Address()},
 			},
 		},
 	}

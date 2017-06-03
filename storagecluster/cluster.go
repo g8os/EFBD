@@ -144,16 +144,16 @@ type ClusterClient struct {
 	vdiskType config.VdiskType
 
 	// used to get a redis connection
-	dataConnectionStrings []config.StorageServerConfig
+	dataConnectionConfigs []config.StorageServerConfig
 	numberOfServers       int64 //Keep it as a seperate variable since this is constantly needed
 
 	// used as a fallback for getting data
 	// from a remote (root/template) server
-	rootDataConnectionStrings []config.StorageServerConfig
+	rootDataConnectionConfigs []config.StorageServerConfig
 	numberOfRootServers       int64 //Keep it as a seperate variable since this is constantly needed
 
 	// used to store meta data
-	metaConnectionString config.StorageServerConfig
+	metaConnectionConfig *config.StorageServerConfig
 
 	// indicates if configuration is succesfully loaded
 	loaded bool
@@ -177,7 +177,7 @@ func (cc *ClusterClient) ConnectionConfig(index int64) (*config.StorageServerCon
 	}
 
 	bcIndex := index % cc.numberOfServers
-	return &cc.dataConnectionStrings[bcIndex], nil
+	return &cc.dataConnectionConfigs[bcIndex], nil
 }
 
 // RootConnectionConfig returns the root connection config, if available
@@ -197,7 +197,7 @@ func (cc *ClusterClient) RootConnectionConfig(index int64) (*config.StorageServe
 	}
 
 	bcIndex := index % cc.numberOfRootServers
-	return &cc.rootDataConnectionStrings[bcIndex], nil
+	return &cc.rootDataConnectionConfigs[bcIndex], nil
 }
 
 // MetaConnectionConfig returns the connection config,
@@ -210,7 +210,11 @@ func (cc *ClusterClient) MetaConnectionConfig() (*config.StorageServerConfig, er
 		return nil, errors.New("couldn't load storage cluster config")
 	}
 
-	return &cc.metaConnectionString, nil
+	if cc.metaConnectionConfig == nil {
+		return nil, errors.New("no metadata connection config defined")
+	}
+
+	return cc.metaConnectionConfig, nil
 }
 
 // Close the open listen goroutine,
@@ -309,29 +313,29 @@ func (cc *ClusterClient) loadConfig() bool {
 
 	// update root storage cluster information
 	if vdisk.RootStorageCluster == "" {
-		cc.rootDataConnectionStrings = nil
+		cc.rootDataConnectionConfigs = nil
 		cc.numberOfRootServers = 0
 	} else {
 		// get (root) storage cluster
 		// the config ensures referenced storageClusters exist
 		rootStorageCluster, _ := cfg.StorageClusters[vdisk.RootStorageCluster]
 
-		cc.rootDataConnectionStrings = rootStorageCluster.DataStorage
-		cc.numberOfRootServers = int64(len(cc.rootDataConnectionStrings))
+		cc.rootDataConnectionConfigs = rootStorageCluster.DataStorage
+		cc.numberOfRootServers = int64(len(cc.rootDataConnectionConfigs))
 		// no need to check length of root servers,
 		// as the storage cluster config validation ensures
 		// that at least 1 data storage server is defined
 	}
 
 	// store information required for getting redis connections
-	cc.dataConnectionStrings = storageCluster.DataStorage
-	cc.numberOfServers = int64(len(cc.dataConnectionStrings))
+	cc.dataConnectionConfigs = storageCluster.DataStorage
+	cc.numberOfServers = int64(len(cc.dataConnectionConfigs))
 	// no need to check length of servers,
 	// as the storage cluster config validation ensures
 	// that at least 1 data storage server is defined
 
 	// used to store metadata (required by config)
-	cc.metaConnectionString = storageCluster.MetadataStorage
+	cc.metaConnectionConfig = storageCluster.MetadataStorage
 	log.Debugf("Loaded storagecluster '%s' configuration (%d servers)", storageClusterName, cc.numberOfServers)
 	cc.loaded = true
 	return cc.loaded

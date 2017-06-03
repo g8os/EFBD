@@ -57,8 +57,9 @@ func deleteVdisks(cmd *cobra.Command, args []string) error {
 
 		switch storageType = vdisk.StorageType(); storageType {
 		case config.StorageDeduped:
-			vdiskids = dedupedVdisksMetadata[cluster.MetadataStorage]
-			dedupedVdisksMetadata[cluster.MetadataStorage] = append(vdiskids, vdiskID)
+			// metadataStorage is guaranteed to exist for deduped storage
+			vdiskids = dedupedVdisksMetadata[*cluster.MetadataStorage]
+			dedupedVdisksMetadata[*cluster.MetadataStorage] = append(vdiskids, vdiskID)
 
 		case config.StorageNondeduped:
 			for _, storage := range cluster.DataStorage {
@@ -72,19 +73,23 @@ func deleteVdisks(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	log.Info("deleting metadata of selected deduped vdisks...")
-	for cfg, vdiskids := range dedupedVdisksMetadata {
-		err = deleleDedupedVdisksMetadata(vdisksCfg.Force, cfg, vdiskids...)
-		if err != nil {
-			return err
+	if len(dedupedVdisksMetadata) > 0 {
+		log.Info("deleting metadata of selected deduped vdisks...")
+		for cfg, vdiskids := range dedupedVdisksMetadata {
+			err = deleleDedupedVdisksMetadata(vdisksCfg.Force, cfg, vdiskids...)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
-	log.Info("deleting data of selected nondeduped vdisks...")
-	for cfg, vdiskids := range nondedupedVdisks {
-		err = deleleNondedupedVdisks(vdisksCfg.Force, cfg, vdiskids...)
-		if err != nil {
-			return err
+	if len(nondedupedVdisks) > 0 {
+		log.Info("deleting data of selected nondeduped vdisks...")
+		for cfg, vdiskids := range nondedupedVdisks {
+			err = deleleNondedupedVdisks(vdisksCfg.Force, cfg, vdiskids...)
+			if err != nil {
+				return err
+			}
 		}
 	}
 

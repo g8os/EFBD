@@ -87,9 +87,16 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 
 // NOTE: copies metadata onlY!
 func copyDedupedVdisk(sourceID, targetID string, sourceCluster, targetCluster config.StorageClusterConfig) error {
+	if sourceCluster.MetadataStorage == nil {
+		return errors.New("no metaDataServer given for source")
+	}
+	if targetCluster.MetadataStorage == nil {
+		return errors.New("no metaDataServer given for target")
+	}
+
 	// within same storage server
-	if sourceCluster.MetadataStorage == targetCluster.MetadataStorage {
-		conn, err := getConnection(sourceCluster.MetadataStorage)
+	if *sourceCluster.MetadataStorage == *targetCluster.MetadataStorage {
+		conn, err := getConnection(*sourceCluster.MetadataStorage)
 		if err != nil {
 			return fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
 		}
@@ -99,7 +106,7 @@ func copyDedupedVdisk(sourceID, targetID string, sourceCluster, targetCluster co
 
 	// between different storage servers
 	connA, connB, err := getConnections(
-		sourceCluster.MetadataStorage, targetCluster.MetadataStorage)
+		*sourceCluster.MetadataStorage, *targetCluster.MetadataStorage)
 	if err != nil {
 		return fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
 	}

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"strconv"
@@ -51,47 +52,76 @@ type Config struct {
 // Validate the Config to ensure that all required properties are present,
 // and that all given properties are valid
 func (cfg *Config) Validate() error {
-	if _, err := valid.ValidateStruct(cfg); err != nil {
+	_, err := valid.ValidateStruct(cfg)
+	if err != nil {
 		return err
 	}
 
-	// ensure all referenced storage clusters exist, O(n^2)
-	for vdiskID, vdisk := range cfg.Vdisks {
-		// collect all storageClusters
-		storageClusters := []string{vdisk.StorageCluster}
-		if vdisk.RootStorageCluster != "" {
-			storageClusters = append(
-				storageClusters, vdisk.RootStorageCluster)
-		}
-		if vdisk.TlogStorageCluster != "" {
-			storageClusters = append(
-				storageClusters, vdisk.TlogStorageCluster)
-		}
-
-		// go through all storageClusters
-		for clusterID := range cfg.StorageClusters {
-			for index, name := range storageClusters {
-				if name == clusterID {
-					storageClusters = append(
-						storageClusters[:index],
-						storageClusters[index+1:]...)
-					break
-				}
-			}
-			if len(storageClusters) == 0 {
-				break
-			}
-		}
-
-		// ensure referenced (root) storage cluster exists
-		if len(storageClusters) > 0 {
-			return fmt.Errorf(
-				"vdisk %q references unexisting storage cluster(s): %s",
-				vdiskID, strings.Join(storageClusters, ", "))
-		}
+	err = cfg.validateStorageClusters()
+	if err != nil {
+		return err
 	}
 
 	// valid
+	return nil
+}
+
+// ensure all referenced storage clusters exist, O(n^2)
+// and also ensure that storage cluster either
+// have metadataStorage defined when required
+func (cfg *Config) validateStorageClusters() error {
+	storageClusters := make(map[string]struct{})
+	for clusterID := range cfg.StorageClusters {
+		storageClusters[clusterID] = struct{}{}
+	}
+
+	validateReference := func(clusterID string) error {
+		// validate existence
+		if _, ok := storageClusters[clusterID]; !ok {
+			return fmt.Errorf("no storage cluster exists for %s", clusterID)
+		}
+		return nil
+	}
+
+	for vdiskID, vdisk := range cfg.Vdisks {
+		// validate storage cluster
+		err := validateReference(vdisk.StorageCluster)
+		if err != nil {
+			return fmt.Errorf("invalid storageCluster for vdisk %s: %s", vdiskID, err)
+		}
+		err = cfg.validateMetadataStorage(vdisk.StorageCluster, &vdisk)
+		if err != nil {
+			return fmt.Errorf("invalid storageCluster for vdisk %s: %s", vdiskID, err)
+		}
+
+		// validate root storage cluster
+		if vdisk.RootStorageCluster != "" {
+			if err = validateReference(vdisk.RootStorageCluster); err != nil {
+				return fmt.Errorf("invalid rootStorageCluster for vdisk %s: %s", vdiskID, err)
+			}
+			err = cfg.validateMetadataStorage(vdisk.RootStorageCluster, &vdisk)
+			if err != nil {
+				return fmt.Errorf("invalid rootStorageCluster for vdisk %s: %s", vdiskID, err)
+			}
+		}
+
+		// validate tlog storage cluster
+		if vdisk.TlogStorageCluster != "" {
+			if err = validateReference(vdisk.TlogStorageCluster); err != nil {
+				return fmt.Errorf("invalid tlogStorageCluster for vdisk %s: %s", vdiskID, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+func (cfg *Config) validateMetadataStorage(clusterID string, vdisk *VdiskConfig) error {
+	metadataStorageIsUndefined := cfg.StorageClusters[clusterID].MetadataStorage == nil
+	if metadataStorageIsUndefined && vdisk.StorageType() == StorageDeduped {
+		return errors.New("metadataStorage is required")
+	}
+
 	return nil
 }
 
@@ -104,7 +134,7 @@ func (cfg *Config) String() string {
 // StorageClusterConfig defines the config for a storageCluster
 type StorageClusterConfig struct {
 	DataStorage     []StorageServerConfig `yaml:"dataStorage" valid:"required"`
-	MetadataStorage StorageServerConfig   `yaml:"metadataStorage" valid:"required"`
+	MetadataStorage *StorageServerConfig  `yaml:"metadataStorage" valid:"optional"`
 }
 
 // ParseCSStorageServerConfigStrings allows you to parse a slice of raw dial config strings.

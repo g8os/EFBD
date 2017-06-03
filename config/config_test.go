@@ -97,14 +97,12 @@ storageClusters:
   mycluster:
     dataStorage:
       - address: 192.168.58.146:2000
-    metadataStorage:
-      address: 192.168.58.146:2001
 vdisks:
   myvdisk:
     blockSize: 4096
     size: 10
     storageCluster: mycluster
-    type: boot`
+    type: cache`
 
 func TestMinimalValidConfigFromBytes(t *testing.T) {
 	cfg, err := FromBytes([]byte(minimalValidConfig))
@@ -118,8 +116,7 @@ func TestMinimalValidConfigFromBytes(t *testing.T) {
 				assert.Equal(t, "192.168.58.146:2000", cluster.DataStorage[0].Address)
 				assert.Equal(t, 0, cluster.DataStorage[0].Database)
 			}
-			assert.Equal(t, "192.168.58.146:2001", cluster.MetadataStorage.Address)
-			assert.Equal(t, 0, cluster.MetadataStorage.Database)
+			assert.Nil(t, cluster.MetadataStorage)
 		}
 	}
 
@@ -131,7 +128,7 @@ func TestMinimalValidConfigFromBytes(t *testing.T) {
 			assert.Equal(t, "mycluster", vdisk.StorageCluster)
 			assert.Equal(t, "", vdisk.RootStorageCluster)
 			assert.Equal(t, "", vdisk.TlogStorageCluster)
-			assert.Equal(t, VdiskTypeBoot, vdisk.Type)
+			assert.Equal(t, VdiskTypeCache, vdisk.Type)
 		}
 	}
 }
@@ -197,7 +194,7 @@ vdisks:
     storageCluster: mycluster
     type: boot
 `,
-	// no meta storage given
+	// no meta storage given (while deduped requires it)
 	`
 storageClusters:
   mycluster:
@@ -209,6 +206,25 @@ vdisks:
     blockSize: 4096
     size: 10
     storageCluster: mycluster
+    type: boot
+`,
+	// no meta storage given (while deduped requires it)
+	`
+storageClusters:
+  mycluster:
+    dataStorage:
+      - address: 192.168.58.146:2000
+    metadataStorage:
+      address: 192.123.123.123:2001
+  rootcluster:
+    dataStorage:
+      - address: 192.168.58.146:2000
+vdisks:
+  myvdisk:
+    blockSize: 4096
+    size: 10
+    storageCluster: mycluster
+    rootStorageCluster: rootcluster
     type: boot
 `,
 	// invalid meta storage given
@@ -380,7 +396,7 @@ vdisks:
 func TestInvalidConfigFromBytes(t *testing.T) {
 	for _, input := range invalidConfigs {
 		cfg, err := FromBytes([]byte(input))
-		if assert.Error(t, err) {
+		if assert.Error(t, err, input) {
 			assert.Nil(t, cfg)
 		}
 	}
