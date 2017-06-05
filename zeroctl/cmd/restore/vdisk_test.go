@@ -27,7 +27,7 @@ func TestEndToEndReplayDBdisk(t *testing.T) {
 }
 
 func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
-	// 1. Start a tlogserver;
+	t.Log("1. Start a tlogserver;")
 
 	testConf := &server.Config{
 		K:          4,
@@ -39,15 +39,16 @@ func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 		HexNonce:   "37b8e8a308c354048d245f6d",
 	}
 
-	// create inmemory redis pool factory
+	t.Log("create inmemory redis pool factory")
 	poolFactory := tlog.InMemoryRedisPoolFactory(testConf.RequiredDataServers())
 
-	// start the server
+	t.Log("start the server")
 	s, err := server.NewServer(testConf, poolFactory)
 	if !assert.Nil(t, err) {
 		return
 	}
 
+	t.Log("make tlog server listen")
 	go s.Listen()
 
 	var (
@@ -63,17 +64,18 @@ func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 		firstSequence = 0
 	)
 
-	// 2. Start an NBDServer Backend with tlogclient integration;
+	t.Log("2. Start an NBDServer Backend with tlogclient integration;")
 
 	ctx := context.Background()
 
+	t.Log("creating new test backend")
 	backend, err := newTestBackend(ctx, t, vdiskID, vdiskType, tlogrpc, blockSize, size)
 	if !assert.Nil(t, err) {
 		return
 	}
 
-	// 3. Generate 64 KiB of random data (with some partial and full zero blocks)
-	//    and write it to the nbd backend;
+	t.Log("3. Generate 64 KiB of random data (with some partial and full zero blocks)")
+	t.Log("   and write it to the nbd backend;")
 
 	data := make([]byte, size)
 	_, err = crand.Read(data)
@@ -113,14 +115,13 @@ func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 		}
 	}
 
-	// flush data
+	t.Log("flush data")
 	err = backend.Flush(ctx)
 	if !assert.Nil(t, err) {
 		return
 	}
 
-	// 4. Validate that all the data is retrievable and correct;
-
+	t.Log("4. Validate that all the data is retrievable and correct;")
 	for i := 0; i < blocks; i++ {
 		offset := i * blockSize
 		content, err := backend.ReadAt(ctx, int64(offset), int64(blockSize))
@@ -132,14 +133,14 @@ func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 		}
 	}
 
-	// 5. Wipe all data on the arbd (AKA create a new backend, hehe)
-	//    this time without tlog integration though!!!!
+	t.Log("5. Wipe all data on the arbd (AKA create a new backend, hehe)")
+	t.Log("   this time without tlog integration though!!!!")
 	backend, err = newTestBackend(ctx, t, vdiskID, vdiskType, "", blockSize, size)
 	if !assert.Nil(t, err) {
 		return
 	}
 
-	// 6. Validate that the data is no longer retrievable via the backend;
+	t.Log("6. Validate that the data is no longer retrievable via the backend;")
 
 	for i := 0; i < blocks; i++ {
 		offset := i * blockSize
@@ -152,12 +153,15 @@ func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 		}
 	}
 
-	// 7. Replay the tlog aggregations;
+	t.Log("7. Replay the tlog aggregations;")
+
+	t.Log("create new redis pool")
 	tlogRedisPool, err := poolFactory.NewRedisPool(vdiskID)
 	if !assert.Nil(t, err) {
 		return
 	}
 
+	t.Log("decode from tlog")
 	err = decode(
 		ctx, backend, tlogRedisPool, vdiskID,
 		testConf.K, testConf.M, testConf.PrivKey, testConf.HexNonce)
@@ -165,7 +169,7 @@ func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 		return
 	}
 
-	// 8. Validate that all the data is again retrievable and correct;
+	t.Log("8. Validate that all the data is again retrievable and correct;")
 
 	for i := 0; i < blocks; i++ {
 		offset := i * blockSize
@@ -181,8 +185,10 @@ func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 
 // create a test backend
 func newTestBackend(ctx context.Context, t *testing.T, vdiskID string, vdiskType zerodiskcfg.VdiskType, tlogrpc string, blockSize, size uint64) (nbd.Backend, error) {
+	t.Log("create new in memory LedisDB")
 	ardbStorage := redisstub.NewMemoryRedis()
 
+	t.Log("create temp config file")
 	nbdConfigFile, err := ioutil.TempFile("", "zerodisk")
 	if err != nil {
 		return nil, err
@@ -194,7 +200,7 @@ func newTestBackend(ctx context.Context, t *testing.T, vdiskID string, vdiskType
 		ardbStorage.Listen()
 	}()
 
-	// create nbd config
+	t.Log("put together 0-Disk config file")
 	nbdConfig := &zerodiskcfg.Config{
 		Vdisks: map[string]zerodiskcfg.VdiskConfig{
 			vdiskID: zerodiskcfg.VdiskConfig{
@@ -215,19 +221,20 @@ func newTestBackend(ctx context.Context, t *testing.T, vdiskID string, vdiskType
 		},
 	}
 
+	t.Log("serialize (yaml) 0-Disk conf to: ", nbdConfig.String())
 	// store nbd config in temporary location
 	_, err = nbdConfigFile.Write([]byte(nbdConfig.String()))
 	if err != nil {
 		return nil, err
 	}
 
-	// create backend (finally)
+	t.Log("create backend (finally)")
 	backend, err := newBackend(ctx, nil, tlogrpc, vdiskID, nbdConfigFile.Name())
 	if err != nil {
 		return nil, err
 	}
 
-	// start background thread
+	t.Log("start backend background thread")
 	go backend.GoBackground(ctx)
 
 	// return backend
