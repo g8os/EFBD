@@ -31,7 +31,7 @@ func NewLBA(vdiskID string, blockCount, cacheLimitInBytes int64, provider MetaRe
 	lba = &LBA{
 		provider: provider,
 		vdiskID:  vdiskID,
-		shardMux: make([]sync.Mutex, muxCount),
+		shardMux: make([]sync.RWMutex, muxCount),
 	}
 
 	lba.cache, err = newShardCache(cacheLimitInBytes, lba.onCacheEviction)
@@ -50,7 +50,7 @@ type LBA struct {
 	// We stil need to lock on a per-shard basis,
 	// as otherwise we might have a race condition where for example
 	// 2 operations might create a new shard, and thus we would miss an operation.
-	shardMux []sync.Mutex
+	shardMux []sync.RWMutex
 
 	provider MetaRedisProvider
 	vdiskID  string
@@ -60,6 +60,7 @@ type LBA struct {
 // When a key is updated, the shard containing this blockindex is marked as dirty and will be
 // stored in the external metadataserver when Flush is called.
 func (lba *LBA) Set(blockIndex int64, h zerodisk.Hash) (err error) {
+	shardIndex := blockIndex / NumberOfRecordsPerLBAShard
 	//Fetch the appropriate shard
 	shard, err := func(shardIndex int64) (shard *shard, err error) {
 		lba.shardMux[shardIndex].Lock()
@@ -77,7 +78,7 @@ func (lba *LBA) Set(blockIndex int64, h zerodisk.Hash) (err error) {
 		}
 
 		return
-	}(blockIndex / NumberOfRecordsPerLBAShard)
+	}(shardIndex)
 
 	if err != nil {
 		return
@@ -85,6 +86,10 @@ func (lba *LBA) Set(blockIndex int64, h zerodisk.Hash) (err error) {
 
 	//Update the hash
 	hashIndex := blockIndex % NumberOfRecordsPerLBAShard
+
+	lba.shardMux[shardIndex].Lock()
+	defer lba.shardMux[shardIndex].Unlock()
+
 	shard.Set(hashIndex, h)
 
 	return
@@ -102,12 +107,14 @@ func (lba *LBA) Delete(blockIndex int64) (err error) {
 //Get returns the hash for a block, nil if no hash registered
 // If the shard containing this blockindex is not present, it is fetched from the external metadaserver
 func (lba *LBA) Get(blockIndex int64) (h zerodisk.Hash, err error) {
+	shardIndex := blockIndex / NumberOfRecordsPerLBAShard
+
 	shard, err := func(shardIndex int64) (*shard, error) {
-		lba.shardMux[shardIndex].Lock()
-		defer lba.shardMux[shardIndex].Unlock()
+		lba.shardMux[shardIndex].RLock()
+		defer lba.shardMux[shardIndex].RUnlock()
 
 		return lba.getShard(shardIndex)
-	}(blockIndex / NumberOfRecordsPerLBAShard)
+	}(shardIndex)
 
 	if err != nil || shard == nil {
 		return
@@ -115,6 +122,10 @@ func (lba *LBA) Get(blockIndex int64) (h zerodisk.Hash, err error) {
 
 	// get the hash
 	hashIndex := blockIndex % NumberOfRecordsPerLBAShard
+
+	lba.shardMux[shardIndex].RLock()
+	defer lba.shardMux[shardIndex].RUnlock()
+
 	h = shard.Get(hashIndex)
 	if h.Equals(zerodisk.NilHash) {
 		h = nil
