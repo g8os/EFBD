@@ -15,6 +15,11 @@ import (
 	tlogserver "github.com/zero-os/0-Disk/tlog/tlogserver/server"
 )
 
+const (
+	// maximum duration we wait for flush to finish
+	tlogFlushWaitSec = 10 * time.Second
+)
+
 func newTlogStorage(vdiskID, tlogrpc string, blockSize int64, storage backendStorage) (backendStorage, error) {
 	client, err := tlogclient.New(tlogrpc, vdiskID, 0, true)
 	if err != nil {
@@ -168,12 +173,25 @@ func (tls *tlogStorage) Flush() (err error) {
 	// ForceFlush at the latest sequence
 	tls.tlog.ForceFlushAtSeq(tls.getLatestSequence())
 
-	// wait until the cache is empty
-	tls.cacheEmptyCond.L.Lock()
-	for !tls.cache.Empty() {
-		tls.cacheEmptyCond.Wait()
+	// wait until the cache is empty or timeout
+	doneCh := make(chan struct{})
+	go func() {
+		tls.cacheEmptyCond.L.Lock()
+		if !tls.cache.Empty() {
+			tls.cacheEmptyCond.Wait()
+		}
+		tls.cacheEmptyCond.L.Unlock()
+		close(doneCh)
+	}()
+
+	select {
+	case <-time.After(tlogFlushWaitSec):
+		// if timeout, signal the condition variable anyway
+		// to avoid the goroutine blocked forever
+		tls.cacheEmptyCond.Signal()
+	case <-doneCh:
+		// wait returned
 	}
-	tls.cacheEmptyCond.L.Unlock()
 
 	// make sure that the sequence cache is empty,
 	// as that is the only proof we have that the tlog server
