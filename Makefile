@@ -40,10 +40,10 @@ tlogserver: $(OUTPUT)
 test: testgo testcgo testcodegen
 
 testgo:
-	go test -race -timeout $(TIMEOUT) $(PACKAGES)
+	go test -race -v -timeout $(TIMEOUT) $(PACKAGES)
 
 testcgo:
-	GODEBUG=cgocheck=0 go test -race -timeout $(TIMEOUT) -tags 'isal' $(PACKAGES)
+	GODEBUG=cgocheck=0 go test -race -v -timeout $(TIMEOUT) -tags 'isal' $(PACKAGES)
 
 testcodegen:
 	./scripts/codegeneration.sh
