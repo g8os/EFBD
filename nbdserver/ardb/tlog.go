@@ -52,7 +52,6 @@ type tlogStorage struct {
 	storage       backendStorage
 	cache         sequenceCache
 	blockSize     int64
-	cancelFunc    context.CancelFunc
 	sequence      uint64
 	sequenceMux   sync.Mutex
 	transactionCh chan *transaction
@@ -217,13 +216,6 @@ func (tls *tlogStorage) Flush() (err error) {
 
 // Close implements backendStorage.Close
 func (tls *tlogStorage) Close() (err error) {
-	if tls.cancelFunc == nil {
-		return errors.New("already closed")
-	}
-
-	tls.cancelFunc()
-	tls.cancelFunc = nil
-
 	tls.storageMux.Lock()
 	defer tls.storageMux.Unlock()
 
@@ -237,11 +229,6 @@ func (tls *tlogStorage) Close() (err error) {
 
 // GoBackground implements backendStorage.GoBackground
 func (tls *tlogStorage) GoBackground(ctx context.Context) {
-	if tls.cancelFunc != nil {
-		log.Error("tried to run tlogStorage's background thread twice")
-		return
-	}
-
 	defer func() {
 		err := tls.tlog.Close()
 		if err != nil {
@@ -250,8 +237,6 @@ func (tls *tlogStorage) GoBackground(ctx context.Context) {
 	}()
 
 	recvCh := tls.tlog.Recv()
-
-	ctx, tls.cancelFunc = context.WithCancel(ctx)
 
 	// used for sending our transactions
 	go tls.transactionSender(ctx)
