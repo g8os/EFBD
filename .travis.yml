@@ -7,4 +7,4 @@ jobs:
     - stage: test
       go: 1.8
       install: skip
-      script: go test -v -timeout 5m github.com/zero-os/0-Disk/zeroctl/cmd/restore  -run ^TestEndToEndReplayBootVdisk$
+      script: go test -v -race -timeout 5m github.com/zero-os/0-Disk/zeroctl/cmd/restore  -run ^TestEndToEndReplayBootVdisk$
