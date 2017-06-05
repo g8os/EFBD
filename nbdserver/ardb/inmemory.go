@@ -23,7 +23,7 @@ type inMemoryStorage struct {
 	blockSize int64
 	vdiskID   string
 	vdisk     map[int64][]byte
-	mux       sync.Mutex
+	mux       sync.RWMutex
 }
 
 // Set implements backendStorage.Set
@@ -70,8 +70,8 @@ func (ms *inMemoryStorage) Merge(blockIndex, offset int64, content []byte) (err 
 
 // Get implements backendStorage.Get
 func (ms *inMemoryStorage) Get(blockIndex int64) (content []byte, err error) {
-	ms.mux.Lock()
-	defer ms.mux.Unlock()
+	ms.mux.RLock()
+	defer ms.mux.RUnlock()
 
 	content, _ = ms.vdisk[blockIndex]
 	return

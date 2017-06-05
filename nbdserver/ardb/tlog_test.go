@@ -6,11 +6,11 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/redisstub"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestTlogStorageWithInMemory(t *testing.T) {
@@ -283,6 +283,7 @@ func TestInMemorySequenceCacheMassEviction(t *testing.T) {
 	if !assert.NotNil(t, sq) {
 		return
 	}
+
 	testSequenceCacheMassEviction(t, sq, func(sn, vn int) {
 		assert.Equal(t, sn, len(sq.sequences))
 		assert.Equal(t, vn, len(sq.values))

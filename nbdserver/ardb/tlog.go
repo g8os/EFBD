@@ -17,7 +17,7 @@ import (
 
 const (
 	// maximum duration we wait for flush to finish
-	tlogFlushWaitSec = 10 * time.Second
+	tlogFlushWait = 10 * time.Second
 )
 
 func newTlogStorage(vdiskID, tlogrpc string, blockSize int64, storage backendStorage) (backendStorage, error) {
@@ -48,22 +48,14 @@ func newTlogStorageWithClient(vdiskID string, blockSize int64, client tlogClient
 
 type tlogStorage struct {
 	vdiskID       string
+	mux           sync.RWMutex
 	tlog          tlogClient
 	storage       backendStorage
 	cache         sequenceCache
 	blockSize     int64
-	cancelFunc    context.CancelFunc
 	sequence      uint64
 	sequenceMux   sync.Mutex
 	transactionCh chan *transaction
-	// used to make sure that different threads
-	// are not interacting with the thread-safe internal storage
-	// as the same time, as this could lead to unexpected situations.
-	//
-	// For example getting content from the internal storage,
-	// while that content is still being transfered from cache to storage,
-	// would mean that no or old data would be retrieved instead.
-	storageMux sync.Mutex
 	// condition variable used to signal when the cache is empty
 	cacheEmptyCond *sync.Cond
 }
@@ -79,6 +71,12 @@ type transaction struct {
 
 // Set implements backendStorage.Set
 func (tls *tlogStorage) Set(blockIndex int64, content []byte) error {
+	tls.mux.Lock()
+	defer tls.mux.Unlock()
+
+	return tls.set(blockIndex, content)
+}
+func (tls *tlogStorage) set(blockIndex int64, content []byte) error {
 	var op uint8
 	var length uint64
 
@@ -136,10 +134,23 @@ func (tls *tlogStorage) Set(blockIndex int64, content []byte) error {
 }
 
 // Merge implements backendStorage.Merge
-func (tls *tlogStorage) Merge(blockIndex, offset int64, content []byte) (err error) {
+func (tls *tlogStorage) Merge(blockIndex, offset int64, content []byte) error {
+	tls.mux.Lock()
+	defer tls.mux.Unlock()
+
+	mergedContent, err := tls.merge(blockIndex, offset, content)
+	if err != nil {
+		return err
+	}
+
+	// store new content
+	return tls.set(blockIndex, mergedContent)
+}
+
+func (tls *tlogStorage) merge(blockIndex, offset int64, content []byte) ([]byte, error) {
 	mergedContent, err := tls.get(blockIndex)
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	// ensure merge block is of the proper size,
@@ -155,20 +166,24 @@ func (tls *tlogStorage) Merge(blockIndex, offset int64, content []byte) (err err
 	// merge new with old content
 	copy(mergedContent[offset:], content)
 
-	// store new content
-	err = tls.Set(blockIndex, mergedContent)
-	return
+	return mergedContent, nil
 }
 
 // Get implements backendStorage.Get
 func (tls *tlogStorage) Get(blockIndex int64) (content []byte, err error) {
+	tls.mux.RLock()
+	defer tls.mux.RUnlock()
+
 	content, err = tls.get(blockIndex)
 	return
 }
 
 // Delete implements backendStorage.Delete
 func (tls *tlogStorage) Delete(blockIndex int64) (err error) {
-	err = tls.Set(blockIndex, nil)
+	tls.mux.Lock()
+	defer tls.mux.Unlock()
+
+	err = tls.set(blockIndex, nil)
 	return
 }
 
@@ -189,7 +204,7 @@ func (tls *tlogStorage) Flush() (err error) {
 	}()
 
 	select {
-	case <-time.After(tlogFlushWaitSec):
+	case <-time.After(tlogFlushWait):
 		// if timeout, signal the condition variable anyway
 		// to avoid the goroutine blocked forever
 		tls.cacheEmptyCond.Signal()
@@ -207,9 +222,6 @@ func (tls *tlogStorage) Flush() (err error) {
 		return
 	}
 
-	tls.storageMux.Lock()
-	defer tls.storageMux.Unlock()
-
 	// flush actual storage
 	err = tls.storage.Flush()
 	return
@@ -217,16 +229,6 @@ func (tls *tlogStorage) Flush() (err error) {
 
 // Close implements backendStorage.Close
 func (tls *tlogStorage) Close() (err error) {
-	if tls.cancelFunc == nil {
-		return errors.New("already closed")
-	}
-
-	tls.cancelFunc()
-	tls.cancelFunc = nil
-
-	tls.storageMux.Lock()
-	defer tls.storageMux.Unlock()
-
 	err = tls.storage.Close()
 	if err != nil {
 		log.Info("error while closing internal tlog's storage: ", err)
@@ -237,11 +239,6 @@ func (tls *tlogStorage) Close() (err error) {
 
 // GoBackground implements backendStorage.GoBackground
 func (tls *tlogStorage) GoBackground(ctx context.Context) {
-	if tls.cancelFunc != nil {
-		log.Error("tried to run tlogStorage's background thread twice")
-		return
-	}
-
 	defer func() {
 		err := tls.tlog.Close()
 		if err != nil {
@@ -250,8 +247,6 @@ func (tls *tlogStorage) GoBackground(ctx context.Context) {
 	}()
 
 	recvCh := tls.tlog.Recv()
-
-	ctx, tls.cancelFunc = context.WithCancel(ctx)
 
 	// used for sending our transactions
 	go tls.transactionSender(ctx)
@@ -342,10 +337,10 @@ func (tls *tlogStorage) flushCachedContent(sequences []uint64) error {
 		return nil // no work to do
 	}
 
-	elements := tls.cache.Evict(sequences...)
+	tls.mux.Lock()
+	defer tls.mux.Unlock()
 
-	tls.storageMux.Lock()
-	defer tls.storageMux.Unlock()
+	elements := tls.cache.Evict(sequences...)
 
 	var errs flushErrors
 	for blockIndex, data := range elements {
@@ -395,9 +390,6 @@ func (tls *tlogStorage) get(blockIndex int64) (content []byte, err error) {
 		return
 	}
 
-	tls.storageMux.Lock()
-	defer tls.storageMux.Unlock()
-
 	// return content from internal storage if possible
 	content, err = tls.storage.Get(blockIndex)
 	return
@@ -444,7 +436,8 @@ type tlogClient interface {
 }
 
 // sequenceCache, is used to cache transactions, linked to their sequenceIndex,
-// which are still being processed by the tlogServer, and thus awaiting to be flushed
+// which are still being processed by the tlogServer, and thus awaiting to be flushed.
+// A sequenceCache HAS to be thread-safe.
 type sequenceCache interface {
 	// Add a transaction to the cache
 	Add(sequenceIndex uint64, blockIndex int64, data []byte) error
@@ -473,8 +466,8 @@ type inMemorySequenceCache struct {
 	values map[int64]*dataHistory
 	// size of history blocks
 	size uint64
-	// make it async proof
-	mux sync.Mutex
+
+	mux sync.RWMutex
 }
 
 // Add implements sequenceCache.Add
@@ -513,8 +506,8 @@ func (sq *inMemorySequenceCache) Add(sequenceIndex uint64, blockIndex int64, dat
 
 // Get implements sequenceCache.Get
 func (sq *inMemorySequenceCache) Get(blockIndex int64) ([]byte, bool) {
-	sq.mux.Lock()
-	defer sq.mux.Unlock()
+	sq.mux.RLock()
+	defer sq.mux.RUnlock()
 
 	dh, ok := sq.values[blockIndex]
 	if !ok {
@@ -584,10 +577,10 @@ func (sq *inMemorySequenceCache) Evict(sequences ...uint64) (elements map[int64]
 
 // Empty implements sequenceCache.Empty
 func (sq *inMemorySequenceCache) Empty() bool {
-	sq.mux.Lock()
-	isEmpty := sq.size == 0
-	sq.mux.Unlock()
-	return isEmpty
+	sq.mux.RLock()
+	defer sq.mux.RUnlock()
+
+	return sq.size == 0
 }
 
 // newDataHistory creates a new data history
