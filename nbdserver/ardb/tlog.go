@@ -15,6 +15,11 @@ import (
 	tlogserver "github.com/zero-os/0-Disk/tlog/tlogserver/server"
 )
 
+const (
+	// maximum duration we wait for flush to finish
+	tlogFlushWaitSec = 10 * time.Second
+)
+
 func newTlogStorage(vdiskID, tlogrpc string, blockSize int64, storage backendStorage) (backendStorage, error) {
 	client, err := tlogclient.New(tlogrpc, vdiskID, 0, true)
 	if err != nil {
@@ -30,13 +35,14 @@ func newTlogStorageWithClient(vdiskID string, blockSize int64, client tlogClient
 	}
 
 	return &tlogStorage{
-		vdiskID:       vdiskID,
-		tlog:          client,
-		storage:       storage,
-		cache:         newInMemorySequenceCache(),
-		blockSize:     blockSize,
-		sequence:      0,
-		transactionCh: make(chan *transaction, transactionChCapacity),
+		vdiskID:        vdiskID,
+		tlog:           client,
+		storage:        storage,
+		cache:          newInMemorySequenceCache(),
+		blockSize:      blockSize,
+		sequence:       0,
+		transactionCh:  make(chan *transaction, transactionChCapacity),
+		cacheEmptyCond: sync.NewCond(&sync.Mutex{}),
 	}, nil
 }
 
@@ -58,6 +64,8 @@ type tlogStorage struct {
 	// while that content is still being transfered from cache to storage,
 	// would mean that no or old data would be retrieved instead.
 	storageMux sync.Mutex
+	// condition variable used to signal when the cache is empty
+	cacheEmptyCond *sync.Cond
 }
 
 type transaction struct {
@@ -107,13 +115,17 @@ func (tls *tlogStorage) Set(blockIndex int64, content []byte) error {
 			blockIndex, sequence, err)
 	}
 
+	// copy the content to avoid race condition with value in cache
+	transactionContent := make([]byte, len(content))
+	copy(transactionContent, content)
+
 	// scheduele tlog transaction, to be sent to the server
 	tls.transactionCh <- &transaction{
 		Operation: op,
 		Sequence:  sequence,
 		Offset:    uint64(blockIndex * tls.blockSize),
 		Timestamp: uint64(time.Now().Unix()),
-		Content:   content,
+		Content:   transactionContent,
 		Size:      length,
 	}
 
@@ -162,19 +174,27 @@ func (tls *tlogStorage) Delete(blockIndex int64) (err error) {
 
 // Flush implements backendStorage.Flush
 func (tls *tlogStorage) Flush() (err error) {
-	const sleepTime = 128 * time.Millisecond
-	for i := 0; i < 16; i++ {
-		if tls.cache.Empty() {
-			break
-		}
+	// ForceFlush at the latest sequence
+	tls.tlog.ForceFlushAtSeq(tls.getLatestSequence())
 
-		// notify the tlog server it should flush ASAP
-		err = tls.tlog.ForceFlush()
-		if err != nil {
-			return
+	// wait until the cache is empty or timeout
+	doneCh := make(chan struct{})
+	go func() {
+		tls.cacheEmptyCond.L.Lock()
+		if !tls.cache.Empty() {
+			tls.cacheEmptyCond.Wait()
 		}
+		tls.cacheEmptyCond.L.Unlock()
+		close(doneCh)
+	}()
 
-		time.Sleep(sleepTime + sleepTime*time.Duration(i))
+	select {
+	case <-time.After(tlogFlushWaitSec):
+		// if timeout, signal the condition variable anyway
+		// to avoid the goroutine blocked forever
+		tls.cacheEmptyCond.Signal()
+	case <-doneCh:
+		// wait returned
 	}
 
 	// make sure that the sequence cache is empty,
@@ -310,6 +330,14 @@ func (tls *tlogStorage) transactionSender(ctx context.Context) {
 }
 
 func (tls *tlogStorage) flushCachedContent(sequences []uint64) error {
+	defer func() {
+		tls.cacheEmptyCond.L.Lock()
+		if tls.cache.Empty() {
+			tls.cacheEmptyCond.Signal()
+		}
+		tls.cacheEmptyCond.L.Unlock()
+	}()
+
 	if len(sequences) == 0 {
 		return nil // no work to do
 	}
@@ -396,6 +424,13 @@ func (tls *tlogStorage) getNextSequenceIndex() (sequence uint64) {
 	return
 }
 
+// get the latest transaction sequence
+func (tls *tlogStorage) getLatestSequence() (sequence uint64) {
+	tls.sequenceMux.Lock()
+	defer tls.sequenceMux.Unlock()
+	return tls.sequence - 1
+}
+
 // tlogClient represents the tlog client interface used
 // by the tlogStorage, usually filled by (*tlogclient.Client)
 //
@@ -403,7 +438,7 @@ func (tls *tlogStorage) getNextSequenceIndex() (sequence uint64) {
 // for testing purposes
 type tlogClient interface {
 	Send(op uint8, seq, offset, timestamp uint64, data []byte, size uint64) error
-	ForceFlush() error
+	ForceFlushAtSeq(uint64) error
 	Recv() <-chan *tlogclient.Result
 	Close() error
 }

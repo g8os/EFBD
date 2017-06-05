@@ -481,24 +481,24 @@ func testBackendStorageDeadlock(t *testing.T, blockSize, blockCount int64, stora
 		for i := int64(0); i < blockCount; i += 2 {
 			blockIndex := i
 			wg.Add(1)
-			go func() {
+			go func(curTime int64) {
 				defer wg.Done()
 
 				// get preContent
 				preContent, err := storage.Get(blockIndex)
 				if err != nil {
-					t.Fatal(time, blockIndex, err)
+					t.Fatal(curTime, blockIndex, err)
 					return
 				}
 
 				// merge it
-				offset := 2 + time
+				offset := 2 + curTime
 				blockIndex = (blockIndex + 1) % blockCount
 				err = storage.Merge(blockIndex, offset, preContent)
 				if err != nil {
-					t.Fatal(time, blockIndex, err)
+					t.Fatal(curTime, blockIndex, err)
 				}
-			}()
+			}(time)
 		}
 	}
 
