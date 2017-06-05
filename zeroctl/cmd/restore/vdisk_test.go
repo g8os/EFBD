@@ -221,7 +221,7 @@ func newTestBackend(ctx context.Context, t *testing.T, vdiskID string, vdiskType
 		},
 	}
 
-	t.Log("serialize (yaml) 0-Disk conf to: ", nbdConfig.String())
+	t.Log("serialize (yaml) 0-Disk conf to: ", nbdConfigFile.Name())
 	// store nbd config in temporary location
 	_, err = nbdConfigFile.Write([]byte(nbdConfig.String()))
 	if err != nil {

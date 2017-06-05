@@ -7,15 +7,4 @@ jobs:
     - stage: test
       go: 1.8
       install: skip
-      script: TIMEOUT=5m make testgo
-    - stage: test
-      go: 1.8
-      install:
-        - ./tlog/install_dependencies.sh
-      script: TIMEOUT=5m make testcgo
-    - stage: test
-      go: 1.8
-      install:
-        - go get -u github.com/Jumpscale/go-raml
-        - ./tlog/install_capnp_0.6.0.sh
-      script: make testcodegen
+      script: go test -v -timeout 5m github.com/zero-os/0-Disk/zeroctl/cmd/restore  -run ^TestEndToEndReplayBootVdisk$
