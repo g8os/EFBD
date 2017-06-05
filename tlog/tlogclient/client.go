@@ -170,24 +170,10 @@ func (c *Client) Recv() <-chan *Result {
 			if tr != nil && len(tr.Sequences) > 0 {
 				// if it successfully received by server, delete from buffer
 				if tr.Status == tlog.BlockStatusRecvOK {
-					c.blockBuffer.Delete(tr.Sequences[0])
-				}
-
-				/* enclose this code part with comment because we currently doesn't
-				  have this case in server.
-				// if it failed to be received, promote it to be
-				// timed out as soon as possible.
-				if status == tlog.BlockStatusRecvFailed {
-					if err := c.blockBuffer.Promote(seq); err != nil {
-						// failed to promote, forward the server's response to user.
-						log.Infof("tlog client failed to promote %v, err: %v", seq, err)
-					} else {
-						// successfully promoted, ignore the response.
-						// we will resend it
-						continue
+					if len(tr.Sequences) > 0 { // should always be true, but we anticipate.
+						c.blockBuffer.Delete(tr.Sequences[0])
 					}
 				}
-				*/
 			}
 
 			reChan <- &Result{
@@ -288,7 +274,7 @@ func (c *Client) Send(op uint8, seq, offset, timestamp uint64,
 
 // send tlog block to server
 func (c *Client) send(op uint8, seq, offset, timestamp uint64,
-	data []byte, size uint64) (block *schema.TlogBlock, err error) {
+	data []byte, size uint64) (*schema.TlogBlock, error) {
 	hash := zerodisk.HashBytes(data)
 
 	send := func() (*schema.TlogBlock, error) {
@@ -304,17 +290,20 @@ func (c *Client) send(op uint8, seq, offset, timestamp uint64,
 		return block, c.bw.Flush()
 	}
 
+	var err error
+	var block *schema.TlogBlock
+
 	okToSend := true
 
 	for i := 0; i < sendRetryNum+1; i++ {
 		if okToSend {
 			block, err = send()
 			if err == nil {
-				return
+				return block, nil
 			}
 
 			if _, ok := err.(net.Error); !ok {
-				return // no need to rety if it is not network error.
+				return nil, err // no need to rety if it is not network error.
 			}
 		}
 
@@ -331,7 +320,7 @@ func (c *Client) send(op uint8, seq, offset, timestamp uint64,
 			okToSend = true
 		}
 	}
-	return
+	return nil, err
 }
 
 // Close the open connection, making this client invalid.
