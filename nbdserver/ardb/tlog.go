@@ -437,7 +437,7 @@ type tlogClient interface {
 
 // sequenceCache, is used to cache transactions, linked to their sequenceIndex,
 // which are still being processed by the tlogServer, and thus awaiting to be flushed.
-// A sequence cache does not have to be thread-safe
+// A sequenceCache HAS to be thread-safe.
 type sequenceCache interface {
 	// Add a transaction to the cache
 	Add(sequenceIndex uint64, blockIndex int64, data []byte) error
@@ -447,47 +447,6 @@ type sequenceCache interface {
 	Evict(sequences ...uint64) map[int64][]byte
 	// Empty returns true if the cache has no cached transactions
 	Empty() bool
-}
-
-// newThreadsafeSequenceCache turns a non-threadsafe sequence cache
-// into a threadsafe sequence cache,
-// for now only used for testing purposes
-func newThreadsafeSequenceCache(cache sequenceCache) sequenceCache {
-	return &threadsafeSequenceCache{cache: cache}
-}
-
-// used to make any non-thread safe sequenceCache, thread-safe
-type threadsafeSequenceCache struct {
-	cache sequenceCache
-	mux   sync.RWMutex
-}
-
-// Add implements sequenceCache.Add
-func (ts *threadsafeSequenceCache) Add(sequenceIndex uint64, blockIndex int64, data []byte) error {
-	ts.mux.Lock()
-	defer ts.mux.Unlock()
-	return ts.cache.Add(sequenceIndex, blockIndex, data)
-}
-
-// Get implements sequenceCache.Get
-func (ts *threadsafeSequenceCache) Get(blockIndex int64) ([]byte, bool) {
-	ts.mux.RLock()
-	defer ts.mux.RUnlock()
-	return ts.cache.Get(blockIndex)
-}
-
-// Evict implements sequenceCache.Evict
-func (ts *threadsafeSequenceCache) Evict(sequences ...uint64) map[int64][]byte {
-	ts.mux.Lock()
-	defer ts.mux.Unlock()
-	return ts.cache.Evict(sequences...)
-}
-
-// Empty implements sequenceCache.Empty
-func (ts *threadsafeSequenceCache) Empty() bool {
-	ts.mux.RLock()
-	defer ts.mux.RUnlock()
-	return ts.cache.Empty()
 }
 
 // newInMemorySequenceCache creates a new in-memory sequence cache
@@ -500,7 +459,6 @@ func newInMemorySequenceCache() *inMemorySequenceCache {
 
 // inMemorySequenceCache is used as the in-memory sequence cache,
 // for all transactions which the tlogserver is still processing.
-// NOTE: this is not thread-safe!
 type inMemorySequenceCache struct {
 	// mapping between sequenceIndex and blockIndex
 	sequences map[uint64]int64
@@ -508,10 +466,15 @@ type inMemorySequenceCache struct {
 	values map[int64]*dataHistory
 	// size of history blocks
 	size uint64
+
+	mux sync.RWMutex
 }
 
 // Add implements sequenceCache.Add
 func (sq *inMemorySequenceCache) Add(sequenceIndex uint64, blockIndex int64, data []byte) error {
+	sq.mux.Lock()
+	defer sq.mux.Unlock()
+
 	// store the actual data
 	dh, ok := sq.values[blockIndex]
 	if !ok {
@@ -543,6 +506,9 @@ func (sq *inMemorySequenceCache) Add(sequenceIndex uint64, blockIndex int64, dat
 
 // Get implements sequenceCache.Get
 func (sq *inMemorySequenceCache) Get(blockIndex int64) ([]byte, bool) {
+	sq.mux.RLock()
+	defer sq.mux.RUnlock()
+
 	dh, ok := sq.values[blockIndex]
 	if !ok {
 		return nil, false
@@ -553,6 +519,9 @@ func (sq *inMemorySequenceCache) Get(blockIndex int64) ([]byte, bool) {
 
 // Evict implements sequenceCache.Evict
 func (sq *inMemorySequenceCache) Evict(sequences ...uint64) (elements map[int64][]byte) {
+	sq.mux.Lock()
+	defer sq.mux.Unlock()
+
 	elements = make(map[int64][]byte)
 
 	var ok bool
@@ -608,6 +577,9 @@ func (sq *inMemorySequenceCache) Evict(sequences ...uint64) (elements map[int64]
 
 // Empty implements sequenceCache.Empty
 func (sq *inMemorySequenceCache) Empty() bool {
+	sq.mux.RLock()
+	defer sq.mux.RUnlock()
+
 	return sq.size == 0
 }
 

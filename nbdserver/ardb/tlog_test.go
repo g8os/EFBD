@@ -283,12 +283,8 @@ func TestInMemorySequenceCacheMassEviction(t *testing.T) {
 	if !assert.NotNil(t, sq) {
 		return
 	}
-	ssq := newThreadsafeSequenceCache(sq)
-	if !assert.NotNil(t, ssq) {
-		return
-	}
 
-	testSequenceCacheMassEviction(t, ssq, func(sn, vn int) {
+	testSequenceCacheMassEviction(t, sq, func(sn, vn int) {
 		assert.Equal(t, sn, len(sq.sequences))
 		assert.Equal(t, vn, len(sq.values))
 	})
