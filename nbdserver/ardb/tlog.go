@@ -48,6 +48,7 @@ func newTlogStorageWithClient(vdiskID string, blockSize int64, client tlogClient
 
 type tlogStorage struct {
 	vdiskID       string
+	mux           sync.RWMutex
 	tlog          tlogClient
 	storage       backendStorage
 	cache         sequenceCache
@@ -78,6 +79,12 @@ type transaction struct {
 
 // Set implements backendStorage.Set
 func (tls *tlogStorage) Set(blockIndex int64, content []byte) error {
+	tls.mux.Lock()
+	defer tls.mux.Unlock()
+
+	return tls.set(blockIndex, content)
+}
+func (tls *tlogStorage) set(blockIndex int64, content []byte) error {
 	var op uint8
 	var length uint64
 
@@ -135,10 +142,23 @@ func (tls *tlogStorage) Set(blockIndex int64, content []byte) error {
 }
 
 // Merge implements backendStorage.Merge
-func (tls *tlogStorage) Merge(blockIndex, offset int64, content []byte) (err error) {
+func (tls *tlogStorage) Merge(blockIndex, offset int64, content []byte) error {
+	tls.mux.Lock()
+	defer tls.mux.Unlock()
+
+	mergedContent, err := tls.merge(blockIndex, offset, content)
+	if err != nil {
+		return err
+	}
+
+	// store new content
+	return tls.set(blockIndex, mergedContent)
+}
+
+func (tls *tlogStorage) merge(blockIndex, offset int64, content []byte) ([]byte, error) {
 	mergedContent, err := tls.get(blockIndex)
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	// ensure merge block is of the proper size,
@@ -154,20 +174,24 @@ func (tls *tlogStorage) Merge(blockIndex, offset int64, content []byte) (err err
 	// merge new with old content
 	copy(mergedContent[offset:], content)
 
-	// store new content
-	err = tls.Set(blockIndex, mergedContent)
-	return
+	return mergedContent, nil
 }
 
 // Get implements backendStorage.Get
 func (tls *tlogStorage) Get(blockIndex int64) (content []byte, err error) {
+	tls.mux.RLock()
+	defer tls.mux.RUnlock()
+
 	content, err = tls.get(blockIndex)
 	return
 }
 
 // Delete implements backendStorage.Delete
 func (tls *tlogStorage) Delete(blockIndex int64) (err error) {
-	err = tls.Set(blockIndex, nil)
+	tls.mux.Lock()
+	defer tls.mux.Unlock()
+
+	err = tls.set(blockIndex, nil)
 	return
 }
 
@@ -326,6 +350,9 @@ func (tls *tlogStorage) flushCachedContent(sequences []uint64) error {
 	if len(sequences) == 0 {
 		return nil // no work to do
 	}
+
+	tls.mux.Lock()
+	defer tls.mux.Unlock()
 
 	elements := tls.cache.Evict(sequences...)
 
