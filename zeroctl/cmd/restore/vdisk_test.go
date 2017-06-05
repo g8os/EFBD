@@ -7,7 +7,6 @@ import (
 	mrand "math/rand"
 	"os"
 	"testing"
-	"time"
 
 	zerodiskcfg "github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/gonbdserver/nbd"
@@ -120,9 +119,6 @@ func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 		return
 	}
 
-	// give tlogserver time to flush
-	time.Sleep(3 * time.Second)
-
 	// 4. Validate that all the data is retrievable and correct;
 
 	for i := 0; i < blocks; i++ {
@@ -168,9 +164,6 @@ func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 	if !assert.Nil(t, err) {
 		return
 	}
-
-	// give backend time to flush
-	time.Sleep(3 * time.Second)
 
 	// 8. Validate that all the data is again retrievable and correct;
 
