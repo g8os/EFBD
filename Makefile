@@ -2,6 +2,8 @@ OUTPUT ?= bin
 GOOS ?= linux
 GOARCH ?= amd64
 
+TIMEOUT ?= 2m
+
 PACKAGE = github.com/zero-os/0-Disk
 COMMIT_HASH = $(shell git rev-parse --short HEAD 2>/dev/null)
 BUILD_DATE = $(shell date +%FT%T%z)
@@ -38,10 +40,10 @@ tlogserver: $(OUTPUT)
 test: testgo testcgo testcodegen
 
 testgo:
-	go test -race -timeout 2m $(PACKAGES)
+	go test -race -timeout $(TIMEOUT) $(PACKAGES)
 
 testcgo:
-	GODEBUG=cgocheck=0 go test -race -timeout 2m -tags 'isal' $(PACKAGES)
+	GODEBUG=cgocheck=0 go test -race -timeout $(TIMEOUT) -tags 'isal' $(PACKAGES)
 
 testcodegen:
 	./scripts/codegeneration.sh
