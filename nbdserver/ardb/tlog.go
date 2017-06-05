@@ -115,13 +115,17 @@ func (tls *tlogStorage) Set(blockIndex int64, content []byte) error {
 			blockIndex, sequence, err)
 	}
 
+	// copy the content to avoid race condition with value in cache
+	transactionContent := make([]byte, len(content))
+	copy(transactionContent, content)
+
 	// scheduele tlog transaction, to be sent to the server
 	tls.transactionCh <- &transaction{
 		Operation: op,
 		Sequence:  sequence,
 		Offset:    uint64(blockIndex * tls.blockSize),
 		Timestamp: uint64(time.Now().Unix()),
-		Content:   content,
+		Content:   transactionContent,
 		Size:      length,
 	}
 
