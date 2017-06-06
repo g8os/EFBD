@@ -200,27 +200,89 @@ type VdiskConfig struct {
 
 // StorageType returns the type of storage this vdisk uses
 func (cfg *VdiskConfig) StorageType() StorageType {
-	switch cfg.Type {
-	case VdiskTypeBoot:
+	if cfg.Type&propDeduped != 0 {
 		return StorageDeduped
-	case VdiskTypeCache, VdiskTypeDB, VdiskTypeTmp:
-		return StorageNondeduped
-	default:
-		return StorageNil
 	}
+
+	// TODO: handle propPersistent flag
+	// ignore the propPersistent flag for now,
+	// and treat non-persistent and persistent memory,
+	// both as persistent nondeduped storage
+	return StorageNondeduped
+}
+
+// Redundant returns whether or not the data of this vdisk
+// has to be redundant (using the tlog server).
+func (cfg *VdiskConfig) Redundant() bool {
+	return cfg.Type&propRedundant != 0
+}
+
+// TemplateSupport returns whether or not
+// this vdisk supports a template (root) server,
+// to get the data in case the data isn't available on
+// the normal (local) storage cluster.
+// TODO: use this to add the option of template support,
+//       both in the deduped as well as the nondeduped storage
+//       see: https://github.com/zero-os/0-Disk/issues/223
+func (cfg *VdiskConfig) TemplateSupport() bool {
+	return cfg.Type&propTemplateSupport != 0
 }
 
 // VdiskType represents the type of a vdisk
-type VdiskType string
+type VdiskType uint8
+
+// Validate this vdisk type
+func (t VdiskType) Validate() error {
+	switch t {
+	case VdiskTypeBoot, VdiskTypeDB, VdiskTypeCache, VdiskTypeTmp:
+		return nil
+	default:
+		return fmt.Errorf("%v is an invalid vdisk type", t)
+	}
+}
+
+// String returns the storage type as a string value
+func (t VdiskType) String() string {
+	switch t {
+	case VdiskTypeBoot:
+		return vdiskTypeBootStr
+	case VdiskTypeDB:
+		return vdiskTypeDBStr
+	case VdiskTypeCache:
+		return vdiskTypeCacheStr
+	case VdiskTypeTmp:
+		return vdiskTypeTmpStr
+	default:
+		return vdiskTypeNilStr
+	}
+}
+
+// SetString allows you to set this VdiskType using
+// the correct string representation
+func (t *VdiskType) SetString(s string) error {
+	switch s {
+	case vdiskTypeBootStr:
+		*t = VdiskTypeBoot
+	case vdiskTypeDBStr:
+		*t = VdiskTypeDB
+	case vdiskTypeCacheStr:
+		*t = VdiskTypeCache
+	case vdiskTypeTmpStr:
+		*t = VdiskTypeTmp
+	default:
+		return fmt.Errorf("%q is not a valid VdiskType", s)
+	}
+
+	return nil
+}
 
 // MarshalYAML implements yaml.Marshaler.MarshalYAML
-func (t *VdiskType) MarshalYAML() (interface{}, error) {
-	switch vt := *t; vt {
-	case VdiskTypeBoot, VdiskTypeDB, VdiskTypeCache:
-		return string(vt), nil
-	default:
-		return nil, fmt.Errorf("%q is not a valid VdiskType", t)
+func (t VdiskType) MarshalYAML() (interface{}, error) {
+	if s := t.String(); s != "" {
+		return s, nil
 	}
+
+	return nil, fmt.Errorf("%v is not a valid VdiskType", t)
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.UnmarshalYAML
@@ -228,27 +290,29 @@ func (t *VdiskType) UnmarshalYAML(unmarshal func(interface{}) error) (err error)
 	var rawType string
 	err = unmarshal(&rawType)
 	if err != nil {
-		return fmt.Errorf("%q is not a valid VdiskType", t)
+		err = fmt.Errorf("%q is not a valid VdiskType: %s", t, err)
+		return
 	}
 
-	vtype := VdiskType(rawType)
-	switch vtype {
-	case VdiskTypeBoot, VdiskTypeDB, VdiskTypeCache, VdiskTypeTmp:
-		*t = vtype
-	default:
-		err = fmt.Errorf("%q is not a valid VdiskType", t)
-	}
-
+	err = t.SetString(rawType)
 	return
 }
 
-// valid vdisk types
 const (
-	VdiskTypeNil   = VdiskType("")
-	VdiskTypeBoot  = VdiskType("boot")
-	VdiskTypeDB    = VdiskType("db")
-	VdiskTypeCache = VdiskType("cache")
-	VdiskTypeTmp   = VdiskType("tmp")
+	vdiskTypeNilStr   = ""
+	vdiskTypeBootStr  = "boot"
+	vdiskTypeDBStr    = "db"
+	vdiskTypeCacheStr = "cache"
+	vdiskTypeTmpStr   = "tmp"
+)
+
+// valid vdisk types
+// based on /docs/README.md#zero-os-0-disk
+const (
+	VdiskTypeBoot  = propDeduped | propPersistent | propRedundant | propTemplateSupport | propRollback
+	VdiskTypeDB    = propPersistent | propRedundant | propRollback | propOptimized
+	VdiskTypeCache = propPersistent | propOptimized
+	VdiskTypeTmp   = propOptimized
 )
 
 // StorageType represents the type of storage of a vdisk
@@ -276,6 +340,16 @@ const (
 	StorageNil     StorageType = 0
 	StorageDeduped StorageType = 1 << iota
 	StorageNondeduped
+)
+
+// Vdisk Properties
+const (
+	propDeduped VdiskType = 1 << iota
+	propPersistent
+	propRedundant
+	propTemplateSupport
+	propRollback
+	propOptimized
 )
 
 func init() {
