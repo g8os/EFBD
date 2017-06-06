@@ -5,7 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 
 	_ "net/http/pprof"
 
@@ -163,6 +166,11 @@ func main() {
 	redisPool := ardb.NewRedisPool(poolDial)
 	defer redisPool.Close()
 
+	// This is a HACK to work around issue #243
+	// a solution is in progress, but this should allow
+	// the app from not hanging up on a SIGHUP signal
+	go sighupHack()
+
 	storageClusterClientFactory, err := storagecluster.NewClusterClientFactory(
 		configPath, log.New("storagecluster", logLevel, logHandlers...))
 	if err != nil {
@@ -200,4 +208,28 @@ func main() {
 
 	// listen to requests
 	l.Listen(configCtx, ctx, &sessionWaitGroup)
+}
+
+func sighupHack() {
+	log.Info("HACK for #243 is active")
+	defer func() {
+		log.Info("EXIT HACK for #243")
+		if r := recover(); r != nil {
+			log.Error("HACK for #243 has panicked: ", r)
+			go sighupHack()
+		}
+	}()
+
+	ch := make(chan os.Signal)
+	signal.Notify(ch, syscall.SIGHUP)
+	defer signal.Stop(ch)
+
+	for {
+		switch s := <-ch; s {
+		case syscall.SIGHUP:
+			log.Debug("HACK for #243 received SIGHUP signal: ", s)
+		default:
+			log.Error("HACK for #243 received unknown signal: ", s)
+		}
+	}
 }
