@@ -3,6 +3,7 @@ package tlogclient
 import (
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -11,12 +12,13 @@ import (
 	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
 )
 
-// TestSimpleReconnect test that client can connect again after getting disconnected
-func TestSimpleReconnect(t *testing.T) {
+// TestReconnectFromSend test client can connect again after getting disconnected
+// when doing 'Send'
+func TestReconnectFromSend(t *testing.T) {
 	const (
 		vdisk         = "12345"
 		firstSequence = 0
-		numLogs       = 100
+		numLogs       = 50
 	)
 
 	serv, _, err := createTestServer()
@@ -43,7 +45,9 @@ func TestSimpleReconnect(t *testing.T) {
 		x := uint64(i)
 
 		if i%5 == 0 {
+			client.wLock.Lock()
 			client.conn.Close() // simulate closed connection by closing the socket
+			client.wLock.Unlock()
 		}
 
 		// send
@@ -52,6 +56,51 @@ func TestSimpleReconnect(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+// TestReconnectFromRead test that client can do reconnect from 'Recv'
+// scenarios:
+// (1) create client
+// (2) close connection
+// (3) start the receiver -> the reconnect is going to happen here
+// (4) Send ForceFlush using private API, so it doesn't have reconnect logic
+// (5) wait for the confirmation, that force flush arrived
+func TestReconnectFromRead(t *testing.T) {
+	const (
+		vdisk = "12345"
+	)
+	// test server
+	s, _, err := createTestServer()
+	assert.Nil(t, err)
+	go s.Listen()
+
+	//readTimeout = 10 * time.Millisecond
+	// Step #1
+	client, err := New(s.ListenAddr(), vdisk, 0, false)
+	assert.Nil(t, err)
+
+	// Step #2
+	client.conn.Close()
+
+	// Step #3
+	respCh := client.Recv()
+	time.Sleep(2 * readTimeout) // wait for the re-connect
+
+	// Step #4
+	client.wLock.Lock()
+	err = tlog.WriteMessageType(client.conn, tlog.MessageForceFlush)
+	client.wLock.Unlock()
+	assert.Nil(t, err)
+
+	// Step #5
+	select {
+	case <-time.After(5 * time.Second):
+		t.Fatal("TestReconnectFromRead failed : too long")
+	case resp := <-respCh:
+		assert.Nil(t, resp.Err)
+		assert.NotNil(t, resp.Resp)
+		assert.Equal(t, resp.Resp.Status, tlog.BlockStatusForceFlushReceived)
+	}
 }
 
 func waitForBlockReceivedResponse(t *testing.T, client *Client, minSequence, maxSequence uint64) {

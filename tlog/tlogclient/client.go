@@ -19,8 +19,8 @@ import (
 const (
 	sendRetryNum     = 5
 	sendSleepTime    = 500 * time.Millisecond // sleep duration before retrying the Send
-	resendTimeoutDur = 5 * time.Second        // duration to wait before re-send the tlog.
-	readTimeout      = 5 * time.Second
+	resendTimeoutDur = 2 * time.Second        // duration to wait before re-send the tlog.
+	readTimeout      = 2 * time.Second
 )
 
 // Response defines a response from tlog server
@@ -56,6 +56,8 @@ type Client struct {
 	rLock      sync.Mutex
 	ctx        context.Context
 	cancelFunc context.CancelFunc
+
+	lastConnected time.Time
 }
 
 // New creates a new tlog client for a vdisk with 'addr' is the tlogserver address.
@@ -80,19 +82,37 @@ func New(addr, vdiskID string, firstSequence uint64, resetFirstSeq bool) (*Clien
 	return client, nil
 }
 
-func (c *Client) connect(firstSequence uint64, resetFirstSeq bool) error {
+// reconnect to server
+// it must be called under wLock
+func (c *Client) reconnect(closedTime time.Time) (err error) {
+	if c.lastConnected.After(closedTime) { // another goroutine made the connection work again
+		return
+	}
+
+	if err = c.connect(c.blockBuffer.MinSequence(), false); err == nil {
+		c.lastConnected = time.Now()
+	}
+	return
+}
+
+// connect to server
+func (c *Client) connect(firstSequence uint64, resetFirstSeq bool) (err error) {
 	c.rLock.Lock()
 	defer c.rLock.Unlock()
 
-	err := c.createConn()
-	if err != nil {
+	defer func() {
+		if err == nil {
+			c.lastConnected = time.Now()
+		}
+	}()
+
+	if err = c.createConn(); err != nil {
 		return fmt.Errorf("client couldn't be created: %s", err.Error())
 	}
 
-	err = c.handshake(firstSequence, resetFirstSeq)
-	if err != nil {
-		if err := c.conn.Close(); err != nil {
-			log.Debug("couldn't close open connection of invalid client:", err)
+	if err = c.handshake(firstSequence, resetFirstSeq); err != nil {
+		if errClose := c.conn.Close(); errClose != nil {
+			log.Debug("couldn't close open connection of invalid client:", errClose)
 		}
 		return fmt.Errorf("client handshake failed: %s", err.Error())
 	}
@@ -161,9 +181,25 @@ func (c *Client) Recv() <-chan *Result {
 		for {
 			tr, err := c.recvOne()
 
+			nerr, isNetErr := err.(net.Error)
+
 			// it is timeout error
 			// client can't really read something
-			if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
+			if isNetErr && nerr.Timeout() {
+				continue
+			}
+
+			// EOF and other network error triggers reconnection
+			if isNetErr || err == io.EOF {
+				log.Infof("tlogclient : reconnect from read because of : %v", err)
+				err := func() error {
+					c.wLock.Lock()
+					defer c.wLock.Unlock()
+					return c.reconnect(time.Now())
+				}()
+				if err != nil {
+					log.Infof("Recv failed to reconnect: %v", err)
+				}
 				continue
 			}
 
@@ -306,6 +342,7 @@ func (c *Client) send(op uint8, seq, offset, timestamp uint64,
 				return nil, err // no need to rety if it is not network error.
 			}
 		}
+		closedTime := time.Now()
 
 		// First sleep = 0 second,
 		// so we don't need to sleep in case of simple closed connection.
@@ -313,7 +350,7 @@ func (c *Client) send(op uint8, seq, offset, timestamp uint64,
 		// the network connection or the tlog server that need time to be recovered.
 		time.Sleep(time.Duration(i) * sendSleepTime)
 
-		if err = c.connect(c.blockBuffer.MinSequence(), false); err != nil {
+		if err = c.reconnect(closedTime); err != nil {
 			log.Infof("tlog client : reconnect attemp(%v) failed:%v", i, err)
 			okToSend = false
 		} else {
