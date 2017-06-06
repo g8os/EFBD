@@ -11,13 +11,12 @@ import (
 	_ "net/http/pprof"
 
 	"github.com/zero-os/0-Disk"
-	"github.com/zero-os/0-Disk/log"
-
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/gonbdserver/nbd"
+	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbdserver/ardb"
 	"github.com/zero-os/0-Disk/nbdserver/lba"
 	"github.com/zero-os/0-Disk/redisstub"
-	"github.com/zero-os/0-Disk/storagecluster"
 	"github.com/zero-os/0-Disk/tlog"
 	tlogserver "github.com/zero-os/0-Disk/tlog/tlogserver/server"
 )
@@ -127,14 +126,6 @@ func main() {
 		log.Info("Using tlog rpc at", tlogrpcaddress)
 	}
 
-	exportController, err := NewExportController(
-		configPath,
-		tlsonly,
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	var sessionWaitGroup sync.WaitGroup
 
 	ctx, cancelFunc := context.WithCancel(context.Background())
@@ -165,23 +156,18 @@ func main() {
 	redisPool := ardb.NewRedisPool(poolDial)
 	defer redisPool.Close()
 
-	storageClusterClientFactory, err := storagecluster.NewClusterClientFactory(
-		configPath, log.New("storagecluster", logLevel, logHandlers...))
+	configHotReloader, err := config.NewHotReloader(configPath)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	// listens to incoming requests to create a dynamic StorageClusterConfig,
-	// this is run on a goroutine, such that it can create
-	// internal listeners as a goroutine
-	go storageClusterClientFactory.Listen(configCtx)
+	go configHotReloader.Listen(configCtx)
+	defer configHotReloader.Close()
 
 	backendFactory, err := ardb.NewBackendFactory(ardb.BackendFactoryConfig{
-		Pool:            redisPool,
-		SCClientFactory: storageClusterClientFactory,
-		TLogRPCAddress:  tlogrpcaddress,
-		ConfigPath:      configPath,
-		LBACacheLimit:   lbacachelimit,
+		Pool:              redisPool,
+		ConfigHotReloader: configHotReloader,
+		TLogRPCAddress:    tlogrpcaddress,
+		LBACacheLimit:     lbacachelimit,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -193,6 +179,14 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 		return
+	}
+
+	exportController, err := NewExportController(
+		configHotReloader,
+		tlsonly,
+	)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	// set export config controller,
