@@ -26,7 +26,7 @@ func TestForceFlush(t *testing.T) {
 		vdiskID          = "12345"
 		firstSequence    = 0
 		forceFlushPeriod = 5
-		numLogs          = forceFlushPeriod * 20
+		numLogs          = forceFlushPeriod * 6
 	)
 
 	// create tlog client

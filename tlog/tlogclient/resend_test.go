@@ -4,6 +4,7 @@ import (
 	"io"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -21,6 +22,34 @@ func (pwf pipeWriterFlush) Flush() error {
 	return nil
 }
 
+// implements pipe read with timeout
+type pipeReaderTimeout struct {
+	*io.PipeReader
+}
+
+// Read implements read with timeout
+func (prt pipeReaderTimeout) Read(data []byte) (int, error) {
+	type result struct {
+		n   int
+		err error
+	}
+	resultCh := make(chan result, 1)
+
+	go func() {
+		n, err := prt.PipeReader.Read(data)
+		resultCh <- result{
+			n:   n,
+			err: err,
+		}
+	}()
+	select {
+	case <-time.After(readTimeout):
+		return 0, io.EOF
+	case res := <-resultCh:
+		return res.n, res.err
+	}
+}
+
 // dummy tlog server that only receive request
 // and give response.
 // It use io.Pipe to simulate TCP connection.
@@ -30,7 +59,7 @@ type dummyServer struct {
 	reqPipeReader *io.PipeReader
 
 	respPipeWriter *io.PipeWriter
-	respPipeReader *io.PipeReader
+	respPipeReader pipeReaderTimeout
 }
 
 func newDummyServer(s *server.Server) *dummyServer {
@@ -43,7 +72,9 @@ func newDummyServer(s *server.Server) *dummyServer {
 		},
 		reqPipeReader:  reqRd,
 		respPipeWriter: respW,
-		respPipeReader: respRd,
+		respPipeReader: pipeReaderTimeout{
+			PipeReader: respRd,
+		},
 	}
 }
 
@@ -83,6 +114,8 @@ func (ds *dummyServer) run(t *testing.T, logsToIgnore map[uint64]struct{}) error
 }
 
 // TestResendTimeout test client resend in case of timeout
+// it simulates timeout by create dummy server that
+// ignore some of the logs
 func TestResendTimeout(t *testing.T) {
 	const (
 		vdisk         = "12345"

@@ -88,8 +88,8 @@ func (c *Client) decodeHandshakeResponse() (*schema.HandshakeResponse, error) {
 	return &resp, err
 }
 
-func (c *Client) decodeBlockResponse() (*schema.TlogResponse, error) {
-	msg, err := capnp.NewDecoder(c.rd).Decode()
+func (c *Client) decodeBlockResponse(rd io.Reader) (*schema.TlogResponse, error) {
+	msg, err := capnp.NewDecoder(rd).Decode()
 	if err != nil {
 		return nil, err
 	}
