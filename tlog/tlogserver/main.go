@@ -2,9 +2,12 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"net/http"
 	_ "net/http/pprof"
+	"os"
 
+	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
@@ -94,4 +97,20 @@ func main() {
 	}
 
 	server.Listen()
+}
+
+func init() {
+	flag.Usage = func() {
+		var exe string
+		if len(os.Args) > 0 {
+			exe = os.Args[0]
+		} else {
+			exe = "tlogserver"
+		}
+
+		fmt.Fprintln(os.Stderr, "tlogserver", zerodisk.CurrentVersion)
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage of", exe+":")
+		flag.PrintDefaults()
+	}
 }

@@ -5,10 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 
 	_ "net/http/pprof"
 
+	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/log"
 
 	"github.com/zero-os/0-Disk/gonbdserver/nbd"
@@ -200,4 +202,20 @@ func main() {
 
 	// listen to requests
 	l.Listen(configCtx, ctx, &sessionWaitGroup)
+}
+
+func init() {
+	flag.Usage = func() {
+		var exe string
+		if len(os.Args) > 0 {
+			exe = os.Args[0]
+		} else {
+			exe = "nbdserver"
+		}
+
+		fmt.Fprintln(os.Stderr, "nbdserver", zerodisk.CurrentVersion)
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage of", exe+":")
+		flag.PrintDefaults()
+	}
 }
