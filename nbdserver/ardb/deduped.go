@@ -12,14 +12,22 @@ import (
 )
 
 // newDedupedStorage returns the deduped backendStorage implementation
-func newDedupedStorage(vdiskID string, blockSize int64, provider redisConnectionProvider, vlba *lba.LBA) backendStorage {
-	return &dedupedStorage{
+func newDedupedStorage(vdiskID string, blockSize int64, provider redisConnectionProvider, templateSupport bool, vlba *lba.LBA) backendStorage {
+	dedupedStorage := &dedupedStorage{
 		blockSize:       blockSize,
 		vdiskID:         vdiskID,
 		zeroContentHash: zerodisk.HashBytes(make([]byte, blockSize)),
 		provider:        provider,
 		lba:             vlba,
 	}
+
+	if templateSupport {
+		dedupedStorage.getContent = dedupedStorage.getLocalOrRemoteContent
+	} else {
+		dedupedStorage.getContent = dedupedStorage.getLocalContent
+	}
+
+	return dedupedStorage
 }
 
 // dedupedStorage is a backendStorage implementation,
@@ -31,7 +39,12 @@ type dedupedStorage struct {
 	zeroContentHash zerodisk.Hash
 	provider        redisConnectionProvider
 	lba             *lba.LBA
+	getContent      dedupedContentGetter
 }
+
+// used to provide different content getters based on the vdisk properties
+// it boils down to the question: does it have template support?
+type dedupedContentGetter func(hash zerodisk.Hash) (content []byte, err error)
 
 // Set implements backendStorage.Set
 func (ds *dedupedStorage) Set(blockIndex int64, content []byte) (err error) {
@@ -121,22 +134,25 @@ func (ds *dedupedStorage) getFallbackRedisConnection(hash zerodisk.Hash) (redis.
 	return ds.provider.FallbackRedisConnection(int64(hash[0]))
 }
 
-// getContent from the local storage,
-// if the content can't be found locally, we'll try to fetch it from the root (remote) storage.
+// getLocalContent gets content from the local storage
+func (ds *dedupedStorage) getLocalContent(hash zerodisk.Hash) (content []byte, err error) {
+	conn, err := ds.getRedisConnection(hash)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+
+	content, err = redisBytes(conn.Do("GET", hash.Bytes()))
+	return
+}
+
+// getLocalOrRemoteContent gets content from the local storage,
+// or if the content can't be found locally, we'll try to fetch it from the root (remote) storage.
 // if the content is available in the remote storage,
 // we'll also try to store it in the local storage before returning that content
-func (ds *dedupedStorage) getContent(hash zerodisk.Hash) (content []byte, err error) {
+func (ds *dedupedStorage) getLocalOrRemoteContent(hash zerodisk.Hash) (content []byte, err error) {
 	// try to fetch it from the local storage
-	content, err = func() (content []byte, err error) {
-		conn, err := ds.getRedisConnection(hash)
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-
-		content, err = redisBytes(conn.Do("GET", hash.Bytes()))
-		return
-	}()
+	content, err = ds.getLocalContent(hash)
 	if err != nil || content != nil {
 		return // critical err, or content is found
 	}
@@ -154,6 +170,7 @@ func (ds *dedupedStorage) getContent(hash zerodisk.Hash) (content []byte, err er
 
 		content, err = redisBytes(conn.Do("GET", hash.Bytes()))
 		if err != nil {
+			content = nil
 			log.Debugf(
 				"content for %v not available in local-, nor in remote storage: %s",
 				hash, err.Error())

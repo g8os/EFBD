@@ -7,11 +7,11 @@ import (
 
 	"github.com/zero-os/0-Disk/log"
 
+	"github.com/garyburd/redigo/redis"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/gonbdserver/nbd"
 	"github.com/zero-os/0-Disk/nbdserver/lba"
 	"github.com/zero-os/0-Disk/storagecluster"
-	"github.com/garyburd/redigo/redis"
 )
 
 // shared constants
@@ -111,9 +111,11 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	// GridAPI returns the vdisk size in GiB
 	vdiskSize := int64(vdisk.Size) * gibibyteAsBytes
 
+	templateSupport := vdisk.TemplateSupport()
+
 	switch storageType := vdisk.StorageType(); storageType {
 	case config.StorageNondeduped:
-		storage = newNonDedupedStorage(vdiskID, blockSize, redisProvider)
+		storage = newNonDedupedStorage(vdiskID, blockSize, templateSupport, redisProvider)
 	case config.StorageDeduped:
 		cacheLimit := f.lbaCacheLimit
 		if cacheLimit < lba.BytesPerShard {
@@ -140,26 +142,18 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 			return
 		}
 
-		storage = newDedupedStorage(vdiskID, blockSize, redisProvider, vlba)
+		storage = newDedupedStorage(
+			vdiskID, blockSize, redisProvider, templateSupport, vlba)
 	default:
 		err = fmt.Errorf("unsupported vdisk storage type %q", storageType)
 	}
 
-	if f.tlogRPCAddress != "" {
-		switch vdisk.Type {
-		case config.VdiskTypeDB, config.VdiskTypeBoot:
-			log.Debugf("creating tlogStorage for backend %v (%v)",
-				vdiskID, vdisk.Type)
-			storage, err = newTlogStorage(
-				vdiskID, f.tlogRPCAddress, blockSize, storage)
-			if err != nil {
-				log.Infof("couldn't create tlog storage: %s", err.Error())
-				return
-			}
-
-		default:
-			log.Debugf("not creating tlogStorage for backend %v (%v)",
-				vdiskID, vdisk.Type)
+	if vdisk.Redundant() && f.tlogRPCAddress != "" {
+		log.Debugf("creating tlogStorage for backend %v (%v)", vdiskID, vdisk.Type)
+		storage, err = newTlogStorage(vdiskID, f.tlogRPCAddress, blockSize, storage)
+		if err != nil {
+			log.Infof("couldn't create tlog storage: %s", err.Error())
+			return
 		}
 	}
 

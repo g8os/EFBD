@@ -285,12 +285,13 @@ func (cc *ClusterClient) loadConfig() bool {
 		return false
 	}
 
-	// check vdiskType, and sure it's the same one as last time
-	if cc.vdiskType != config.VdiskTypeNil && cc.vdiskType != vdisk.Type {
+	// validate vdiskType, and make sure it's the same one as last time
+	if cc.vdiskType.Validate() == nil && cc.vdiskType != vdisk.Type {
 		cc.logger.Infof("wrong type for vdisk %q, expected %q, while received %q",
 			cc.vdiskID, cc.vdiskType, vdisk.Type)
 		return false
 	}
+
 	cc.vdiskType = vdisk.Type
 
 	if cc.storageClusterName != "" {

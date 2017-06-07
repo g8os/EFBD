@@ -72,7 +72,7 @@ func TestTlogStorageWithDeduped(t *testing.T) {
 	)
 
 	redisProvider := newTestRedisProvider(memRedis, nil) // root = nil
-	storage := createTestDedupedStorage(t, vdiskID, blockSize, blockCount, redisProvider)
+	storage := createTestDedupedStorage(t, vdiskID, blockSize, blockCount, false, redisProvider)
 	if !assert.NotNil(t, storage) {
 		return
 	}
@@ -96,7 +96,7 @@ func TestTlogStorageForceFlushWithDeduped(t *testing.T) {
 	)
 
 	redisProvider := newTestRedisProvider(memRedis, nil) // root = nil
-	storage := createTestDedupedStorage(t, vdiskID, blockSize, blockCount, redisProvider)
+	storage := createTestDedupedStorage(t, vdiskID, blockSize, blockCount, false, redisProvider)
 	if !assert.NotNil(t, storage) {
 		return
 	}
@@ -120,7 +120,7 @@ func TestTlogStorageDeadlockWithDeduped(t *testing.T) {
 	)
 
 	redisProvider := newTestRedisProvider(memRedis, nil) // root = nil
-	storage := createTestDedupedStorage(t, vdiskID, blockSize, blockCount, redisProvider)
+	storage := createTestDedupedStorage(t, vdiskID, blockSize, blockCount, false, redisProvider)
 	if !assert.NotNil(t, storage) {
 		return
 	}
@@ -143,7 +143,7 @@ func TestTlogStorageWithNondeduped(t *testing.T) {
 	)
 
 	redisProvider := newTestRedisProvider(memRedis, nil) // root = nil
-	storage := createTestNondedupedStorage(t, vdiskID, blockSize, redisProvider)
+	storage := createTestNondedupedStorage(t, vdiskID, blockSize, false, redisProvider)
 	if !assert.NotNil(t, storage) {
 		return
 	}
@@ -166,7 +166,7 @@ func TestTlogStorageForceFlushWithNondeduped(t *testing.T) {
 	)
 
 	redisProvider := newTestRedisProvider(memRedis, nil) // root = nil
-	storage := createTestNondedupedStorage(t, vdiskID, blockSize, redisProvider)
+	storage := createTestNondedupedStorage(t, vdiskID, blockSize, false, redisProvider)
 	if !assert.NotNil(t, storage) {
 		return
 	}
@@ -190,7 +190,7 @@ func TestTlogStorageDeadlockWithNondeduped(t *testing.T) {
 	)
 
 	redisProvider := newTestRedisProvider(memRedis, nil) // root = nil
-	storage := createTestNondedupedStorage(t, vdiskID, blockSize, redisProvider)
+	storage := createTestNondedupedStorage(t, vdiskID, blockSize, false, redisProvider)
 	if !assert.NotNil(t, storage) {
 		return
 	}

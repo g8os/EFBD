@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/go-yaml/yaml"
@@ -407,24 +408,45 @@ var invalidVdiskTypes = []string{
 	"123",
 }
 var validVDiskTypeCases = []struct {
-	Input    string
-	Expected VdiskType
+	String string
+	Type   VdiskType
 }{
-	{string(VdiskTypeBoot), VdiskTypeBoot},
-	{string(VdiskTypeCache), VdiskTypeCache},
-	{string(VdiskTypeDB), VdiskTypeDB},
-	{string(VdiskTypeTmp), VdiskTypeTmp},
+	{vdiskTypeBootStr, VdiskTypeBoot},
+	{vdiskTypeCacheStr, VdiskTypeCache},
+	{vdiskTypeDBStr, VdiskTypeDB},
+	{vdiskTypeTmpStr, VdiskTypeTmp},
+}
+
+func TestVdiskTypeValidate(t *testing.T) {
+	for _, validCase := range validVDiskTypeCases {
+		assert.NoError(t, validCase.Type.Validate())
+	}
+
+	assert.Error(t, VdiskType(0).Validate())
+	assert.Error(t, VdiskType(255).Validate())
 }
 
 func TestValidVdiskTypeDeserialization(t *testing.T) {
 	var vdiskType VdiskType
 	for _, validCase := range validVDiskTypeCases {
-		err := yaml.Unmarshal([]byte(validCase.Input), &vdiskType)
-		if !assert.NoError(t, err, "unexpected invalid type: %q", validCase.Input) {
+		err := yaml.Unmarshal([]byte(validCase.String), &vdiskType)
+		if !assert.NoError(t, err, "unexpected invalid type: %q", validCase.String) {
 			continue
 		}
 
-		assert.Equal(t, validCase.Expected, vdiskType)
+		assert.Equal(t, validCase.Type, vdiskType)
+	}
+}
+
+func TestValidVdiskTypeSerialization(t *testing.T) {
+	for _, validCase := range validVDiskTypeCases {
+		bytes, err := yaml.Marshal(validCase.Type)
+		if !assert.NoError(t, err) {
+			continue
+		}
+
+		str := strings.Trim(string(bytes), "\n")
+		assert.Equal(t, validCase.String, str)
 	}
 }
 
@@ -434,6 +456,30 @@ func TestInvalidVdiskTypeDeserialization(t *testing.T) {
 		err := yaml.Unmarshal([]byte(invalidType), &vdiskType)
 		assert.Error(t, err, "unexpected valid type: %q", invalidType)
 	}
+}
+
+func TestVdiskProperties(t *testing.T) {
+	v := func(t VdiskType) *VdiskConfig {
+		return &VdiskConfig{Type: t}
+	}
+
+	// validate storage type property
+	assert.Equal(t, StorageDeduped, v(VdiskTypeBoot).StorageType())
+	assert.Equal(t, StorageNondeduped, v(VdiskTypeDB).StorageType())
+	assert.Equal(t, StorageNondeduped, v(VdiskTypeCache).StorageType())
+	assert.Equal(t, StorageNondeduped, v(VdiskTypeTmp).StorageType())
+
+	// validate redundant property
+	assert.True(t, v(VdiskTypeBoot).Redundant())
+	assert.True(t, v(VdiskTypeDB).Redundant())
+	assert.False(t, v(VdiskTypeCache).Redundant())
+	assert.False(t, v(VdiskTypeTmp).Redundant())
+
+	// validate template support
+	assert.True(t, v(VdiskTypeBoot).TemplateSupport())
+	assert.True(t, v(VdiskTypeDB).TemplateSupport())
+	assert.False(t, v(VdiskTypeCache).TemplateSupport())
+	assert.False(t, v(VdiskTypeTmp).TemplateSupport())
 }
 
 func TestParseValidCSStorageServerConfigStrings(t *testing.T) {
