@@ -45,9 +45,9 @@ func TestReconnectFromSend(t *testing.T) {
 		x := uint64(i)
 
 		if i%5 == 0 {
-			client.wLock.Lock()
+			client.rLock.Lock()
 			client.conn.Close() // simulate closed connection by closing the socket
-			client.wLock.Unlock()
+			client.rLock.Unlock()
 		}
 
 		// send

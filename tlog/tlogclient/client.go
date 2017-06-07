@@ -179,42 +179,47 @@ func (c *Client) Recv() <-chan *Result {
 
 	go func() {
 		for {
-			tr, err := c.recvOne()
+			select {
+			case <-c.ctx.Done():
+				return
+			default:
+				tr, err := c.recvOne()
 
-			nerr, isNetErr := err.(net.Error)
+				nerr, isNetErr := err.(net.Error)
 
-			// it is timeout error
-			// client can't really read something
-			if isNetErr && nerr.Timeout() {
-				continue
-			}
-
-			// EOF and other network error triggers reconnection
-			if isNetErr || err == io.EOF {
-				log.Infof("tlogclient : reconnect from read because of : %v", err)
-				err := func() error {
-					c.wLock.Lock()
-					defer c.wLock.Unlock()
-					return c.reconnect(time.Now())
-				}()
-				if err != nil {
-					log.Infof("Recv failed to reconnect: %v", err)
+				// it is timeout error
+				// client can't really read something
+				if isNetErr && nerr.Timeout() {
+					continue
 				}
-				continue
-			}
 
-			if tr != nil && len(tr.Sequences) > 0 {
-				// if it successfully received by server, delete from buffer
-				if tr.Status == tlog.BlockStatusRecvOK {
-					if len(tr.Sequences) > 0 { // should always be true, but we anticipate.
-						c.blockBuffer.Delete(tr.Sequences[0])
+				// EOF and other network error triggers reconnection
+				if isNetErr || err == io.EOF {
+					log.Infof("tlogclient : reconnect from read because of : %v", err)
+					err := func() error {
+						c.wLock.Lock()
+						defer c.wLock.Unlock()
+						return c.reconnect(time.Now())
+					}()
+					if err != nil {
+						log.Infof("Recv failed to reconnect: %v", err)
+					}
+					continue
+				}
+
+				if tr != nil && len(tr.Sequences) > 0 {
+					// if it successfully received by server, delete from buffer
+					if tr.Status == tlog.BlockStatusRecvOK {
+						if len(tr.Sequences) > 0 { // should always be true, but we anticipate.
+							c.blockBuffer.Delete(tr.Sequences[0])
+						}
 					}
 				}
-			}
 
-			reChan <- &Result{
-				Resp: tr,
-				Err:  err,
+				reChan <- &Result{
+					Resp: tr,
+					Err:  err,
+				}
 			}
 		}
 	}()
@@ -231,7 +236,7 @@ func (c *Client) recvOne() (*Response, error) {
 	c.conn.SetReadDeadline(time.Now().Add(readTimeout))
 
 	// decode capnp and build response
-	tr, err := c.decodeBlockResponse()
+	tr, err := c.decodeBlockResponse(c.rd)
 	if err != nil {
 		return nil, err
 	}
@@ -364,5 +369,12 @@ func (c *Client) send(op uint8, seq, offset, timestamp uint64,
 // It is user responsibility to call this function.
 func (c *Client) Close() error {
 	c.cancelFunc()
+
+	c.wLock.Lock()
+	defer c.wLock.Unlock()
+
+	c.rLock.Lock()
+	c.rLock.Unlock()
+
 	return c.conn.Close()
 }

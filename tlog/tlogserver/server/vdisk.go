@@ -155,6 +155,8 @@ func (vt *vdiskManager) Get(vdiskID string, firstSequence uint64, ff flusherFact
 
 // number of connected clients to this vdisk
 func (vd *vdisk) numConnectedClient() int {
+	vd.clientsTabLock.Lock()
+	defer vd.clientsTabLock.Unlock()
 	return len(vd.clientsTab)
 }
 
