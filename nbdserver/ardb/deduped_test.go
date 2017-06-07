@@ -10,6 +10,7 @@ import (
 
 	"github.com/garyburd/redigo/redis"
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbdserver/lba"
 	"github.com/zero-os/0-Disk/redisstub"
 )
@@ -56,7 +57,7 @@ func copyTestMetaData(t *testing.T, vdiskIDA, vdiskIDB string, providerA, provid
 	}
 }
 
-func createTestDedupedStorage(t *testing.T, vdiskID string, blockSize, blockCount int64, provider *testRedisProvider) *dedupedStorage {
+func createTestDedupedStorage(t *testing.T, vdiskID string, blockSize, blockCount int64, templateSupport bool, provider *testRedisProvider) *dedupedStorage {
 	lba, err := lba.NewLBA(
 		vdiskID,
 		blockCount,
@@ -66,7 +67,7 @@ func createTestDedupedStorage(t *testing.T, vdiskID string, blockSize, blockCoun
 		t.Fatal("couldn't create LBA", err)
 	}
 
-	return newDedupedStorage(vdiskID, blockSize, provider, lba).(*dedupedStorage)
+	return newDedupedStorage(vdiskID, blockSize, provider, templateSupport, lba).(*dedupedStorage)
 }
 
 // testDedupContentExists tests if
@@ -128,7 +129,7 @@ func TestDedupedContent(t *testing.T) {
 	)
 
 	redisProvider := newTestRedisProvider(memRedis, nil) // root = nil
-	storage := createTestDedupedStorage(t, vdiskID, 8, 8, redisProvider)
+	storage := createTestDedupedStorage(t, vdiskID, 8, 8, false, redisProvider)
 	if storage == nil {
 		t.Fatal("storage is nil")
 	}
@@ -146,7 +147,7 @@ func TestDedupedContentForceFlush(t *testing.T) {
 	)
 
 	redisProvider := newTestRedisProvider(memRedis, nil) // root = nil
-	storage := createTestDedupedStorage(t, vdiskID, 8, 8, redisProvider)
+	storage := createTestDedupedStorage(t, vdiskID, 8, 8, false, redisProvider)
 	if storage == nil {
 		t.Fatal("storage is nil")
 	}
@@ -167,7 +168,7 @@ func TestDedupedDeadlock(t *testing.T) {
 	)
 
 	redisProvider := newTestRedisProvider(memRedis, nil) // root = nil
-	storage := createTestDedupedStorage(t, vdiskID, blockSize, blockCount, redisProvider)
+	storage := createTestDedupedStorage(t, vdiskID, blockSize, blockCount, false, redisProvider)
 	if storage == nil {
 		t.Fatal("storage is nil")
 	}
@@ -189,8 +190,8 @@ func TestGetDedupedRootContent(t *testing.T) {
 		vdiskIDB = "b"
 	)
 
-	redisProviderA := newTestRedisProvider(memRedisA, nil) // root = nil
-	storageA := createTestDedupedStorage(t, vdiskIDA, 8, 8, redisProviderA)
+	redisProviderA := newTestRedisProvider(memRedisA, nil) // root = nil, later will be non-nil
+	storageA := createTestDedupedStorage(t, vdiskIDA, 8, 8, true, redisProviderA)
 	if storageA == nil {
 		t.Fatal("storageA is nil")
 	}
@@ -201,7 +202,7 @@ func TestGetDedupedRootContent(t *testing.T) {
 	defer memRedisB.Close()
 
 	redisProviderB := newTestRedisProvider(memRedisB, memRedisA) // root = memRedisA
-	storageB := createTestDedupedStorage(t, vdiskIDB, 8, 8, redisProviderB)
+	storageB := createTestDedupedStorage(t, vdiskIDB, 8, 8, true, redisProviderB)
 	if storageB == nil {
 		t.Fatal("storageB is nil")
 	}
@@ -374,8 +375,8 @@ func TestGetDedupedRootContentDeadlock(t *testing.T) {
 		err error
 	)
 
-	redisProviderA := newTestRedisProvider(memRedisA, nil) // root = nil
-	storageA := createTestDedupedStorage(t, vdiskIDA, blockSize, blockCount, redisProviderA)
+	redisProviderA := newTestRedisProvider(memRedisA, nil) // root = nil, later will be non-nil
+	storageA := createTestDedupedStorage(t, vdiskIDA, blockSize, blockCount, false, redisProviderA)
 	if storageA == nil {
 		t.Fatal("storageA is nil")
 	}
@@ -386,7 +387,7 @@ func TestGetDedupedRootContentDeadlock(t *testing.T) {
 	defer memRedisB.Close()
 
 	redisProviderB := newTestRedisProvider(memRedisB, memRedisA) // root = memRedisA
-	storageB := createTestDedupedStorage(t, vdiskIDB, blockSize, blockCount, redisProviderB)
+	storageB := createTestDedupedStorage(t, vdiskIDB, blockSize, blockCount, true, redisProviderB)
 	if storageB == nil {
 		t.Fatal("storageB is nil")
 	}
@@ -426,4 +427,8 @@ func TestGetDedupedRootContentDeadlock(t *testing.T) {
 			t.Fatal(i, "unexpected content")
 		}
 	}
+}
+
+func init() {
+	log.SetLevel(log.DebugLevel)
 }

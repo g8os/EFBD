@@ -111,9 +111,11 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	// GridAPI returns the vdisk size in GiB
 	vdiskSize := int64(vdisk.Size) * gibibyteAsBytes
 
+	templateSupport := vdisk.TemplateSupport()
+
 	switch storageType := vdisk.StorageType(); storageType {
 	case config.StorageNondeduped:
-		storage = newNonDedupedStorage(vdiskID, blockSize, redisProvider)
+		storage = newNonDedupedStorage(vdiskID, blockSize, templateSupport, redisProvider)
 	case config.StorageDeduped:
 		cacheLimit := f.lbaCacheLimit
 		if cacheLimit < lba.BytesPerShard {
@@ -140,7 +142,8 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 			return
 		}
 
-		storage = newDedupedStorage(vdiskID, blockSize, redisProvider, vlba)
+		storage = newDedupedStorage(
+			vdiskID, blockSize, redisProvider, templateSupport, vlba)
 	default:
 		err = fmt.Errorf("unsupported vdisk storage type %q", storageType)
 	}

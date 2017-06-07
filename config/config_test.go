@@ -477,7 +477,7 @@ func TestVdiskProperties(t *testing.T) {
 
 	// validate template support
 	assert.True(t, v(VdiskTypeBoot).TemplateSupport())
-	assert.False(t, v(VdiskTypeDB).TemplateSupport())
+	assert.True(t, v(VdiskTypeDB).TemplateSupport())
 	assert.False(t, v(VdiskTypeCache).TemplateSupport())
 	assert.False(t, v(VdiskTypeTmp).TemplateSupport())
 }

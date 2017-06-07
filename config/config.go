@@ -310,7 +310,7 @@ const (
 // based on /docs/README.md#zero-os-0-disk
 const (
 	VdiskTypeBoot  = propDeduped | propPersistent | propRedundant | propTemplateSupport | propRollback
-	VdiskTypeDB    = propPersistent | propRedundant | propRollback | propOptimized
+	VdiskTypeDB    = propPersistent | propRedundant | propRollback | propTemplateSupport | propOptimized
 	VdiskTypeCache = propPersistent | propOptimized
 	VdiskTypeTmp   = propOptimized
 )
