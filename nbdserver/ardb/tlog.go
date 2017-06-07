@@ -17,7 +17,7 @@ import (
 
 const (
 	// maximum duration we wait for flush to finish
-	tlogFlushWait = 10 * time.Second
+	tlogFlushWait = 10 * time.Millisecond
 )
 
 func newTlogStorage(vdiskID, tlogrpc string, blockSize int64, storage backendStorage) (backendStorage, error) {
@@ -273,12 +273,13 @@ func (tls *tlogStorage) GoBackground(ctx context.Context) {
 				log.Debugf("vdisk %s's tlog server has received force flush message", tls.vdiskID)
 
 			case tlog.BlockStatusFlushOK:
-				err := tls.flushCachedContent(res.Resp.Sequences)
+				go tls.flushCachedContent(res.Resp.Sequences)
+				/*err := tls.flushCachedContent(res.Resp.Sequences)
 				if err != nil {
 					panic(fmt.Errorf(
 						"failed to write cached content into storage for vdisk %s: %s",
 						tls.vdiskID, err))
-				}
+				}*/
 
 			default:
 				panic(fmt.Errorf(
