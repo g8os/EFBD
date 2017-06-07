@@ -211,10 +211,10 @@ func (cfg *VdiskConfig) StorageType() StorageType {
 	return StorageNondeduped
 }
 
-// Redundant returns whether or not the data of this vdisk
-// has to be redundant (using the tlog server).
-func (cfg *VdiskConfig) Redundant() bool {
-	return cfg.Type&propRedundant != 0
+// TlogSupport returns whether or not the data of this vdisk
+// has to send to the tlog server, to log its transactions.
+func (cfg *VdiskConfig) TlogSupport() bool {
+	return cfg.Type&propTlogSupport != 0
 }
 
 // TemplateSupport returns whether or not
@@ -309,10 +309,10 @@ const (
 // valid vdisk types
 // based on /docs/README.md#zero-os-0-disk
 const (
-	VdiskTypeBoot  = propDeduped | propPersistent | propRedundant | propTemplateSupport | propRollback
-	VdiskTypeDB    = propPersistent | propRedundant | propRollback | propTemplateSupport | propOptimized
-	VdiskTypeCache = propPersistent | propOptimized
-	VdiskTypeTmp   = propOptimized
+	VdiskTypeBoot  = propDeduped | propPersistent | propTlogSupport | propTemplateSupport
+	VdiskTypeDB    = propPersistent | propTlogSupport | propTemplateSupport
+	VdiskTypeCache = propPersistent
+	VdiskTypeTmp   = propTemporary
 )
 
 // StorageType represents the type of storage of a vdisk
@@ -346,10 +346,9 @@ const (
 const (
 	propDeduped VdiskType = 1 << iota
 	propPersistent
-	propRedundant
+	propTemporary
+	propTlogSupport
 	propTemplateSupport
-	propRollback
-	propOptimized
 )
 
 func init() {

@@ -469,11 +469,11 @@ func TestVdiskProperties(t *testing.T) {
 	assert.Equal(t, StorageNondeduped, v(VdiskTypeCache).StorageType())
 	assert.Equal(t, StorageNondeduped, v(VdiskTypeTmp).StorageType())
 
-	// validate redundant property
-	assert.True(t, v(VdiskTypeBoot).Redundant())
-	assert.True(t, v(VdiskTypeDB).Redundant())
-	assert.False(t, v(VdiskTypeCache).Redundant())
-	assert.False(t, v(VdiskTypeTmp).Redundant())
+	// validate tlog support
+	assert.True(t, v(VdiskTypeBoot).TlogSupport())
+	assert.True(t, v(VdiskTypeDB).TlogSupport())
+	assert.False(t, v(VdiskTypeCache).TlogSupport())
+	assert.False(t, v(VdiskTypeTmp).TlogSupport())
 
 	// validate template support
 	assert.True(t, v(VdiskTypeBoot).TemplateSupport())

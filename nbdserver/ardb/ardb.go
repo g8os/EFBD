@@ -148,7 +148,7 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 		err = fmt.Errorf("unsupported vdisk storage type %q", storageType)
 	}
 
-	if vdisk.Redundant() && f.tlogRPCAddress != "" {
+	if vdisk.TlogSupport() && f.tlogRPCAddress != "" {
 		log.Debugf("creating tlogStorage for backend %v (%v)", vdiskID, vdisk.Type)
 		storage, err = newTlogStorage(vdiskID, f.tlogRPCAddress, blockSize, storage)
 		if err != nil {
