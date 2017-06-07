@@ -10,15 +10,15 @@ import (
 )
 
 // NewExportController creates a new export config manager.
-func NewExportController(configPath string, tlsOnly bool) (controller *ExportController, err error) {
-	if configPath == "" {
-		err = errors.New("ExportController requires a non-empty config path")
+func NewExportController(cfg config.HotReloader, tlsOnly bool) (controller *ExportController, err error) {
+	if cfg == nil {
+		err = errors.New("ExportController requires a non-nil config.HotReloader")
 		return
 	}
 
 	controller = &ExportController{
-		configPath: configPath,
-		tlsOnly:    tlsOnly,
+		cfg:     cfg,
+		tlsOnly: tlsOnly,
 	}
 	return
 }
@@ -26,21 +26,13 @@ func NewExportController(configPath string, tlsOnly bool) (controller *ExportCon
 // ExportController implements nbd.ExportConfigManager
 // using the GridAPI stateless client internally
 type ExportController struct {
-	configPath string
-	tlsOnly    bool
+	cfg     config.HotReloader
+	tlsOnly bool
 }
 
 // ListConfigNames implements nbd.ExportConfigManager.ListConfigNames
 func (c *ExportController) ListConfigNames() (exports []string) {
-	cfg, err := config.ReadConfig(c.configPath)
-	if err != nil {
-		log.Info("couldn't read nbdserver config:", err)
-		return
-	}
-
-	for export := range cfg.Vdisks {
-		exports = append(exports, export)
-	}
+	exports = c.cfg.VdiskIdentifiers()
 	return
 }
 
@@ -48,20 +40,16 @@ func (c *ExportController) ListConfigNames() (exports []string) {
 func (c *ExportController) GetConfig(name string) (*nbd.ExportConfig, error) {
 	log.Infof("Getting vdisk %q", name)
 
-	cfg, err := config.ReadConfig(c.configPath)
+	cfg, err := c.cfg.VdiskClusterConfig(name)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't read nbdserver config: %s", err.Error())
-	}
-	vdisk, ok := cfg.Vdisks[name]
-	if !ok {
-		return nil, fmt.Errorf("couldn't find a config for vdisk %s", name)
+		return nil, fmt.Errorf("couldn't read zerodisk config: %s", err.Error())
 	}
 
 	return &nbd.ExportConfig{
 		Name:               name,
 		Description:        "Deduped g8os zerodisk",
 		Driver:             "ardb",
-		ReadOnly:           vdisk.ReadOnly,
+		ReadOnly:           cfg.Vdisk.ReadOnly,
 		TLSOnly:            c.tlsOnly,
 		MinimumBlockSize:   0, // use size given by ArdbBackend.Geometry
 		PreferredBlockSize: 0, // use size given by ArdbBackend.Geometry

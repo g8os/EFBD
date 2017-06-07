@@ -93,6 +93,134 @@ func TestValidConfigFromBytes(t *testing.T) {
 	}
 }
 
+func TestValidVdiskClusterConfigFromBytes(t *testing.T) {
+	config, err := FromBytes([]byte(validConfig))
+	if !assert.NoError(t, err) || !assert.NotNil(t, config) {
+		return
+	}
+
+	cfg, err := config.VdiskClusterConfig("myvdisk")
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	// test Vdisk
+	assert.Equal(t, uint64(4096), cfg.Vdisk.BlockSize)
+	assert.False(t, cfg.Vdisk.ReadOnly)
+	assert.Equal(t, uint64(10), cfg.Vdisk.Size)
+	assert.Equal(t, "mycluster", cfg.Vdisk.StorageCluster)
+	assert.Equal(t, "rootcluster", cfg.Vdisk.RootStorageCluster)
+	assert.Equal(t, "tlogcluster", cfg.Vdisk.TlogStorageCluster)
+	assert.Equal(t, VdiskTypeBoot, cfg.Vdisk.Type)
+
+	// test data cluster
+	if assert.Len(t, cfg.DataCluster.DataStorage, 2) {
+		assert.Equal(t, "192.168.58.146:2000", cfg.DataCluster.DataStorage[0].Address)
+		assert.Equal(t, 0, cfg.DataCluster.DataStorage[0].Database)
+		assert.Equal(t, "192.123.123.123:2001", cfg.DataCluster.DataStorage[1].Address)
+		assert.Equal(t, 0, cfg.DataCluster.DataStorage[1].Database)
+	}
+	assert.Equal(t, "192.168.58.146:2001", cfg.DataCluster.MetadataStorage.Address)
+	assert.Equal(t, 1, cfg.DataCluster.MetadataStorage.Database)
+
+	// test root cluster
+	if assert.Len(t, cfg.RootCluster.DataStorage, 1) {
+		assert.Equal(t, "192.168.58.147:2000", cfg.RootCluster.DataStorage[0].Address)
+		assert.Equal(t, 0, cfg.RootCluster.DataStorage[0].Database)
+	}
+	assert.Equal(t, "192.168.58.147:2001", cfg.RootCluster.MetadataStorage.Address)
+	assert.Equal(t, 2, cfg.RootCluster.MetadataStorage.Database)
+
+	// test tlog cluster
+	if assert.Len(t, cfg.TlogCluster.DataStorage, 1) {
+		assert.Equal(t, "192.168.58.149:2000", cfg.TlogCluster.DataStorage[0].Address)
+		assert.Equal(t, 4, cfg.TlogCluster.DataStorage[0].Database)
+	}
+	assert.Equal(t, "192.168.58.149:2000", cfg.TlogCluster.MetadataStorage.Address)
+	assert.Equal(t, 8, cfg.TlogCluster.MetadataStorage.Database)
+}
+
+func TestValidUniqueVdiskClusterConfigsFromBytes(t *testing.T) {
+	config, err := FromBytes([]byte(validConfig))
+	if !assert.NoError(t, err) || !assert.NotNil(t, config) {
+		return
+	}
+
+	// get the same vdisk cluster config twice,
+	// and validate if all our expected pre-existing coditions exist
+
+	cfgA, err := config.VdiskClusterConfig("myvdisk")
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.Len(t, cfgA.DataCluster.DataStorage, 2) {
+		return
+	}
+	if !assert.NotNil(t, cfgA.DataCluster.MetadataStorage) {
+		return
+	}
+	if !assert.NotNil(t, cfgA.RootCluster) {
+		return
+	}
+	if !assert.NotNil(t, cfgA.TlogCluster) {
+		return
+	}
+
+	cfgB, err := config.VdiskClusterConfig("myvdisk")
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.Len(t, cfgB.DataCluster.DataStorage, 2) {
+		return
+	}
+	if !assert.NotNil(t, cfgB.DataCluster.MetadataStorage) {
+		return
+	}
+	if !assert.NotNil(t, cfgB.RootCluster) {
+		return
+	}
+	if !assert.NotNil(t, cfgB.TlogCluster) {
+		return
+	}
+
+	dataStorageA := cfgA.DataCluster.DataStorage
+	metaStorageA := cfgA.DataCluster.MetadataStorage
+	rootDataStorageA := cfgA.RootCluster.DataStorage
+	rootMetaStorageA := cfgA.RootCluster.MetadataStorage
+	tlogDataStorageA := cfgA.TlogCluster.DataStorage
+	tlogMetaStorageA := cfgA.TlogCluster.MetadataStorage
+
+	dataStorageB := cfgB.DataCluster.DataStorage
+	metaStorageB := cfgB.DataCluster.MetadataStorage
+	rootDataStorageB := cfgB.RootCluster.DataStorage
+	rootMetaStorageB := cfgB.RootCluster.MetadataStorage
+	tlogDataStorageB := cfgB.TlogCluster.DataStorage
+	tlogMetaStorageB := cfgB.TlogCluster.MetadataStorage
+
+	assert.Equal(t, dataStorageA, dataStorageB)
+	assert.Equal(t, *metaStorageA, *metaStorageB)
+	assert.Equal(t, rootDataStorageA, rootDataStorageB)
+	assert.Equal(t, *rootMetaStorageA, *rootMetaStorageB)
+	assert.Equal(t, tlogDataStorageA, tlogDataStorageB)
+	assert.Equal(t, *tlogMetaStorageA, *tlogMetaStorageB)
+
+	// let's now change all A versions
+	dataStorageA[0].Database++
+	metaStorageA.Database++
+	rootDataStorageA[0].Database++
+	rootMetaStorageA.Database++
+	tlogDataStorageA[0].Database++
+	tlogMetaStorageA.Database++
+
+	// now the versions shouldn't be equal
+	assert.NotEqual(t, dataStorageA, dataStorageB)
+	assert.NotEqual(t, *metaStorageA, *metaStorageB)
+	assert.NotEqual(t, rootDataStorageA, rootDataStorageB)
+	assert.NotEqual(t, *rootMetaStorageA, *rootMetaStorageB)
+	assert.NotEqual(t, tlogDataStorageA, tlogDataStorageB)
+	assert.NotEqual(t, *tlogMetaStorageA, *tlogMetaStorageB)
+}
+
 const minimalValidConfig = `
 storageClusters:
   mycluster:
@@ -132,6 +260,38 @@ func TestMinimalValidConfigFromBytes(t *testing.T) {
 			assert.Equal(t, VdiskTypeCache, vdisk.Type)
 		}
 	}
+}
+
+func TestMinimalValidVdiskClusterConfigFromBytes(t *testing.T) {
+	config, err := FromBytes([]byte(minimalValidConfig))
+	if !assert.NoError(t, err) || !assert.NotNil(t, config) {
+		return
+	}
+
+	cfg, err := config.VdiskClusterConfig("myvdisk")
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	// test Vdisk
+	assert.Equal(t, uint64(4096), cfg.Vdisk.BlockSize)
+	assert.False(t, cfg.Vdisk.ReadOnly)
+	assert.Equal(t, uint64(10), cfg.Vdisk.Size)
+	assert.Equal(t, "mycluster", cfg.Vdisk.StorageCluster)
+	assert.Equal(t, "", cfg.Vdisk.RootStorageCluster)
+	assert.Equal(t, "", cfg.Vdisk.TlogStorageCluster)
+	assert.Equal(t, VdiskTypeCache, cfg.Vdisk.Type)
+
+	// test data cluster
+	if assert.Len(t, cfg.DataCluster.DataStorage, 1) {
+		assert.Equal(t, "192.168.58.146:2000", cfg.DataCluster.DataStorage[0].Address)
+		assert.Equal(t, 0, cfg.DataCluster.DataStorage[0].Database)
+	}
+	assert.Nil(t, cfg.DataCluster.MetadataStorage)
+
+	// root and tlog clusters are not defined
+	assert.Nil(t, cfg.RootCluster)
+	assert.Nil(t, cfg.TlogCluster)
 }
 
 var invalidConfigs = []string{

@@ -11,6 +11,12 @@ import (
 	"github.com/go-yaml/yaml"
 )
 
+// ValidateConfigPath validates a config file on the given path
+func ValidateConfigPath(path string) error {
+	_, err := ReadConfig(path)
+	return err
+}
+
 // ReadConfig reads the config used to configure the zerodisk
 func ReadConfig(path string) (*Config, error) {
 	bytes, err := ioutil.ReadFile(path)
@@ -41,6 +47,15 @@ func FromBytes(bytes []byte) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// VdiskClusterConfig combines the vdisk config
+// and its cluster configs
+type VdiskClusterConfig struct {
+	Vdisk       VdiskConfig
+	DataCluster StorageClusterConfig
+	RootCluster *StorageClusterConfig
+	TlogCluster *StorageClusterConfig
 }
 
 // Config for the zerodisk backends
@@ -116,6 +131,33 @@ func (cfg *Config) validateStorageClusters() error {
 	return nil
 }
 
+// VdiskClusterConfig returns a VdiskClusterConfig
+// for a given VdiskID if possible
+// WARNING: make sure the config is valid before calling this method
+func (cfg *Config) VdiskClusterConfig(vdiskID string) (*VdiskClusterConfig, error) {
+	vdiskCfg, ok := cfg.Vdisks[vdiskID]
+	if !ok {
+		return nil, fmt.Errorf("no config found for vdisk %s", vdiskID)
+	}
+
+	config := &VdiskClusterConfig{
+		Vdisk:       vdiskCfg,
+		DataCluster: cfg.StorageClusters[vdiskCfg.StorageCluster].Clone(),
+	}
+
+	if vdiskCfg.RootStorageCluster != "" {
+		cluster := cfg.StorageClusters[vdiskCfg.RootStorageCluster].Clone()
+		config.RootCluster = &cluster
+	}
+
+	if vdiskCfg.TlogStorageCluster != "" {
+		cluster := cfg.StorageClusters[vdiskCfg.TlogStorageCluster].Clone()
+		config.TlogCluster = &cluster
+	}
+
+	return config, nil
+}
+
 func (cfg *Config) validateMetadataStorage(clusterID string, vdisk *VdiskConfig) error {
 	metadataStorageIsUndefined := cfg.StorageClusters[clusterID].MetadataStorage == nil
 	if metadataStorageIsUndefined && vdisk.StorageType() == StorageDeduped {
@@ -135,6 +177,17 @@ func (cfg *Config) String() string {
 type StorageClusterConfig struct {
 	DataStorage     []StorageServerConfig `yaml:"dataStorage" valid:"required"`
 	MetadataStorage *StorageServerConfig  `yaml:"metadataStorage" valid:"optional"`
+}
+
+// Clone this StorageClusterConfig into a new StorageClusterConfig.
+func (cfg StorageClusterConfig) Clone() (clone StorageClusterConfig) {
+	clone.DataStorage = make([]StorageServerConfig, len(cfg.DataStorage))
+	copy(clone.DataStorage, cfg.DataStorage)
+	if cfg.MetadataStorage != nil {
+		metadataStorage := *cfg.MetadataStorage
+		clone.MetadataStorage = &metadataStorage
+	}
+	return
 }
 
 // ParseCSStorageServerConfigStrings allows you to parse a slice of raw dial config strings.

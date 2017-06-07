@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/zero-os/0-Disk/log"
 
@@ -11,7 +12,6 @@ import (
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/gonbdserver/nbd"
 	"github.com/zero-os/0-Disk/nbdserver/lba"
-	"github.com/zero-os/0-Disk/storagecluster"
 )
 
 // shared constants
@@ -27,9 +27,8 @@ const (
 // BackendFactoryConfig is used to create a new BackendFactory
 type BackendFactoryConfig struct {
 	Pool                     *RedisPool
-	SCClientFactory          *storagecluster.ClusterClientFactory
+	ConfigHotReloader        config.HotReloader
 	TLogRPCAddress           string
-	ConfigPath               string
 	RootARDBConnectionString string
 	LBACacheLimit            int64 // min-capped to LBA.BytesPerShard
 }
@@ -39,11 +38,8 @@ func (cfg *BackendFactoryConfig) Validate() error {
 	if cfg.Pool == nil {
 		return errors.New("BackendFactory requires a non-nil RedisPool")
 	}
-	if cfg.SCClientFactory == nil {
-		return errors.New("BackendFactory requires a non-nil storage.ClusterConfigFactory")
-	}
-	if cfg.ConfigPath == "" {
-		return errors.New("BackendFactory requires a non-empty ConfigPath")
+	if cfg.ConfigHotReloader == nil {
+		return errors.New("BackendFactory requires a non-nil config.HotReloader")
 	}
 
 	return nil
@@ -58,11 +54,10 @@ func NewBackendFactory(cfg BackendFactoryConfig) (*BackendFactory, error) {
 	}
 
 	return &BackendFactory{
-		backendPool:     cfg.Pool,
-		scClientFactory: cfg.SCClientFactory,
-		tlogRPCAddress:  cfg.TLogRPCAddress,
-		configPath:      cfg.ConfigPath,
-		lbaCacheLimit:   cfg.LBACacheLimit,
+		backendPool:    cfg.Pool,
+		cfgHotReloader: cfg.ConfigHotReloader,
+		tlogRPCAddress: cfg.TLogRPCAddress,
+		lbaCacheLimit:  cfg.LBACacheLimit,
 	}, nil
 }
 
@@ -70,40 +65,29 @@ func NewBackendFactory(cfg BackendFactoryConfig) (*BackendFactory, error) {
 // that can not be passed in the exportconfig like the pool of ardbconnections
 // I hate the factory pattern but I hate global variables even more
 type BackendFactory struct {
-	backendPool     *RedisPool
-	scClientFactory *storagecluster.ClusterClientFactory
-	tlogRPCAddress  string
-	configPath      string
-	lbaCacheLimit   int64
+	backendPool    *RedisPool
+	cfgHotReloader config.HotReloader
+	tlogRPCAddress string
+	lbaCacheLimit  int64
 }
 
 //NewBackend generates a new ardb backend
 func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (backend nbd.Backend, err error) {
 	vdiskID := ec.Name
 
-	// create storage cluster config,
-	// which is used to dynamically reload the configuration
-	storageClusterClient, err := f.scClientFactory.NewClient(vdiskID)
+	cfg, err := f.cfgHotReloader.VdiskClusterConfig(vdiskID)
 	if err != nil {
-		log.Infof("couldn't get storage cluster client: %s", err.Error())
+		log.Error(err)
 		return
 	}
+	vdisk := &cfg.Vdisk
 
-	//Get information about the vdisk
-	cfg, err := config.ReadConfig(f.configPath)
+	redisProvider, err := newRedisProvider(f.backendPool, cfg)
 	if err != nil {
-		log.Infof("couldn't read config %q: %s", f.configPath, err.Error())
+		log.Error(err)
 		return
 	}
-
-	vdisk, ok := cfg.Vdisks[vdiskID]
-	if !ok {
-		err = fmt.Errorf("couldn't find vdisk %q in loaded config", vdiskID)
-		log.Infof(err.Error())
-		return
-	}
-
-	redisProvider, err := newRedisProvider(f.backendPool, storageClusterClient)
+	go redisProvider.Listen(ctx, vdiskID, f.cfgHotReloader)
 
 	var storage backendStorage
 	blockSize := int64(vdisk.BlockSize)
@@ -138,7 +122,7 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 			redisProvider,
 		)
 		if err != nil {
-			log.Infof("couldn't create LBA: %s", err.Error())
+			log.Errorf("couldn't create LBA: %s", err.Error())
 			return
 		}
 
@@ -161,27 +145,30 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 		vdiskID,
 		blockSize, uint64(vdiskSize),
 		storage,
-		storageClusterClient,
+		redisProvider,
 	)
 
 	return
 }
 
 // newRedisProvider creates a new redis provider
-func newRedisProvider(pool *RedisPool, storageClusterClient *storagecluster.ClusterClient) (*redisProvider, error) {
+func newRedisProvider(pool *RedisPool, cfg *config.VdiskClusterConfig) (*redisProvider, error) {
 	if pool == nil {
 		return nil, errors.New(
 			"no redis pool is given, while one is required")
 	}
-	if storageClusterClient == nil {
-		return nil, errors.New(
-			"no storage cluster client is given, while one is required")
+
+	provider := &redisProvider{
+		redisPool: pool,
+		done:      make(chan struct{}),
 	}
 
-	return &redisProvider{
-		redisPool:            pool,
-		storageClusterClient: storageClusterClient,
-	}, nil
+	err := provider.reloadConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	return provider, nil
 }
 
 // redisConnectionProvider defines the interface to get a redis connection,
@@ -194,17 +181,34 @@ type redisConnectionProvider interface {
 // redisProvider allows you to get a redis connection from a pool
 // using a modulo index
 type redisProvider struct {
-	redisPool            *RedisPool
-	storageClusterClient *storagecluster.ClusterClient
+	redisPool *RedisPool
+
+	done chan struct{}
+
+	// used to get a redis connection
+	dataConnectionConfigs []config.StorageServerConfig
+	numberOfServers       int64 //Keep it as a seperate variable since this is constantly needed
+
+	// used as a fallback for getting data
+	// from a remote (root/template) server
+	rootDataConnectionConfigs []config.StorageServerConfig
+	numberOfRootServers       int64 //Keep it as a seperate variable since this is constantly needed
+
+	// used to store meta data
+	metaConnectionConfig *config.StorageServerConfig
+
+	// to protect connection configs
+	mux sync.RWMutex
 }
 
 // RedisConnection gets a redis connection from the underlying pool,
 // using a modulo index
 func (rp *redisProvider) RedisConnection(index int64) (conn redis.Conn, err error) {
-	connConfig, err := rp.storageClusterClient.ConnectionConfig(index)
-	if err != nil {
-		return
-	}
+	rp.mux.RLock()
+	defer rp.mux.RUnlock()
+
+	bcIndex := index % rp.numberOfServers
+	connConfig := &rp.dataConnectionConfigs[bcIndex]
 
 	conn = rp.redisPool.Get(connConfig.Address, connConfig.Database)
 	return
@@ -213,10 +217,19 @@ func (rp *redisProvider) RedisConnection(index int64) (conn redis.Conn, err erro
 // FallbackRedisConnection gets a redis connection from the underlying fallback pool,
 // using a modulo index
 func (rp *redisProvider) FallbackRedisConnection(index int64) (conn redis.Conn, err error) {
-	connConfig, err := rp.storageClusterClient.RootConnectionConfig(index)
-	if err != nil {
+	rp.mux.RLock()
+	defer rp.mux.RUnlock()
+
+	// not all vdisks have a rootStoragecluster defined,
+	// it is therefore not a guarantee that at least one server is available,
+	// a given we do have in the ConnectionString method
+	if rp.numberOfRootServers < 1 {
+		err = errNoRootAvailable
 		return
 	}
+
+	bcIndex := index % rp.numberOfRootServers
+	connConfig := &rp.rootDataConnectionConfigs[bcIndex]
 
 	conn = rp.redisPool.Get(connConfig.Address, connConfig.Database)
 	return
@@ -224,15 +237,78 @@ func (rp *redisProvider) FallbackRedisConnection(index int64) (conn redis.Conn, 
 
 // MetaRedisConnection implements lba.MetaRedisProvider.MetaRedisConnection
 func (rp *redisProvider) MetaRedisConnection() (conn redis.Conn, err error) {
-	connConfig, err := rp.storageClusterClient.MetaConnectionConfig()
-	if err != nil {
+	rp.mux.RLock()
+	defer rp.mux.RUnlock()
+
+	if rp.metaConnectionConfig == nil {
+		err = errNoMetaAvailable
 		return
 	}
 
+	connConfig := rp.metaConnectionConfig
 	conn = rp.redisPool.Get(connConfig.Address, connConfig.Database)
 	return
 }
 
+func (rp *redisProvider) Listen(ctx context.Context, vdiskID string, hr config.HotReloader) {
+	log.Debug("redisProvider listening")
+
+	ch := make(chan config.VdiskClusterConfig)
+	err := hr.Subscribe(ch, vdiskID)
+	if err != nil {
+		panic(err)
+	}
+
+	defer func() {
+		log.Debug("exit redisProvider listener")
+		if err := hr.Unsubscribe(ch); err != nil {
+			log.Error(err)
+		}
+		close(ch)
+	}()
+
+	for {
+		select {
+		case cfg := <-ch:
+			err := rp.reloadConfig(&cfg)
+			if err != nil {
+				log.Error(err)
+			}
+
+		case <-rp.done:
+			return
+
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (rp *redisProvider) Close() {
+	close(rp.done)
+}
+
+func (rp *redisProvider) reloadConfig(cfg *config.VdiskClusterConfig) error {
+	rp.mux.Lock()
+	defer rp.mux.Unlock()
+
+	rp.dataConnectionConfigs = cfg.DataCluster.DataStorage
+	rp.numberOfServers = int64(len(rp.dataConnectionConfigs))
+
+	rp.metaConnectionConfig = cfg.DataCluster.MetadataStorage
+
+	if cfg.RootCluster == nil {
+		rp.rootDataConnectionConfigs = nil
+		rp.numberOfRootServers = 0
+	} else {
+		rp.rootDataConnectionConfigs = cfg.RootCluster.DataStorage
+		rp.numberOfRootServers = int64(len(rp.rootDataConnectionConfigs))
+	}
+
+	return nil
+}
+
 var (
+	errNoMetaAvailable = errors.New("no meta ardb connection available")
 	errNoRootAvailable = errors.New("no root ardb connection available")
 )

@@ -12,7 +12,6 @@ import (
 	"github.com/zero-os/0-Disk/gonbdserver/nbd"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbdserver/ardb"
-	"github.com/zero-os/0-Disk/storagecluster"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
@@ -87,22 +86,19 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 // create a new backend, used for writing
 func newBackend(ctx context.Context, dial ardb.DialFunc, tlogrpc, vdiskID, configPath string) (nbd.Backend, error) {
 	// redis pool
-	redisPool := ardb.NewRedisPool(nil)
+	redisPool := ardb.NewRedisPool(dial)
 
-	// storage cluster
-	storageClusterClientFactory, err := storagecluster.NewClusterClientFactory(
-		configPath, log.New("storagecluster", log.GetLevel()))
+	hotreloader, err := zerodiskcfg.NewHotReloader(configPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create storageClusterClientFactory:%v", err)
+		return nil, err
 	}
-	go storageClusterClientFactory.Listen(ctx)
+	go hotreloader.Listen(ctx)
 
 	config := ardb.BackendFactoryConfig{
-		Pool:            redisPool,
-		ConfigPath:      configPath,
-		LBACacheLimit:   ardb.DefaultLBACacheLimit,
-		SCClientFactory: storageClusterClientFactory,
-		TLogRPCAddress:  tlogrpc,
+		Pool:              redisPool,
+		ConfigHotReloader: hotreloader,
+		LBACacheLimit:     ardb.DefaultLBACacheLimit,
+		TLogRPCAddress:    tlogrpc,
 	}
 	fact, err := ardb.NewBackendFactory(config)
 	if err != nil {

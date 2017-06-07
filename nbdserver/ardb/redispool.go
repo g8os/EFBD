@@ -46,11 +46,11 @@ func NewRedisPool(dial DialFunc) (p *RedisPool) {
 // getting an underlying connection, then the connection Err, Do, Send, Flush
 // and Receive methods return that error.
 func (p *RedisPool) Get(connectionString string, database int) redis.Conn {
-	return p.GetConnectionSpecificPool(connectionString, database).Get()
+	return p.getConnectionSpecificPool(connectionString, database).Get()
 }
 
 // GetConnectionSpecificPool gets a redis.Pool for a specific connectionString.
-func (p *RedisPool) GetConnectionSpecificPool(connectionString string, database int) (singleServerPool *redis.Pool) {
+func (p *RedisPool) getConnectionSpecificPool(connectionString string, database int) (singleServerPool *redis.Pool) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 

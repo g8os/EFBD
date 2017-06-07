@@ -748,7 +748,7 @@ func (c *Connection) negotiate(ctx context.Context) error {
 			}
 
 			exportName := string(name)
-			c.logger.Debug("getting exportConfig for", exportName)
+			c.logger.Debug("getting exportConfig for: ", exportName)
 			// Next find our export
 			ec, err := c.listener.GetExportConfig(exportName)
 			if err != nil || (ec.TLSOnly && c.tlsConn == nil) {

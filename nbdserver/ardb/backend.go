@@ -6,27 +6,26 @@ import (
 	"github.com/zero-os/0-Disk/log"
 
 	"github.com/zero-os/0-Disk/gonbdserver/nbd"
-	"github.com/zero-os/0-Disk/storagecluster"
 )
 
-func newBackend(vdiskID string, blockSize int64, size uint64, storage backendStorage, storageClusterClient *storagecluster.ClusterClient) *Backend {
+func newBackend(vdiskID string, blockSize int64, size uint64, storage backendStorage, redisProvider *redisProvider) *Backend {
 	return &Backend{
-		vdiskID:              vdiskID,
-		blockSize:            blockSize,
-		size:                 size,
-		storage:              storage,
-		storageClusterClient: storageClusterClient,
+		vdiskID:       vdiskID,
+		blockSize:     blockSize,
+		size:          size,
+		storage:       storage,
+		redisProvider: redisProvider,
 	}
 }
 
 //Backend is a nbd.Backend implementation on top of ARDB
 type Backend struct {
-	vdiskID              string
-	blockSize            int64
-	size                 uint64
-	storage              backendStorage
-	storageClusterClient *storagecluster.ClusterClient
-	backgroundCancelFn   context.CancelFunc
+	vdiskID            string
+	blockSize          int64
+	size               uint64
+	storage            backendStorage
+	redisProvider      *redisProvider
+	backgroundCancelFn context.CancelFunc
 }
 
 //WriteAt implements nbd.Backend.WriteAt
@@ -157,7 +156,7 @@ func (ab *Backend) Flush(ctx context.Context) (err error) {
 
 //Close implements nbd.Backend.Close
 func (ab *Backend) Close(ctx context.Context) (err error) {
-	ab.storageClusterClient.Close()
+	ab.redisProvider.Close()
 
 	err = ab.storage.Close()
 	return
