@@ -42,6 +42,7 @@ func newTlogStorageWithClient(vdiskID string, blockSize int64, client tlogClient
 		blockSize:      blockSize,
 		sequence:       0,
 		transactionCh:  make(chan *transaction, transactionChCapacity),
+		toFlushCh:      make(chan []uint64, toFlushChCapacity),
 		cacheEmptyCond: sync.NewCond(&sync.Mutex{}),
 	}, nil
 }
@@ -56,6 +57,11 @@ type tlogStorage struct {
 	sequence      uint64
 	sequenceMux   sync.Mutex
 	transactionCh chan *transaction
+	toFlushCh     chan []uint64 // channel of sequences to be flushed
+
+	// mutex for the ardb storage
+	storageMux sync.Mutex
+
 	// condition variable used to signal when the cache is empty
 	cacheEmptyCond *sync.Cond
 }
@@ -76,6 +82,7 @@ func (tls *tlogStorage) Set(blockIndex int64, content []byte) error {
 
 	return tls.set(blockIndex, content)
 }
+
 func (tls *tlogStorage) set(blockIndex int64, content []byte) error {
 	var op uint8
 	var length uint64
@@ -189,6 +196,9 @@ func (tls *tlogStorage) Delete(blockIndex int64) (err error) {
 
 // Flush implements backendStorage.Flush
 func (tls *tlogStorage) Flush() (err error) {
+	tls.mux.Lock()
+	defer tls.mux.Unlock()
+
 	// ForceFlush at the latest sequence
 	tls.tlog.ForceFlushAtSeq(tls.getLatestSequence())
 
@@ -208,27 +218,25 @@ func (tls *tlogStorage) Flush() (err error) {
 		// if timeout, signal the condition variable anyway
 		// to avoid the goroutine blocked forever
 		tls.cacheEmptyCond.Signal()
+		return errFlushTimeout
+
 	case <-doneCh:
 		// wait returned
 	}
 
-	// make sure that the sequence cache is empty,
-	// as that is the only proof we have that the tlog server
-	// is done flushing all our transactions
-	if !tls.cache.Empty() {
-		err = fmt.Errorf(
-			"sequence cache for tlog storage %s is not yet empty",
-			tls.vdiskID)
-		return
-	}
-
 	// flush actual storage
+	tls.storageMux.Lock()
+	defer tls.storageMux.Unlock()
+
 	err = tls.storage.Flush()
 	return
 }
 
 // Close implements backendStorage.Close
 func (tls *tlogStorage) Close() (err error) {
+	tls.storageMux.Lock()
+	defer tls.storageMux.Unlock()
+
 	err = tls.storage.Close()
 	if err != nil {
 		log.Info("error while closing internal tlog's storage: ", err)
@@ -250,6 +258,9 @@ func (tls *tlogStorage) GoBackground(ctx context.Context) {
 
 	// used for sending our transactions
 	go tls.transactionSender(ctx)
+
+	// used for flushing from sequence cache
+	go tls.flusher(ctx)
 
 	for {
 		select {
@@ -273,13 +284,7 @@ func (tls *tlogStorage) GoBackground(ctx context.Context) {
 				log.Debugf("vdisk %s's tlog server has received force flush message", tls.vdiskID)
 
 			case tlog.BlockStatusFlushOK:
-				err := tls.flushCachedContent(res.Resp.Sequences)
-				if err != nil {
-					panic(fmt.Errorf(
-						"failed to write cached content into storage for vdisk %s: %s",
-						tls.vdiskID, err))
-				}
-
+				tls.toFlushCh <- res.Resp.Sequences
 			default:
 				panic(fmt.Errorf(
 					"tlog server had fatal failure for vdisk %s: %s",
@@ -324,6 +329,28 @@ func (tls *tlogStorage) transactionSender(ctx context.Context) {
 	}
 }
 
+// flusher is spawned by the `GoBackground` method,
+// and is meant to flush transaction from sequence cache to storage,
+// over a seperate goroutine
+func (tls *tlogStorage) flusher(ctx context.Context) {
+	for {
+		select {
+		case seqs := <-tls.toFlushCh:
+			err := tls.flushCachedContent(seqs)
+			if err != nil {
+				panic(fmt.Errorf(
+					"failed to write cached content into storage for vdisk %s: %s",
+					tls.vdiskID, err))
+			}
+
+		case <-ctx.Done():
+			log.Debugf("flusher for tlogStorage %s aborting", tls.vdiskID)
+			return
+		}
+	}
+
+}
+
 func (tls *tlogStorage) flushCachedContent(sequences []uint64) error {
 	defer func() {
 		tls.cacheEmptyCond.L.Lock()
@@ -337,8 +364,8 @@ func (tls *tlogStorage) flushCachedContent(sequences []uint64) error {
 		return nil // no work to do
 	}
 
-	tls.mux.Lock()
-	defer tls.mux.Unlock()
+	tls.storageMux.Lock()
+	defer tls.storageMux.Unlock()
 
 	elements := tls.cache.Evict(sequences...)
 
@@ -389,6 +416,9 @@ func (tls *tlogStorage) get(blockIndex int64) (content []byte, err error) {
 	if found {
 		return
 	}
+
+	tls.storageMux.Lock()
+	defer tls.storageMux.Unlock()
 
 	// return content from internal storage if possible
 	content, err = tls.storage.Get(blockIndex)
@@ -687,10 +717,15 @@ var (
 
 	// returned when applying action on an invalidated tlog storage
 	errInvalidTlogStorage = errors.New("tlog storage is invalid")
+
+	// returned when flush timed out
+	errFlushTimeout = errors.New("flush timeout")
 )
 
 var (
 	// TODO: come up with a better value, perhaps this value could be returned during
 	//       the handshake phase from the server
 	transactionChCapacity = tlogserver.DefaultConfig().FlushSize * 2
+
+	toFlushChCapacity = 10000 // TODO : do we really need it to be so big?
 )
