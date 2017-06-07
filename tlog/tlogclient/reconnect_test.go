@@ -1,7 +1,6 @@
 package tlogclient
 
 import (
-	"sync"
 	"testing"
 	"time"
 
@@ -31,23 +30,12 @@ func TestReconnectFromSend(t *testing.T) {
 
 	data := make([]byte, 4096)
 
-	var wg sync.WaitGroup
-
-	// start receiver goroutine
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		waitForBlockReceivedResponse(t, client, 0, uint64(numLogs)-1)
-	}()
-
 	// send tlog, and disconnect it few times in the middle to test re-connect ability.
+	// don't start Recv so we don't reconnect from the receiver
 	for i := 0; i < numLogs; i++ {
 		x := uint64(i)
-
 		if i%5 == 0 {
-			client.rLock.Lock()
 			client.conn.Close() // simulate closed connection by closing the socket
-			client.rLock.Unlock()
 		}
 
 		// send
@@ -55,7 +43,9 @@ func TestReconnectFromSend(t *testing.T) {
 		assert.Nil(t, err)
 	}
 
-	wg.Wait()
+	waitForBlockReceivedResponse(t, client, 0, uint64(numLogs)-1)
+
+	assert.Equal(t, 0, client.blockBuffer.Len())
 }
 
 // TestReconnectFromRead test that client can do reconnect from 'Recv'

@@ -35,6 +35,13 @@ func NewBuffer(timeout time.Duration) *Buffer {
 	}
 }
 
+// Len returns number of blocks in this buffer
+func (b *Buffer) Len() int {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+	return len(b.entries)
+}
+
 // Promote sets a block with given sequence to be timed out now.
 // It returns error if the block already exceed it's retry quota.
 func (b *Buffer) Promote(seq uint64) error {
