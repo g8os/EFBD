@@ -180,6 +180,39 @@ func TestHotReloader(t *testing.T) {
 	reloaderB.TestReceivedConfig("localhost:16381")
 }
 
+func TestNopHotReloader(t *testing.T) {
+	// requires a valid path
+	_, err := NopHotReloader("foo")
+	if !assert.Error(t, err) {
+		return
+	}
+
+	configPath := createTempFile(t)
+	writeTestConfig(t, configPath, "localhost:16379", "a", "b")
+
+	// a valid path, gives us a (static) NopHotReloader
+	hr, err := NopHotReloader(configPath)
+	if !assert.NoError(t, err) || !assert.NotNil(t, hr) {
+		return
+	}
+
+	// should always succeed
+	cfgA, err := hr.VdiskClusterConfig("a")
+	if !assert.NoError(t, err) || !assert.NotNil(t, cfgA) {
+		return
+	}
+
+	// test some values to be sure we get the correct info
+	assert.Equal(t, uint64(4096), cfgA.Vdisk.BlockSize)
+	if assert.Len(t, cfgA.DataCluster.DataStorage, 1) {
+		assert.Equal(t, "localhost:16379", cfgA.DataCluster.DataStorage[0].Address)
+		assert.Equal(t, 0, cfgA.DataCluster.DataStorage[0].Database)
+	}
+
+	// should always succeed
+	assert.Subset(t, []string{"a", "b"}, hr.VdiskIdentifiers())
+}
+
 func createTempFile(t *testing.T) string {
 	file, err := ioutil.TempFile("", "testReloader")
 	if err != nil {

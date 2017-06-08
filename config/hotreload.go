@@ -281,3 +281,45 @@ func (es reloadErrors) Error() string {
 	}
 	return err
 }
+
+// NopHotReloader returns a placeholder HotReloader,
+// which doesn't hot reload at all, but simply returns a static configuration,
+// usuable for places where a HotReloader is required,
+// but where it doesn't make any sense.
+func NopHotReloader(configPath string) (HotReloader, error) {
+	cfg, err := ReadConfig(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't create NopHotReloader: %s", err.Error())
+	}
+
+	return &nopHotReloader{cfg}, nil
+}
+
+type nopHotReloader struct {
+	cfg *Config
+}
+
+// Subscribe implements HotReloader.Subscribe
+func (hr *nopHotReloader) Subscribe(c chan<- VdiskClusterConfig, vdiskID string) error { return nil }
+
+// Unsubscribe implements HotReloader.Unsubscribe
+func (hr *nopHotReloader) Unsubscribe(c chan<- VdiskClusterConfig) error { return nil }
+
+// VdiskClusterConfig implements HotReloader.VdiskClusterConfig
+func (hr *nopHotReloader) VdiskClusterConfig(vdiskID string) (*VdiskClusterConfig, error) {
+	return hr.cfg.VdiskClusterConfig(vdiskID)
+}
+
+// VdiskIdentifiers implements HotReloader.VdiskIdentifiers
+func (hr *nopHotReloader) VdiskIdentifiers() (ids []string) {
+	for id := range hr.cfg.Vdisks {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// Listen implements HotReloader.Listen
+func (hr *nopHotReloader) Listen(ctx context.Context) {}
+
+// Close implements HotReloader.Close
+func (hr *nopHotReloader) Close() error { return nil }
