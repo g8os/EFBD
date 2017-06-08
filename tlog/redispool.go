@@ -78,13 +78,13 @@ func StaticRedisPoolFactory(requiredDataServerCount int, storageServers []config
 // such that at creation of a RedisPool, it is validated that the
 // storage cluster in question has sufficient data servers available.
 func ConfigRedisPoolFactory(requiredDataServerCount int, configPath string) (RedisPoolFactory, error) {
-	cfg, err := config.ReadConfig(configPath)
+	reloader, err := config.NewHotReloader(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't create RedisPoolFactory: %s", err.Error())
 	}
 
 	return &configRedisPoolFactory{
-		cfg: cfg,
+		reloader:                reloader,
 		requiredDataServerCount: requiredDataServerCount,
 	}, nil
 }
@@ -135,7 +135,7 @@ func NewRedisPool(requiredDataServerCount int, storageServers []config.StorageSe
 		return nil, errors.New("insufficient data servers given")
 	}
 
-	return newRedisPool(storageServers), nil
+	return newStaticRedisPool(storageServers), nil
 }
 
 // InMemoryRedisPool creates a redis pool using in-memory
@@ -161,7 +161,7 @@ func InMemoryRedisPool(requiredDataServerCount int) RedisPool {
 		})
 	}
 
-	return newRedisPool(serverConfigs)
+	return newStaticRedisPool(serverConfigs)
 }
 
 // RedisPoolFromConfig creates a redis pool for a vdisk,
@@ -190,7 +190,7 @@ func RedisPoolFromConfig(configPath, vdiskID string, requiredDataServerCount int
 	}
 
 	// create redis pool based on the given valid storage cluster
-	return newRedisPool(storageCluster.DataStorage), nil
+	return newStaticRedisPool(storageCluster.DataStorage), nil
 }
 
 // RedisPoolConfig used to create any kind
@@ -264,6 +264,8 @@ type RedisPoolFactory interface {
 	// or in case that vdisk has not enough (n < k+m) dataservers linked to it,
 	// in order to create a valid RedisPool.
 	NewRedisPool(vdiskID string) (RedisPool, error)
+	// Close any open resources
+	Close() error
 }
 
 // RedisPool maintains a collection of premade redis.Pool's,
@@ -288,51 +290,40 @@ func (factory *staticRedisPoolFactory) NewRedisPool(string) (RedisPool, error) {
 	return factory.redisPool, nil
 }
 
+// Close implements RedisPoolFactory.Close
+func (factory *staticRedisPoolFactory) Close() error { return nil }
+
 type configRedisPoolFactory struct {
-	cfg                     *config.Config
+	reloader                config.HotReloader
 	requiredDataServerCount int
 }
 
 // NewRedisPool implements RedisPoolFactory.NewRedisPool
 func (factory *configRedisPoolFactory) NewRedisPool(vdiskID string) (RedisPool, error) {
-	vdiskcfg, ok := factory.cfg.Vdisks[vdiskID]
-	if !ok {
-		return nil, fmt.Errorf("no vdisk config could be found for %s", vdiskID)
-	}
-
-	if vdiskcfg.TlogStorageCluster == "" {
-		return nil, fmt.Errorf("no tlog storage cluster defined for %s", vdiskID)
-	}
-
-	// should always be found, as this is validated during config loading
-	storageCluster := factory.cfg.StorageClusters[vdiskcfg.TlogStorageCluster]
-
-	if len(storageCluster.DataStorage) < factory.requiredDataServerCount {
-		return nil, fmt.Errorf("storageCluster of vdisk %s has not enough dataservers", vdiskID)
-	}
-
-	// create redis pool based on the given valid storage cluster
-	return newRedisPool(
-		storageCluster.DataStorage[:factory.requiredDataServerCount-1],
-	), nil
+	return newDynamicRedisPool(vdiskID, factory.requiredDataServerCount, factory.reloader)
 }
 
-// redisPool is the internal structure used as the RedisPool
+// Close implements RedisPoolFactory.Close
+func (factory *configRedisPoolFactory) Close() error {
+	return factory.reloader.Close()
+}
+
+// staticRedisPool is the static version used as the RedisPool
 // in development/production code.
-type redisPool struct {
-	lock      sync.Mutex //protects following
+type staticRedisPool struct {
+	lock      sync.RWMutex //protects following
 	dataPools map[int]*redis.Pool
 }
 
-// newRedisPool creates a new pool for multiple redis servers,
+// newStaticRedisPool creates a new pool for multiple redis servers,
 // the number of pools defined by the number of given connection strings.
-func newRedisPool(dataServers []config.StorageServerConfig) RedisPool {
+func newStaticRedisPool(dataServers []config.StorageServerConfig) RedisPool {
 	dataPools := make(map[int]*redis.Pool, len(dataServers))
 	for index, dataServerConfig := range dataServers {
 		dataPools[index] = newConnectionPool(dataServerConfig)
 	}
 
-	return &redisPool{
+	return &staticRedisPool{
 		dataPools: dataPools,
 	}
 }
@@ -351,16 +342,16 @@ func newConnectionPool(cfg config.StorageServerConfig) *redis.Pool {
 }
 
 // DataConnectionCount implements RedisPool.DataConnectionCount
-func (p *redisPool) DataConnectionCount() int {
-	p.lock.Lock()
-	defer p.lock.Unlock()
+func (p *staticRedisPool) DataConnectionCount() int {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
 	return len(p.dataPools)
 }
 
 // DataConnection implements RedisPool.DataConnection
-func (p *redisPool) DataConnection(index int) redis.Conn {
-	p.lock.Lock()
-	defer p.lock.Unlock()
+func (p *staticRedisPool) DataConnection(index int) redis.Conn {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
 
 	if pool, ok := p.dataPools[index]; ok {
 		return pool.Get()
@@ -372,7 +363,7 @@ func (p *redisPool) DataConnection(index int) redis.Conn {
 }
 
 // Close implements RedisPool.Close
-func (p *redisPool) Close() {
+func (p *staticRedisPool) Close() {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
@@ -381,6 +372,150 @@ func (p *redisPool) Close() {
 	}
 
 	p.dataPools = nil
+}
+
+// newDynamicRedisPool creates a new pool for multiple redis servers,
+// the number of pools defined by the number of given connection strings.
+func newDynamicRedisPool(vdiskID string, requiredNumberOfDataPools int, reloader config.HotReloader) (RedisPool, error) {
+	redisPool := &dynamicRedisPool{
+		requiredNumberOfDataPools: requiredNumberOfDataPools,
+		dataPools:                 make(map[int]*redisPool),
+		done:                      make(chan struct{}),
+	}
+
+	vdiskCfg, err := reloader.VdiskClusterConfig(vdiskID)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't create dynamic redis pool: %s", err.Error())
+	}
+
+	err = redisPool.reloadConfig(vdiskCfg)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't create dynamic redis pool: %s", err.Error())
+	}
+
+	// start background thread (for config updates)
+	go redisPool.listen(vdiskID, reloader)
+
+	// return redisPool, has to be closed by user
+	return redisPool, nil
+}
+
+// dynamicRedisPool is the dynamic version used as the RedisPool
+// in development/production code.
+type dynamicRedisPool struct {
+	lock sync.RWMutex
+
+	requiredNumberOfDataPools int
+	dataPools                 map[int]*redisPool
+
+	done chan struct{}
+}
+
+// redisPool combines the redis.Pool,
+// together with the information it used to create it
+type redisPool struct {
+	*redis.Pool
+	Config config.StorageServerConfig
+}
+
+// DataConnectionCount implements RedisPool.DataConnectionCount
+func (p *dynamicRedisPool) DataConnectionCount() int {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+	return p.requiredNumberOfDataPools
+}
+
+// DataConnection implements RedisPool.DataConnection
+func (p *dynamicRedisPool) DataConnection(index int) redis.Conn {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+
+	if pool, ok := p.dataPools[index]; ok {
+		return pool.Get()
+	}
+
+	return errorConnection{
+		err: fmt.Errorf("no connectionPool exists for index %d", index),
+	}
+}
+
+// Close implements RedisPool.Close
+func (p *dynamicRedisPool) Close() {
+	close(p.done)
+
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	for _, c := range p.dataPools {
+		c.Close()
+	}
+}
+
+func (p *dynamicRedisPool) reloadConfig(cfg *config.VdiskClusterConfig) error {
+	if cfg.TlogCluster == nil {
+		return errors.New("no tlog cluster defined")
+	}
+
+	numServers := len(cfg.TlogCluster.DataStorage)
+	if numServers < p.requiredNumberOfDataPools {
+		return errors.New("not enough tlog servers defined")
+	}
+
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	log.Debug("(re)loading redis pools, using the latest available config")
+
+	configs := cfg.TlogCluster.DataStorage[:p.requiredNumberOfDataPools]
+	for index, cfg := range configs {
+		if pool, ok := p.dataPools[index]; ok {
+			// pool already exists, so let's see
+			// if we can keep it as it is
+			if pool.Config == cfg {
+				continue // pool is fine as it is
+			}
+
+			log.Debugf("closing replaced pool #%d: %v", index, &pool.Config)
+			p.dataPools[index].Close()
+		}
+
+		p.dataPools[index] = &redisPool{
+			Pool:   newConnectionPool(cfg),
+			Config: cfg,
+		}
+	}
+
+	return nil
+}
+
+func (p *dynamicRedisPool) listen(vdiskID string, reloader config.HotReloader) {
+	log.Debug("dynamicRedisPool listening")
+	ch := make(chan config.VdiskClusterConfig)
+	err := reloader.Subscribe(ch, vdiskID)
+	if err != nil {
+		panic(err)
+	}
+
+	defer func() {
+		log.Debug("exit dynamicRedisPool listener")
+		if err := reloader.Unsubscribe(ch); err != nil {
+			log.Error(err)
+		}
+		close(ch)
+	}()
+
+	for {
+		select {
+		case cfg := <-ch:
+			err := p.reloadConfig(&cfg)
+			if err != nil {
+				log.Error(err)
+			}
+
+		case <-p.done:
+			return
+		}
+	}
 }
 
 // errorConnection taken from
