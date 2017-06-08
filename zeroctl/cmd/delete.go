@@ -13,8 +13,6 @@ var DeleteCmd = &cobra.Command{
 
 func init() {
 	DeleteCmd.AddCommand(
-		delvdisk.DedupedCmd,
-		delvdisk.NondedupedCmd,
 		delvdisk.VdisksCmd,
 	)
 }

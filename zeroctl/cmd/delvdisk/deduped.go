@@ -4,40 +4,9 @@ import (
 	"fmt"
 
 	"github.com/garyburd/redigo/redis"
-	"github.com/spf13/cobra"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
-	cmdconfig "github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
-
-// DedupedCmd represents the deduped delete subcommand
-var DedupedCmd = &cobra.Command{
-	Use:   "deduped vdiskid ardb_url",
-	Short: "Delete the metadata of a deduped vdisk",
-	RunE:  deleteDeduped,
-}
-
-func deleteDeduped(cmd *cobra.Command, args []string) error {
-	// create logger
-	logLevel := log.ErrorLevel
-	if cmdconfig.Verbose {
-		logLevel = log.InfoLevel
-	}
-	log.SetLevel(logLevel)
-
-	// parse user input
-	log.Info("parsing positional arguments...")
-	input, err := parseUserInput(args)
-	if err != nil {
-		return err
-	}
-
-	storageServer := config.StorageServerConfig{
-		Address:  input.URL,
-		Database: 0,
-	}
-	return deleleDedupedVdisksMetadata(false, storageServer, input.VdiskID)
-}
 
 // delete the metadata of deduped vdisks
 func deleleDedupedVdisksMetadata(force bool, cfg config.StorageServerConfig, vdiskids ...string) error {

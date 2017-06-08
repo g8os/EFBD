@@ -13,8 +13,6 @@ var CopyCmd = &cobra.Command{
 
 func init() {
 	CopyCmd.AddCommand(
-		copyvdisk.DedupedCmd,
-		copyvdisk.NondedupedCmd,
 		copyvdisk.VdiskCmd,
 	)
 }

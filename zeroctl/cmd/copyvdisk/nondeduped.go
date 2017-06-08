@@ -5,64 +5,8 @@ import (
 	"strconv"
 
 	"github.com/garyburd/redigo/redis"
-	"github.com/spf13/cobra"
 	"github.com/zero-os/0-Disk/log"
-	"github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
-
-var nondedupedCfg struct {
-	SourceDatabase int
-	TargetDatabase int
-}
-
-// NondedupedCmd represents the nondeduped copy subcommand
-var NondedupedCmd = &cobra.Command{
-	Use:   "nondeduped source_vdisk target_vdisk source_url [target_url]",
-	Short: "Copy the data (blocks) of a nondeduped vdisk",
-	RunE:  copyNondeduped,
-}
-
-func copyNondeduped(cmd *cobra.Command, args []string) error {
-	logLevel := log.ErrorLevel
-	if config.Verbose {
-		logLevel = log.InfoLevel
-	}
-	log.SetLevel(logLevel)
-
-	// parse user input
-	log.Info("parsing positional arguments...")
-	input, err := parseUserInput(args)
-	if err != nil {
-		return err
-	}
-
-	// get ardb connections
-	log.Info("get the redis connection(s)...")
-	connA, connB, err := getARDBConnections(
-		input,
-		nondedupedCfg.SourceDatabase, nondedupedCfg.TargetDatabase)
-	if err != nil {
-		return err
-	}
-
-	log.Infof("copy vdisk %q as %q",
-		input.Source.VdiskID, input.Target.VdiskID)
-
-	if connB == nil {
-		err = copyNondedupedSameConnection(
-			input.Source.VdiskID, input.Target.VdiskID, connA)
-	} else {
-		err = copyNondedupedDifferentConnections(
-			input.Source.VdiskID, input.Target.VdiskID, connA, connB)
-	}
-	if err != nil {
-		return err
-	}
-
-	log.Infof("copied succesfully vdisk %q to vdisk %q",
-		input.Source.VdiskID, input.Target.VdiskID)
-	return nil
-}
 
 func copyNondedupedSameConnection(sourceID, targetID string, conn redis.Conn) (err error) {
 	defer conn.Close()
@@ -159,19 +103,4 @@ func copyNondedupedDifferentConnections(sourceID, targetID string, connA, connB 
 	}
 
 	return
-}
-
-func init() {
-	DedupedCmd.Long = DedupedCmd.Short + `
-
-When no target_url is given, the target_url is the same as the source_url.`
-
-	NondedupedCmd.Flags().IntVar(
-		&nondedupedCfg.SourceDatabase,
-		"sourcedb", 0,
-		"database to use for the source connection (0 by default)")
-	NondedupedCmd.Flags().IntVar(
-		&nondedupedCfg.TargetDatabase,
-		"targetdb", 0,
-		"database to use for the target connection (0 by default)")
 }

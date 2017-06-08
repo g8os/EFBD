@@ -139,33 +139,3 @@ $ zeroctl list vdisks localhost:16379
 This command is slow, and might take a while to finish!
 It might also decrease the performance of the ARDB server
 in question, by locking the server down for each operation.
-
-## Legacy Examples
-
-### Copy metadata of a deduped vdisk
-
-vdisk `a` and `b` are in the same ardb (`localhost:16379`):
-
-```
-$ zeroctl copy deduped a b localhost:16379
-```
-
-vdisk `a` and `b` are in different ardbs (`localhost:16379` -> `localhost:16380`):
-
-```
-$ zeroctl copy deduped a b localhost:16379 localhost:16380
-```
-
-vdisk `a` and `b` are in different ardb databases (`localhost:16379 DB=0` -> `localhost:16379 DB=1`):
-
-```
-$ zeroctl copy deduped a b localhost:16379 --targetdb 1
-```
-
-### Delete metadata of a deduped vdisk
-
-Delete vdisk `a`:
-
-```
-$ zeroctl delete deduped a localhost:16379
-```

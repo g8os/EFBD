@@ -4,40 +4,9 @@ import (
 	"fmt"
 
 	"github.com/garyburd/redigo/redis"
-	"github.com/spf13/cobra"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
-	cmdconfig "github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
-
-// NondedupedCmd represents the nondeduped delete subcommand
-var NondedupedCmd = &cobra.Command{
-	Use:   "nondeduped vdiskid ardb_url",
-	Short: "Delete the data (blocks) of a nondeduped vdisk",
-	RunE:  deleteNondeduped,
-}
-
-func deleteNondeduped(cmd *cobra.Command, args []string) error {
-	// create logger
-	logLevel := log.ErrorLevel
-	if cmdconfig.Verbose {
-		logLevel = log.InfoLevel
-	}
-	log.SetLevel(logLevel)
-
-	// parse user input
-	log.Info("parsing positional arguments...")
-	input, err := parseUserInput(args)
-	if err != nil {
-		return err
-	}
-
-	storageServer := config.StorageServerConfig{
-		Address:  input.URL,
-		Database: 0,
-	}
-	return deleleNondedupedVdisks(false, storageServer, input.VdiskID)
-}
 
 // delete the data of nondeduped vdisks
 func deleleNondedupedVdisks(force bool, cfg config.StorageServerConfig, vdiskids ...string) error {
