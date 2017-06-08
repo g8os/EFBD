@@ -31,7 +31,7 @@ func deleteVdisks(cmd *cobra.Command, args []string) error {
 
 	log.Infof("loading config %s...", vdisksCfg.ConfigPath)
 
-	cfg, err := config.ReadConfig(vdisksCfg.ConfigPath)
+	cfg, err := config.ReadConfig(vdisksCfg.ConfigPath, config.NBDServer)
 	if err != nil {
 		return err
 	}

@@ -156,7 +156,7 @@ func main() {
 	redisPool := ardb.NewRedisPool(poolDial)
 	defer redisPool.Close()
 
-	configHotReloader, err := config.NewHotReloader(configPath)
+	configHotReloader, err := config.NewHotReloader(configPath, config.NBDServer)
 	if err != nil {
 		log.Fatal(err)
 	}

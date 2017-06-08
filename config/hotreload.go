@@ -45,8 +45,8 @@ type HotReloader interface {
 // which is used to subscribe channels,
 // which will receive an up-to-date vdisk cluster config,
 // each time a SIGHUP signal has been received by the HotReloader.
-func NewHotReloader(configPath string) (HotReloader, error) {
-	cfg, err := ReadConfig(configPath)
+func NewHotReloader(configPath string, user User) (HotReloader, error) {
+	cfg, err := ReadConfig(configPath, user)
 	if err != nil {
 		return nil, err
 	}
@@ -54,6 +54,7 @@ func NewHotReloader(configPath string) (HotReloader, error) {
 	return &defaultHotReloader{
 		handlers:     make(map[chan<- VdiskClusterConfig]string),
 		cfgpath:      configPath,
+		cfguser:      user,
 		cfg:          cfg,
 		fullReloadCh: make(chan struct{}),
 		done:         make(chan struct{}),
@@ -63,6 +64,7 @@ func NewHotReloader(configPath string) (HotReloader, error) {
 type defaultHotReloader struct {
 	handlers     map[chan<- VdiskClusterConfig]string
 	cfgpath      string
+	cfguser      User
 	cfg          *Config
 	fullReloadCh chan struct{}
 	done         chan struct{}
@@ -214,7 +216,7 @@ func (hr *defaultHotReloader) reloadVdiskClusterConfigs() error {
 		defer hr.mux.Unlock()
 
 		var err error
-		hr.cfg, err = ReadConfig(hr.cfgpath)
+		hr.cfg, err = ReadConfig(hr.cfgpath, hr.cfguser)
 		if err != nil {
 			return err
 		}
@@ -286,8 +288,8 @@ func (es reloadErrors) Error() string {
 // which doesn't hot reload at all, but simply returns a static configuration,
 // usuable for places where a HotReloader is required,
 // but where it doesn't make any sense.
-func NopHotReloader(configPath string) (HotReloader, error) {
-	cfg, err := ReadConfig(configPath)
+func NopHotReloader(configPath string, user User) (HotReloader, error) {
+	cfg, err := ReadConfig(configPath, user)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't create NopHotReloader: %s", err.Error())
 	}
