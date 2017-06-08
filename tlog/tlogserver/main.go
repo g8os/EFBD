@@ -89,6 +89,7 @@ func main() {
 		AutoFill:                true,
 		AllowInMemory:           true,
 	})
+	defer poolFactory.Close()
 
 	// create server
 	server, err := server.NewServer(conf, poolFactory)
