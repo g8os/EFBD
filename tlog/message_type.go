@@ -10,7 +10,6 @@ import (
 const (
 	messageTypeStart       = iota
 	MessageTlogBlock       // tlog block
-	MessageForceFlush      // force flush
 	MessageForceFlushAtSeq // force flush at sequence
 	messageTypeEnd
 )
