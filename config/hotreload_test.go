@@ -105,7 +105,7 @@ func TestHotReloader(t *testing.T) {
 	configPath := createTempFile(t)
 	writeTestConfig(t, configPath, "localhost:16379", "a", "b")
 
-	hr, err := NewHotReloader(configPath)
+	hr, err := NewHotReloader(configPath, NBDServer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestHotReloader(t *testing.T) {
 
 func TestNopHotReloader(t *testing.T) {
 	// requires a valid path
-	_, err := NopHotReloader("foo")
+	_, err := NopHotReloader("foo", NBDServer)
 	if !assert.Error(t, err) {
 		return
 	}
@@ -191,7 +191,7 @@ func TestNopHotReloader(t *testing.T) {
 	writeTestConfig(t, configPath, "localhost:16379", "a", "b")
 
 	// a valid path, gives us a (static) NopHotReloader
-	hr, err := NopHotReloader(configPath)
+	hr, err := NopHotReloader(configPath, NBDServer)
 	if !assert.NoError(t, err) || !assert.NotNil(t, hr) {
 		return
 	}
@@ -249,11 +249,6 @@ func writeTestConfig(t *testing.T, path, scaddr string, vdiskids ...string) {
 	os.Remove(path)
 
 	err := ioutil.WriteFile(path, []byte(config.String()), os.ModePerm)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = ValidateConfigPath(path)
 	if err != nil {
 		t.Fatal(err)
 	}

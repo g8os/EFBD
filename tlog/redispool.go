@@ -78,7 +78,7 @@ func StaticRedisPoolFactory(requiredDataServerCount int, storageServers []config
 // such that at creation of a RedisPool, it is validated that the
 // storage cluster in question has sufficient data servers available.
 func ConfigRedisPoolFactory(requiredDataServerCount int, configPath string) (RedisPoolFactory, error) {
-	reloader, err := config.NewHotReloader(configPath)
+	reloader, err := config.NewHotReloader(configPath, config.TlogServer)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't create RedisPoolFactory: %s", err.Error())
 	}
@@ -168,7 +168,7 @@ func InMemoryRedisPool(requiredDataServerCount int) RedisPool {
 // using the storage cluster defined in the given Blokstor config file,
 // for that vdisk.
 func RedisPoolFromConfig(configPath, vdiskID string, requiredDataServerCount int) (RedisPool, error) {
-	cfg, err := config.ReadConfig(configPath)
+	cfg, err := config.ReadConfig(configPath, config.TlogServer)
 	if err != nil {
 		return nil, err
 	}

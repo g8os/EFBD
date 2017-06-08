@@ -240,11 +240,6 @@ func (rp *redisProvider) MetaRedisConnection() (conn redis.Conn, err error) {
 	rp.mux.RLock()
 	defer rp.mux.RUnlock()
 
-	if rp.metaConnectionConfig == nil {
-		err = errNoMetaAvailable
-		return
-	}
-
 	connConfig := rp.metaConnectionConfig
 	conn = rp.redisPool.Get(connConfig.Address, connConfig.Database)
 	return
@@ -309,6 +304,5 @@ func (rp *redisProvider) reloadConfig(cfg *config.VdiskClusterConfig) error {
 }
 
 var (
-	errNoMetaAvailable = errors.New("no meta ardb connection available")
 	errNoRootAvailable = errors.New("no root ardb connection available")
 )

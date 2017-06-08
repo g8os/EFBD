@@ -29,26 +29,6 @@ storageClusters: # A required map of storage clusters,
         db: 1                        # database is optional, 0 by default
     metadataStorage: # Required ONLY when used as the (Root)StorageCluster of a `boot` vdisk
       address: 192.168.58.147:2001 # Required connection (dial)string
-  tlogcluster: # required (string) ID of this (optional) storage cluster,
-               # you are free to name the cluster however you want
-    dataStorage: # A required array of connection (dial) strings, used to store data,
-                 # NOTE that storage clusters used for tlog purposes,
-                 #      require at least K+M servers, rather than just the normal minimum of 1,
-                 #      this is not validated by the config file loader,
-                 #      but will result in a tlogclient handshake error,
-                 #      in case there are insufficient (N < K+M) dataStorage servers listed
-                 # in this example K=2 and M=2, thus we require 4 servers,
-                 # extra servers (I >= K+M) are allowed, but ignored
-     - address: 192.168.58.148:2000 # Required connection (dial) string
-       db: 0                        # Database is optional, 0 by default
-     - address: 192.168.58.148:2000 # Required connection (dial) string
-       db: 1                        # Database is optional
-     - address: 192.168.58.148:2000 # Required connection (dial) string
-       db: 2                        # Database is optional
-     - address: 192.168.58.148:2000 # Required connection (dial) string
-       db: 3                        # Database is optional
-    metadataStorage: # Ignored when used ONLY as a tlogStorageCluster
-      address: 192.168.58.149:2000 # Required connection (dial) string
   # ... more (optional) storage clusters
 vdisks: # A required map of vdisks,
         # only 1 vdisk is required,
@@ -66,10 +46,6 @@ vdisks: # A required map of vdisks,
                                     # for this vdisk's fallback/root/template storage, has to be
                                     # a storage cluster defined in the `storageClusters` section
                                     # of THIS config file
-    tlogStorageCluster: tlogcluster # (String) ID of the tlog storage cluster to use
-                                    # for this vdisk's tlog's aggregation storage,
-                                    # NOTE that this property is REQUIRED in case
-                                    # you have a tlogserver connected to your nbdserver
     type: boot # Required (VdiskType) type of this vdisk
                # which also defines if its deduped or nondeduped,
                # valid types are: `boot`, `db`, `cache` and `tmp`

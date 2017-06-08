@@ -88,7 +88,7 @@ func newBackend(ctx context.Context, dial ardb.DialFunc, tlogrpc, vdiskID, confi
 	// redis pool
 	redisPool := ardb.NewRedisPool(dial)
 
-	hotreloader, err := zerodiskcfg.NopHotReloader(configPath)
+	hotreloader, err := zerodiskcfg.NopHotReloader(configPath, zerodiskcfg.NBDServer)
 	if err != nil {
 		return nil, err
 	}

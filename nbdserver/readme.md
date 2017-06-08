@@ -1,7 +1,6 @@
 # NBD Server for blocks stored in ARDB
 
-
-# NBD Server Configuration
+## NBD Server Configuration
 
 The NBD server and its backend is configured using a YAML configuration file:
 
@@ -24,26 +23,6 @@ storageClusters: # A required map of storage clusters,
         db: 1                        # database is optional, 0 by default
     metadataStorage: # Required ONLY when used as the (Root)StorageCluster of a `boot` vdisk
       address: 192.168.58.147:2001 # Required connection (dial)string
-  tlogcluster: # required (string) ID of this (optional) storage cluster,
-               # you are free to name the cluster however you want
-    dataStorage: # A required array of connection (dial) strings, used to store data,
-                 # NOTE that storage clusters used for tlog purposes,
-                 #      require at least K+M servers, rather than just the normal minimum of 1,
-                 #      this is not validated by the config file loader,
-                 #      but will result in a tlogclient handshake error,
-                 #      in case there are insufficient (N < K+M) dataStorage servers listed
-                 # in this example K=2 and M=2, thus we require 4 servers,
-                 # extra servers (I >= K+M) are allowed, but ignored
-     - address: 192.168.58.148:2000 # Required connection (dial) string
-       db: 0                        # Database is optional, 0 by default
-     - address: 192.168.58.148:2000 # Required connection (dial) string
-       db: 1                        # Database is optional
-     - address: 192.168.58.148:2000 # Required connection (dial) string
-       db: 2                        # Database is optional
-     - address: 192.168.58.148:2000 # Required connection (dial) string
-       db: 3                        # Database is optional
-    metadataStorage: # Ignored when used ONLY as a tlogStorageCluster
-      address: 192.168.58.149:2000 # Required connection (dial) string
   # ... more (optional) storage clusters
 vdisks: # A required map of vdisks,
         # only 1 vdisk is required,
@@ -61,10 +40,6 @@ vdisks: # A required map of vdisks,
                                     # for this vdisk's fallback/root/template storage, has to be
                                     # a storage cluster defined in the `storageClusters` section
                                     # of THIS config file
-    tlogStorageCluster: tlogcluster # (String) ID of the tlog storage cluster to use
-                                    # for this vdisk's tlog's aggregation storage,
-                                    # NOTE that this property is REQUIRED in case
-                                    # you have a tlogserver connected to your nbdserver
     type: boot # Required (VdiskType) type of this vdisk
                # which also defines if its deduped or nondeduped,
                # valid types are: `boot`, `db`, `cache` and `tmp`
@@ -83,16 +58,30 @@ using the `--config path` optional CLI flag.
 
 ### Live reloading of the configuration
 
-A running nbdserver in a production environment can not simply be restarted since this will break the connection to any client.
-When the configuration file is modified, send a `SIGHUP` signal to the nbdserver to make it pick up the changes.
+A running nbdserver in a production environment can not simply be restarted
+since this will break the connection to any connected client.
+When the configuration file is modified,
+send a `SIGHUP` signal to the nbdserver to make it pick up the changes.
+
+**NOTE**: It is not recommended to change the configs of storage clusters,
+whichare still in use by active (connected) clients,
+and content might get lost if you do this anyway.
 
 ## Usage
 
-Make sure you have an ARDB server running on `localhost:16379`.
+Use `nbdserver -h` or `nbdserver --help` to get more information about all available flags.
+
+### Example
+
+Make sure you have an ARDB server(s) running, on the connection info specified in the used `config.yml` file.
 
 ```
 make nbdserver && bin/nbdserver -protocol tcp -address ":6666"
 ```
+
+You can also instead simply run the nbdserver with no flag specified `bin/nbdserver`
+to run it on the default `/tmp/nbd-socket` unix socket,
+which is the same as the more explicit version `bin/nbdserver -protocol unix --address /tmp/nbd-socket`.
 
 Note that if you don't have the `config.yml` file in your current working directory,
 you'll have to specify the config file explicitly using the `-config path` flag.

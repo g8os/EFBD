@@ -11,107 +11,157 @@ import (
 	"github.com/go-yaml/yaml"
 )
 
-// ValidateConfigPath validates a config file on the given path
-func ValidateConfigPath(path string) error {
-	_, err := ReadConfig(path)
-	return err
-}
-
-// ReadConfig reads the config used to configure the zerodisk
-func ReadConfig(path string) (*Config, error) {
+// ReadConfig reads the config from a given file
+func ReadConfig(path string, user User) (*Config, error) {
 	bytes, err := ioutil.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't read zerodisk config: %s", err.Error())
+		return nil, fmt.Errorf("couldn't create the config: %s", err.Error())
 	}
 
-	return FromBytes(bytes)
+	return FromBytes(bytes, user)
 }
 
 // FromBytes creates a config based on given YAML 1.2 content
-func FromBytes(bytes []byte) (*Config, error) {
+func FromBytes(bytes []byte, user User) (*Config, error) {
 	cfg := new(Config)
 
 	// unmarshal the yaml content into our config,
 	// which will give us basic validation guarantees
 	err := yaml.Unmarshal(bytes, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't create zerodisk config: %s", err.Error())
+		return nil, err
 	}
 
-	// now apply an extra validation layer,
-	// to ensure that the values with generic types,
-	// are also valid
+	// specify the user, as this is used for any future validation
+	cfg.user = user
+
+	// validate the config,
+	// specific for the specified user
 	err = cfg.Validate()
 	if err != nil {
-		return nil, fmt.Errorf("couldn't create zerodisk config: %s", err.Error())
+		return nil, fmt.Errorf("couldn't create the config: %s", err.Error())
 	}
 
 	return cfg, nil
+}
+
+// User defines the user of the config
+type User uint8
+
+// Supported Config Users
+const (
+	Global    User = NBDServer | TlogServer
+	NBDServer User = 1 << iota
+	TlogServer
+)
+
+// Config for the zerodisk backends
+type Config struct {
+	StorageClusters map[string]StorageClusterConfig `yaml:"storageClusters" valid:"required"`
+	Vdisks          map[string]VdiskConfig          `yaml:"vdisks" valid:"required"`
+
+	// information used to specialize validation of the config
+	user User
 }
 
 // VdiskClusterConfig combines the vdisk config
 // and its cluster configs
 type VdiskClusterConfig struct {
 	Vdisk       VdiskConfig
-	DataCluster StorageClusterConfig
+	DataCluster *StorageClusterConfig
 	RootCluster *StorageClusterConfig
 	TlogCluster *StorageClusterConfig
 }
 
-// Config for the zerodisk backends
-type Config struct {
-	StorageClusters map[string]StorageClusterConfig `yaml:"storageClusters" valid:"required"`
-	Vdisks          map[string]VdiskConfig          `yaml:"vdisks" valid:"required"`
+// SetUser sets the user,
+// information which is used for any future validations of this config.
+func (cfg *Config) SetUser(user User) {
+	cfg.user = user
 }
 
 // Validate the Config to ensure that all required properties are present,
 // and that all given properties are valid
 func (cfg *Config) Validate() error {
+	// validate generic requirements
 	_, err := valid.ValidateStruct(cfg)
 	if err != nil {
-		return err
+		return cfg.validationError(err)
 	}
 
-	err = cfg.validateStorageClusters()
-	if err != nil {
-		return err
-	}
-
-	// valid
-	return nil
-}
-
-// ensure all referenced storage clusters exist, O(n^2)
-// and also ensure that storage cluster either
-// have metadataStorage defined when required
-func (cfg *Config) validateStorageClusters() error {
+	// used to validate storage references
 	storageClusters := make(map[string]struct{})
 	for clusterID := range cfg.StorageClusters {
 		storageClusters[clusterID] = struct{}{}
 	}
-
-	validateReference := func(clusterID string) error {
+	validRef := func(clusterID string) error {
 		// validate existence
 		if _, ok := storageClusters[clusterID]; !ok {
-			return fmt.Errorf("no storage cluster exists for %s", clusterID)
+			return fmt.Errorf("invalid cluster reference %s", clusterID)
 		}
 		return nil
 	}
 
-	for vdiskID, vdisk := range cfg.Vdisks {
-		// validate storage cluster
-		err := validateReference(vdisk.StorageCluster)
+	// optionally validate nbdserver specific properties
+	if cfg.user&NBDServer != 0 {
+		err = cfg.validateNBD(validRef)
 		if err != nil {
-			return fmt.Errorf("invalid storageCluster for vdisk %s: %s", vdiskID, err)
+			return cfg.validationError(err)
+		}
+	}
+
+	// optionally validate tlogserver specific properties
+	if cfg.user&TlogServer != 0 {
+		err = cfg.validateTlog(validRef)
+		if err != nil {
+			return cfg.validationError(err)
+		}
+	}
+
+	// config is valid
+	return nil
+}
+
+// validateNBD tlogserver-specific content,
+// to ensure the required properties are present,
+// and that all given properties are valid.
+func (cfg *Config) validateNBD(validRef func(string) error) error {
+	var err error
+
+	for vdiskID, vdisk := range cfg.Vdisks {
+		// validate required properties
+		if vdisk.BlockSize == 0 || vdisk.BlockSize%2 != 0 {
+			return fmt.Errorf(
+				"vdisk %s: %d is an invalid blockSize", vdiskID, vdisk.BlockSize)
+		}
+		if vdisk.Size == 0 {
+			return fmt.Errorf(
+				"vdisk %s: %d is an invalid size", vdiskID, vdisk.BlockSize)
+		}
+		if err = vdisk.Type.Validate(); err != nil {
+			return fmt.Errorf(
+				"vdisk %s: invalid type: %s", vdiskID, err.Error())
+		}
+
+		// validate (required) storage cluster
+		if vdisk.StorageCluster == "" {
+			return fmt.Errorf(
+				"vdisk %s misses required storageCluster", vdiskID)
+		}
+
+		err = validRef(vdisk.StorageCluster)
+		if err != nil {
+			return fmt.Errorf(
+				"vdisk %s misses required storageCluster: %s",
+				vdiskID, err.Error())
 		}
 		err = cfg.validateMetadataStorage(vdisk.StorageCluster, &vdisk)
 		if err != nil {
 			return fmt.Errorf("invalid storageCluster for vdisk %s: %s", vdiskID, err)
 		}
 
-		// validate root storage cluster
+		// validate (optional) root storage cluster
 		if vdisk.RootStorageCluster != "" {
-			if err = validateReference(vdisk.RootStorageCluster); err != nil {
+			if err = validRef(vdisk.RootStorageCluster); err != nil {
 				return fmt.Errorf("invalid rootStorageCluster for vdisk %s: %s", vdiskID, err)
 			}
 			err = cfg.validateMetadataStorage(vdisk.RootStorageCluster, &vdisk)
@@ -119,16 +169,43 @@ func (cfg *Config) validateStorageClusters() error {
 				return fmt.Errorf("invalid rootStorageCluster for vdisk %s: %s", vdiskID, err)
 			}
 		}
-
-		// validate tlog storage cluster
-		if vdisk.TlogStorageCluster != "" {
-			if err = validateReference(vdisk.TlogStorageCluster); err != nil {
-				return fmt.Errorf("invalid tlogStorageCluster for vdisk %s: %s", vdiskID, err)
-			}
-		}
 	}
 
 	return nil
+}
+
+// validateTlog tlogserver-specific content,
+// to ensure the required properties are present,
+// and that all given properties are valid.
+func (cfg *Config) validateTlog(validRef func(string) error) (err error) {
+	// validate tlog storage cluster
+	for vdiskID, vdisk := range cfg.Vdisks {
+		if vdisk.TlogStorageCluster == "" {
+			return fmt.Errorf(
+				"vdisk %s misses required tlogStorageCluster", vdiskID)
+		}
+
+		if err = validRef(vdisk.TlogStorageCluster); err != nil {
+			err = fmt.Errorf(
+				"vdisk %s misses required tlogStorageCluster: %s",
+				vdiskID, err.Error())
+			return
+		}
+	}
+
+	return
+}
+
+// validationError returns a user-targetted validation message
+func (cfg *Config) validationError(err error) error {
+	switch cfg.user {
+	case NBDServer:
+		return fmt.Errorf("invalid nbdserver config: %s", err.Error())
+	case TlogServer:
+		return fmt.Errorf("invalid tlogserver config: %s", err.Error())
+	default:
+		return fmt.Errorf("invalid config: %s", err.Error())
+	}
 }
 
 // VdiskClusterConfig returns a VdiskClusterConfig
@@ -140,9 +217,11 @@ func (cfg *Config) VdiskClusterConfig(vdiskID string) (*VdiskClusterConfig, erro
 		return nil, fmt.Errorf("no config found for vdisk %s", vdiskID)
 	}
 
-	config := &VdiskClusterConfig{
-		Vdisk:       vdiskCfg,
-		DataCluster: cfg.StorageClusters[vdiskCfg.StorageCluster].Clone(),
+	config := &VdiskClusterConfig{Vdisk: vdiskCfg}
+
+	if vdiskCfg.StorageCluster != "" {
+		cluster := cfg.StorageClusters[vdiskCfg.StorageCluster].Clone()
+		config.DataCluster = &cluster
 	}
 
 	if vdiskCfg.RootStorageCluster != "" {
@@ -242,13 +321,13 @@ type StorageServerConfig struct {
 
 // VdiskConfig defines the config for a vdisk
 type VdiskConfig struct {
-	BlockSize          uint64    `yaml:"blockSize" valid:"required"`
+	BlockSize          uint64    `yaml:"blockSize" valid:"optional"`
 	ReadOnly           bool      `yaml:"readOnly" valid:"optional"`
-	Size               uint64    `yaml:"size" valid:"required"`
-	StorageCluster     string    `yaml:"storageCluster" valid:"required"`
+	Size               uint64    `yaml:"size" valid:"optional"`
+	StorageCluster     string    `yaml:"storageCluster" valid:"optional"`
 	RootStorageCluster string    `yaml:"rootStorageCluster" valid:"optional"`
 	TlogStorageCluster string    `yaml:"tlogStorageCluster" valid:"optional"`
-	Type               VdiskType `yaml:"type" valid:"required"`
+	Type               VdiskType `yaml:"type" valid:"optional"`
 }
 
 // StorageType returns the type of storage this vdisk uses

@@ -44,7 +44,7 @@ vdisks:
     type: boot`
 
 func TestValidConfigFromBytes(t *testing.T) {
-	cfg, err := FromBytes([]byte(validConfig))
+	cfg, err := FromBytes([]byte(validConfig), Global)
 	if !assert.NoError(t, err) || !assert.NotNil(t, cfg) {
 		return
 	}
@@ -94,7 +94,7 @@ func TestValidConfigFromBytes(t *testing.T) {
 }
 
 func TestValidVdiskClusterConfigFromBytes(t *testing.T) {
-	config, err := FromBytes([]byte(validConfig))
+	config, err := FromBytes([]byte(validConfig), Global)
 	if !assert.NoError(t, err) || !assert.NotNil(t, config) {
 		return
 	}
@@ -141,7 +141,7 @@ func TestValidVdiskClusterConfigFromBytes(t *testing.T) {
 }
 
 func TestValidUniqueVdiskClusterConfigsFromBytes(t *testing.T) {
-	config, err := FromBytes([]byte(validConfig))
+	config, err := FromBytes([]byte(validConfig), Global)
 	if !assert.NoError(t, err) || !assert.NotNil(t, config) {
 		return
 	}
@@ -221,7 +221,7 @@ func TestValidUniqueVdiskClusterConfigsFromBytes(t *testing.T) {
 	assert.NotEqual(t, *tlogMetaStorageA, *tlogMetaStorageB)
 }
 
-const minimalValidConfig = `
+const minimalValidNBDServerConfig = `
 storageClusters:
   mycluster:
     dataStorage:
@@ -233,8 +233,8 @@ vdisks:
     storageCluster: mycluster
     type: cache`
 
-func TestMinimalValidConfigFromBytes(t *testing.T) {
-	cfg, err := FromBytes([]byte(minimalValidConfig))
+func TestMinimalValidNBDServerConfigFromBytes(t *testing.T) {
+	cfg, err := FromBytes([]byte(minimalValidNBDServerConfig), NBDServer)
 	if !assert.NoError(t, err) || !assert.NotNil(t, cfg) {
 		return
 	}
@@ -251,19 +251,71 @@ func TestMinimalValidConfigFromBytes(t *testing.T) {
 
 	if assert.Len(t, cfg.Vdisks, 1) {
 		if vdisk, ok := cfg.Vdisks["myvdisk"]; assert.True(t, ok) {
+			// required properties
 			assert.Equal(t, uint64(4096), vdisk.BlockSize)
 			assert.False(t, vdisk.ReadOnly)
 			assert.Equal(t, uint64(10), vdisk.Size)
 			assert.Equal(t, "mycluster", vdisk.StorageCluster)
-			assert.Equal(t, "", vdisk.RootStorageCluster)
-			assert.Equal(t, "", vdisk.TlogStorageCluster)
 			assert.Equal(t, VdiskTypeCache, vdisk.Type)
+			// optional properties
+			assert.Equal(t, "", vdisk.RootStorageCluster)
+			// ignored properties
+			assert.Equal(t, "", vdisk.TlogStorageCluster)
 		}
 	}
 }
 
-func TestMinimalValidVdiskClusterConfigFromBytes(t *testing.T) {
-	config, err := FromBytes([]byte(minimalValidConfig))
+const minimalValidTlogServerConfig = `
+storageClusters:
+  tlogcluster:
+    dataStorage:
+      - address: 192.168.58.146:2000
+      - address: 192.168.58.146:2001
+      - address: 192.168.58.146:2002
+      - address: 192.168.58.146:2003
+vdisks:
+  myvdisk:
+    tlogStorageCluster: tlogcluster`
+
+func TestMinimalValidTlogServerConfigFromBytes(t *testing.T) {
+	cfg, err := FromBytes([]byte(minimalValidTlogServerConfig), TlogServer)
+	if !assert.NoError(t, err) || !assert.NotNil(t, cfg) {
+		return
+	}
+
+	if assert.Len(t, cfg.StorageClusters, 1) {
+		if cluster, ok := cfg.StorageClusters["tlogcluster"]; assert.True(t, ok) {
+			if assert.Len(t, cluster.DataStorage, 4) {
+				assert.Equal(t, "192.168.58.146:2000", cluster.DataStorage[0].Address)
+				assert.Equal(t, 0, cluster.DataStorage[0].Database)
+				assert.Equal(t, "192.168.58.146:2001", cluster.DataStorage[1].Address)
+				assert.Equal(t, 0, cluster.DataStorage[1].Database)
+				assert.Equal(t, "192.168.58.146:2002", cluster.DataStorage[2].Address)
+				assert.Equal(t, 0, cluster.DataStorage[2].Database)
+				assert.Equal(t, "192.168.58.146:2003", cluster.DataStorage[3].Address)
+				assert.Equal(t, 0, cluster.DataStorage[3].Database)
+			}
+			assert.Nil(t, cluster.MetadataStorage)
+		}
+	}
+
+	if assert.Len(t, cfg.Vdisks, 1) {
+		if vdisk, ok := cfg.Vdisks["myvdisk"]; assert.True(t, ok) {
+			// required properties
+			assert.Equal(t, "tlogcluster", vdisk.TlogStorageCluster)
+			// ignored properties
+			assert.Equal(t, uint64(0), vdisk.BlockSize)
+			assert.False(t, vdisk.ReadOnly)
+			assert.Equal(t, uint64(0), vdisk.Size)
+			assert.Equal(t, "", vdisk.RootStorageCluster)
+			assert.Equal(t, "", vdisk.StorageCluster)
+			assert.Equal(t, VdiskType(0), vdisk.Type)
+		}
+	}
+}
+
+func TestMinimalValidVdiskClusterNBDServerConfigFromBytes(t *testing.T) {
+	config, err := FromBytes([]byte(minimalValidNBDServerConfig), NBDServer)
 	if !assert.NoError(t, err) || !assert.NotNil(t, config) {
 		return
 	}
@@ -274,13 +326,15 @@ func TestMinimalValidVdiskClusterConfigFromBytes(t *testing.T) {
 	}
 
 	// test Vdisk
+	// required properties
 	assert.Equal(t, uint64(4096), cfg.Vdisk.BlockSize)
 	assert.False(t, cfg.Vdisk.ReadOnly)
 	assert.Equal(t, uint64(10), cfg.Vdisk.Size)
 	assert.Equal(t, "mycluster", cfg.Vdisk.StorageCluster)
+	assert.Equal(t, VdiskTypeCache, cfg.Vdisk.Type)
+	// ignored properties
 	assert.Equal(t, "", cfg.Vdisk.RootStorageCluster)
 	assert.Equal(t, "", cfg.Vdisk.TlogStorageCluster)
-	assert.Equal(t, VdiskTypeCache, cfg.Vdisk.Type)
 
 	// test data cluster
 	if assert.Len(t, cfg.DataCluster.DataStorage, 1) {
@@ -294,7 +348,51 @@ func TestMinimalValidVdiskClusterConfigFromBytes(t *testing.T) {
 	assert.Nil(t, cfg.TlogCluster)
 }
 
-var invalidConfigs = []string{
+func TestMinimalValidVdiskClusterTlogServerConfigFromBytes(t *testing.T) {
+	config, err := FromBytes([]byte(minimalValidTlogServerConfig), TlogServer)
+	if !assert.NoError(t, err) || !assert.NotNil(t, config) {
+		return
+	}
+
+	cfg, err := config.VdiskClusterConfig("myvdisk")
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	// test Vdisk
+	// required properties
+	assert.Equal(t, "tlogcluster", cfg.Vdisk.TlogStorageCluster)
+	// ignored properties
+	assert.Equal(t, "", cfg.Vdisk.StorageCluster)
+	assert.Equal(t, "", cfg.Vdisk.RootStorageCluster)
+	assert.Equal(t, uint64(0), cfg.Vdisk.BlockSize)
+	assert.False(t, cfg.Vdisk.ReadOnly)
+	assert.Equal(t, uint64(0), cfg.Vdisk.Size)
+	assert.Equal(t, VdiskType(0), cfg.Vdisk.Type)
+
+	if !assert.NotNil(t, cfg.TlogCluster) {
+		return
+	}
+
+	// test data cluster
+	if assert.Len(t, cfg.TlogCluster.DataStorage, 4) {
+		assert.Equal(t, "192.168.58.146:2000", cfg.TlogCluster.DataStorage[0].Address)
+		assert.Equal(t, 0, cfg.TlogCluster.DataStorage[0].Database)
+		assert.Equal(t, "192.168.58.146:2001", cfg.TlogCluster.DataStorage[1].Address)
+		assert.Equal(t, 0, cfg.TlogCluster.DataStorage[1].Database)
+		assert.Equal(t, "192.168.58.146:2002", cfg.TlogCluster.DataStorage[2].Address)
+		assert.Equal(t, 0, cfg.TlogCluster.DataStorage[2].Database)
+		assert.Equal(t, "192.168.58.146:2003", cfg.TlogCluster.DataStorage[3].Address)
+		assert.Equal(t, 0, cfg.TlogCluster.DataStorage[3].Database)
+	}
+	assert.Nil(t, cfg.TlogCluster.MetadataStorage)
+
+	// root and tlog clusters are not defined
+	assert.Nil(t, cfg.DataCluster)
+	assert.Nil(t, cfg.RootCluster)
+}
+
+var invalidNBDServerConfigs = []string{
 	// no storage clusters
 	`
 vdisks:
@@ -536,27 +634,73 @@ vdisks:
     rootStorageCluster: foo
     type: boot
 `,
-	// unreferenced tlogStorageCluster given
+}
+
+func TestInvalidNBDServerConfigFromBytes(t *testing.T) {
+	for _, input := range invalidNBDServerConfigs {
+		cfg, err := FromBytes([]byte(input), NBDServer)
+		if assert.Error(t, err, input) {
+			assert.Nil(t, cfg)
+		}
+	}
+}
+
+var invalidTlogServerConfigs = []string{
+	// no tlogStorageCluster given
 	`
-storageClusters:
-  mycluster:
-    dataStorage:
-      - address: 192.168.58.146:2000
-    metadataStorage:
-      address: 192.168.58.146:2001
 vdisks:
   myvdisk:
-    blockSize: 4096
-    size: 10
-    storageCluster: mycluster
-    tlogStorageCluster: foo
     type: boot
+`,
+	// unreferenced tlogStorageCluster given
+	`
+vdisks:
+  myvdisk:
+    tlogStorageCluster: foo
+`,
+	// bad rootStorageCluster given
+	`
+storageClusters:
+  tlogcluster:
+    foo: bar
+vdisks:
+  myvdisk:
+    tlogStorageCluster: tlogcluster
+`,
+	// bad rootStorageCluster given
+	`
+storageClusters:
+  tlogcluster:
+    address: foo
+vdisks:
+  myvdisk:
+    tlogStorageCluster: tlogcluster
+`,
+	// bad (v2) rootStorageCluster given
+	`
+storageClusters:
+  tlogcluster:
+    address: localhost:6379
+    db: foo
+vdisks:
+  myvdisk:
+    tlogStorageCluster: tlogcluster
 `,
 }
 
+func TestInvalidTlogServerConfigFromBytes(t *testing.T) {
+	for _, input := range invalidTlogServerConfigs {
+		cfg, err := FromBytes([]byte(input), NBDServer)
+		if assert.Error(t, err, input) {
+			assert.Nil(t, cfg)
+		}
+	}
+}
+
 func TestInvalidConfigFromBytes(t *testing.T) {
+	invalidConfigs := append(invalidNBDServerConfigs, invalidTlogServerConfigs...)
 	for _, input := range invalidConfigs {
-		cfg, err := FromBytes([]byte(input))
+		cfg, err := FromBytes([]byte(input), Global)
 		if assert.Error(t, err, input) {
 			assert.Nil(t, cfg)
 		}

@@ -48,7 +48,7 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 
 	log.Infof("loading config %s...", vdiskCfg.ConfigPath)
 
-	cfg, err := config.ReadConfig(vdiskCfg.ConfigPath)
+	cfg, err := config.ReadConfig(vdiskCfg.ConfigPath, config.NBDServer)
 	if err != nil {
 		return err
 	}
