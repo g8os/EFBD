@@ -232,8 +232,8 @@ func (s *Server) handle(conn *net.TCPConn) error {
 		}
 
 		switch msgType {
-		case tlog.MessageForceFlush, tlog.MessageForceFlushAtSeq:
-			err = s.handleForceFlush(vdisk, br, msgType)
+		case tlog.MessageForceFlushAtSeq:
+			err = s.handleForceFlushAtSeq(vdisk, br, msgType)
 		case tlog.MessageTlogBlock:
 			err = s.handleBlock(vdisk, br)
 		default:
@@ -246,22 +246,18 @@ func (s *Server) handle(conn *net.TCPConn) error {
 	}
 }
 
-func (s *Server) handleForceFlush(vd *vdisk, br *bufio.Reader, mType uint8) error {
-	if mType == tlog.MessageForceFlush {
-		vd.forceFlush()
-	} else {
-		msg, err := capnp.NewDecoder(br).Decode()
-		if err != nil {
-			return err
-		}
-
-		cmd, err := schema.ReadRootCommand(msg)
-		if err != nil {
-			return err
-		}
-
-		vd.forceFlushAtSeq(cmd.Sequence())
+func (s *Server) handleForceFlushAtSeq(vd *vdisk, br *bufio.Reader, mType uint8) error {
+	msg, err := capnp.NewDecoder(br).Decode()
+	if err != nil {
+		return err
 	}
+
+	cmd, err := schema.ReadRootCommand(msg)
+	if err != nil {
+		return err
+	}
+
+	vd.forceFlushAtSeq(cmd.Sequence())
 
 	vd.respChan <- &BlockResponse{
 		Status: tlog.BlockStatusForceFlushReceived.Int8(),

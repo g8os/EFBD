@@ -24,15 +24,14 @@ const (
 )
 
 const (
-	vdiskCmdForceFlush                   = iota // non-blocking force flush
-	vdiskCmdForceFlushBlocking                  // blocking force flush
+	vdiskCmdForceFlushBlocking           = iota // blocking force flush
 	vdiskCmdForceFlushAtSeq                     // non-blocking force flush with sequence param
 	vdiskCmdClearUnorderedBlocksBlocking        // blocking clear all unordered blocks
 )
 
 // command for vdisk flusher
 type vdiskFlusherCmd struct {
-	cmdType  uint8
+	cmdType  int8
 	sequence uint64
 }
 
@@ -245,13 +244,6 @@ func (vd *vdisk) resetFirstSequence(newSeq uint64, conn *net.TCPConn) error {
 	return nil
 }
 
-// force flush right now
-func (vd *vdisk) forceFlush() {
-	vd.flusherCmdChan <- vdiskFlusherCmd{
-		cmdType: vdiskCmdForceFlush,
-	}
-}
-
 // force flush when vdisk receive the given sequence
 func (vd *vdisk) forceFlushAtSeq(seq uint64) {
 	vd.flusherCmdChan <- vdiskFlusherCmd{
@@ -336,12 +328,13 @@ func (vd *vdisk) runFlusher() {
 
 	var toFlushLen int
 	var flusherCmd vdiskFlusherCmd
-	var cmdType uint8
+	var cmdType int8
 
 	var seqToForceFlush uint64 // sequence to be force flushed
 	var needForceFlushSeq bool // true if we wait for a sequence to be force flushed
 
 	for {
+		cmdType = -1
 		select {
 		case tlb := <-vd.orderedBlockChan:
 			tlogs = append(tlogs, tlb)
@@ -382,7 +375,7 @@ func (vd *vdisk) runFlusher() {
 				// we already have the wanted sequence
 				// flush right now if possible
 				needForceFlushSeq = false
-			case vdiskCmdForceFlush, vdiskCmdForceFlushBlocking:
+			case vdiskCmdForceFlushBlocking:
 			default:
 				log.Errorf("invalid command to runFlusher: %v", flusherCmd)
 				continue

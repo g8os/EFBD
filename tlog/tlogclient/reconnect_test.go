@@ -44,8 +44,6 @@ func TestReconnectFromSend(t *testing.T) {
 	}
 
 	waitForBlockReceivedResponse(t, client, 0, uint64(numLogs)-1)
-
-	assert.Equal(t, 0, client.blockBuffer.Len())
 }
 
 // TestReconnectFromRead test that client can do reconnect from 'Recv'
@@ -78,7 +76,7 @@ func TestReconnectFromRead(t *testing.T) {
 
 	// Step #4
 	client.wLock.Lock()
-	err = tlog.WriteMessageType(client.conn, tlog.MessageForceFlush)
+	err = client.forceFlushAtSeq(uint64(1))
 	client.wLock.Unlock()
 	assert.Nil(t, err)
 

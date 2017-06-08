@@ -274,20 +274,18 @@ func (c *Client) createConn() error {
 	return nil
 }
 
-// ForceFlush send force flush command to server
-func (c *Client) ForceFlush() error {
-	c.wLock.Lock()
-	defer c.wLock.Unlock()
-	// we use c.conn directly because buffered writer
-	// won't help anything to write one byte of message
-	return tlog.WriteMessageType(c.conn, tlog.MessageForceFlush)
-}
-
 // ForceFlushAtSeq force flush at given sequence
 func (c *Client) ForceFlushAtSeq(seq uint64) error {
 	c.wLock.Lock()
 	defer c.wLock.Unlock()
 
+	// TODO :
+	// - add reconnect
+	// - add resend
+	return c.forceFlushAtSeq(seq)
+}
+
+func (c *Client) forceFlushAtSeq(seq uint64) error {
 	if err := tlog.WriteMessageType(c.bw, tlog.MessageForceFlushAtSeq); err != nil {
 		return err
 	}
