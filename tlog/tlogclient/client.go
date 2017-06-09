@@ -281,19 +281,20 @@ func (c *Client) ForceFlushAtSeq(seq uint64) error {
 	defer c.wLock.Unlock()
 
 	// TODO :
-	// - add reconnect
 	// - add resend
-	return c.forceFlushAtSeq(seq)
-}
 
-func (c *Client) forceFlushAtSeq(seq uint64) error {
-	if err := tlog.WriteMessageType(c.bw, tlog.MessageForceFlushAtSeq); err != nil {
-		return err
+	sender := func() (interface{}, error) {
+		if err := tlog.WriteMessageType(c.bw, tlog.MessageForceFlushAtSeq); err != nil {
+			return nil, err
+		}
+		if err := c.encodeSendCommand(c.bw, tlog.MessageForceFlushAtSeq, seq); err != nil {
+			return nil, err
+		}
+		return nil, c.bw.Flush()
 	}
-	if err := c.encodeSendCommand(c.bw, tlog.MessageForceFlushAtSeq, seq); err != nil {
-		return err
-	}
-	return c.bw.Flush()
+
+	_, err := c.sendReconnect(sender)
+	return err
 }
 
 // Send sends the transaction tlog to server.
@@ -317,7 +318,7 @@ func (c *Client) send(op uint8, seq, offset, timestamp uint64,
 	data []byte, size uint64) (*schema.TlogBlock, error) {
 	hash := zerodisk.HashBytes(data)
 
-	send := func() (*schema.TlogBlock, error) {
+	sender := func() (interface{}, error) {
 		if err := tlog.WriteMessageType(c.bw, tlog.MessageTlogBlock); err != nil {
 			return nil, err
 		}
@@ -330,22 +331,40 @@ func (c *Client) send(op uint8, seq, offset, timestamp uint64,
 		return block, c.bw.Flush()
 	}
 
+	// send it
+	blockIf, err := c.sendReconnect(sender)
+	if err != nil {
+		return nil, err
+	}
+
+	// convert the return value
+	block, ok := blockIf.(*schema.TlogBlock)
+	if !ok {
+		return nil, fmt.Errorf("can't convert from interface{} to block")
+	}
+
+	return block, nil
+}
+
+// generic funct that execute a sender and do connection reconnect if needed
+func (c *Client) sendReconnect(sender func() (interface{}, error)) (interface{}, error) {
 	var err error
-	var block *schema.TlogBlock
+	var ret interface{}
 
 	okToSend := true
 
 	for i := 0; i < sendRetryNum+1; i++ {
 		if okToSend {
-			block, err = send()
+			ret, err = sender()
 			if err == nil {
-				return block, nil
+				return ret, nil
 			}
 
 			if _, ok := err.(net.Error); !ok {
 				return nil, err // no need to rety if it is not network error.
 			}
 		}
+
 		closedTime := time.Now()
 
 		// First sleep = 0 second,
@@ -355,7 +374,7 @@ func (c *Client) send(op uint8, seq, offset, timestamp uint64,
 		time.Sleep(time.Duration(i) * sendSleepTime)
 
 		if err = c.reconnect(closedTime); err != nil {
-			log.Infof("tlog client : reconnect attemp(%v) failed:%v", i, err)
+			log.Infof("tlog client : reconnect from send attemp(%v) failed:%v", i, err)
 			okToSend = false
 		} else {
 			okToSend = true
