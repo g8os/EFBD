@@ -97,6 +97,10 @@ func (c *Client) reconnect(closedTime time.Time) (err error) {
 
 // connect to server
 func (c *Client) connect(firstSequence uint64, resetFirstSeq bool) (err error) {
+	if c.conn != nil {
+		c.conn.CloseRead() // interrupt the receiver
+	}
+
 	c.rLock.Lock()
 	defer c.rLock.Unlock()
 
@@ -234,7 +238,7 @@ func (c *Client) recvOne() (*Response, error) {
 
 	// set read deadline, so we don't have deadlock
 	// for rLock
-	c.conn.SetReadDeadline(time.Now().Add(readTimeout))
+	//c.conn.SetReadDeadline(time.Now().Add(readTimeout))
 
 	// decode capnp and build response
 	tr, err := c.decodeBlockResponse(c.rd)
@@ -386,13 +390,20 @@ func (c *Client) sendReconnect(sender func() (interface{}, error)) (interface{},
 // Close the open connection, making this client invalid.
 // It is user responsibility to call this function.
 func (c *Client) Close() error {
+	if c.conn != nil {
+		c.conn.CloseRead() // interrupt the receiver
+	}
+
 	c.cancelFunc()
 
 	c.wLock.Lock()
 	defer c.wLock.Unlock()
 
 	c.rLock.Lock()
-	c.rLock.Unlock()
+	defer c.rLock.Unlock()
 
-	return c.conn.Close()
+	if c != nil {
+		return c.conn.Close()
+	}
+	return nil
 }
