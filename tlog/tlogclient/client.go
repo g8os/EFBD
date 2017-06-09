@@ -281,19 +281,20 @@ func (c *Client) ForceFlushAtSeq(seq uint64) error {
 	defer c.wLock.Unlock()
 
 	// TODO :
-	// - add reconnect
 	// - add resend
-	return c.forceFlushAtSeq(seq)
-}
 
-func (c *Client) forceFlushAtSeq(seq uint64) error {
-	if err := tlog.WriteMessageType(c.bw, tlog.MessageForceFlushAtSeq); err != nil {
-		return err
+	sender := func() (interface{}, error) {
+		if err := tlog.WriteMessageType(c.bw, tlog.MessageForceFlushAtSeq); err != nil {
+			return nil, err
+		}
+		if err := c.encodeSendCommand(c.bw, tlog.MessageForceFlushAtSeq, seq); err != nil {
+			return nil, err
+		}
+		return nil, c.bw.Flush()
 	}
-	if err := c.encodeSendCommand(c.bw, tlog.MessageForceFlushAtSeq, seq); err != nil {
-		return err
-	}
-	return c.bw.Flush()
+
+	_, err := c.sendReconnect(sender)
+	return err
 }
 
 // Send sends the transaction tlog to server.

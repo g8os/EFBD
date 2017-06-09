@@ -91,6 +91,49 @@ func TestReconnectFromRead(t *testing.T) {
 	}
 }
 
+func (c *Client) forceFlushAtSeq(seq uint64) error {
+	if err := tlog.WriteMessageType(c.bw, tlog.MessageForceFlushAtSeq); err != nil {
+		return err
+	}
+	if err := c.encodeSendCommand(c.bw, tlog.MessageForceFlushAtSeq, seq); err != nil {
+		return err
+	}
+	return c.bw.Flush()
+}
+
+func TestReconnectFromForceFlush(t *testing.T) {
+	const (
+		vdisk = "12345"
+	)
+	// test server
+	s, _, err := createTestServer()
+	assert.Nil(t, err)
+	go s.Listen()
+
+	// Create client
+	client, err := New(s.ListenAddr(), vdisk, 0, false)
+	assert.Nil(t, err)
+
+	// Simulate closed connection
+	client.conn.Close()
+
+	// Do forceFlush, it should reconnect here
+	err = client.ForceFlushAtSeq(uint64(0))
+	assert.Nil(t, err)
+
+	respCh := client.Recv()
+
+	// Wait for the response
+	select {
+	case <-time.After(5 * time.Second):
+		t.Fatal("TestReconnectFromRead failed : too long")
+	case resp := <-respCh:
+		assert.Nil(t, resp.Err)
+		assert.NotNil(t, resp.Resp)
+		assert.Equal(t, resp.Resp.Status, tlog.BlockStatusForceFlushReceived)
+	}
+}
+
 func waitForBlockReceivedResponse(t *testing.T, client *Client, minSequence, maxSequence uint64) {
 	// map of sequence we want to wait for the response to come
 	logsToRecv := map[uint64]struct{}{}
