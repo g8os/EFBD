@@ -3,6 +3,7 @@ package tlogclient
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -21,6 +22,10 @@ const (
 	sendSleepTime    = 500 * time.Millisecond // sleep duration before retrying the Send
 	resendTimeoutDur = 2 * time.Second        // duration to wait before re-send the tlog.
 	readTimeout      = 2 * time.Second
+)
+
+var (
+	errMaxSendRetry = errors.New("max send retry reached")
 )
 
 // Response defines a response from tlog server
@@ -388,7 +393,7 @@ func (c *Client) sendReconnect(sender func() (interface{}, error)) (interface{},
 			okToSend = true
 		}
 	}
-	return nil, err
+	return nil, errMaxSendRetry
 }
 
 // Close the open connection, making this client invalid.
