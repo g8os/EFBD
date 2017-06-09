@@ -58,6 +58,7 @@ type Client struct {
 	cancelFunc context.CancelFunc
 
 	lastConnected time.Time
+	stopped       bool
 }
 
 // New creates a new tlog client for a vdisk with 'addr' is the tlogserver address.
@@ -85,6 +86,9 @@ func New(addr, vdiskID string, firstSequence uint64, resetFirstSeq bool) (*Clien
 // reconnect to server
 // it must be called under wLock
 func (c *Client) reconnect(closedTime time.Time) (err error) {
+	if c.stopped {
+		return nil
+	}
 	if c.lastConnected.After(closedTime) { // another goroutine made the connection work again
 		return
 	}
@@ -390,6 +394,7 @@ func (c *Client) sendReconnect(sender func() (interface{}, error)) (interface{},
 // Close the open connection, making this client invalid.
 // It is user responsibility to call this function.
 func (c *Client) Close() error {
+	c.stopped = true
 	if c.conn != nil {
 		c.conn.CloseRead() // interrupt the receiver
 	}
