@@ -1,6 +1,7 @@
 package blockbuffer
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -19,6 +20,7 @@ var (
 type Buffer struct {
 	lock            sync.Mutex
 	entries         map[uint64]*entry
+	seqToTimeout    []uint64
 	readyChan       chan *schema.TlogBlock
 	timeout         time.Duration
 	maxRetry        int
@@ -69,6 +71,11 @@ func (b *Buffer) Add(block *schema.TlogBlock) {
 
 	seq := block.Sequence()
 
+	// add to array of ordered timeout
+	b.seqToTimeout = append(b.seqToTimeout, seq)
+
+	// only need to update the timeout
+	// if already exist in the buffer
 	ent, exist := b.entries[seq]
 	if exist {
 		ent.update(b.timeout, 1)
@@ -92,33 +99,59 @@ func (b *Buffer) Delete(seq uint64) {
 	delete(b.entries, seq)
 }
 
-// get all timed out entries.
-// we need to optimize it.
-func (b *Buffer) getTimedOut() []*entry {
+// get one timed out block from the buffer
+func (b *Buffer) getOne() *entry {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	now := time.Now()
-	ents := []*entry{}
-	for _, ent := range b.entries {
-		if ent.isTimeout(now) {
-			ents = append(ents, ent)
-
-			// extend the timeout value, to prevent it being timed out
-			// again before get a chance to be sent by the client.
-			ent.update(b.timeout*100, 0)
-		}
+	if len(b.seqToTimeout) == 0 {
+		return nil
 	}
-	return ents
+
+	var i int
+	var seq uint64
+
+	defer func() {
+		b.seqToTimeout = b.seqToTimeout[i+1:] // truncate processed blocks
+	}()
+
+	for i, seq = range b.seqToTimeout {
+		if i == 1000 { // be nice with others by not taking all the cpu
+			return nil
+		}
+
+		// if not exist anymore in the map
+		// it means the blocks already delivered
+		ent, ok := b.entries[seq]
+		if !ok {
+			continue
+		}
+
+		return ent
+	}
+	return nil
 }
 
 // TimedOut returns channel of timed out block
-func (b *Buffer) TimedOut() <-chan *schema.TlogBlock {
+func (b *Buffer) TimedOut(ctx context.Context) <-chan *schema.TlogBlock {
 	go func() {
 		for {
-			time.Sleep(time.Second)
-			ents := b.getTimedOut()
-			for _, ent := range ents {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				ent := b.getOne()
+				if ent == nil {
+					time.Sleep(100 * time.Millisecond)
+					continue
+				}
+
+				// nanosecond left before timeout
+				toTime := ent.timeout - time.Now().UnixNano()
+				if toTime > 0 {
+					time.Sleep(time.Duration(toTime) * time.Nanosecond)
+				}
+
 				b.readyChan <- ent.block
 			}
 		}

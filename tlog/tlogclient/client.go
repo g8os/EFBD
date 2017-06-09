@@ -121,11 +121,12 @@ func (c *Client) connect(firstSequence uint64, resetFirstSeq bool) (err error) {
 
 // goroutine which re-send the block.
 func (c *Client) resender() {
+	timeoutCh := c.blockBuffer.TimedOut(c.ctx)
 	for {
 		select {
 		case <-c.ctx.Done():
 			return
-		case block := <-c.blockBuffer.TimedOut():
+		case block := <-timeoutCh:
 			data, err := block.Data()
 			if err != nil {
 				log.Errorf("client resender failed to get data block:%v", err)
