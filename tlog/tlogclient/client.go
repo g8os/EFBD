@@ -3,6 +3,7 @@ package tlogclient
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -21,6 +22,10 @@ const (
 	sendSleepTime    = 500 * time.Millisecond // sleep duration before retrying the Send
 	resendTimeoutDur = 2 * time.Second        // duration to wait before re-send the tlog.
 	readTimeout      = 2 * time.Second
+)
+
+var (
+	errMaxSendRetry = errors.New("max send retry reached")
 )
 
 // Response defines a response from tlog server
@@ -58,6 +63,7 @@ type Client struct {
 	cancelFunc context.CancelFunc
 
 	lastConnected time.Time
+	stopped       bool
 }
 
 // New creates a new tlog client for a vdisk with 'addr' is the tlogserver address.
@@ -85,6 +91,9 @@ func New(addr, vdiskID string, firstSequence uint64, resetFirstSeq bool) (*Clien
 // reconnect to server
 // it must be called under wLock
 func (c *Client) reconnect(closedTime time.Time) (err error) {
+	if c.stopped {
+		return nil
+	}
 	if c.lastConnected.After(closedTime) { // another goroutine made the connection work again
 		return
 	}
@@ -97,6 +106,10 @@ func (c *Client) reconnect(closedTime time.Time) (err error) {
 
 // connect to server
 func (c *Client) connect(firstSequence uint64, resetFirstSeq bool) (err error) {
+	if c.conn != nil {
+		c.conn.CloseRead() // interrupt the receiver
+	}
+
 	c.rLock.Lock()
 	defer c.rLock.Unlock()
 
@@ -234,7 +247,7 @@ func (c *Client) recvOne() (*Response, error) {
 
 	// set read deadline, so we don't have deadlock
 	// for rLock
-	c.conn.SetReadDeadline(time.Now().Add(readTimeout))
+	//c.conn.SetReadDeadline(time.Now().Add(readTimeout))
 
 	// decode capnp and build response
 	tr, err := c.decodeBlockResponse(c.rd)
@@ -380,19 +393,27 @@ func (c *Client) sendReconnect(sender func() (interface{}, error)) (interface{},
 			okToSend = true
 		}
 	}
-	return nil, err
+	return nil, errMaxSendRetry
 }
 
 // Close the open connection, making this client invalid.
 // It is user responsibility to call this function.
 func (c *Client) Close() error {
+	c.stopped = true
+	if c.conn != nil {
+		c.conn.CloseRead() // interrupt the receiver
+	}
+
 	c.cancelFunc()
 
 	c.wLock.Lock()
 	defer c.wLock.Unlock()
 
 	c.rLock.Lock()
-	c.rLock.Unlock()
+	defer c.rLock.Unlock()
 
-	return c.conn.Close()
+	if c != nil {
+		return c.conn.Close()
+	}
+	return nil
 }
