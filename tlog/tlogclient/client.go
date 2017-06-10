@@ -412,7 +412,7 @@ func (c *Client) Close() error {
 	c.rLock.Lock()
 	defer c.rLock.Unlock()
 
-	if c != nil {
+	if c.conn != nil {
 		return c.conn.Close()
 	}
 	return nil
