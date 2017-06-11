@@ -89,6 +89,9 @@ func main() {
 		AutoFill:                true,
 		AllowInMemory:           true,
 	})
+	if err != nil {
+		log.Fatalf("failed to create redis pool factory: %s", err.Error())
+	}
 	defer poolFactory.Close()
 
 	// create server
