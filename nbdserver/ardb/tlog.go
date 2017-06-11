@@ -248,6 +248,7 @@ func (tls *tlogStorage) Close() (err error) {
 // GoBackground implements backendStorage.GoBackground
 func (tls *tlogStorage) GoBackground(ctx context.Context) {
 	defer func() {
+		log.Infof("GoBackground exited for vdisk: %v", tls.vdiskID)
 		err := tls.tlog.Close()
 		if err != nil {
 			log.Info("error while closing tlog client: ", err)
