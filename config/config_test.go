@@ -467,25 +467,6 @@ vdisks:
     storageCluster: mycluster
     type: boot
 `,
-	// no meta storage given (while deduped requires it)
-	`
-storageClusters:
-  mycluster:
-    dataStorage:
-      - address: 192.168.58.146:2000
-    metadataStorage:
-      address: 192.123.123.123:2001
-  rootcluster:
-    dataStorage:
-      - address: 192.168.58.146:2000
-vdisks:
-  myvdisk:
-    blockSize: 4096
-    size: 10
-    storageCluster: mycluster
-    rootStorageCluster: rootcluster
-    type: boot
-`,
 	// invalid meta storage given
 	`
 storageClusters:

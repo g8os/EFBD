@@ -164,10 +164,6 @@ func (cfg *Config) validateNBD(validRef func(string) error) error {
 			if err = validRef(vdisk.RootStorageCluster); err != nil {
 				return fmt.Errorf("invalid rootStorageCluster for vdisk %s: %s", vdiskID, err)
 			}
-			err = cfg.validateMetadataStorage(vdisk.RootStorageCluster, &vdisk)
-			if err != nil {
-				return fmt.Errorf("invalid rootStorageCluster for vdisk %s: %s", vdiskID, err)
-			}
 		}
 	}
 
