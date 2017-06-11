@@ -25,7 +25,8 @@ const (
 )
 
 var (
-	errMaxSendRetry = errors.New("max send retry reached")
+	errMaxSendRetry     = errors.New("max send retry reached")
+	errReconnectStopped = errors.New("reconnect stopped client")
 )
 
 // Response defines a response from tlog server
@@ -92,7 +93,7 @@ func New(addr, vdiskID string, firstSequence uint64, resetFirstSeq bool) (*Clien
 // it must be called under wLock
 func (c *Client) reconnect(closedTime time.Time) (err error) {
 	if c.stopped {
-		return nil
+		return errReconnectStopped
 	}
 	if c.lastConnected.After(closedTime) { // another goroutine made the connection work again
 		return
