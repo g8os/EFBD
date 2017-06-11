@@ -372,34 +372,32 @@ func (c *Client) sendReconnect(sender func() (interface{}, error)) (interface{},
 	var err error
 	var ret interface{}
 
-	okToSend := true
-
 	for i := 0; i < sendRetryNum+1; i++ {
-		if okToSend {
-			ret, err = sender()
-			if err == nil {
-				return ret, nil
-			}
+		if err != nil {
+			closedTime := time.Now()
 
-			if _, ok := err.(net.Error); !ok {
-				return nil, err // no need to rety if it is not network error.
+			// First sleep = 0 second,
+			// so we don't need to sleep in case of simple closed connection.
+			// We sleep in next iteration because there might be something error in
+			// the network connection or the tlog server that need time to be recovered.
+			time.Sleep(time.Duration(i-1) * sendSleepTime)
+
+			if err = c.reconnect(closedTime); err != nil {
+				log.Infof("tlog client : reconnect from send attemp(%v) failed:%v", i, err)
+				continue
 			}
 		}
 
-		closedTime := time.Now()
-
-		// First sleep = 0 second,
-		// so we don't need to sleep in case of simple closed connection.
-		// We sleep in next iteration because there might be something error in
-		// the network connection or the tlog server that need time to be recovered.
-		time.Sleep(time.Duration(i) * sendSleepTime)
-
-		if err = c.reconnect(closedTime); err != nil {
-			log.Infof("tlog client : reconnect from send attemp(%v) failed:%v", i, err)
-			okToSend = false
-		} else {
-			okToSend = true
+		ret, err = sender()
+		if err == nil {
+			return ret, nil
 		}
+
+		if _, ok := err.(net.Error); !ok {
+			return nil, err // no need to rety if it is not network error.
+		}
+		log.Errorf("tlogclient failed to send: %v", err)
+
 	}
 	return nil, errMaxSendRetry
 }
