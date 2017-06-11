@@ -18,7 +18,7 @@ var (
 // Buffer defines buffer of tlog blocks that already sent
 // but still waiting to be succesfully received by the server
 type Buffer struct {
-	lock            sync.Mutex
+	lock            sync.RWMutex
 	entries         map[uint64]*entry
 	seqToTimeout    []uint64
 	readyChan       chan *schema.TlogBlock
@@ -39,8 +39,8 @@ func NewBuffer(timeout time.Duration) *Buffer {
 
 // Len returns number of blocks in this buffer
 func (b *Buffer) Len() int {
-	b.lock.Lock()
-	defer b.lock.Unlock()
+	b.lock.RLock()
+	defer b.lock.RUnlock()
 	return len(b.entries)
 }
 
@@ -99,6 +99,15 @@ func (b *Buffer) Delete(seq uint64) {
 	delete(b.entries, seq)
 }
 
+// Returns true this seq need to be re-send
+func (b *Buffer) NeedResend(seq uint64) bool {
+	b.lock.RLock()
+	defer b.lock.RUnlock()
+
+	_, ok := b.entries[seq]
+	return ok
+}
+
 // get one timed out block from the buffer
 func (b *Buffer) getOne() *entry {
 	b.lock.Lock()
@@ -116,18 +125,16 @@ func (b *Buffer) getOne() *entry {
 	}()
 
 	for i, seq = range b.seqToTimeout {
+		// if not exist anymore in the map
+		// it means the blocks already delivered
+		if ent, ok := b.entries[seq]; ok {
+			return ent
+		}
+
 		if i == 1000 { // be nice with others by not taking all the cpu
 			return nil
 		}
 
-		// if not exist anymore in the map
-		// it means the blocks already delivered
-		ent, ok := b.entries[seq]
-		if !ok {
-			continue
-		}
-
-		return ent
 	}
 	return nil
 }
@@ -163,8 +170,8 @@ func (b *Buffer) TimedOut(ctx context.Context) <-chan *schema.TlogBlock {
 // MinSequence returns min sequence that this
 // buffer will/currently has.
 func (b *Buffer) MinSequence() uint64 {
-	b.lock.Lock()
-	defer b.lock.Unlock()
+	b.lock.RLock()
+	defer b.lock.RUnlock()
 
 	if len(b.entries) == 0 {
 		return b.highestSequence + 1

@@ -140,13 +140,21 @@ func (c *Client) resender() {
 		case <-c.ctx.Done():
 			return
 		case block := <-timeoutCh:
+			seq := block.Sequence()
+
+			// check it once again, make sure this block still
+			// need to be re-send
+			if !c.blockBuffer.NeedResend(seq) {
+				continue
+			}
+
 			data, err := block.Data()
 			if err != nil {
 				log.Errorf("client resender failed to get data block:%v", err)
 				continue
 			}
 
-			err = c.Send(block.Operation(), block.Sequence(), block.Offset(), block.Timestamp(), data, block.Size())
+			err = c.Send(block.Operation(), seq, block.Offset(), block.Timestamp(), data, block.Size())
 			if err != nil {
 				log.Errorf("client resender failed to send data:%v", err)
 			}
