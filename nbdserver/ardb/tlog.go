@@ -315,6 +315,9 @@ func (tls *tlogStorage) transactionSender(ctx context.Context) {
 				transaction.Size,
 			)
 			if err != nil {
+				if err == tlogclient.ErrClientClosed {
+					return
+				}
 				panic(fmt.Errorf(
 					"tlogStorage couldn't send block %d (seq: %d): %s",
 					transaction.Offset/uint64(tls.blockSize),
