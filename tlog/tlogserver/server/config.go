@@ -1,5 +1,9 @@
 package server
 
+import (
+	"github.com/zero-os/0-Disk/tlog/tlogserver/aggmq"
+)
+
 // DefaultConfig creates a new config, using sane defaults
 func DefaultConfig() *Config {
 	return &Config{
@@ -24,6 +28,8 @@ type Config struct {
 	FlushTime  int
 	PrivKey    string
 	HexNonce   string
+	ConfigPath string // config file path
+	AggMq      *aggmq.MQ
 }
 
 // RequiredDataServers returns how many data servers are required,

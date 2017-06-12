@@ -11,8 +11,7 @@ import (
 	"github.com/zero-os/0-Disk/gonbdserver/nbd"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbdserver/ardb"
-	"github.com/zero-os/0-Disk/tlog"
-	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
+	"github.com/zero-os/0-Disk/tlog/tlogclient/player"
 	"github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
 
@@ -50,12 +49,6 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 
 	ctx := context.Background()
 
-	// create nbd backend
-	backend, err := newBackend(ctx, nil, "", vdiskID, vdiskCfg.ConfigPath)
-	if err != nil {
-		return err
-	}
-
 	// parse optional server configs
 	serverConfigs, err := zerodiskcfg.ParseCSStorageServerConfigStrings(vdiskCfg.TlogObjStorAddresses)
 	if err != nil {
@@ -64,21 +57,13 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 			vdiskCfg.TlogObjStorAddresses, err.Error())
 	}
 
-	// create redisPool, used by the tlog decoder
-	tlogRedisPool, err := tlog.AnyRedisPool(tlog.RedisPoolConfig{
-		VdiskID:                 vdiskID,
-		RequiredDataServerCount: vdiskCfg.K + vdiskCfg.M,
-		ConfigPath:              vdiskCfg.ConfigPath,
-		ServerConfigs:           serverConfigs,
-		AutoFill:                true,
-		AllowInMemory:           false,
-	})
+	player, err := player.NewPlayer(ctx, vdiskCfg.ConfigPath, serverConfigs, vdiskID,
+		vdiskCfg.PrivKey, vdiskCfg.HexNonce, vdiskCfg.K, vdiskCfg.M)
+	if err != nil {
+		return err
+	}
 
-	// replay tlog core logic:
-	// decode data from tlogserver and write it to the nbd's backend
-	return replay(
-		ctx, backend, tlogRedisPool, vdiskID,
-		vdiskCfg.K, vdiskCfg.M, vdiskCfg.PrivKey, vdiskCfg.HexNonce)
+	return player.Replay(0)
 }
 
 // create a new backend, used for writing
@@ -111,18 +96,6 @@ func newBackend(ctx context.Context, dial ardb.DialFunc, tlogrpc, vdiskID, confi
 	}
 
 	return fact.NewBackend(ctx, ec)
-}
-
-// replay tlog by decoding data from a tlog RedisPool
-// and writing that data into the nbdserver
-func replay(ctx context.Context, backend nbd.Backend, pool tlog.RedisPool, vdiskID string, k, m int, privKey, hexNonce string) error {
-	// create tlog decoder
-	dec, err := decoder.New(pool, k, m, vdiskID, privKey, hexNonce)
-	if err != nil {
-		return fmt.Errorf("failed to create tlog decoder: %v", err)
-	}
-
-	return dec.Replay(ctx, backend, pool, 0)
 }
 
 func init() {

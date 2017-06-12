@@ -24,7 +24,7 @@ func main() {
 	flag.Parse()
 
 	const (
-		vdiskID       = "1234567890"
+		vdiskID       = "myimg"
 		firstSequence = 0
 		dataLen       = 4096
 	)

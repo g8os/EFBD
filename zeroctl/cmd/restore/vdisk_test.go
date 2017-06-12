@@ -11,6 +11,7 @@ import (
 	zerodiskcfg "github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/gonbdserver/nbd"
 	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/tlog/tlogclient/player"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
 
 	"github.com/stretchr/testify/assert"
@@ -162,12 +163,13 @@ func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 	}
 
 	t.Log("replay from tlog")
-	err = replay(
-		ctx, backend, tlogRedisPool, vdiskID,
-		testConf.K, testConf.M, testConf.PrivKey, testConf.HexNonce)
+	player, err := player.NewPlayerWithPoolAndBackend(ctx, tlogRedisPool, backend, vdiskID,
+		testConf.PrivKey, testConf.HexNonce, testConf.K, testConf.M)
 	if !assert.Nil(t, err) {
 		return
 	}
+
+	err = player.Replay(0)
 
 	t.Log("8. Validate that all the data is again retrievable and correct;")
 
