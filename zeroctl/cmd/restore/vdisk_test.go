@@ -161,8 +161,8 @@ func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 		return
 	}
 
-	t.Log("decode from tlog")
-	err = decode(
+	t.Log("replay from tlog")
+	err = replay(
 		ctx, backend, tlogRedisPool, vdiskID,
 		testConf.K, testConf.M, testConf.PrivKey, testConf.HexNonce)
 	if !assert.Nil(t, err) {

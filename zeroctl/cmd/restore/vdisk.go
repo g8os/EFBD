@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	zerodiskcfg "github.com/zero-os/0-Disk/config"
 
@@ -13,7 +12,6 @@ import (
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbdserver/ardb"
 	"github.com/zero-os/0-Disk/tlog"
-	"github.com/zero-os/0-Disk/tlog/schema"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 	"github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
@@ -78,7 +76,7 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 
 	// replay tlog core logic:
 	// decode data from tlogserver and write it to the nbd's backend
-	return decode(
+	return replay(
 		ctx, backend, tlogRedisPool, vdiskID,
 		vdiskCfg.K, vdiskCfg.M, vdiskCfg.PrivKey, vdiskCfg.HexNonce)
 }
@@ -117,58 +115,14 @@ func newBackend(ctx context.Context, dial ardb.DialFunc, tlogrpc, vdiskID, confi
 
 // replay tlog by decoding data from a tlog RedisPool
 // and writing that data into the nbdserver
-func decode(ctx context.Context, backend nbd.Backend, pool tlog.RedisPool, vdiskID string, k, m int, privKey, hexNonce string) error {
+func replay(ctx context.Context, backend nbd.Backend, pool tlog.RedisPool, vdiskID string, k, m int, privKey, hexNonce string) error {
 	// create tlog decoder
 	dec, err := decoder.New(pool, k, m, vdiskID, privKey, hexNonce)
 	if err != nil {
 		return fmt.Errorf("failed to create tlog decoder: %v", err)
 	}
 
-	aggChan := dec.Decode(0)
-	for {
-		da, more := <-aggChan
-		if !more {
-			break
-		}
-
-		if da.Err != nil {
-			return fmt.Errorf("failed to get aggregation: %v", da.Err)
-		}
-
-		agg := da.Agg
-
-		// some small checking
-		storedViskID, err := agg.VdiskID()
-		if err != nil {
-			return fmt.Errorf("failed to get vdisk id from aggregation: %v", err)
-		}
-		if strings.Compare(storedViskID, vdiskID) != 0 {
-			return fmt.Errorf("vdisk id not mactched .expected=%v, got=%v", vdiskID, storedViskID)
-		}
-
-		blocks, err := agg.Blocks()
-		for i := 0; i < blocks.Len(); i++ {
-			block := blocks.At(i)
-			offset := block.Offset()
-
-			switch block.Operation() {
-			case schema.OpWrite:
-				data, err := block.Data()
-				if err != nil {
-					return fmt.Errorf("failed to get data block of offset=%v, err=%v", offset, err)
-				}
-				if _, err := backend.WriteAt(ctx, data, int64(offset)); err != nil {
-					return fmt.Errorf("failed to WriteAt offset=%v, err=%v", offset, err)
-				}
-			case schema.OpWriteZeroesAt:
-				if _, err := backend.WriteZeroesAt(ctx, int64(offset), int64(block.Size())); err != nil {
-					return fmt.Errorf("failed to WriteAt offset=%v, err=%v", offset, err)
-				}
-			}
-		}
-	}
-
-	return backend.Flush(ctx)
+	return dec.Replay(ctx, backend, pool, 0)
 }
 
 func init() {
