@@ -26,6 +26,10 @@ const (
 
 var (
 	errMaxSendRetry = errors.New("max send retry reached")
+
+	// ErrClientClosed returned when client do something when
+	// it already closed
+	ErrClientClosed = errors.New("client already closed")
 )
 
 // Response defines a response from tlog server
@@ -92,8 +96,9 @@ func New(addr, vdiskID string, firstSequence uint64, resetFirstSeq bool) (*Clien
 // it must be called under wLock
 func (c *Client) reconnect(closedTime time.Time) (err error) {
 	if c.stopped {
-		return nil
+		return ErrClientClosed
 	}
+
 	if c.lastConnected.After(closedTime) { // another goroutine made the connection work again
 		return
 	}
@@ -372,34 +377,32 @@ func (c *Client) sendReconnect(sender func() (interface{}, error)) (interface{},
 	var err error
 	var ret interface{}
 
-	okToSend := true
-
 	for i := 0; i < sendRetryNum+1; i++ {
-		if okToSend {
-			ret, err = sender()
-			if err == nil {
-				return ret, nil
-			}
-
+		if err != nil {
 			if _, ok := err.(net.Error); !ok {
 				return nil, err // no need to rety if it is not network error.
 			}
+
+			closedTime := time.Now()
+
+			// First sleep = 0 second,
+			// so we don't need to sleep in case of simple closed connection.
+			// We sleep in next iteration because there might be something error in
+			// the network connection or the tlog server that need time to be recovered.
+			time.Sleep(time.Duration(i-1) * sendSleepTime)
+
+			if err = c.reconnect(closedTime); err != nil {
+				log.Infof("tlog client : reconnect from send attemp(%v) failed:%v", i, err)
+				continue
+			}
 		}
 
-		closedTime := time.Now()
-
-		// First sleep = 0 second,
-		// so we don't need to sleep in case of simple closed connection.
-		// We sleep in next iteration because there might be something error in
-		// the network connection or the tlog server that need time to be recovered.
-		time.Sleep(time.Duration(i) * sendSleepTime)
-
-		if err = c.reconnect(closedTime); err != nil {
-			log.Infof("tlog client : reconnect from send attemp(%v) failed:%v", i, err)
-			okToSend = false
-		} else {
-			okToSend = true
+		ret, err = sender()
+		if err == nil {
+			return ret, nil
 		}
+		log.Errorf("tlogclient failed to send: %v", err)
+
 	}
 	return nil, errMaxSendRetry
 }
