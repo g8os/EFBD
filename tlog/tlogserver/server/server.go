@@ -70,7 +70,7 @@ func NewServer(conf *Config, poolFactory tlog.RedisPoolFactory) (*Server, error)
 		listener:             listener,
 		flusherConf:          flusherConf,
 		maxRespSegmentBufLen: schema.RawTlogRespLen(conf.FlushSize),
-		vdiskMgr:             newVdiskManager(conf.BlockSize, conf.FlushSize),
+		vdiskMgr:             newVdiskManager(conf.AggMq, conf.BlockSize, conf.FlushSize, conf.ConfigPath),
 	}, nil
 }
 
@@ -157,7 +157,7 @@ func (s *Server) handshake(r io.Reader, w io.Writer, conn *net.TCPConn) (vd *vdi
 		return // error return
 	}
 
-	vd, err = s.vdiskMgr.Get(vdiskID, req.FirstSequence(), s.createFlusher, conn)
+	vd, err = s.vdiskMgr.Get(vdiskID, req.FirstSequence(), s.createFlusher, conn, s.flusherConf)
 	if err != nil {
 		status = tlog.HandshakeStatusInternalServerError
 		err = fmt.Errorf("couldn't create vdisk %s: %s", vdiskID, err.Error())
@@ -177,13 +177,13 @@ func (s *Server) handshake(r io.Reader, w io.Writer, conn *net.TCPConn) (vd *vdi
 	return // success return
 }
 
-func (s *Server) createFlusher(vdiskID string) (*flusher, error) {
+func (s *Server) createFlusher(vdiskID string, flusherConf *flusherConfig) (*flusher, error) {
 	redisPool, err := s.poolFactory.NewRedisPool(vdiskID)
 	if err != nil {
 		return nil, err
 	}
 
-	return newFlusher(s.flusherConf, redisPool)
+	return newFlusher(flusherConf, redisPool)
 }
 
 func (s *Server) writeHandshakeResponse(w io.Writer, segmentBuf []byte, status tlog.HandshakeStatus) error {

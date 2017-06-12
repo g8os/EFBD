@@ -11,7 +11,9 @@ import (
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
+	"github.com/zero-os/0-Disk/tlog/tlogserver/aggmq"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
+	"github.com/zero-os/0-Disk/tlog/tlogserver/slavesync"
 )
 
 func main() {
@@ -21,7 +23,7 @@ func main() {
 	var profileAddr string
 	var inMemoryStorage bool
 	var storageAddresses string
-	var configPath string
+	var withSlaveSync bool
 
 	flag.StringVar(&conf.ListenAddr, "address", conf.ListenAddr, "Address to listen on")
 	flag.IntVar(&conf.FlushSize, "flush-size", conf.FlushSize, "flush size")
@@ -34,10 +36,11 @@ func main() {
 	flag.StringVar(&profileAddr, "profile-address", "", "Enables profiling of this server as an http service")
 
 	flag.BoolVar(&inMemoryStorage, "memorystorage", false, "Stores the (meta)data in memory only, usefull for testing or benchmarking (overwrites the storage-addresses flag)")
-	flag.StringVar(&configPath, "config", "config.yml", "Zerodisk Config YAML File")
+	flag.StringVar(&conf.ConfigPath, "config", "config.yml", "Zerodisk Config YAML File")
 	flag.StringVar(&storageAddresses, "storage-addresses", "",
 		"comma seperated list of redis compatible connectionstrings (format: '<ip>:<port>[@<db>]', eg: 'localhost:16379,localhost:6379@2'), if given, these are used for all vdisks, ignoring the given config")
 
+	flag.BoolVar(&withSlaveSync, "with-slave-sync", false, "sync to ardb slave")
 	flag.BoolVar(&verbose, "v", false, "log verbose (debug) statements")
 
 	// parse flags
@@ -61,7 +64,7 @@ func main() {
 		conf.HexNonce,
 		profileAddr,
 		inMemoryStorage,
-		configPath,
+		conf.ConfigPath,
 		storageAddresses,
 	)
 
@@ -84,7 +87,7 @@ func main() {
 	// create any kind of valid pool factory
 	poolFactory, err := tlog.AnyRedisPoolFactory(tlog.RedisPoolFactoryConfig{
 		RequiredDataServerCount: conf.RequiredDataServers(),
-		ConfigPath:              configPath,
+		ConfigPath:              conf.ConfigPath,
 		ServerConfigs:           serverConfigs,
 		AutoFill:                true,
 		AllowInMemory:           true,
@@ -93,6 +96,15 @@ func main() {
 		log.Fatalf("failed to create redis pool factory: %s", err.Error())
 	}
 	defer poolFactory.Close()
+
+	if withSlaveSync {
+		// aggregation MQ
+		conf.AggMq = aggmq.NewMQ()
+
+		// slave syncer manager
+		ssm := slavesync.NewManager(conf.AggMq, conf.ConfigPath)
+		go ssm.Run()
+	}
 
 	// create server
 	server, err := server.NewServer(conf, poolFactory)

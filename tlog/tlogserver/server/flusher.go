@@ -8,13 +8,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/golang/snappy"
+	"github.com/minio/blake2b-simd"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/erasure"
-	"github.com/golang/snappy"
-	"github.com/minio/blake2b-simd"
 	"zombiezen.com/go/capnproto2"
 )
 
@@ -58,11 +58,11 @@ func newFlusher(conf *flusherConfig, pool tlog.RedisPool) (*flusher, error) {
 	return f, nil
 }
 
-func (f *flusher) flush(blocks []*schema.TlogBlock, vd *vdisk) ([]uint64, error) {
+func (f *flusher) flush(blocks []*schema.TlogBlock, vd *vdisk) ([]uint64, []byte, error) {
 	// capnp -> byte
 	data, err := f.encodeCapnp(blocks[:], vd)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// compress
@@ -77,7 +77,7 @@ func (f *flusher) flush(blocks []*schema.TlogBlock, vd *vdisk) ([]uint64, error)
 	// to the message to make it aligned.
 	buf := new(bytes.Buffer)
 	if err := binary.Write(buf, binary.LittleEndian, uint64(len(encrypted))); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	finalData := append(buf.Bytes(), encrypted...)
@@ -85,7 +85,7 @@ func (f *flusher) flush(blocks []*schema.TlogBlock, vd *vdisk) ([]uint64, error)
 	// erasure
 	erEncoded, err := f.erasure.Encode(vd.vdiskID, finalData[:])
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	hash := blake2b.Sum256(encrypted)
@@ -93,7 +93,7 @@ func (f *flusher) flush(blocks []*schema.TlogBlock, vd *vdisk) ([]uint64, error)
 
 	// store to ardb
 	if err := f.storeEncoded(vd, lastHash, erEncoded); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	vd.lastHash = lastHash // only update last hash if everything is OK
@@ -103,7 +103,7 @@ func (f *flusher) flush(blocks []*schema.TlogBlock, vd *vdisk) ([]uint64, error)
 		seqs[i] = blocks[i].Sequence()
 	}
 
-	return seqs[:], nil
+	return seqs[:], data, nil
 }
 
 func (f *flusher) encodeCapnp(blocks []*schema.TlogBlock, vd *vdisk) ([]byte, error) {

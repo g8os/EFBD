@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net"
 	"sync"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
+	"github.com/zero-os/0-Disk/tlog/tlogserver/aggmq"
 )
 
 const (
@@ -58,6 +60,9 @@ type vdisk struct {
 
 	clientsTab     map[string]*net.TCPConn
 	clientsTabLock sync.Mutex
+
+	aggToProcessCh  chan aggmq.AggMqMsg
+	withSlaveSyncer bool
 }
 
 // ID returns the ID of this vdisk
@@ -73,7 +78,31 @@ func (vd *vdisk) ResponseChan() <-chan *BlockResponse {
 // creates vdisk with given vdiskID, flusher, and first sequence.
 // firstSequence is the very first sequence that this vdisk will receive.
 // blocks with sequence < firstSequence are going to be ignored.
-func newVdisk(vdiskID string, f *flusher, firstSequence uint64, segmentBufLen int) (*vdisk, error) {
+func newVdisk(aggMq *aggmq.MQ, vdiskID string, f *flusher, firstSequence uint64, flusherConf *flusherConfig,
+	segmentBufLen int) (*vdisk, error) {
+
+	var aggToProcessCh chan aggmq.AggMqMsg
+	var withSlaveSyncer bool
+
+	// create aggregation processor
+	if aggMq != nil {
+		var err error
+		apc := aggmq.AggProcessorConfig{
+			VdiskID:  vdiskID,
+			K:        flusherConf.K,
+			M:        flusherConf.M,
+			PrivKey:  flusherConf.PrivKey,
+			HexNonce: flusherConf.HexNonce,
+		}
+		ctx, _ := context.WithCancel(context.Background()) // TODO : save and use the context properly
+
+		aggToProcessCh, err = aggMq.AskProcessor(ctx, apc)
+		if err != nil {
+			return nil, err
+		}
+		withSlaveSyncer = true
+	}
+
 	// get last hash from storage
 	lastHash, err := f.getLastHash(vdiskID)
 	if err != nil {
@@ -96,16 +125,20 @@ func newVdisk(vdiskID string, f *flusher, firstSequence uint64, segmentBufLen in
 		segmentBuf:           make([]byte, 0, segmentBufLen),
 		flusher:              f,
 		clientsTab:           make(map[string]*net.TCPConn),
+		withSlaveSyncer:      withSlaveSyncer,
+		aggToProcessCh:       aggToProcessCh,
 	}, nil
 }
 
 type vdiskManager struct {
 	vdisks           map[string]*vdisk
 	lock             sync.Mutex
+	aggMq            *aggmq.MQ
+	configPath       string
 	maxSegmentBufLen int // max len of capnp buffer used by flushing process
 }
 
-func newVdiskManager(blockSize, flushSize int) *vdiskManager {
+func newVdiskManager(aggMq *aggmq.MQ, blockSize, flushSize int, configPath string) *vdiskManager {
 	// the estimation of max segment buf len we will need.
 	// we add it by '1' because:
 	// - the block will also container other data like 'sequenece', 'timestamp', etc..
@@ -113,16 +146,18 @@ func newVdiskManager(blockSize, flushSize int) *vdiskManager {
 	segmentBufLen := blockSize * (flushSize + 1)
 
 	return &vdiskManager{
+		aggMq:            aggMq,
 		vdisks:           map[string]*vdisk{},
 		maxSegmentBufLen: segmentBufLen,
+		configPath:       configPath,
 	}
 }
 
-type flusherFactory func(vdiskID string) (*flusher, error)
+type flusherFactory func(vdiskID string, flusherConf *flusherConfig) (*flusher, error)
 
 // get or create the vdisk
 func (vt *vdiskManager) Get(vdiskID string, firstSequence uint64, ff flusherFactory,
-	conn *net.TCPConn) (vd *vdisk, err error) {
+	conn *net.TCPConn, flusherConf *flusherConfig) (vd *vdisk, err error) {
 	vt.lock.Lock()
 	defer vt.lock.Unlock()
 
@@ -132,12 +167,12 @@ func (vt *vdiskManager) Get(vdiskID string, firstSequence uint64, ff flusherFact
 		return
 	}
 
-	f, err := ff(vdiskID)
+	f, err := ff(vdiskID, flusherConf)
 	if err != nil {
 		return
 	}
 
-	vd, err = newVdisk(vdiskID, f, firstSequence, vt.maxSegmentBufLen)
+	vd, err = newVdisk(vt.aggMq, vdiskID, f, firstSequence, flusherConf, vt.maxSegmentBufLen)
 	if err != nil {
 		return
 	}
@@ -401,8 +436,9 @@ func (vd *vdisk) runFlusher() {
 
 		var seqs []uint64
 		status := tlog.BlockStatusFlushOK
+		var rawAgg []byte
 
-		seqs, err = vd.flusher.flush(blocks[:], vd)
+		seqs, rawAgg, err = vd.flusher.flush(blocks[:], vd)
 		if err != nil {
 			log.Infof("flush %v failed: %v", vd.vdiskID, err)
 			status = tlog.BlockStatusFlushFailed
@@ -413,9 +449,15 @@ func (vd *vdisk) runFlusher() {
 			vd.flusherCmdRespChan <- struct{}{}
 		}
 
+		// send response
 		vd.respChan <- &BlockResponse{
 			Status:    status.Int8(),
 			Sequences: seqs,
+		}
+
+		// send aggregation to slave syncer
+		if vd.withSlaveSyncer {
+			vd.aggToProcessCh <- aggmq.AggMqMsg(rawAgg)
 		}
 	}
 }

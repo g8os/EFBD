@@ -12,7 +12,6 @@ import (
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
 	"github.com/zero-os/0-Disk/tlog/tlogclient"
-	tlogserver "github.com/zero-os/0-Disk/tlog/tlogserver/server"
 )
 
 const (
@@ -729,7 +728,7 @@ var (
 var (
 	// TODO: come up with a better value, perhaps this value could be returned during
 	//       the handshake phase from the server
-	transactionChCapacity = tlogserver.DefaultConfig().FlushSize * 2
+	transactionChCapacity = 50
 
 	toFlushChCapacity = 10000 // TODO : do we really need it to be so big?
 )
