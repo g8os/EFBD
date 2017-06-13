@@ -2,14 +2,12 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/emirpasic/gods/sets/treeset"
 
-	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
@@ -44,7 +42,7 @@ type vdisk struct {
 	lastHash    []byte // current in memory last hash
 	lastHashKey []byte // redis key of the last hash
 
-	// channels block receiver
+	// channels for block receiver
 	blockInputChan       chan *schema.TlogBlock // input channel of block received from client
 	blockRecvCmdChan     chan uint8             // channel of block receiver command
 	blockRecvCmdRespChan chan struct{}          // channel of block receiver command response
@@ -60,6 +58,7 @@ type vdisk struct {
 	expectedSequence     uint64 // expected sequence to be received
 	expectedSequenceLock sync.Mutex
 
+	// connected clients table
 	clientsTab     map[string]*net.TCPConn
 	clientsTabLock sync.Mutex
 
@@ -80,14 +79,14 @@ func (vd *vdisk) ResponseChan() <-chan *BlockResponse {
 // creates vdisk with given vdiskID, flusher, and first sequence.
 // firstSequence is the very first sequence that this vdisk will receive.
 // blocks with sequence < firstSequence are going to be ignored.
-func newVdisk(vdiskConf config.VdiskConfig, aggMq *aggmq.MQ, vdiskID string, f *flusher, firstSequence uint64,
-	flusherConf *flusherConfig, segmentBufLen int) (*vdisk, error) {
+func newVdisk(aggMq *aggmq.MQ, vdiskID string, f *flusher, firstSequence uint64, flusherConf *flusherConfig,
+	segmentBufLen int, withSlaveSync bool) (*vdisk, error) {
 
 	var aggToProcessCh chan aggmq.AggMqMsg
 	var withSlaveSyncer bool
 
-	// create aggregation processor
-	if aggMq != nil && vdiskConf.TlogSlaveSync {
+	// create slave syncer
+	if aggMq != nil && withSlaveSync {
 		var err error
 		apc := aggmq.AggProcessorConfig{
 			VdiskID:  vdiskID,
@@ -112,7 +111,7 @@ func newVdisk(vdiskConf config.VdiskConfig, aggMq *aggmq.MQ, vdiskID string, f *
 	}
 	maxTlbInBuffer := f.flushSize * tlogBlockFactorSize
 
-	return &vdisk{
+	vd := &vdisk{
 		vdiskID:              vdiskID,
 		lastHashKey:          decoder.GetLashHashKey(vdiskID),
 		lastHash:             lastHash,
@@ -129,136 +128,13 @@ func newVdisk(vdiskConf config.VdiskConfig, aggMq *aggmq.MQ, vdiskID string, f *
 		clientsTab:           make(map[string]*net.TCPConn),
 		withSlaveSyncer:      withSlaveSyncer,
 		aggToProcessCh:       aggToProcessCh,
-	}, nil
-}
-
-type vdiskManager struct {
-	vdisks           map[string]*vdisk
-	lock             sync.Mutex
-	aggMq            *aggmq.MQ
-	configPath       string
-	maxSegmentBufLen int // max len of capnp buffer used by flushing process
-}
-
-func newVdiskManager(aggMq *aggmq.MQ, blockSize, flushSize int, configPath string) *vdiskManager {
-	// the estimation of max segment buf len we will need.
-	// we add it by '1' because:
-	// - the block will also container other data like 'sequenece', 'timestamp', etc..
-	// - overhead of capnp schema
-	segmentBufLen := blockSize * (flushSize + 1)
-
-	return &vdiskManager{
-		aggMq:            aggMq,
-		vdisks:           map[string]*vdisk{},
-		maxSegmentBufLen: segmentBufLen,
-		configPath:       configPath,
 	}
-}
-
-type flusherFactory func(vdiskID string, flusherConf *flusherConfig) (*flusher, error)
-
-// get or create the vdisk
-func (vt *vdiskManager) Get(globalConf *config.Config, vdiskID string, firstSequence uint64, ff flusherFactory,
-	conn *net.TCPConn, flusherConf *flusherConfig) (vd *vdisk, err error) {
-
-	vt.lock.Lock()
-	defer vt.lock.Unlock()
-
-	// get vdisk config
-	vdiskConf, ok := globalConf.Vdisks[vdiskID]
-	if !ok {
-		return nil, fmt.Errorf("config for vdisk `%v` not found", vdiskID)
-	}
-
-	// check if this vdisk already exist
-	vd, ok = vt.vdisks[vdiskID]
-	if ok {
-		vd.addClient(conn)
-		return
-	}
-
-	// create the flusher
-	f, err := ff(vdiskID, flusherConf)
-	if err != nil {
-		return
-	}
-
-	// create vdisk
-	vd, err = newVdisk(vdiskConf, vt.aggMq, vdiskID, f, firstSequence, flusherConf, vt.maxSegmentBufLen)
-	if err != nil {
-		return
-	}
-	vd.addClient(conn)
-	vt.vdisks[vdiskID] = vd
-
-	log.Debugf("create vdisk with expectedSequence:%v", vd.expectedSequence)
 
 	// run vdisk goroutines
 	go vd.runFlusher()
 	go vd.runBlockReceiver()
 
-	return
-}
-
-// number of connected clients to this vdisk
-func (vd *vdisk) numConnectedClient() int {
-	vd.clientsTabLock.Lock()
-	defer vd.clientsTabLock.Unlock()
-	return len(vd.clientsTab)
-}
-
-func (vd *vdisk) addClient(conn *net.TCPConn) {
-	vd.clientsTabLock.Lock()
-	defer vd.clientsTabLock.Unlock()
-
-	vd.clientsTab[conn.RemoteAddr().String()] = conn
-}
-
-func (vd *vdisk) removeClient(conn *net.TCPConn) {
-	vd.clientsTabLock.Lock()
-	defer vd.clientsTabLock.Unlock()
-
-	addr := conn.RemoteAddr().String()
-	if _, ok := vd.clientsTab[addr]; !ok {
-		log.Errorf("vdisk failed to remove client:%v", addr)
-	} else {
-		delete(vd.clientsTab, addr)
-	}
-}
-
-// disconnect all connected clients except the
-// given exceptConn connection
-func (vd *vdisk) disconnectExcept(exceptConn *net.TCPConn) {
-	vd.clientsTabLock.Lock()
-	defer vd.clientsTabLock.Unlock()
-
-	var conns []*net.TCPConn
-	for _, conn := range vd.clientsTab {
-		if conn != exceptConn {
-			conns = append(conns, conn)
-			conn.Close()
-		}
-	}
-	for _, conn := range conns {
-		delete(vd.clientsTab, conn.RemoteAddr().String())
-	}
-}
-
-// the comparator function needed by https://godoc.org/github.com/emirpasic/gods/sets/treeset#NewWith
-func tlogBlockComparator(a, b interface{}) int {
-	tlbA := a.(*schema.TlogBlock)
-	tlbB := b.(*schema.TlogBlock)
-
-	seqA, seqB := tlbA.Sequence(), tlbB.Sequence()
-
-	switch {
-	case seqA < seqB:
-		return -1
-	case seqA > seqB:
-		return 1
-	default: // tlbA.Sequence() == tlbB.Sequence():
-		return 0
-	}
+	return vd, nil
 }
 
 // reset first sequence, what we need to do:
@@ -472,5 +348,68 @@ func (vd *vdisk) runFlusher() {
 		if vd.withSlaveSyncer {
 			vd.aggToProcessCh <- aggmq.AggMqMsg(rawAgg)
 		}
+	}
+}
+
+// number of connected clients to this vdisk
+func (vd *vdisk) numConnectedClient() int {
+	vd.clientsTabLock.Lock()
+	defer vd.clientsTabLock.Unlock()
+	return len(vd.clientsTab)
+}
+
+// add client to the table of connected clients
+func (vd *vdisk) addClient(conn *net.TCPConn) {
+	vd.clientsTabLock.Lock()
+	defer vd.clientsTabLock.Unlock()
+
+	vd.clientsTab[conn.RemoteAddr().String()] = conn
+}
+
+// remove client from the table of connected clients
+func (vd *vdisk) removeClient(conn *net.TCPConn) {
+	vd.clientsTabLock.Lock()
+	defer vd.clientsTabLock.Unlock()
+
+	addr := conn.RemoteAddr().String()
+	if _, ok := vd.clientsTab[addr]; !ok {
+		log.Errorf("vdisk failed to remove client:%v", addr)
+	} else {
+		delete(vd.clientsTab, addr)
+	}
+}
+
+// disconnect all connected clients except the
+// given exceptConn connection
+func (vd *vdisk) disconnectExcept(exceptConn *net.TCPConn) {
+	vd.clientsTabLock.Lock()
+	defer vd.clientsTabLock.Unlock()
+
+	var conns []*net.TCPConn
+	for _, conn := range vd.clientsTab {
+		if conn != exceptConn {
+			conns = append(conns, conn)
+			conn.Close()
+		}
+	}
+	for _, conn := range conns {
+		delete(vd.clientsTab, conn.RemoteAddr().String())
+	}
+}
+
+// the comparator function needed by https://godoc.org/github.com/emirpasic/gods/sets/treeset#NewWith
+func tlogBlockComparator(a, b interface{}) int {
+	tlbA := a.(*schema.TlogBlock)
+	tlbB := b.(*schema.TlogBlock)
+
+	seqA, seqB := tlbA.Sequence(), tlbB.Sequence()
+
+	switch {
+	case seqA < seqB:
+		return -1
+	case seqA > seqB:
+		return 1
+	default: // tlbA.Sequence() == tlbB.Sequence():
+		return 0
 	}
 }

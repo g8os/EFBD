@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/aggmq"
 )
 
@@ -30,6 +31,7 @@ type Config struct {
 	HexNonce   string
 	ConfigPath string // config file path
 	AggMq      *aggmq.MQ
+	FileConfig *config.Config
 }
 
 // RequiredDataServers returns how many data servers are required,
