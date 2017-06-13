@@ -9,6 +9,7 @@ import (
 	"net"
 
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
@@ -24,10 +25,11 @@ type Server struct {
 	listener             net.Listener
 	flusherConf          *flusherConfig
 	vdiskMgr             *vdiskManager
+	globalConf           *config.Config
 }
 
 // NewServer creates a new tlog server
-func NewServer(conf *Config, poolFactory tlog.RedisPoolFactory) (*Server, error) {
+func NewServer(globalConf *config.Config, conf *Config, poolFactory tlog.RedisPoolFactory) (*Server, error) {
 	if conf == nil {
 		return nil, errors.New("tlogserver requires a non-nil config")
 	}
@@ -71,6 +73,7 @@ func NewServer(conf *Config, poolFactory tlog.RedisPoolFactory) (*Server, error)
 		flusherConf:          flusherConf,
 		maxRespSegmentBufLen: schema.RawTlogRespLen(conf.FlushSize),
 		vdiskMgr:             newVdiskManager(conf.AggMq, conf.BlockSize, conf.FlushSize, conf.ConfigPath),
+		globalConf:           globalConf,
 	}, nil
 }
 
@@ -157,7 +160,7 @@ func (s *Server) handshake(r io.Reader, w io.Writer, conn *net.TCPConn) (vd *vdi
 		return // error return
 	}
 
-	vd, err = s.vdiskMgr.Get(vdiskID, req.FirstSequence(), s.createFlusher, conn, s.flusherConf)
+	vd, err = s.vdiskMgr.Get(s.globalConf, vdiskID, req.FirstSequence(), s.createFlusher, conn, s.flusherConf)
 	if err != nil {
 		status = tlog.HandshakeStatusInternalServerError
 		err = fmt.Errorf("couldn't create vdisk %s: %s", vdiskID, err.Error())
