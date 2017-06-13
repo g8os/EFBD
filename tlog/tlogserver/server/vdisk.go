@@ -2,12 +2,14 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/emirpasic/gods/sets/treeset"
 
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
@@ -78,14 +80,14 @@ func (vd *vdisk) ResponseChan() <-chan *BlockResponse {
 // creates vdisk with given vdiskID, flusher, and first sequence.
 // firstSequence is the very first sequence that this vdisk will receive.
 // blocks with sequence < firstSequence are going to be ignored.
-func newVdisk(aggMq *aggmq.MQ, vdiskID string, f *flusher, firstSequence uint64, flusherConf *flusherConfig,
-	segmentBufLen int) (*vdisk, error) {
+func newVdisk(vdiskConf config.VdiskConfig, aggMq *aggmq.MQ, vdiskID string, f *flusher, firstSequence uint64,
+	flusherConf *flusherConfig, segmentBufLen int) (*vdisk, error) {
 
 	var aggToProcessCh chan aggmq.AggMqMsg
 	var withSlaveSyncer bool
 
 	// create aggregation processor
-	if aggMq != nil {
+	if aggMq != nil && vdiskConf.TlogSlaveSync {
 		var err error
 		apc := aggmq.AggProcessorConfig{
 			VdiskID:  vdiskID,
@@ -156,23 +158,33 @@ func newVdiskManager(aggMq *aggmq.MQ, blockSize, flushSize int, configPath strin
 type flusherFactory func(vdiskID string, flusherConf *flusherConfig) (*flusher, error)
 
 // get or create the vdisk
-func (vt *vdiskManager) Get(vdiskID string, firstSequence uint64, ff flusherFactory,
+func (vt *vdiskManager) Get(globalConf *config.Config, vdiskID string, firstSequence uint64, ff flusherFactory,
 	conn *net.TCPConn, flusherConf *flusherConfig) (vd *vdisk, err error) {
+
 	vt.lock.Lock()
 	defer vt.lock.Unlock()
 
-	vd, ok := vt.vdisks[vdiskID]
+	// get vdisk config
+	vdiskConf, ok := globalConf.Vdisks[vdiskID]
+	if !ok {
+		return nil, fmt.Errorf("config for vdisk `%v` not found", vdiskID)
+	}
+
+	// check if this vdisk already exist
+	vd, ok = vt.vdisks[vdiskID]
 	if ok {
 		vd.addClient(conn)
 		return
 	}
 
+	// create the flusher
 	f, err := ff(vdiskID, flusherConf)
 	if err != nil {
 		return
 	}
 
-	vd, err = newVdisk(vt.aggMq, vdiskID, f, firstSequence, flusherConf, vt.maxSegmentBufLen)
+	// create vdisk
+	vd, err = newVdisk(vdiskConf, vt.aggMq, vdiskID, f, firstSequence, flusherConf, vt.maxSegmentBufLen)
 	if err != nil {
 		return
 	}
@@ -181,6 +193,7 @@ func (vt *vdiskManager) Get(vdiskID string, firstSequence uint64, ff flusherFact
 
 	log.Debugf("create vdisk with expectedSequence:%v", vd.expectedSequence)
 
+	// run vdisk goroutines
 	go vd.runFlusher()
 	go vd.runBlockReceiver()
 

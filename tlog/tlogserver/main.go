@@ -106,8 +106,16 @@ func main() {
 		go ssm.Run()
 	}
 
+	var fileConfig *config.Config
+	if conf.ConfigPath != "" {
+		fileConfig, err = config.ReadConfig(conf.ConfigPath, config.TlogServer)
+		if err != nil {
+			log.Fatalf("failed to read file config: %v", err)
+		}
+	}
+
 	// create server
-	server, err := server.NewServer(conf, poolFactory)
+	server, err := server.NewServer(fileConfig, conf, poolFactory)
 	if err != nil {
 		log.Fatalf("failed to create server: %v", err)
 	}

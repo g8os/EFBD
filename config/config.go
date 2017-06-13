@@ -323,6 +323,7 @@ type VdiskConfig struct {
 	StorageCluster     string    `yaml:"storageCluster" valid:"optional"`
 	RootStorageCluster string    `yaml:"rootStorageCluster" valid:"optional"`
 	TlogStorageCluster string    `yaml:"tlogStorageCluster" valid:"optional"`
+	TlogSlaveSync      bool      `yaml:"tlogSlaveSync" valid:"optional"` // true if tlog need to sync ardb slave
 	Type               VdiskType `yaml:"type" valid:"optional"`
 }
 
