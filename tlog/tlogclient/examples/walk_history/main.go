@@ -47,11 +47,13 @@ func main() {
 		AutoFill:                true,
 		AllowInMemory:           false,
 	})
+	exitOnErr(err)
 
 	dec, err := decoder.New(redisPool, conf.K, conf.M, conf.vdiskID, conf.privKey, conf.nonce)
 	if err != nil {
 		log.Fatalf("tlog decoder creation failed:%v", err)
 	}
+
 	aggChan := dec.Decode(0)
 
 	for {
