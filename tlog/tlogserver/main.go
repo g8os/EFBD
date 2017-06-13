@@ -112,10 +112,11 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to read file config: %v", err)
 		}
+		conf.FileConfig = fileConfig
 	}
 
 	// create server
-	server, err := server.NewServer(fileConfig, conf, poolFactory)
+	server, err := server.NewServer(conf, poolFactory)
 	if err != nil {
 		log.Fatalf("failed to create server: %v", err)
 	}
