@@ -128,7 +128,7 @@ func (tls *tlogStorage) set(blockIndex int64, content []byte) error {
 		Operation: op,
 		Sequence:  sequence,
 		Offset:    uint64(blockIndex * tls.blockSize),
-		Timestamp: uint64(time.Now().Unix()),
+		Timestamp: uint64(time.Now().UnixNano()),
 		Content:   transactionContent,
 		Size:      length,
 	}

@@ -54,7 +54,7 @@ func main() {
 		log.Fatalf("tlog decoder creation failed:%v", err)
 	}
 
-	aggChan := dec.Decode(0)
+	aggChan := dec.Decode(0, 0)
 
 	for {
 		da, more := <-aggChan
