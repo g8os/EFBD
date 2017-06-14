@@ -7,6 +7,7 @@ import (
 	mrand "math/rand"
 	"os"
 	"testing"
+	"time"
 
 	zerodiskcfg "github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/gonbdserver/nbd"
@@ -87,8 +88,15 @@ func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 
 	zeroBlock := make([]byte, blockSize)
 
+	startTs := uint64(time.Now().UnixNano())
+	var lastBlockTs uint64 // timestamp before the last block
+
 	for i := 0; i < blocks; i++ {
 		offset := i * blockSize
+
+		if i == blocks-1 {
+			lastBlockTs = uint64(time.Now().UnixNano())
+		}
 
 		op := mrand.Int() % 10
 
@@ -162,19 +170,47 @@ func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 		return
 	}
 
-	t.Log("replay from tlog")
+	t.Log("replay from tlog except the last block")
 	player, err := player.NewPlayerWithPoolAndBackend(ctx, tlogRedisPool, backend, vdiskID,
 		testConf.PrivKey, testConf.HexNonce, testConf.K, testConf.M)
 	if !assert.Nil(t, err) {
 		return
 	}
 
-	err = player.Replay(0, 0)
+	err = player.Replay(startTs, lastBlockTs)
 
-	t.Log("8. Validate that all the data is again retrievable and correct;")
+	t.Log("8. Validate that all replayed data is again retrievable and correct;")
 
-	for i := 0; i < blocks; i++ {
+	// validate all except the last
+	for i := 0; i < blocks-1; i++ {
 		offset := i * blockSize
+		content, err := backend.ReadAt(ctx, int64(offset), int64(blockSize))
+		if !assert.Nil(t, err) {
+			return
+		}
+		if !assert.Equal(t, data[offset:offset+blockSize], content) {
+			return
+		}
+	}
+
+	t.Log("9. make sure the last block still not retrieavable")
+	{
+		offset := (blocks - 1) * blockSize
+		content, err := backend.ReadAt(ctx, int64(offset), int64(blockSize))
+		if !assert.Nil(t, err) {
+			return
+		}
+		if !assert.Equal(t, zeroBlock, content) {
+			return
+		}
+	}
+
+	t.Log("10 replay last block")
+	err = player.Replay(lastBlockTs, 0)
+
+	t.Log("11. Validate that last block is again retrievable and correct;")
+	{
+		offset := (blocks - 1) * blockSize
 		content, err := backend.ReadAt(ctx, int64(offset), int64(blockSize))
 		if !assert.Nil(t, err) {
 			return

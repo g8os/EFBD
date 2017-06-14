@@ -69,17 +69,17 @@ func New(pool tlog.RedisPool, k, m int, vdiskID, privKey, hexNonce string) (*Dec
 func (d *Decoder) Decode(startTs, endTs uint64) <-chan *DecodedAggregation {
 	daChan := make(chan *DecodedAggregation, 1)
 
-	// func to check if this aggregation is the end
+	// func to check if this aggregation is the end (exclusive)
 	// of desired aggregation
 	isEnd := func(agg *schema.TlogAggregation) (bool, error) {
 		if endTs == 0 {
 			return false, nil
 		}
-		maxTs, err := maxAggTimestamp(agg)
+		minTs, err := minAggTimestamp(agg)
 		if err != nil {
 			return false, err
 		}
-		return maxTs > endTs, nil
+		return minTs > endTs, nil
 	}
 
 	go func() {
@@ -104,10 +104,10 @@ func (d *Decoder) Decode(startTs, endTs uint64) <-chan *DecodedAggregation {
 				Agg: agg,
 				Err: err,
 			}
-			daChan <- da
 
 			// return if this aggregation is errored
 			if err != nil {
+				daChan <- da
 				return
 			}
 
@@ -116,6 +116,7 @@ func (d *Decoder) Decode(startTs, endTs uint64) <-chan *DecodedAggregation {
 			if end || err != nil {
 				return
 			}
+			daChan <- da
 		}
 	}()
 	return daChan
@@ -174,6 +175,14 @@ func maxAggTimestamp(agg *schema.TlogAggregation) (uint64, error) {
 		return 0, err
 	}
 	return blocks.At(blocks.Len() - 1).Timestamp(), nil
+}
+
+func minAggTimestamp(agg *schema.TlogAggregation) (uint64, error) {
+	blocks, err := agg.Blocks()
+	if err != nil {
+		return 0, err
+	}
+	return blocks.At(0).Timestamp(), nil
 }
 
 // get tlog aggregation by it's key
