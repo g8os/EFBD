@@ -20,6 +20,8 @@ var vdiskCfg struct {
 	ConfigPath           string
 	K, M                 int
 	PrivKey, HexNonce    string
+	StartTs              uint64 // start timestamp
+	EndTs                uint64 // end timestamp
 }
 
 // VdiskCmd represents the restore vdisk subcommand
@@ -63,7 +65,7 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	return player.Replay(0, 0)
+	return player.Replay(vdiskCfg.StartTs, vdiskCfg.EndTs)
 }
 
 // create a new backend, used for writing
@@ -122,4 +124,13 @@ func init() {
 		&vdiskCfg.HexNonce,
 		"nonce", "37b8e8a308c354048d245f6d",
 		"hex nonce used for encryption")
+	VdiskCmd.Flags().Uint64Var(
+		&vdiskCfg.StartTs,
+		"start-timestamp", 0,
+		"start timestamp(default 0: since beginning)")
+
+	VdiskCmd.Flags().Uint64Var(
+		&vdiskCfg.EndTs,
+		"end-timestamp", 0,
+		"end timestamp(default 0: until the end)")
 }
