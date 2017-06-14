@@ -29,12 +29,14 @@ const (
 	vdiskCmdForceFlushBlocking           = iota // blocking force flush
 	vdiskCmdForceFlushAtSeq                     // non-blocking force flush with sequence param
 	vdiskCmdClearUnorderedBlocksBlocking        // blocking clear all unordered blocks
+	vdiskCmdWaitSlaveSync                       // wait for slave sync to be finished
 )
 
 // command for vdisk flusher
 type vdiskFlusherCmd struct {
 	cmdType  int8
 	sequence uint64
+	respCh   chan error
 }
 
 type vdisk struct {
@@ -176,6 +178,36 @@ func (vd *vdisk) forceFlushAtSeq(seq uint64) {
 	}
 }
 
+// send wait slave sync command to the flusher
+// we do it in blocking way
+func (vd *vdisk) waitSlaveSync() error {
+	// make sure it has syncer
+	if !vd.withSlaveSyncer {
+		return nil
+	}
+
+	// send the command
+	cmd := vdiskFlusherCmd{
+		cmdType: vdiskCmdWaitSlaveSync,
+		respCh:  make(chan error),
+	}
+	vd.flusherCmdChan <- cmd
+
+	// wait and return the response
+	err := <-cmd.respCh
+	if err == nil {
+		vd.withSlaveSyncer = false // TODO : reload the slave config
+	}
+	return err
+}
+
+func (vd *vdisk) doWaitSlaveSync(respCh chan error, lastSeqFlushed uint64) {
+	if !vd.withSlaveSyncer {
+		respCh <- nil
+	}
+	respCh <- vd.aggComm.SendCmd(aggmq.CmdWaitSlaveSync, lastSeqFlushed)
+}
+
 // this is the flusher routine that receive the blocks and order it.
 func (vd *vdisk) runBlockReceiver() {
 	buffer := treeset.NewWith(tlogBlockComparator)
@@ -191,6 +223,9 @@ func (vd *vdisk) runBlockReceiver() {
 			}
 		case tlb := <-vd.blockInputChan:
 			func() {
+				// We create closure here to make the locking easy.
+				// We are not creating separate func because the vd.expectedSequence
+				// should be local to `runBlockReceiver` func
 				vd.expectedSequenceLock.Lock()
 				defer vd.expectedSequenceLock.Unlock()
 
@@ -238,11 +273,14 @@ func (vd *vdisk) runBlockReceiver() {
 
 // this is the flusher routine that does the flush asynchronously
 func (vd *vdisk) runFlusher() {
-	var err error
-
 	// buffer of all ordered tlog blocks
 	tlogs := []*schema.TlogBlock{}
+
+	// max sequence received by this flusher
 	var maxSeq uint64
+
+	// last sequence flushed by this flusher
+	var lastSeqFlushed uint64
 
 	// periodic flush interval
 	pfDur := time.Duration(vd.flusher.flushTime) * time.Second
@@ -261,9 +299,11 @@ func (vd *vdisk) runFlusher() {
 		cmdType = -1
 		select {
 		case tlb := <-vd.orderedBlockChan:
+			// we receive tlog block, it already ordered
 			tlogs = append(tlogs, tlb)
 
 			maxSeq = tlb.Sequence()
+
 			// check if we need to flush
 			if needForceFlushSeq && tlb.Sequence() >= seqToForceFlush {
 				// reset the flag and flush right now
@@ -280,6 +320,7 @@ func (vd *vdisk) runFlusher() {
 			pfTimer.Reset(pfDur)
 
 		case <-pfTimer.C:
+			// flush by timeout timer
 			pfTimer.Reset(pfDur)
 			if len(tlogs) == 0 {
 				continue
@@ -287,10 +328,11 @@ func (vd *vdisk) runFlusher() {
 			toFlushLen = len(tlogs)
 
 		case flusherCmd = <-vd.flusherCmdChan:
+			// got command
 			cmdType = flusherCmd.cmdType
 
 			switch cmdType {
-			case vdiskCmdForceFlushAtSeq:
+			case vdiskCmdForceFlushAtSeq: // force flush at sequence
 				seqToForceFlush = flusherCmd.sequence
 				if maxSeq < seqToForceFlush { // we don't have it yet
 					needForceFlushSeq = true
@@ -299,7 +341,11 @@ func (vd *vdisk) runFlusher() {
 				// we already have the wanted sequence
 				// flush right now if possible
 				needForceFlushSeq = false
-			case vdiskCmdForceFlushBlocking:
+
+			case vdiskCmdForceFlushBlocking: // force flush right now, in blocking way
+
+			case vdiskCmdWaitSlaveSync: // wait for slave sync
+				vd.doWaitSlaveSync(flusherCmd.respCh, lastSeqFlushed)
 			default:
 				log.Errorf("invalid command to runFlusher: %v", flusherCmd)
 				continue
@@ -323,14 +369,17 @@ func (vd *vdisk) runFlusher() {
 		blocks := tlogs[:toFlushLen]
 		tlogs = tlogs[toFlushLen:]
 
-		var seqs []uint64
 		status := tlog.BlockStatusFlushOK
-		var rawAgg []byte
 
-		seqs, rawAgg, err = vd.flusher.flush(blocks[:], vd)
+		seqs, rawAgg, err := vd.flusher.flush(blocks[:], vd)
 		if err != nil {
 			log.Infof("flush %v failed: %v", vd.vdiskID, err)
 			status = tlog.BlockStatusFlushFailed
+		}
+
+		// update last sequence flushed
+		if len(seqs) > 0 {
+			lastSeqFlushed = seqs[len(seqs)-1]
 		}
 
 		if cmdType == vdiskCmdForceFlushBlocking {

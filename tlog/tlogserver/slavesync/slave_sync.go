@@ -3,6 +3,7 @@ package slavesync
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"sync"
 
 	"zombiezen.com/go/capnproto2"
@@ -108,25 +109,56 @@ func newSlaveSyncer(ctx context.Context, configPath string, apc aggmq.AggProcess
 
 func (ss *slaveSyncer) run() {
 	log.Infof("run slave syncer for vdisk: %v", ss.vdiskID)
+
+	defer log.Infof("slave syncer for vdisk: %v stopped", ss.vdiskID)
+
+	var waitForSync bool
+	var seqToWait uint64
 	for {
 		select {
 		case <-ss.ctx.Done():
 			ss.mgr.remove(ss.vdiskID)
-			log.Infof("slave syncer for vdisk: %v stopped", ss.vdiskID)
 			return
 		case rawAgg := <-ss.aggComm.RecvAgg():
-			msg, err := capnp.NewDecoder(bytes.NewReader([]byte(rawAgg))).Decode()
+			lastSeq, err := ss.replay(rawAgg)
 			if err != nil {
-				log.Errorf("failed to decode agg:%v", err)
-			}
-			agg, err := schema.ReadRootTlogAggregation(msg)
-			if err != nil {
-				log.Errorf("failed to read root tlog:%v", err)
+				// TODO properly handle it
+				log.Error(err)
 			}
 
-			if err := ss.player.ReplayAggregation(&agg, 0, 0); err != nil {
-				log.Errorf("replay agg failed")
+			if waitForSync && lastSeq >= seqToWait {
+				ss.aggComm.SendResp(nil)
+				waitForSync = false
+			}
+		case cmd := <-ss.aggComm.RecvCmd():
+			if cmd.Type == aggmq.CmdWaitSlaveSync {
+				waitForSync = true
+				seqToWait = cmd.Seq
 			}
 		}
 	}
+}
+
+func (ss *slaveSyncer) replay(rawAgg aggmq.AggMqMsg) (uint64, error) {
+	msg, err := capnp.NewDecoder(bytes.NewReader([]byte(rawAgg))).Decode()
+	if err != nil {
+		return 0, fmt.Errorf("failed to decode agg:%v", err)
+	}
+
+	agg, err := schema.ReadRootTlogAggregation(msg)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read root tlog:%v", err)
+	}
+
+	if err := ss.player.ReplayAggregation(&agg, 0, 0); err != nil {
+		return 0, fmt.Errorf("replay agg failed: %v", err)
+	}
+
+	// get last sequence flusher
+	blocks, err := agg.Blocks()
+	if err != nil {
+		return 0, err
+	}
+
+	return blocks.At(blocks.Len() - 1).Timestamp(), nil
 }
