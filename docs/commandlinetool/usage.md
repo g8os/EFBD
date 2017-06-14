@@ -118,11 +118,25 @@ $ zeroctl delete vdisks foo vdiskA # vdiskA will be deleted correctly, even thou
 
 ### Restore a (deduped or nondeduped) vdisk
 
-Restore vdisk `a`:
+Restore a whole vdisk `a`:
 
 ```
 $ zeroctl restore vdisk a
 ```
+There are also optional timestamp (in nanosecond) options
+
+Restore vdisk `a` from timestamp `x` to the end
+
+```
+$ zeroctl restore vdisk a --start-timestamp=x
+```
+
+Restore vdisk `a` from the start until timestamp `x`
+
+```
+$ zeroctl restore vdisk a --end-timestamp=x
+```
+
 
 **Note**: this requires that you have a `config.yml` file in the current working directory.
 
