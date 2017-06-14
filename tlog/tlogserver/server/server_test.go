@@ -117,7 +117,7 @@ func TestEndToEnd(t *testing.T) {
 		expectedVdiskID, conf.PrivKey, conf.HexNonce)
 	assert.Nil(t, err)
 
-	aggChan := dec.Decode(0)
+	aggChan := dec.Decode(0, 0)
 
 	aggReceived := 0
 	for {
@@ -271,7 +271,7 @@ func TestUnordered(t *testing.T) {
 		vdiskID, conf.PrivKey, conf.HexNonce)
 	assert.Nil(t, err)
 
-	aggChan := dec.Decode(0)
+	aggChan := dec.Decode(0, 0)
 
 	var expectedSequence = uint64(firstSequence)
 	for {

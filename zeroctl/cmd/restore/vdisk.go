@@ -63,7 +63,7 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	return player.Replay(0)
+	return player.Replay(0, 0)
 }
 
 // create a new backend, used for writing

@@ -13,6 +13,9 @@ import (
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 )
 
+// Player defines a tlog replay player.
+// It could be used to restore the data based on transactions
+// sent to tlog server
 type Player struct {
 	vdiskID string
 	dec     *decoder.Decoder
@@ -20,6 +23,7 @@ type Player struct {
 	ctx     context.Context
 }
 
+// NewPlayer creates new tlog player
 func NewPlayer(ctx context.Context, configPath string, serverConfigs []zerodiskcfg.StorageServerConfig,
 	vdiskID, privKey, hexNonce string, k, m int) (*Player, error) {
 	// create tlog redis pool
@@ -70,6 +74,8 @@ func NewPlayer(ctx context.Context, configPath string, serverConfigs []zerodiskc
 	return NewPlayerWithPoolAndBackend(ctx, pool, backend, vdiskID, privKey, hexNonce, k, m)
 }
 
+// NewPlayerWithPoolAndBackend create new tlog player
+// with given redis pool and nbd backend
 func NewPlayerWithPoolAndBackend(ctx context.Context, pool tlog.RedisPool, backend nbd.Backend,
 	vdiskID, privKey, hexNonce string, k, m int) (*Player, error) {
 
@@ -89,8 +95,8 @@ func NewPlayerWithPoolAndBackend(ctx context.Context, pool tlog.RedisPool, backe
 
 // Replay replays the tlog by decoding data from a tlog RedisPool.
 // The replay start from `startTs` timestamp.
-func (p *Player) Replay(startTs uint64) error {
-	aggChan := p.dec.Decode(startTs)
+func (p *Player) Replay(startTs, endTs uint64) error {
+	aggChan := p.dec.Decode(startTs, endTs)
 	for {
 		da, more := <-aggChan
 		if !more {

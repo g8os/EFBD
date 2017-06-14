@@ -169,7 +169,7 @@ func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 		return
 	}
 
-	err = player.Replay(0)
+	err = player.Replay(0, 0)
 
 	t.Log("8. Validate that all the data is again retrievable and correct;")
 

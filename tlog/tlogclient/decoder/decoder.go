@@ -6,10 +6,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/zero-os/0-Disk/log"
 	"github.com/garyburd/redigo/redis"
 	"github.com/golang/snappy"
 	"github.com/templexxx/reedsolomon"
+	"github.com/zero-os/0-Disk/log"
 	"zombiezen.com/go/capnproto2"
 
 	"github.com/zero-os/0-Disk/tlog"
@@ -62,15 +62,31 @@ func New(pool tlog.RedisPool, k, m int, vdiskID, privKey, hexNonce string) (*Dec
 	}, nil
 }
 
-// Decode decodes the tlog with timestamp >= startTs.
-func (d *Decoder) Decode(startTs uint64) <-chan *DecodedAggregation {
+// Decode decodes all tlog transaction started from
+// startTs timestamp to endTs timestamp.
+// If startTs == 0, it means from the beginning of transaction.
+// If endTs == 0, it means until the end of transaction
+func (d *Decoder) Decode(startTs, endTs uint64) <-chan *DecodedAggregation {
 	daChan := make(chan *DecodedAggregation, 1)
+
+	// func to check if this aggregation is the end
+	// of desired aggregation
+	isEnd := func(agg *schema.TlogAggregation) (bool, error) {
+		if endTs == 0 {
+			return false, nil
+		}
+		maxTs, err := maxAggTimestamp(agg)
+		if err != nil {
+			return false, err
+		}
+		return maxTs > endTs, nil
+	}
 
 	go func() {
 		defer close(daChan)
 
 		// get all keys after the specified timestamp
-		keys, err := d.getKeysAfter(startTs)
+		keys, err := d.getKeysAfter(startTs, endTs)
 		if err != nil {
 			da := &DecodedAggregation{
 				Agg: nil,
@@ -89,13 +105,25 @@ func (d *Decoder) Decode(startTs uint64) <-chan *DecodedAggregation {
 				Err: err,
 			}
 			daChan <- da
+
+			// return if this aggregation is errored
+			if err != nil {
+				return
+			}
+
+			// return if it is the last aggregation we want
+			end, err := isEnd(agg)
+			if end || err != nil {
+				return
+			}
 		}
 	}()
 	return daChan
 }
 
 // getAllKeys of this vdisk ID after specified timestamp
-func (d *Decoder) getKeysAfter(startTs uint64) ([][]byte, error) {
+func (d *Decoder) getKeysAfter(startTs, endTs uint64) ([][]byte, error) {
+
 	key, err := d.getLastHash()
 	if err != nil {
 		return nil, err
@@ -109,11 +137,19 @@ func (d *Decoder) getKeysAfter(startTs uint64) ([][]byte, error) {
 			return keys, err
 		}
 
-		// we'have passed the startTs
-		if agg.Timestamp() < startTs {
+		// we'have passed the startTs.
+		// it happens when max timestamp of
+		// this aggregation is older than startTs.
+		// we return without include this aggregation
+		maxTs, err := maxAggTimestamp(agg)
+		if err != nil {
+			return keys, err
+		}
+		if maxTs < startTs {
 			return keys, nil
 		}
 
+		// add this aggregation
 		keys = append(keys, key)
 
 		// check if we already in very first key
@@ -129,6 +165,15 @@ func (d *Decoder) getKeysAfter(startTs uint64) ([][]byte, error) {
 
 		key = prev
 	}
+}
+
+// returns the max timestamps of all the contained blocks
+func maxAggTimestamp(agg *schema.TlogAggregation) (uint64, error) {
+	blocks, err := agg.Blocks()
+	if err != nil {
+		return 0, err
+	}
+	return blocks.At(blocks.Len() - 1).Timestamp(), nil
 }
 
 // get tlog aggregation by it's key
