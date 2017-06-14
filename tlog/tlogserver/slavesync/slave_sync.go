@@ -47,21 +47,21 @@ func (m *Manager) handleReq(apr aggmq.AggProcessorReq) {
 
 	// check if the syncer already exist
 	if _, ok := m.syncers[apr.Config.VdiskID]; ok {
-		m.apMq.NeedProcessorResp <- true
+		m.apMq.NeedProcessorResp <- nil
 		return
 	}
 
 	// create slave syncer
-	ss, err := newSlaveSyncer(apr.Context, m.configPath, apr.Config, apr.AggCh, m)
+	ss, err := newSlaveSyncer(apr.Context, m.configPath, apr.Config, apr.Comm, m)
 	if err != nil {
 		log.Errorf("failed to create slave syncer: %v", err)
-		m.apMq.NeedProcessorResp <- false
+		m.apMq.NeedProcessorResp <- err
 		return
 	}
 	m.syncers[apr.Config.VdiskID] = ss
 
 	// send response
-	m.apMq.NeedProcessorResp <- true
+	m.apMq.NeedProcessorResp <- nil
 
 	log.Debugf("slave syncer created for vdisk: %v", apr.Config.VdiskID)
 }
@@ -74,14 +74,14 @@ func (m *Manager) remove(vdiskID string) {
 
 type slaveSyncer struct {
 	ctx     context.Context
-	aggCh   chan aggmq.AggMqMsg
+	aggComm *aggmq.AggComm
 	player  *player.Player
 	mgr     *Manager
 	vdiskID string
 }
 
 func newSlaveSyncer(ctx context.Context, configPath string, apc aggmq.AggProcessorConfig,
-	aggCh chan aggmq.AggMqMsg, mgr *Manager) (*slaveSyncer, error) {
+	aggComm *aggmq.AggComm, mgr *Manager) (*slaveSyncer, error) {
 
 	serverConfigs, err := zerodiskcfg.ParseCSStorageServerConfigStrings("")
 	if err != nil {
@@ -97,7 +97,7 @@ func newSlaveSyncer(ctx context.Context, configPath string, apc aggmq.AggProcess
 	ss := &slaveSyncer{
 		vdiskID: apc.VdiskID,
 		ctx:     ctx,
-		aggCh:   aggCh,
+		aggComm: aggComm,
 		mgr:     mgr,
 		player:  player,
 	}
@@ -114,7 +114,7 @@ func (ss *slaveSyncer) run() {
 			ss.mgr.remove(ss.vdiskID)
 			log.Infof("slave syncer for vdisk: %v stopped", ss.vdiskID)
 			return
-		case rawAgg := <-ss.aggCh:
+		case rawAgg := <-ss.aggComm.RecvAgg():
 			msg, err := capnp.NewDecoder(bytes.NewReader([]byte(rawAgg))).Decode()
 			if err != nil {
 				log.Errorf("failed to decode agg:%v", err)

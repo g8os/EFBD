@@ -62,7 +62,7 @@ type vdisk struct {
 	clientsTab     map[string]*net.TCPConn
 	clientsTabLock sync.Mutex
 
-	aggToProcessCh  chan aggmq.AggMqMsg
+	aggComm         *aggmq.AggComm
 	withSlaveSyncer bool
 }
 
@@ -82,7 +82,7 @@ func (vd *vdisk) ResponseChan() <-chan *BlockResponse {
 func newVdisk(aggMq *aggmq.MQ, vdiskID string, f *flusher, firstSequence uint64, flusherConf *flusherConfig,
 	segmentBufLen int, withSlaveSync bool) (*vdisk, error) {
 
-	var aggToProcessCh chan aggmq.AggMqMsg
+	var aggComm *aggmq.AggComm
 	var withSlaveSyncer bool
 
 	// create slave syncer
@@ -97,7 +97,7 @@ func newVdisk(aggMq *aggmq.MQ, vdiskID string, f *flusher, firstSequence uint64,
 		}
 		ctx, _ := context.WithCancel(context.Background()) // TODO : save and use the context properly
 
-		aggToProcessCh, err = aggMq.AskProcessor(ctx, apc)
+		aggComm, err = aggMq.AskProcessor(ctx, apc)
 		if err != nil {
 			return nil, err
 		}
@@ -127,7 +127,7 @@ func newVdisk(aggMq *aggmq.MQ, vdiskID string, f *flusher, firstSequence uint64,
 		flusher:              f,
 		clientsTab:           make(map[string]*net.TCPConn),
 		withSlaveSyncer:      withSlaveSyncer,
-		aggToProcessCh:       aggToProcessCh,
+		aggComm:              aggComm,
 	}
 
 	// run vdisk goroutines
@@ -346,7 +346,7 @@ func (vd *vdisk) runFlusher() {
 
 		// send aggregation to slave syncer
 		if vd.withSlaveSyncer {
-			vd.aggToProcessCh <- aggmq.AggMqMsg(rawAgg)
+			vd.aggComm.SendAgg(aggmq.AggMqMsg(rawAgg))
 		}
 	}
 }
