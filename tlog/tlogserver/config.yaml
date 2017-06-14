@@ -1,0 +1,31 @@
+storageClusters: # A required map of storage clusters,
+                 # only 1 storage cluster is required
+  mycluster: # Required (string) ID of this storage cluster
+    dataStorage: # A required array of connection (dial)strings, used to store data
+      - address: 127.0.0.1:16386 # At least 1 connection (dial)string is required,
+    metadataStorage:
+      address: 127.0.0.1:16387 # Required connection (dial)string,
+
+  tlogCluster:
+    dataStorage:
+      - address: 127.0.0.1:16379
+      - address: 127.0.0.1:16380
+      - address: 127.0.0.1:16381
+      - address: 127.0.0.1:16382
+      - address: 127.0.0.1:16383
+      - address: 127.0.0.1:16384
+      - address: 127.0.0.1:16385
+                                        
+vdisks: # A required map of vdisks,
+        # only 1 vdisk is required
+  myimg: # Required (string) ID of this vdisk
+    blockSize: 4096 # Required static (uint64) size of each block
+    readOnly: false # Defines if this vdisk can be written to or not
+                    # (optional, false by default)
+    size: 10 # Required (uint64) total size in GiB of this vdisk
+    storageCluster: mycluster # Required (string) ID of the storage cluster to use
+                              # for this vdisk's storage, has to be a storage cluster
+                              # defined in the `storageClusters` section of THIS config file
+    type: boot # Required (VdiskType) type of this vdisk
+    tlogStorageCluster: tlogCluster
+    tlogSlaveSync: true

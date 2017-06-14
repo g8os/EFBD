@@ -107,7 +107,7 @@ func (p *Player) Replay(startTs, endTs uint64) error {
 			return fmt.Errorf("failed to get aggregation: %v", da.Err)
 		}
 
-		if err := p.ReplayAggregation(da.Agg); err != nil {
+		if err := p.ReplayAggregation(da.Agg, startTs, endTs); err != nil {
 			return err
 		}
 	}
@@ -115,7 +115,7 @@ func (p *Player) Replay(startTs, endTs uint64) error {
 }
 
 // ReplayAggregation replays an aggregation
-func (p *Player) ReplayAggregation(agg *schema.TlogAggregation) error {
+func (p *Player) ReplayAggregation(agg *schema.TlogAggregation, startTs, endTs uint64) error {
 	// some small checking
 	storedViskID, err := agg.VdiskID()
 	if err != nil {
@@ -129,6 +129,13 @@ func (p *Player) ReplayAggregation(agg *schema.TlogAggregation) error {
 	blocks, err := agg.Blocks()
 	for i := 0; i < blocks.Len(); i++ {
 		block := blocks.At(i)
+
+		if startTs != 0 && block.Timestamp() < startTs {
+			continue
+		} else if endTs != 0 && block.Timestamp() > endTs {
+			return nil
+		}
+
 		offset := block.Offset()
 
 		switch block.Operation() {

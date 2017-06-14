@@ -124,7 +124,7 @@ func (ss *slaveSyncer) run() {
 				log.Errorf("failed to read root tlog:%v", err)
 			}
 
-			if err := ss.player.ReplayAggregation(&agg); err != nil {
+			if err := ss.player.ReplayAggregation(&agg, 0, 0); err != nil {
 				log.Errorf("replay agg failed")
 			}
 		}
