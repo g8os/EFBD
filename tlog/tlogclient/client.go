@@ -30,6 +30,9 @@ var (
 	// ErrClientClosed returned when client do something when
 	// it already closed
 	ErrClientClosed = errors.New("client already closed")
+
+	// ErrWaitSlaveSyncTimeout returned when nbd slave sync couldn't be finished
+	ErrWaitSlaveSyncTimeout = errors.New("wait nbd slave sync timed out")
 )
 
 // Response defines a response from tlog server
@@ -68,6 +71,8 @@ type Client struct {
 
 	lastConnected time.Time
 	stopped       bool
+
+	waitSlaveSyncCond *sync.Cond
 }
 
 // New creates a new tlog client for a vdisk with 'addr' is the tlogserver address.
@@ -77,11 +82,12 @@ type Client struct {
 func New(addr, vdiskID string, firstSequence uint64, resetFirstSeq bool) (*Client, error) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	client := &Client{
-		addr:        addr,
-		vdiskID:     vdiskID,
-		blockBuffer: blockbuffer.NewBuffer(resendTimeoutDur),
-		ctx:         ctx,
-		cancelFunc:  cancelFunc,
+		addr:              addr,
+		vdiskID:           vdiskID,
+		blockBuffer:       blockbuffer.NewBuffer(resendTimeoutDur),
+		ctx:               ctx,
+		cancelFunc:        cancelFunc,
+		waitSlaveSyncCond: sync.NewCond(&sync.Mutex{}),
 	}
 
 	if err := client.connect(firstSequence, resetFirstSeq); err != nil {
@@ -234,12 +240,16 @@ func (c *Client) Recv() <-chan *Result {
 					continue
 				}
 
-				if tr != nil && len(tr.Sequences) > 0 {
-					// if it successfully received by server, delete from buffer
-					if tr.Status == tlog.BlockStatusRecvOK {
+				if tr != nil {
+					switch tr.Status {
+					case tlog.BlockStatusRecvOK:
 						if len(tr.Sequences) > 0 { // should always be true, but we anticipate.
 							c.blockBuffer.Delete(tr.Sequences[0])
 						}
+					case tlog.BlockStatusWaitNbdSlaveSyncReceived:
+						c.waitSlaveSyncCond.L.Lock()
+						c.waitSlaveSyncCond.Broadcast()
+						c.waitSlaveSyncCond.L.Unlock()
 					}
 				}
 
@@ -321,6 +331,56 @@ func (c *Client) ForceFlushAtSeq(seq uint64) error {
 
 	_, err := c.sendReconnect(sender)
 	return err
+}
+
+// WaitNbdSlaveSync commands tlog server to wait
+// for nbd slave to be fully synced
+func (c *Client) WaitNbdSlaveSync() error {
+	c.wLock.Lock()
+	defer c.wLock.Unlock()
+
+	// TODO :
+	// - add resend
+
+	sender := func() (interface{}, error) {
+		if err := tlog.WriteMessageType(c.bw, tlog.MessageWaitNbdSlaveSync); err != nil {
+			return nil, err
+		}
+		if err := c.encodeSendCommand(c.bw, tlog.MessageWaitNbdSlaveSync, 0); err != nil {
+			return nil, err
+		}
+		return nil, c.bw.Flush()
+	}
+
+	// create goroutine to listen to it's completeness
+	// we start it before it  even started to avoid race condition.
+	doneCh := make(chan struct{})
+	go func() {
+		c.waitSlaveSyncCond.L.Lock()
+		c.waitSlaveSyncCond.Wait()
+		c.waitSlaveSyncCond.L.Unlock()
+		close(doneCh)
+	}()
+
+	defer func() {
+		// execute it in case of above listener still waiting
+		// it won't harm when there is no waiter
+		c.waitSlaveSyncCond.L.Lock()
+		c.waitSlaveSyncCond.Signal()
+		c.waitSlaveSyncCond.L.Unlock()
+	}()
+
+	if _, err := c.sendReconnect(sender); err != nil {
+		return err
+	}
+
+	// the actual wait
+	select {
+	case <-time.After(20 * time.Second):
+		return ErrWaitSlaveSyncTimeout
+	case <-doneCh:
+	}
+	return nil
 }
 
 // Send sends the transaction tlog to server.

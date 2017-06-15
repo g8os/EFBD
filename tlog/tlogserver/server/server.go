@@ -67,13 +67,21 @@ func NewServer(conf *Config, poolFactory tlog.RedisPoolFactory) (*Server, error)
 		HexNonce:  conf.HexNonce,
 	}
 
+	var fileConfig *config.Config
+	if conf.ConfigPath != "" {
+		fileConfig, err = config.ReadConfig(conf.ConfigPath, config.TlogServer)
+		if err != nil {
+			log.Fatalf("failed to read file config: %v", err)
+		}
+	}
+
 	return &Server{
 		poolFactory:          poolFactory,
 		listener:             listener,
 		flusherConf:          flusherConf,
 		maxRespSegmentBufLen: schema.RawTlogRespLen(conf.FlushSize),
 		vdiskMgr:             newVdiskManager(conf.AggMq, conf.BlockSize, conf.FlushSize, conf.ConfigPath),
-		fileConf:             conf.FileConfig,
+		fileConf:             fileConfig,
 	}, nil
 }
 
@@ -222,6 +230,8 @@ func (s *Server) handle(conn *net.TCPConn) error {
 		return err
 	}
 	defer vdisk.removeClient(conn)
+
+	// start response sender
 	go s.sendResp(ctx, conn, vdisk.ID(), vdisk.ResponseChan())
 
 	for {
@@ -235,8 +245,8 @@ func (s *Server) handle(conn *net.TCPConn) error {
 		}
 
 		switch msgType {
-		case tlog.MessageForceFlushAtSeq:
-			err = s.handleForceFlushAtSeq(vdisk, br, msgType)
+		case tlog.MessageForceFlushAtSeq, tlog.MessageWaitNbdSlaveSync:
+			err = s.handleCommand(vdisk, br, msgType)
 		case tlog.MessageTlogBlock:
 			err = s.handleBlock(vdisk, br)
 		default:
@@ -249,7 +259,7 @@ func (s *Server) handle(conn *net.TCPConn) error {
 	}
 }
 
-func (s *Server) handleForceFlushAtSeq(vd *vdisk, br *bufio.Reader, mType uint8) error {
+func (s *Server) handleCommand(vd *vdisk, br *bufio.Reader, mType uint8) error {
 	msg, err := capnp.NewDecoder(br).Decode()
 	if err != nil {
 		return err
@@ -260,11 +270,19 @@ func (s *Server) handleForceFlushAtSeq(vd *vdisk, br *bufio.Reader, mType uint8)
 		return err
 	}
 
-	vd.forceFlushAtSeq(cmd.Sequence())
-
-	vd.respChan <- &BlockResponse{
-		Status: tlog.BlockStatusForceFlushReceived.Int8(),
+	switch mType {
+	case tlog.MessageForceFlushAtSeq:
+		vd.forceFlushAtSeq(cmd.Sequence())
+		vd.respChan <- &BlockResponse{
+			Status: tlog.BlockStatusForceFlushReceived.Int8(),
+		}
+	case tlog.MessageWaitNbdSlaveSync:
+		vd.waitSlaveSync()
+		vd.respChan <- &BlockResponse{
+			Status: tlog.BlockStatusWaitNbdSlaveSyncReceived.Int8(),
+		}
 	}
+
 	return nil
 }
 
@@ -291,6 +309,7 @@ func (s *Server) handleBlock(vd *vdisk, br *bufio.Reader) error {
 	return nil
 }
 
+// response sender for a vdisk
 func (s *Server) sendResp(ctx context.Context, w io.Writer, vdiskID string, respChan <-chan *BlockResponse) {
 	segmentBuf := make([]byte, 0, s.maxRespSegmentBufLen)
 	for {
@@ -300,6 +319,7 @@ func (s *Server) sendResp(ctx context.Context, w io.Writer, vdiskID string, resp
 				log.Infof("failed to send resp to :%v, err:%v", vdiskID, err)
 				return
 			}
+
 		case <-ctx.Done():
 			log.Debugf("abort current sendResp goroutine for vdisk:%v", vdiskID)
 			return

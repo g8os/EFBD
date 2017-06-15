@@ -3,6 +3,7 @@ package slavesync
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"sync"
 
 	"zombiezen.com/go/capnproto2"
@@ -47,21 +48,21 @@ func (m *Manager) handleReq(apr aggmq.AggProcessorReq) {
 
 	// check if the syncer already exist
 	if _, ok := m.syncers[apr.Config.VdiskID]; ok {
-		m.apMq.NeedProcessorResp <- true
+		m.apMq.NeedProcessorResp <- nil
 		return
 	}
 
 	// create slave syncer
-	ss, err := newSlaveSyncer(apr.Context, m.configPath, apr.Config, apr.AggCh, m)
+	ss, err := newSlaveSyncer(apr.Context, m.configPath, apr.Config, apr.Comm, m)
 	if err != nil {
 		log.Errorf("failed to create slave syncer: %v", err)
-		m.apMq.NeedProcessorResp <- false
+		m.apMq.NeedProcessorResp <- err
 		return
 	}
 	m.syncers[apr.Config.VdiskID] = ss
 
 	// send response
-	m.apMq.NeedProcessorResp <- true
+	m.apMq.NeedProcessorResp <- nil
 
 	log.Debugf("slave syncer created for vdisk: %v", apr.Config.VdiskID)
 }
@@ -74,14 +75,14 @@ func (m *Manager) remove(vdiskID string) {
 
 type slaveSyncer struct {
 	ctx     context.Context
-	aggCh   chan aggmq.AggMqMsg
+	aggComm *aggmq.AggComm
 	player  *player.Player
 	mgr     *Manager
 	vdiskID string
 }
 
 func newSlaveSyncer(ctx context.Context, configPath string, apc aggmq.AggProcessorConfig,
-	aggCh chan aggmq.AggMqMsg, mgr *Manager) (*slaveSyncer, error) {
+	aggComm *aggmq.AggComm, mgr *Manager) (*slaveSyncer, error) {
 
 	serverConfigs, err := zerodiskcfg.ParseCSStorageServerConfigStrings("")
 	if err != nil {
@@ -97,7 +98,7 @@ func newSlaveSyncer(ctx context.Context, configPath string, apc aggmq.AggProcess
 	ss := &slaveSyncer{
 		vdiskID: apc.VdiskID,
 		ctx:     ctx,
-		aggCh:   aggCh,
+		aggComm: aggComm,
 		mgr:     mgr,
 		player:  player,
 	}
@@ -108,25 +109,67 @@ func newSlaveSyncer(ctx context.Context, configPath string, apc aggmq.AggProcess
 
 func (ss *slaveSyncer) run() {
 	log.Infof("run slave syncer for vdisk: %v", ss.vdiskID)
+
+	defer log.Infof("slave syncer for vdisk: %v stopped", ss.vdiskID)
+
+	var waitForSync bool
+	var seqToWait uint64
+	var lastSeqSynced uint64
+	var err error
+
+	finishWaitForSync := func() {
+		waitForSync = false
+		ss.aggComm.SendResp(nil)
+	}
+
 	for {
 		select {
 		case <-ss.ctx.Done():
 			ss.mgr.remove(ss.vdiskID)
-			log.Infof("slave syncer for vdisk: %v stopped", ss.vdiskID)
 			return
-		case rawAgg := <-ss.aggCh:
-			msg, err := capnp.NewDecoder(bytes.NewReader([]byte(rawAgg))).Decode()
+		case rawAgg := <-ss.aggComm.RecvAgg():
+			lastSeqSynced, err = ss.replay(rawAgg)
 			if err != nil {
-				log.Errorf("failed to decode agg:%v", err)
-			}
-			agg, err := schema.ReadRootTlogAggregation(msg)
-			if err != nil {
-				log.Errorf("failed to read root tlog:%v", err)
+				// TODO properly handle it
+				log.Error(err)
 			}
 
-			if err := ss.player.ReplayAggregation(&agg, 0, 0); err != nil {
-				log.Errorf("replay agg failed")
+			if waitForSync && lastSeqSynced >= seqToWait {
+				finishWaitForSync()
+			}
+		case cmd := <-ss.aggComm.RecvCmd():
+			if cmd.Type == aggmq.CmdWaitSlaveSync {
+				seqToWait = cmd.Seq
+				if lastSeqSynced >= seqToWait {
+					finishWaitForSync()
+				} else {
+					waitForSync = true
+				}
 			}
 		}
 	}
+}
+
+func (ss *slaveSyncer) replay(rawAgg aggmq.AggMqMsg) (uint64, error) {
+	msg, err := capnp.NewDecoder(bytes.NewReader([]byte(rawAgg))).Decode()
+	if err != nil {
+		return 0, fmt.Errorf("failed to decode agg:%v", err)
+	}
+
+	agg, err := schema.ReadRootTlogAggregation(msg)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read root tlog:%v", err)
+	}
+
+	if err := ss.player.ReplayAggregation(&agg, 0, 0); err != nil {
+		return 0, fmt.Errorf("replay agg failed: %v", err)
+	}
+
+	// get last sequence flusher
+	blocks, err := agg.Blocks()
+	if err != nil {
+		return 0, err
+	}
+
+	return blocks.At(blocks.Len() - 1).Timestamp(), nil
 }

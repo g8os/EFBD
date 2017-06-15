@@ -241,6 +241,11 @@ func (tls *tlogStorage) Close() (err error) {
 		log.Info("error while closing internal tlog's storage: ", err)
 	}
 
+	err = tls.tlog.Close()
+	if err != nil {
+		log.Info("error while closing internal tlog's client: ", err)
+	}
+
 	return
 }
 
@@ -285,6 +290,8 @@ func (tls *tlogStorage) GoBackground(ctx context.Context) {
 
 			case tlog.BlockStatusFlushOK:
 				tls.toFlushCh <- res.Resp.Sequences
+			case tlog.BlockStatusWaitNbdSlaveSyncReceived:
+
 			default:
 				panic(fmt.Errorf(
 					"tlog server had fatal failure for vdisk %s: %s",

@@ -3,6 +3,7 @@ package aggmq
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 )
 
@@ -10,6 +11,8 @@ var (
 	ErrProcessorNotCreated = errors.New("agg processor failed to be created")
 )
 
+// AggProcessorConfig defines config given to the aggregation
+// processor
 type AggProcessorConfig struct {
 	VdiskID  string
 	K        int
@@ -18,53 +21,56 @@ type AggProcessorConfig struct {
 	HexNonce string
 }
 
+// AggProcessorReq defines request to the processor provider
 type AggProcessorReq struct {
-	AggCh   chan AggMqMsg
+	Comm    *AggComm
 	Config  AggProcessorConfig
 	Context context.Context
 }
 
-type AggMqMsg []byte
-
+// MQ defines this message queue
 type MQ struct {
 	NeedProcessorCh   chan AggProcessorReq
-	NeedProcessorResp chan bool
-	AggChs            map[string]chan AggMqMsg
+	NeedProcessorResp chan error
+	Comms             map[string]*AggComm
 	mux               sync.Mutex
 }
 
+// NewMQ creates new MQ
 func NewMQ() *MQ {
 	return &MQ{
 		NeedProcessorCh:   make(chan AggProcessorReq),
-		NeedProcessorResp: make(chan bool),
-		AggChs:            make(map[string]chan AggMqMsg),
+		NeedProcessorResp: make(chan error),
+		Comms:             make(map[string]*AggComm),
 	}
 }
 
-// AskProcessor
-func (mq *MQ) AskProcessor(ctx context.Context, apc AggProcessorConfig) (chan AggMqMsg, error) {
+// AskProcessor as for aggregation processor.
+// we currently only have slave syncer
+func (mq *MQ) AskProcessor(ctx context.Context, apc AggProcessorConfig) (*AggComm, error) {
 	mq.mux.Lock()
 	defer mq.mux.Unlock()
 
 	// check if the processor already existed
-	if aggCh, ok := mq.AggChs[apc.VdiskID]; ok {
-		return aggCh, nil
+	if comm, ok := mq.Comms[apc.VdiskID]; ok {
+		return comm, nil
 	}
 
-	aggCh := make(chan AggMqMsg, 100)
-
+	comm := newAggComm()
 	// ask for processor
 	mq.NeedProcessorCh <- AggProcessorReq{
-		AggCh:   aggCh,
+		Comm:    comm,
 		Config:  apc,
 		Context: ctx,
 	}
 
-	created := <-mq.NeedProcessorResp
-	if !created {
-		return aggCh, ErrProcessorNotCreated
+	// wait for the resp
+	// TODO : add timeout
+	err := <-mq.NeedProcessorResp
+	if err != nil {
+		return nil, fmt.Errorf("%v:%v", ErrProcessorNotCreated, err)
 	}
 
-	mq.AggChs[apc.VdiskID] = aggCh
-	return aggCh, nil
+	mq.Comms[apc.VdiskID] = comm
+	return comm, nil
 }
