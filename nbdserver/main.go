@@ -159,6 +159,7 @@ func main() {
 		ConfigHotReloader: configHotReloader,
 		TLogRPCAddress:    tlogrpcaddress,
 		LBACacheLimit:     lbacachelimit,
+		ConfigPath:        configPath,
 	})
 	if err != nil {
 		log.Fatal(err)

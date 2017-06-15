@@ -204,7 +204,7 @@ func testTlogStorage(t *testing.T, vdiskID string, blockSize int64, storage back
 		return
 	}
 
-	storage, err := newTlogStorage(vdiskID, tlogrpc, blockSize, storage)
+	storage, err := newTlogStorage(vdiskID, tlogrpc, "", blockSize, storage)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}
@@ -218,7 +218,7 @@ func testTlogStorageForceFlush(t *testing.T, vdiskID string, blockSize int64, st
 		return
 	}
 
-	storage, err := newTlogStorage(vdiskID, tlogrpc, blockSize, storage)
+	storage, err := newTlogStorage(vdiskID, tlogrpc, "", blockSize, storage)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}
@@ -232,7 +232,7 @@ func testTlogStorageDeadlock(t *testing.T, vdiskID string, blockSize, blockCount
 		return
 	}
 
-	storage, err := newTlogStorage(vdiskID, tlogrpc, blockSize, storage)
+	storage, err := newTlogStorage(vdiskID, tlogrpc, "", blockSize, storage)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}
