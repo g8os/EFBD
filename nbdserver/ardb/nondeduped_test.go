@@ -13,7 +13,7 @@ import (
 )
 
 func createTestNondedupedStorage(t *testing.T, vdiskID string, blockSize int64, templateSupport bool, provider *testRedisProvider) *nonDedupedStorage {
-	return newNonDedupedStorage(vdiskID, blockSize, templateSupport, provider).(*nonDedupedStorage)
+	return newNonDedupedStorage(vdiskID, vdiskID, blockSize, templateSupport, provider).(*nonDedupedStorage)
 }
 
 // testNondedupContentExists tests if

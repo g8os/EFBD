@@ -7,11 +7,12 @@ import (
 )
 
 // newNonDedupedStorage returns the non deduped backendStorage implementation
-func newNonDedupedStorage(vdiskID string, blockSize int64, templateSupport bool, provider redisConnectionProvider) backendStorage {
+func newNonDedupedStorage(vdiskID, rootVdiskID string, blockSize int64, templateSupport bool, provider redisConnectionProvider) backendStorage {
 	nondeduped := &nonDedupedStorage{
-		blockSize: blockSize,
-		vdiskID:   vdiskID,
-		provider:  provider,
+		blockSize:   blockSize,
+		vdiskID:     vdiskID,
+		rootVdiskID: rootVdiskID,
+		provider:    provider,
 	}
 
 	if templateSupport {
@@ -27,10 +28,11 @@ func newNonDedupedStorage(vdiskID string, blockSize int64, templateSupport bool,
 // that simply stores each block in redis using
 // a unique key based on the vdiskID and blockIndex
 type nonDedupedStorage struct {
-	blockSize  int64
-	vdiskID    string
-	provider   redisConnectionProvider
-	getContent nondedupedContentGetter
+	blockSize   int64
+	vdiskID     string
+	rootVdiskID string
+	provider    redisConnectionProvider
+	getContent  nondedupedContentGetter
 }
 
 // used to provide different content getters based on the vdisk properties
@@ -143,11 +145,11 @@ func (ss *nonDedupedStorage) getLocalOrRemoteContent(blockIndex int64) (content 
 		}
 		defer conn.Close()
 
-		content, err = redisBytes(conn.Do("HGET", ss.vdiskID, blockIndex))
+		content, err = redisBytes(conn.Do("HGET", ss.rootVdiskID, blockIndex))
 		if err != nil {
 			log.Debugf(
-				"content for block %d not available in local-, nor in remote storage: %s",
-				blockIndex, err.Error())
+				"content for block %d (vdisk %s) not available in local-, nor in remote storage: %s",
+				blockIndex, ss.rootVdiskID, err.Error())
 			content = nil
 		}
 

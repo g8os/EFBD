@@ -30,6 +30,8 @@ vdisks: # A required map of vdisks,
                                     # for this vdisk's tlog's aggregation storage,
                                     # NOTE that this property is REQUIRED in case
                                     # you have a tlogserver connected to your nbdserver
+    tlogSlaveSync: true # true if tlog need to sync ardb slave,
+                        # optional and false by default
   # ... more (optional) vdisks
 ```
 

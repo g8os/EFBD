@@ -9,6 +9,7 @@ import (
 
 	valid "github.com/asaskevich/govalidator"
 	"github.com/go-yaml/yaml"
+	"github.com/zero-os/0-Disk/log"
 )
 
 // ReadConfig reads the config from a given file
@@ -159,14 +160,31 @@ func (cfg *Config) validateNBD(validRef func(string) error) error {
 			return fmt.Errorf("invalid storageCluster for vdisk %s: %s", vdiskID, err)
 		}
 
+		// when the vdisk doesn't support root storage cluster
+		// we do not need to validate the root storage cluster
+		if !vdisk.TemplateSupport() {
+			continue
+		}
+
 		// validate (optional) root storage cluster
 		if vdisk.RootStorageCluster != "" {
 			if err = validRef(vdisk.RootStorageCluster); err != nil {
 				return fmt.Errorf("invalid rootStorageCluster for vdisk %s: %s", vdiskID, err)
 			}
+
+			// nonDeduped vdisks that support templates,
+			// also require a vdiskID as used on the template storage
+			if vdisk.StorageType() == StorageNondeduped {
+				if vdisk.RootVdiskID == "" {
+					log.Debugf("defaulting rootVdiskID of vdisk %s to %s", vdiskID, vdiskID)
+					vdisk.RootVdiskID = vdiskID
+					cfg.Vdisks[vdiskID] = vdisk
+				}
+			}
 		}
 	}
 
+	// config is valid
 	return nil
 }
 
@@ -322,6 +340,7 @@ type VdiskConfig struct {
 	Size               uint64    `yaml:"size" valid:"optional"`
 	StorageCluster     string    `yaml:"storageCluster" valid:"optional"`
 	RootStorageCluster string    `yaml:"rootStorageCluster" valid:"optional"`
+	RootVdiskID        string    `yaml:"rootVdiskID" valid:"optional"`
 	TlogStorageCluster string    `yaml:"tlogStorageCluster" valid:"optional"`
 	TlogSlaveSync      bool      `yaml:"tlogSlaveSync" valid:"optional"` // true if tlog need to sync ardb slave
 	Type               VdiskType `yaml:"type" valid:"optional"`

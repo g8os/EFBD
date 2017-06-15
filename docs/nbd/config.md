@@ -46,6 +46,8 @@ vdisks: # A required map of vdisks,
                                     # for this vdisk's fallback/root/template storage, has to be
                                     # a storage cluster defined in the `storageClusters` section
                                     # of THIS config file
+    rootVdiskID: mytemplate # Optional (string) ID of the template vdisk,
+                            # only used for `db` vdisks
     type: boot # Required (VdiskType) type of this vdisk
                # which also defines if its deduped or nondeduped,
                # valid types are: `boot`, `db`, `cache` and `tmp`

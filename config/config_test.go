@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-yaml/yaml"
 	"github.com/stretchr/testify/assert"
+	"github.com/zero-os/0-Disk/log"
 )
 
 const validConfig = `
@@ -40,8 +41,9 @@ vdisks:
     size: 10
     storageCluster: mycluster
     rootStorageCluster: rootcluster
+    rootVdiskID: mytemplate
     tlogStorageCluster: tlogcluster
-    type: boot`
+    type: db`
 
 func TestValidConfigFromBytes(t *testing.T) {
 	cfg, err := FromBytes([]byte(validConfig), Global)
@@ -87,8 +89,9 @@ func TestValidConfigFromBytes(t *testing.T) {
 			assert.Equal(t, uint64(10), vdisk.Size)
 			assert.Equal(t, "mycluster", vdisk.StorageCluster)
 			assert.Equal(t, "rootcluster", vdisk.RootStorageCluster)
+			assert.Equal(t, "mytemplate", vdisk.RootVdiskID)
 			assert.Equal(t, "tlogcluster", vdisk.TlogStorageCluster)
-			assert.Equal(t, VdiskTypeBoot, vdisk.Type)
+			assert.Equal(t, VdiskTypeDB, vdisk.Type)
 		}
 	}
 }
@@ -110,8 +113,9 @@ func TestValidVdiskClusterConfigFromBytes(t *testing.T) {
 	assert.Equal(t, uint64(10), cfg.Vdisk.Size)
 	assert.Equal(t, "mycluster", cfg.Vdisk.StorageCluster)
 	assert.Equal(t, "rootcluster", cfg.Vdisk.RootStorageCluster)
+	assert.Equal(t, "mytemplate", cfg.Vdisk.RootVdiskID)
 	assert.Equal(t, "tlogcluster", cfg.Vdisk.TlogStorageCluster)
-	assert.Equal(t, VdiskTypeBoot, cfg.Vdisk.Type)
+	assert.Equal(t, VdiskTypeDB, cfg.Vdisk.Type)
 
 	// test data cluster
 	if assert.Len(t, cfg.DataCluster.DataStorage, 2) {
@@ -259,6 +263,64 @@ func TestMinimalValidNBDServerConfigFromBytes(t *testing.T) {
 			assert.Equal(t, VdiskTypeCache, vdisk.Type)
 			// optional properties
 			assert.Equal(t, "", vdisk.RootStorageCluster)
+			assert.Equal(t, "", vdisk.RootVdiskID)
+			// ignored properties
+			assert.Equal(t, "", vdisk.TlogStorageCluster)
+		}
+	}
+}
+
+const minimalValidNBDServerConfigWithRoot = `
+storageClusters:
+  mycluster:
+    dataStorage:
+      - address: 192.168.58.146:2000
+  rootcluster:
+    dataStorage:
+      - address: 192.168.58.146:2001
+vdisks:
+  myvdisk:
+    blockSize: 4096
+    size: 10
+    storageCluster: mycluster
+    rootStorageCluster: rootcluster
+    type: db`
+
+func TestMinimalValidNBDServerConfigWithRootFromBytes(t *testing.T) {
+	cfg, err := FromBytes([]byte(minimalValidNBDServerConfigWithRoot), NBDServer)
+	if !assert.NoError(t, err) || !assert.NotNil(t, cfg) {
+		return
+	}
+
+	if assert.Len(t, cfg.StorageClusters, 2) {
+		if cluster, ok := cfg.StorageClusters["mycluster"]; assert.True(t, ok) {
+			if assert.Len(t, cluster.DataStorage, 1) {
+				assert.Equal(t, "192.168.58.146:2000", cluster.DataStorage[0].Address)
+				assert.Equal(t, 0, cluster.DataStorage[0].Database)
+			}
+			assert.Nil(t, cluster.MetadataStorage)
+		}
+
+		if cluster, ok := cfg.StorageClusters["rootcluster"]; assert.True(t, ok) {
+			if assert.Len(t, cluster.DataStorage, 1) {
+				assert.Equal(t, "192.168.58.146:2001", cluster.DataStorage[0].Address)
+				assert.Equal(t, 0, cluster.DataStorage[0].Database)
+			}
+			assert.Nil(t, cluster.MetadataStorage)
+		}
+	}
+
+	if assert.Len(t, cfg.Vdisks, 1) {
+		if vdisk, ok := cfg.Vdisks["myvdisk"]; assert.True(t, ok) {
+			// required properties
+			assert.Equal(t, uint64(4096), vdisk.BlockSize)
+			assert.False(t, vdisk.ReadOnly)
+			assert.Equal(t, uint64(10), vdisk.Size)
+			assert.Equal(t, "mycluster", vdisk.StorageCluster)
+			assert.Equal(t, VdiskTypeDB, vdisk.Type)
+			// optional properties
+			assert.Equal(t, "rootcluster", vdisk.RootStorageCluster)
+			assert.Equal(t, "myvdisk", vdisk.RootVdiskID)
 			// ignored properties
 			assert.Equal(t, "", vdisk.TlogStorageCluster)
 		}
@@ -832,4 +894,8 @@ func scconfigs(argv ...interface{}) (serverConfigs []StorageServerConfig) {
 		})
 	}
 	return
+}
+
+func init() {
+	log.SetLevel(log.DebugLevel)
 }

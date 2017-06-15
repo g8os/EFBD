@@ -99,7 +99,8 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 
 	switch storageType := vdisk.StorageType(); storageType {
 	case config.StorageNondeduped:
-		storage = newNonDedupedStorage(vdiskID, blockSize, templateSupport, redisProvider)
+		storage = newNonDedupedStorage(
+			vdiskID, vdisk.RootVdiskID, blockSize, templateSupport, redisProvider)
 	case config.StorageDeduped:
 		cacheLimit := f.lbaCacheLimit
 		if cacheLimit < lba.BytesPerShard {
