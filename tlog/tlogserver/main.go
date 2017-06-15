@@ -24,6 +24,7 @@ func main() {
 	var inMemoryStorage bool
 	var storageAddresses string
 	var withSlaveSync bool
+	var logPath string
 
 	flag.StringVar(&conf.ListenAddr, "address", conf.ListenAddr, "Address to listen on")
 	flag.IntVar(&conf.FlushSize, "flush-size", conf.FlushSize, "flush size")
@@ -42,6 +43,7 @@ func main() {
 
 	flag.BoolVar(&withSlaveSync, "with-slave-sync", false, "sync to ardb slave")
 	flag.BoolVar(&verbose, "v", false, "log verbose (debug) statements")
+	flag.StringVar(&logPath, "logfile", "", "optionally log to the specified file, instead of the stderr")
 
 	// parse flags
 	flag.Parse()
@@ -53,7 +55,15 @@ func main() {
 		log.SetLevel(log.InfoLevel)
 	}
 
-	log.Debugf("flags parsed: address=%q flush-size=%d flush-time=%d block-size=%d k=%d m=%d priv-key=%q nonce=%q profile-address=%q memorystorage=%t config=%q storage-addresses=%q",
+	if logPath != "" {
+		handler, err := log.FileHandler(logPath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.SetHandlers(handler)
+	}
+
+	log.Debugf("flags parsed: address=%q flush-size=%d flush-time=%d block-size=%d k=%d m=%d priv-key=%q nonce=%q profile-address=%q memorystorage=%t config=%q storage-addresses=%q logfile=%q",
 		conf.ListenAddr,
 		conf.FlushSize,
 		conf.FlushTime,
@@ -66,6 +76,7 @@ func main() {
 		inMemoryStorage,
 		conf.ConfigPath,
 		storageAddresses,
+		logPath,
 	)
 
 	// profiling

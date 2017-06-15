@@ -19,6 +19,12 @@ type Handler interface {
 	Log(r Record) error
 }
 
+// StderrHandler is the default handler for all logs,
+// unless handlers are given
+func StderrHandler() Handler {
+	return &fromLog15Handler{log.StderrHandler}
+}
+
 // FileHandler returns a handler which writes log records
 // to the give file using the given format. If the path already exists,
 // FileHandler will append to the given file.
@@ -180,7 +186,7 @@ func newLoggerHandler(level Level, extraStackDepth int, handlers []Handler) log.
 	if len(handlers) == 0 {
 		logHandler = log.StderrHandler
 	} else {
-		handlerArr := []log.Handler{log.StderrHandler}
+		handlerArr := []log.Handler{}
 		for _, handler := range handlers {
 			var lh log.Handler
 			if l, ok := handler.(*fromLog15Handler); ok {

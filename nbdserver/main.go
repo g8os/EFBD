@@ -32,10 +32,8 @@ func main() {
 	var tlogrpcaddress string
 	var configPath string
 	var logPath string
-	var syslogTag string
 	flag.BoolVar(&verbose, "v", false, "when false, only log warnings and errors")
-	flag.StringVar(&logPath, "logfile", "", "optionally log everything also to the specified file")
-	flag.StringVar(&syslogTag, "syslog", "", "optionally log everything also to the system log")
+	flag.StringVar(&logPath, "logfile", "", "optionally log to the specified file, instead of the stderr")
 	flag.BoolVar(&inMemoryStorage, "memorystorage", false, "Stores the data in memory only, usefull for testing or benchmarking")
 	flag.BoolVar(&tlsonly, "tlsonly", false, "Forces all nbd connections to be tls-enabled")
 	flag.StringVar(&profileAddress, "profile-address", "", "Enables profiling of this server as an http service")
@@ -55,13 +53,6 @@ func main() {
 
 	var logHandlers []log.Handler
 
-	if syslogTag != "" {
-		handler, err := log.SyslogHandler(syslogTag)
-		if err != nil {
-			log.Fatal(err)
-		}
-		logHandlers = append(logHandlers, handler)
-	}
 	if logPath != "" {
 		handler, err := log.FileHandler(logPath)
 		if err != nil {
@@ -72,14 +63,14 @@ func main() {
 
 	log.SetHandlers(logHandlers...)
 
-	log.Debugf("flags parsed: memorystorage=%t tlsonly=%t profileaddress=%q protocol=%q address=%q tlogrpc=%q config=%q lbacachelimit=%d logfile=%q syslog=%q",
+	log.Debugf("flags parsed: memorystorage=%t tlsonly=%t profileaddress=%q protocol=%q address=%q tlogrpc=%q config=%q lbacachelimit=%d logfile=%q",
 		inMemoryStorage, tlsonly,
 		profileAddress,
 		protocol, address,
 		tlogrpcaddress,
 		configPath,
 		lbacachelimit,
-		logPath, syslogTag,
+		logPath,
 	)
 
 	if len(profileAddress) > 0 {
