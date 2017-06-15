@@ -323,6 +323,29 @@ func (c *Client) ForceFlushAtSeq(seq uint64) error {
 	return err
 }
 
+// WaitNbdSlaveSync commands tlog server to wait
+// for nbd slave to be fully synced
+func (c *Client) WaitNbdSlaveSync() error {
+	c.wLock.Lock()
+	defer c.wLock.Unlock()
+
+	// TODO :
+	// - add resend
+
+	sender := func() (interface{}, error) {
+		if err := tlog.WriteMessageType(c.bw, tlog.MessageWaitNbdSlaveSync); err != nil {
+			return nil, err
+		}
+		if err := c.encodeSendCommand(c.bw, tlog.MessageWaitNbdSlaveSync, 0); err != nil {
+			return nil, err
+		}
+		return nil, c.bw.Flush()
+	}
+
+	_, err := c.sendReconnect(sender)
+	return err
+}
+
 // Send sends the transaction tlog to server.
 // It returns error in these cases:
 // - failed to encode the capnp.

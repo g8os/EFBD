@@ -67,13 +67,21 @@ func NewServer(conf *Config, poolFactory tlog.RedisPoolFactory) (*Server, error)
 		HexNonce:  conf.HexNonce,
 	}
 
+	var fileConfig *config.Config
+	if conf.ConfigPath != "" {
+		fileConfig, err = config.ReadConfig(conf.ConfigPath, config.TlogServer)
+		if err != nil {
+			log.Fatalf("failed to read file config: %v", err)
+		}
+	}
+
 	return &Server{
 		poolFactory:          poolFactory,
 		listener:             listener,
 		flusherConf:          flusherConf,
 		maxRespSegmentBufLen: schema.RawTlogRespLen(conf.FlushSize),
 		vdiskMgr:             newVdiskManager(conf.AggMq, conf.BlockSize, conf.FlushSize, conf.ConfigPath),
-		fileConf:             conf.FileConfig,
+		fileConf:             fileConfig,
 	}, nil
 }
 
@@ -235,8 +243,8 @@ func (s *Server) handle(conn *net.TCPConn) error {
 		}
 
 		switch msgType {
-		case tlog.MessageForceFlushAtSeq:
-			err = s.handleForceFlushAtSeq(vdisk, br, msgType)
+		case tlog.MessageForceFlushAtSeq, tlog.MessageWaitNbdSlaveSync:
+			err = s.handleCommand(vdisk, br, msgType)
 		case tlog.MessageTlogBlock:
 			err = s.handleBlock(vdisk, br)
 		default:
@@ -249,7 +257,7 @@ func (s *Server) handle(conn *net.TCPConn) error {
 	}
 }
 
-func (s *Server) handleForceFlushAtSeq(vd *vdisk, br *bufio.Reader, mType uint8) error {
+func (s *Server) handleCommand(vd *vdisk, br *bufio.Reader, mType uint8) error {
 	msg, err := capnp.NewDecoder(br).Decode()
 	if err != nil {
 		return err
@@ -260,10 +268,19 @@ func (s *Server) handleForceFlushAtSeq(vd *vdisk, br *bufio.Reader, mType uint8)
 		return err
 	}
 
-	vd.forceFlushAtSeq(cmd.Sequence())
+	var status int8
+	switch mType {
+	case tlog.MessageForceFlushAtSeq:
+		vd.forceFlushAtSeq(cmd.Sequence())
+		status = tlog.BlockStatusForceFlushReceived.Int8()
+
+	case tlog.MessageWaitNbdSlaveSync:
+		vd.waitSlaveSync()
+		status = tlog.BlockStatusWaitNbdSlaveSyncReceived.Int8()
+	}
 
 	vd.respChan <- &BlockResponse{
-		Status: tlog.BlockStatusForceFlushReceived.Int8(),
+		Status: status,
 	}
 	return nil
 }

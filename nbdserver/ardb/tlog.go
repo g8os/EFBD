@@ -285,6 +285,8 @@ func (tls *tlogStorage) GoBackground(ctx context.Context) {
 
 			case tlog.BlockStatusFlushOK:
 				tls.toFlushCh <- res.Resp.Sequences
+			case tlog.BlockStatusWaitNbdSlaveSyncReceived:
+
 			default:
 				panic(fmt.Errorf(
 					"tlog server had fatal failure for vdisk %s: %s",

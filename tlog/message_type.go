@@ -8,9 +8,10 @@ import (
 
 // Type of message sent from client to server
 const (
-	messageTypeStart       = iota
-	MessageTlogBlock       // tlog block
-	MessageForceFlushAtSeq // force flush at sequence
+	messageTypeStart        = iota
+	MessageTlogBlock        // tlog block
+	MessageForceFlushAtSeq  // force flush at sequence
+	MessageWaitNbdSlaveSync // wait for nbd slave to be fully synced
 	messageTypeEnd
 )
 

@@ -114,26 +114,37 @@ func (ss *slaveSyncer) run() {
 
 	var waitForSync bool
 	var seqToWait uint64
+	var lastSeqSynced uint64
+	var err error
+
+	finishWaitForSync := func() {
+		waitForSync = false
+		ss.aggComm.SendResp(nil)
+	}
+
 	for {
 		select {
 		case <-ss.ctx.Done():
 			ss.mgr.remove(ss.vdiskID)
 			return
 		case rawAgg := <-ss.aggComm.RecvAgg():
-			lastSeq, err := ss.replay(rawAgg)
+			lastSeqSynced, err = ss.replay(rawAgg)
 			if err != nil {
 				// TODO properly handle it
 				log.Error(err)
 			}
 
-			if waitForSync && lastSeq >= seqToWait {
-				ss.aggComm.SendResp(nil)
-				waitForSync = false
+			if waitForSync && lastSeqSynced >= seqToWait {
+				finishWaitForSync()
 			}
 		case cmd := <-ss.aggComm.RecvCmd():
 			if cmd.Type == aggmq.CmdWaitSlaveSync {
-				waitForSync = true
 				seqToWait = cmd.Seq
+				if lastSeqSynced >= seqToWait {
+					finishWaitForSync()
+				} else {
+					waitForSync = true
+				}
 			}
 		}
 	}

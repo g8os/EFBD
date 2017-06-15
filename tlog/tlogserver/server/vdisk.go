@@ -183,6 +183,7 @@ func (vd *vdisk) forceFlushAtSeq(seq uint64) {
 func (vd *vdisk) waitSlaveSync() error {
 	// make sure it has syncer
 	if !vd.withSlaveSyncer {
+		log.Error("waitSlaveSync command received on vdisk with no slave syncer")
 		return nil
 	}
 
@@ -198,6 +199,7 @@ func (vd *vdisk) waitSlaveSync() error {
 	if err == nil {
 		vd.withSlaveSyncer = false // TODO : reload the slave config
 	}
+
 	return err
 }
 
