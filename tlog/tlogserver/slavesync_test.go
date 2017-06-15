@@ -130,18 +130,37 @@ func TestSlaveSyncBasic(t *testing.T) {
 		}
 	}
 
+	backend1.Close(ctx)
+
 	t.Log("== send command to tlog to sync the slave==")
 	// we can't do it from the backend,
 	// but fortunately it is OK to use another tlog client
 	// our tlog server should support multiple clients (in a limited way)
 	client, err := tlogclient.New(tlogrpc, vdiskID, 0, false)
 	assert.Nil(t, err)
+	client.Recv()
 
 	err = client.WaitNbdSlaveSync()
 	assert.Nil(t, err)
 
 	t.Log("Start another nbdserver with slave pool")
+	backend2, err := newTestNbdBackendWithConfigPath(ctx, t, vdiskID, "", blockSize, size, ssPoolConfPath)
+	assert.Nil(t, err)
+
+	defer backend2.Close(ctx)
+
 	t.Log("== validate all data are correct == ")
+
+	for i := 0; i < blocks; i++ {
+		offset := i * blockSize
+		content, err := backend2.ReadAt(ctx, int64(offset), int64(blockSize))
+		if !assert.Nil(t, err) {
+			return
+		}
+		if !assert.Equal(t, data[offset:offset+blockSize], content) {
+			return
+		}
+	}
 }
 
 func newArdbPool(vdiskID string, blockSize, size uint64) (*redisstub.MemoryRedis, string, error) {
@@ -195,11 +214,17 @@ func newArdbPool(vdiskID string, blockSize, size uint64) (*redisstub.MemoryRedis
 }
 
 // create a new backend, used for writing
-func newTestNbdBackend(ctx context.Context, t *testing.T, vdiskID, tlogrpc string, blockSize, size uint64) (nbd.Backend, error) {
+func newTestNbdBackend(ctx context.Context, t *testing.T, vdiskID, tlogrpc string,
+	blockSize, size uint64) (nbd.Backend, error) {
+
 	_, configPath, err := newArdbPool(vdiskID, blockSize, size)
 	if err != nil {
 		return nil, err
 	}
+	return newTestNbdBackendWithConfigPath(ctx, t, vdiskID, tlogrpc, blockSize, size, configPath)
+}
+func newTestNbdBackendWithConfigPath(ctx context.Context, t *testing.T, vdiskID, tlogrpc string,
+	blockSize, size uint64, configPath string) (nbd.Backend, error) {
 
 	// redis pool
 	redisPool := ardb.NewRedisPool(nil)

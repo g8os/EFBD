@@ -230,6 +230,8 @@ func (s *Server) handle(conn *net.TCPConn) error {
 		return err
 	}
 	defer vdisk.removeClient(conn)
+
+	// start response sender
 	go s.sendResp(ctx, conn, vdisk.ID(), vdisk.ResponseChan())
 
 	for {
@@ -268,20 +270,19 @@ func (s *Server) handleCommand(vd *vdisk, br *bufio.Reader, mType uint8) error {
 		return err
 	}
 
-	var status int8
 	switch mType {
 	case tlog.MessageForceFlushAtSeq:
 		vd.forceFlushAtSeq(cmd.Sequence())
-		status = tlog.BlockStatusForceFlushReceived.Int8()
-
+		vd.respChan <- &BlockResponse{
+			Status: tlog.BlockStatusForceFlushReceived.Int8(),
+		}
 	case tlog.MessageWaitNbdSlaveSync:
 		vd.waitSlaveSync()
-		status = tlog.BlockStatusWaitNbdSlaveSyncReceived.Int8()
+		vd.respChan <- &BlockResponse{
+			Status: tlog.BlockStatusWaitNbdSlaveSyncReceived.Int8(),
+		}
 	}
 
-	vd.respChan <- &BlockResponse{
-		Status: status,
-	}
 	return nil
 }
 
@@ -308,6 +309,7 @@ func (s *Server) handleBlock(vd *vdisk, br *bufio.Reader) error {
 	return nil
 }
 
+// response sender for a vdisk
 func (s *Server) sendResp(ctx context.Context, w io.Writer, vdiskID string, respChan <-chan *BlockResponse) {
 	segmentBuf := make([]byte, 0, s.maxRespSegmentBufLen)
 	for {
@@ -317,6 +319,7 @@ func (s *Server) sendResp(ctx context.Context, w io.Writer, vdiskID string, resp
 				log.Infof("failed to send resp to :%v, err:%v", vdiskID, err)
 				return
 			}
+
 		case <-ctx.Done():
 			log.Debugf("abort current sendResp goroutine for vdisk:%v", vdiskID)
 			return

@@ -241,6 +241,11 @@ func (tls *tlogStorage) Close() (err error) {
 		log.Info("error while closing internal tlog's storage: ", err)
 	}
 
+	err = tls.tlog.Close()
+	if err != nil {
+		log.Info("error while closing internal tlog's client: ", err)
+	}
+
 	return
 }
 
