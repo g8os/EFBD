@@ -184,11 +184,21 @@ func (tls *tlogStorage) merge(blockIndex, offset int64, content []byte) ([]byte,
 
 // Get implements backendStorage.Get
 func (tls *tlogStorage) Get(blockIndex int64) (content []byte, err error) {
-	tls.mux.RLock()
-	defer tls.mux.RUnlock()
+	tls.mux.Lock()
+	defer tls.mux.Unlock()
 
 	content, err = tls.get(blockIndex)
-	return
+	if err == nil {
+		return
+	}
+
+	// there is issue with master, switch to ardb slave if possible
+	if errSwitch := tls.switchToArdbSlave(); errSwitch != nil {
+		log.Errorf("Failed to switchToArdbSlave: %v", errSwitch)
+		return
+	}
+
+	return tls.get(blockIndex)
 }
 
 // Delete implements backendStorage.Delete
@@ -469,12 +479,17 @@ func (tls *tlogStorage) flushAContent(blockIndex int64, data []byte) error {
 		}
 		return tls.storage.Set(blockIndex, data)
 	}
-	if err := flush(); err == nil {
+	err := flush()
+	if err == nil {
 		return nil
 	}
-	if err := tls.switchToArdbSlave(); err != nil {
+
+	// there is issue with master, switch to ardb slave if possible
+	if errSwitch := tls.switchToArdbSlave(); errSwitch != nil {
+		log.Errorf("Failed to switchToArdbSlave: %v", errSwitch)
 		return err
 	}
+
 	return flush()
 }
 
