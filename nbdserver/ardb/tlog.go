@@ -4,10 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"math"
+	"os"
 	"sync"
+	"syscall"
 	"time"
 
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
@@ -19,16 +23,16 @@ const (
 	tlogFlushWait = 10 * time.Second
 )
 
-func newTlogStorage(vdiskID, tlogrpc string, blockSize int64, storage backendStorage) (backendStorage, error) {
+func newTlogStorage(vdiskID, tlogrpc, configPath string, blockSize int64, storage backendStorage) (backendStorage, error) {
 	client, err := tlogclient.New(tlogrpc, vdiskID, 0, true)
 	if err != nil {
 		return nil, fmt.Errorf("tlogStorage requires a valid tlogclient: %s", err.Error())
 	}
 
-	return newTlogStorageWithClient(vdiskID, blockSize, client, storage)
+	return newTlogStorageWithClient(vdiskID, configPath, blockSize, client, storage)
 }
 
-func newTlogStorageWithClient(vdiskID string, blockSize int64, client tlogClient, storage backendStorage) (backendStorage, error) {
+func newTlogStorageWithClient(vdiskID, configPath string, blockSize int64, client tlogClient, storage backendStorage) (backendStorage, error) {
 	if storage == nil {
 		return nil, errors.New("tlogStorage requires a non-nil storage")
 	}
@@ -43,6 +47,7 @@ func newTlogStorageWithClient(vdiskID string, blockSize int64, client tlogClient
 		transactionCh:  make(chan *transaction, transactionChCapacity),
 		toFlushCh:      make(chan []uint64, toFlushChCapacity),
 		cacheEmptyCond: sync.NewCond(&sync.Mutex{}),
+		configPath:     configPath,
 	}, nil
 }
 
@@ -63,6 +68,8 @@ type tlogStorage struct {
 
 	// condition variable used to signal when the cache is empty
 	cacheEmptyCond *sync.Cond
+
+	configPath string
 }
 
 type transaction struct {
@@ -177,11 +184,21 @@ func (tls *tlogStorage) merge(blockIndex, offset int64, content []byte) ([]byte,
 
 // Get implements backendStorage.Get
 func (tls *tlogStorage) Get(blockIndex int64) (content []byte, err error) {
-	tls.mux.RLock()
-	defer tls.mux.RUnlock()
+	tls.mux.Lock()
+	defer tls.mux.Unlock()
 
 	content, err = tls.get(blockIndex)
-	return
+	if err == nil {
+		return
+	}
+
+	// there is issue with master, switch to ardb slave if possible
+	if errSwitch := tls.switchToArdbSlave(); errSwitch != nil {
+		log.Errorf("Failed to switchToArdbSlave: %v", errSwitch)
+		return
+	}
+
+	return tls.get(blockIndex)
 }
 
 // Delete implements backendStorage.Delete
@@ -361,6 +378,67 @@ func (tls *tlogStorage) flusher(ctx context.Context) {
 
 }
 
+// switch to ardb slave if possible
+func (tls *tlogStorage) switchToArdbSlave() error {
+	if tls.configPath == "" {
+		return fmt.Errorf("no config found")
+	}
+
+	// get config file permission
+	// we need it because we want to rewrite it.
+	// better to write it with same permission
+	filePerm, err := func() (os.FileMode, error) {
+		info, err := os.Stat(tls.configPath)
+		if err != nil {
+			return 0, err
+		}
+		return info.Mode(), nil
+	}()
+	if err != nil {
+		return err
+	}
+
+	// parse the config
+	conf, err := config.ReadConfig(tls.configPath, config.NBDServer)
+	if err != nil {
+		return err
+	}
+
+	vdiskConf, exist := conf.Vdisks[tls.vdiskID]
+	if !exist {
+		return fmt.Errorf("no config found for vdisk: %v", tls.vdiskID)
+	}
+
+	if vdiskConf.SlaveStorageCluster == "" {
+		return fmt.Errorf("vdisk %v doesn't have ardb slave", tls.vdiskID)
+	}
+
+	// switch to slave (still in config only)
+	vdiskConf.StorageCluster = vdiskConf.SlaveStorageCluster
+	vdiskConf.SlaveStorageCluster = ""
+	conf.Vdisks[tls.vdiskID] = vdiskConf
+
+	// ask tlog to sync the slave
+	if err := tls.tlog.WaitNbdSlaveSync(); err != nil {
+		return err
+	}
+
+	// rewrite the config
+	if err := ioutil.WriteFile(tls.configPath, []byte(conf.String()), filePerm); err != nil {
+		return err
+	}
+
+	// reload the config
+	syscall.Kill(syscall.Getpid(), syscall.SIGHUP)
+
+	// give some time for the reloader to work
+	// TODO : give access to the reloader, so we don't need to do some random sleep
+	time.Sleep(1 * time.Second)
+
+	// TODO : notify the orchestrator or ays or any other interested parties
+	return nil
+}
+
 func (tls *tlogStorage) flushCachedContent(sequences []uint64) error {
 	defer func() {
 		tls.cacheEmptyCond.L.Lock()
@@ -381,14 +459,7 @@ func (tls *tlogStorage) flushCachedContent(sequences []uint64) error {
 
 	var errs flushErrors
 	for blockIndex, data := range elements {
-		var err error
-
-		if data == nil {
-			err = tls.storage.Delete(blockIndex)
-		} else {
-			err = tls.storage.Set(blockIndex, data)
-		}
-
+		err := tls.flushAContent(blockIndex, data)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -399,6 +470,27 @@ func (tls *tlogStorage) flushCachedContent(sequences []uint64) error {
 	}
 
 	return nil
+}
+
+func (tls *tlogStorage) flushAContent(blockIndex int64, data []byte) error {
+	flush := func() error {
+		if data == nil {
+			return tls.storage.Delete(blockIndex)
+		}
+		return tls.storage.Set(blockIndex, data)
+	}
+	err := flush()
+	if err == nil {
+		return nil
+	}
+
+	// there is issue with master, switch to ardb slave if possible
+	if errSwitch := tls.switchToArdbSlave(); errSwitch != nil {
+		log.Errorf("Failed to switchToArdbSlave: %v", errSwitch)
+		return err
+	}
+
+	return flush()
 }
 
 type flushErrors []error
@@ -471,6 +563,7 @@ func (tls *tlogStorage) getLatestSequence() (sequence uint64) {
 type tlogClient interface {
 	Send(op uint8, seq, offset, timestamp uint64, data []byte, size uint64) error
 	ForceFlushAtSeq(uint64) error
+	WaitNbdSlaveSync() error
 	Recv() <-chan *tlogclient.Result
 	Close() error
 }

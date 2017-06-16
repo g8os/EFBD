@@ -335,15 +335,16 @@ type StorageServerConfig struct {
 
 // VdiskConfig defines the config for a vdisk
 type VdiskConfig struct {
-	BlockSize          uint64    `yaml:"blockSize" valid:"optional"`
-	ReadOnly           bool      `yaml:"readOnly" valid:"optional"`
-	Size               uint64    `yaml:"size" valid:"optional"`
-	StorageCluster     string    `yaml:"storageCluster" valid:"optional"`
-	RootStorageCluster string    `yaml:"rootStorageCluster" valid:"optional"`
-	RootVdiskID        string    `yaml:"rootVdiskID" valid:"optional"`
-	TlogStorageCluster string    `yaml:"tlogStorageCluster" valid:"optional"`
-	TlogSlaveSync      bool      `yaml:"tlogSlaveSync" valid:"optional"` // true if tlog need to sync ardb slave
-	Type               VdiskType `yaml:"type" valid:"optional"`
+	BlockSize           uint64    `yaml:"blockSize" valid:"optional"`
+	ReadOnly            bool      `yaml:"readOnly" valid:"optional"`
+	Size                uint64    `yaml:"size" valid:"optional"`
+	StorageCluster      string    `yaml:"storageCluster" valid:"optional"`
+	SlaveStorageCluster string    `yaml:"slaveStorageCluster" valid:"optional"`
+	RootStorageCluster  string    `yaml:"rootStorageCluster" valid:"optional"`
+	RootVdiskID         string    `yaml:"rootVdiskID" valid:"optional"`
+	TlogStorageCluster  string    `yaml:"tlogStorageCluster" valid:"optional"`
+	TlogSlaveSync       bool      `yaml:"tlogSlaveSync" valid:"optional"` // true if tlog need to sync ardb slave
+	Type                VdiskType `yaml:"type" valid:"optional"`
 }
 
 // StorageType returns the type of storage this vdisk uses

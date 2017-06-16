@@ -31,6 +31,7 @@ type BackendFactoryConfig struct {
 	TLogRPCAddress           string
 	RootARDBConnectionString string
 	LBACacheLimit            int64 // min-capped to LBA.BytesPerShard
+	ConfigPath               string
 }
 
 // Validate all the parameters of this BackendFactoryConfig
@@ -58,6 +59,7 @@ func NewBackendFactory(cfg BackendFactoryConfig) (*BackendFactory, error) {
 		cfgHotReloader: cfg.ConfigHotReloader,
 		tlogRPCAddress: cfg.TLogRPCAddress,
 		lbaCacheLimit:  cfg.LBACacheLimit,
+		configPath:     cfg.ConfigPath,
 	}, nil
 }
 
@@ -69,6 +71,7 @@ type BackendFactory struct {
 	cfgHotReloader config.HotReloader
 	tlogRPCAddress string
 	lbaCacheLimit  int64
+	configPath     string
 }
 
 //NewBackend generates a new ardb backend
@@ -135,7 +138,7 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 
 	if vdisk.TlogSupport() && f.tlogRPCAddress != "" {
 		log.Debugf("creating tlogStorage for backend %v (%v)", vdiskID, vdisk.Type)
-		storage, err = newTlogStorage(vdiskID, f.tlogRPCAddress, blockSize, storage)
+		storage, err = newTlogStorage(vdiskID, f.tlogRPCAddress, f.configPath, blockSize, storage)
 		if err != nil {
 			log.Infof("couldn't create tlog storage: %s", err.Error())
 			return

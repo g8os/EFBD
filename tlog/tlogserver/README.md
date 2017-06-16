@@ -25,6 +25,13 @@ storageClusters: # A required map of storage clusters
      - address: 192.168.58.148:2000 # Required connection (dial) string
        db: 3                        # Database is optional
   # ... more (optional) storage clusters
+
+  nbdSlaveCluster: # ID of this storage cluster
+    dataStorage: # A required array of connection (dial)strings, used to store data
+      - address: 127.0.0.1:16386 # At least 1 connection (dial)string is required,
+    metadataStorage:
+      address: 127.0.0.1:16387 # Required connection (dial)string,
+
 vdisks: # A required map of vdisks,
         # only 1 vdisk is required
   myvdisk: # Required (string) ID of this vdisk
@@ -34,6 +41,10 @@ vdisks: # A required map of vdisks,
                                     # you have a tlogserver connected to your nbdserver
     tlogSlaveSync: true # true if tlog need to sync ardb slave,
                         # optional and false by default
+    storageCluster: nbdSlaveCluster # Required if `tlogSlaveSync` is true.
+                                    # ID of the nbdserver slave storage cluster
+                                    # has to be a storage cluster
+                                    # defined in the `storageClusters` section of THIS config file
   # ... more (optional) vdisks
 ```
 
@@ -51,6 +62,22 @@ send a `SIGHUP` signal to the tlogserver to make it pick up the changes.
 **NOTE**: It is not recommended to change the configs of storage clusters,
 whichare still in use by active (connected) clients,
 and content might get lost if you do this anyway.
+
+### Nbdserver slave sync feature
+
+Tlog server has feature to sync all nbdserver operation to the ardb slave.
+In case nbdserver's master failed, nbdserver can switch to this slave.
+
+This feature need this configuration:
+- set tlogserver command line `-with-slave-sync` to true. It is false by default
+- set `tlogSlaveSync` in vdisk configuration to true. See the example above
+- set `storageCluster` to the slave's cluster. See the example above
+
+After nbdserver switch to slave (internally by executing `WaitNbdSlaveSync` command),
+the slave sync feature of this vdisk become disabled.
+To re-enable this, the vdisk need to be restarted in nbdserver side.
+
+TODO : when hot reload the config, re-enable the slave sync if possible.
 
 ## Usage
 

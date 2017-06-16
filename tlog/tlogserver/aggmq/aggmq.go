@@ -5,10 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 )
 
 var (
-	ErrProcessorNotCreated = errors.New("agg processor failed to be created")
+	// ErrSlaveSyncTimeout returned when slave syncer doesn't give response
+	// until some amount of time
+	ErrSlaveSyncTimeout = errors.New("slave sync timed out")
 )
 
 // AggProcessorConfig defines config given to the aggregation
@@ -56,7 +59,7 @@ func (mq *MQ) AskProcessor(ctx context.Context, apc AggProcessorConfig) (*AggCom
 		return comm, nil
 	}
 
-	comm := newAggComm()
+	comm := newAggComm(mq, apc.VdiskID)
 	// ask for processor
 	mq.NeedProcessorCh <- AggProcessorReq{
 		Comm:    comm,
@@ -65,12 +68,22 @@ func (mq *MQ) AskProcessor(ctx context.Context, apc AggProcessorConfig) (*AggCom
 	}
 
 	// wait for the resp
-	// TODO : add timeout
-	err := <-mq.NeedProcessorResp
-	if err != nil {
-		return nil, fmt.Errorf("%v:%v", ErrProcessorNotCreated, err)
+	select {
+	case err := <-mq.NeedProcessorResp:
+		if err != nil {
+			return nil, fmt.Errorf("slave syncer failed to be created:%v", err)
+		}
+	case <-time.After(5 * time.Second):
+		return nil, ErrSlaveSyncTimeout
 	}
 
 	mq.Comms[apc.VdiskID] = comm
 	return comm, nil
+}
+
+func (mq *MQ) deleteProcessor(vdiskID string) {
+	mq.mux.Lock()
+	defer mq.mux.Unlock()
+
+	delete(mq.Comms, vdiskID)
 }

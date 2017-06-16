@@ -1,8 +1,20 @@
 package aggmq
 
+import (
+	"errors"
+	"time"
+)
+
 const (
 	_ = iota
 	CmdWaitSlaveSync
+	CmdKillMe
+)
+
+var (
+	// ErrSendCmdTimeout returned when the command doesn't get any response after
+	// some amount of time
+	ErrSendCmdTimeout = errors.New("send command timed out")
 )
 
 // AggMqMsg defines message given to the aggregation processor
@@ -22,16 +34,20 @@ type Response struct {
 // AggComm defines communication channels
 // between aggregation producer and consumer/processor
 type AggComm struct {
-	aggCh  chan AggMqMsg // channel of aggregation message
-	cmdCh  chan Command  // channel of command
-	respCh chan Response // channel of response
+	aggCh   chan AggMqMsg // channel of aggregation message
+	cmdCh   chan Command  // channel of command
+	respCh  chan Response // channel of response
+	mq      *MQ
+	vdiskID string
 }
 
-func newAggComm() *AggComm {
+func newAggComm(mq *MQ, vdiskID string) *AggComm {
 	return &AggComm{
-		aggCh:  make(chan AggMqMsg, 100),
-		cmdCh:  make(chan Command),
-		respCh: make(chan Response),
+		aggCh:   make(chan AggMqMsg, 100),
+		cmdCh:   make(chan Command),
+		respCh:  make(chan Response),
+		mq:      mq,
+		vdiskID: vdiskID,
 	}
 }
 
@@ -54,8 +70,14 @@ func (comm *AggComm) SendCmd(cmd int, seq uint64) error {
 	}
 
 	// wait for the response
-	// TODO : add timeout on the waiting
-	resp := <-comm.respCh
+	var resp Response
+
+	select {
+	case resp = <-comm.respCh:
+
+	case <-time.After(5 * time.Second):
+		return ErrSendCmdTimeout
+	}
 	return resp.Err
 }
 
@@ -67,4 +89,14 @@ func (comm *AggComm) RecvCmd() <-chan Command {
 // SendResp send response using this comm object
 func (comm *AggComm) SendResp(err error) {
 	comm.respCh <- Response{Err: err}
+}
+
+// Destroy destroys this communication channel.
+// It also means destroying the consumer
+func (comm *AggComm) Destroy() {
+	defer comm.mq.deleteProcessor(comm.vdiskID)
+
+	comm.cmdCh <- Command{
+		Type: CmdKillMe,
+	}
 }
