@@ -36,6 +36,10 @@ vdisks: # A required map of vdisks,
     storageCluster: mycluster # Required (string) ID of the storage cluster to use
                               # for this vdisk's storage, has to be a storage cluster
                               # defined in the `storageClusters` section of THIS config file
+
+    slaveStorageCluster: slaveCluster # Optional (string) ID of the storage cluster to use
+                                      # for this vdisk's storage, has to be a storage cluster
+                                      # defined in the `storageClusters` section of THIS config file
     rootStorageCluster: rootcluster # Optional (string) ID of the (root) storage cluster to use
                                     # for this vdisk's fallback/root/template storage, has to be
                                     # a storage cluster defined in the `storageClusters` section
