@@ -33,6 +33,7 @@ func NewManager(apMq *aggmq.MQ, configPath string) *Manager {
 	return m
 }
 
+// Run runs the slave syncer manager
 func (m *Manager) Run() {
 	for {
 		apr := <-m.apMq.NeedProcessorCh
@@ -40,6 +41,7 @@ func (m *Manager) Run() {
 	}
 }
 
+// handle request
 func (m *Manager) handleReq(apr aggmq.AggProcessorReq) {
 	m.mux.Lock()
 	defer m.mux.Unlock()
@@ -66,6 +68,8 @@ func (m *Manager) handleReq(apr aggmq.AggProcessorReq) {
 
 	log.Debugf("slave syncer created for vdisk: %v", apr.Config.VdiskID)
 }
+
+// remove slave syncer for given vdiskID
 func (m *Manager) remove(vdiskID string) {
 	m.mux.Lock()
 	defer m.mux.Unlock()
@@ -73,22 +77,27 @@ func (m *Manager) remove(vdiskID string) {
 	delete(m.syncers, vdiskID)
 }
 
+// slaveSyncer defines a tlog slave syncer
 type slaveSyncer struct {
 	ctx     context.Context
-	aggComm *aggmq.AggComm
-	player  *player.Player
-	mgr     *Manager
 	vdiskID string
+	aggComm *aggmq.AggComm // the communication channel
+	player  *player.Player // tlog replay player
+	mgr     *Manager
 }
 
+// newSlaveSyncer creates a new slave syncer
 func newSlaveSyncer(ctx context.Context, configPath string, apc aggmq.AggProcessorConfig,
 	aggComm *aggmq.AggComm, mgr *Manager) (*slaveSyncer, error) {
 
+	// create config object from empty string
+	// we need this to create nbd backend
 	serverConfigs, err := zerodiskcfg.ParseCSStorageServerConfigStrings("")
 	if err != nil {
 		return nil, err
 	}
 
+	// tlog replay player
 	player, err := player.NewPlayer(ctx, configPath, serverConfigs, apc.VdiskID, apc.PrivKey,
 		apc.HexNonce, apc.K, apc.M)
 	if err != nil {
@@ -108,37 +117,50 @@ func newSlaveSyncer(ctx context.Context, configPath string, apc aggmq.AggProcess
 }
 
 func (ss *slaveSyncer) run() {
-	log.Infof("run slave syncer for vdisk: %v", ss.vdiskID)
+	log.Infof("run slave syncer for vdisk '%v'", ss.vdiskID)
 
-	defer log.Infof("slave syncer for vdisk: %v stopped", ss.vdiskID)
+	defer log.Infof("slave syncer for vdisk '%v' exited", ss.vdiskID)
 
-	var waitForSync bool
-	var seqToWait uint64
-	var lastSeqSynced uint64
-	var err error
+	var waitForSync bool     // true if we currently wait for sync event
+	var seqToWait uint64     // sequence to wait to be synced
+	var lastSeqSynced uint64 // last sequence synced to slave
 
+	// closure to mark that we've synced the slave
 	finishWaitForSync := func() {
 		waitForSync = false
 		ss.aggComm.SendResp(nil)
 	}
 
+	defer ss.mgr.remove(ss.vdiskID)
+
 	for {
 		select {
 		case <-ss.ctx.Done():
-			ss.mgr.remove(ss.vdiskID)
+			// our producer (tlog's vdisk) exited
+			// so we are
 			return
+
 		case rawAgg := <-ss.aggComm.RecvAgg():
-			lastSeqSynced, err = ss.replay(rawAgg)
+			// raw aggregation []byte
+			seq, err := ss.replay(rawAgg)
 			if err != nil {
-				// TODO properly handle it
 				log.Error(err)
+				continue
 			}
+			lastSeqSynced = seq
 
 			if waitForSync && lastSeqSynced >= seqToWait {
 				finishWaitForSync()
 			}
+
 		case cmd := <-ss.aggComm.RecvCmd():
-			if cmd.Type == aggmq.CmdWaitSlaveSync {
+			// receive a command
+			switch cmd.Type {
+			case aggmq.CmdKillMe:
+				return
+
+			case aggmq.CmdWaitSlaveSync:
+				// wait for slave to be fully synced
 				seqToWait = cmd.Seq
 				if lastSeqSynced >= seqToWait {
 					finishWaitForSync()

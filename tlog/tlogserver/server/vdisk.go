@@ -197,7 +197,12 @@ func (vd *vdisk) waitSlaveSync() error {
 	// wait and return the response
 	err := <-cmd.respCh
 	if err == nil {
-		vd.withSlaveSyncer = false // TODO : reload the slave config
+		// we've successfully synced the slave
+		// it means the slave is going to be used by nbdserver as it's master
+		// so we disable it and kill the slave syncer
+		vd.withSlaveSyncer = false
+		vd.aggComm.Destroy()
+		vd.aggComm = nil
 	}
 
 	return err
