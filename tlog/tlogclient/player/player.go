@@ -23,6 +23,12 @@ type Player struct {
 	ctx     context.Context
 }
 
+type OnReplayCb func(seq uint64) error
+
+func OnReplayCbNone(seq uint64) error {
+	return nil
+}
+
 // NewPlayer creates new tlog player
 func NewPlayer(ctx context.Context, configPath string, serverConfigs []zerodiskcfg.StorageServerConfig,
 	vdiskID, privKey, hexNonce string, k, m int) (*Player, error) {
@@ -114,17 +120,25 @@ func (p *Player) Replay(startTs, endTs uint64) error {
 	return p.backend.Flush(p.ctx)
 }
 
-// ReplayAggregation replays an aggregation
 func (p *Player) ReplayAggregation(agg *schema.TlogAggregation, startTs, endTs uint64) error {
+	_, err := p.ReplayAggregationWithCallback(agg, startTs, endTs, OnReplayCbNone)
+	return err
+}
+
+// ReplayAggregation replays an aggregation
+func (p *Player) ReplayAggregationWithCallback(agg *schema.TlogAggregation, startTs, endTs uint64,
+	onReplayCb OnReplayCb) (uint64, error) {
+
 	// some small checking
 	storedViskID, err := agg.VdiskID()
 	if err != nil {
-		return fmt.Errorf("failed to get vdisk id from aggregation: %v", err)
+		return 0, fmt.Errorf("failed to get vdisk id from aggregation: %v", err)
 	}
 	if strings.Compare(storedViskID, p.vdiskID) != 0 {
-		return fmt.Errorf("vdisk id not mactched .expected=%v, got=%v", p.vdiskID, storedViskID)
+		return 0, fmt.Errorf("vdisk id not mactched .expected=%v, got=%v", p.vdiskID, storedViskID)
 	}
 
+	var seq uint64
 	// replay all the blocks
 	blocks, err := agg.Blocks()
 	for i := 0; i < blocks.Len(); i++ {
@@ -133,8 +147,10 @@ func (p *Player) ReplayAggregation(agg *schema.TlogAggregation, startTs, endTs u
 		if startTs != 0 && block.Timestamp() < startTs {
 			continue
 		} else if endTs != 0 && block.Timestamp() > endTs {
-			return nil
+			return seq, nil
 		}
+
+		seq = block.Sequence()
 
 		offset := block.Offset()
 
@@ -142,16 +158,26 @@ func (p *Player) ReplayAggregation(agg *schema.TlogAggregation, startTs, endTs u
 		case schema.OpWrite:
 			data, err := block.Data()
 			if err != nil {
-				return fmt.Errorf("failed to get data block of offset=%v, err=%v", offset, err)
+				return seq - 1, fmt.Errorf("failed to get data block of offset=%v, err=%v", offset, err)
 			}
 			if _, err := p.backend.WriteAt(p.ctx, data, int64(offset)); err != nil {
-				return fmt.Errorf("failed to WriteAt offset=%v, err=%v", offset, err)
+				return seq - 1, fmt.Errorf("failed to WriteAt offset=%v, err=%v", offset, err)
 			}
 		case schema.OpWriteZeroesAt:
 			if _, err := p.backend.WriteZeroesAt(p.ctx, int64(offset), int64(block.Size())); err != nil {
-				return fmt.Errorf("failed to WriteAt offset=%v, err=%v", offset, err)
+				return seq - 1, fmt.Errorf("failed to WriteAt offset=%v, err=%v", offset, err)
 			}
 		}
+		// we flush it per sequence instead of per aggregation to
+		// make sure we have sequence level accuracy about what we've replayed
+		if err := p.backend.Flush(p.ctx); err != nil {
+			return seq - 1, err
+		}
+
+		// execute the callback
+		if err := onReplayCb(seq); err != nil {
+			return seq, err
+		}
 	}
-	return p.backend.Flush(p.ctx)
+	return seq, nil
 }

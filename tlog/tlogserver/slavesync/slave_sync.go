@@ -8,8 +8,10 @@ import (
 
 	"zombiezen.com/go/capnproto2"
 
+	"github.com/zero-os/0-Disk/config"
 	zerodiskcfg "github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/nbdserver/ardb"
 	"github.com/zero-os/0-Disk/tlog/schema"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/player"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/aggmq"
@@ -79,11 +81,14 @@ func (m *Manager) remove(vdiskID string) {
 
 // slaveSyncer defines a tlog slave syncer
 type slaveSyncer struct {
-	ctx     context.Context
-	vdiskID string
-	aggComm *aggmq.AggComm // the communication channel
-	player  *player.Player // tlog replay player
-	mgr     *Manager
+	ctx              context.Context
+	vdiskID          string
+	aggComm          *aggmq.AggComm // the communication channel
+	player           *player.Player // tlog replay player
+	mgr              *Manager
+	metaPool         *ardb.RedisPool
+	metaConf         *config.StorageServerConfig
+	lastSeqSyncedKey string
 }
 
 // newSlaveSyncer creates a new slave syncer
@@ -105,17 +110,32 @@ func newSlaveSyncer(ctx context.Context, configPath string, apc aggmq.AggProcess
 	}
 
 	ss := &slaveSyncer{
-		vdiskID: apc.VdiskID,
-		ctx:     ctx,
-		aggComm: aggComm,
-		mgr:     mgr,
-		player:  player,
+		vdiskID:          apc.VdiskID,
+		ctx:              ctx,
+		aggComm:          aggComm,
+		mgr:              mgr,
+		player:           player,
+		lastSeqSyncedKey: "tlog:last_slave_sync_seq:" + apc.VdiskID,
 	}
+
+	// create redis pool for the metadata
+	if err := ss.initMetaRedisPool(configPath); err != nil {
+		return nil, err
+	}
+
 	go ss.run()
 
 	return ss, nil
 }
 
+// start the slave syncer.
+// make sure to sync the latest synced sequence with
+// what stored in tlogserver
+func (ss *slaveSyncer) start() {
+	// get slavesyncer's latest synced sequence
+	// get tlog's latest flushed sequence
+	// catch up if needed
+}
 func (ss *slaveSyncer) run() {
 	log.Infof("run slave syncer for vdisk '%v'", ss.vdiskID)
 
@@ -137,7 +157,8 @@ func (ss *slaveSyncer) run() {
 		select {
 		case <-ss.ctx.Done():
 			// our producer (tlog's vdisk) exited
-			// so we are
+			// so we are!
+			// TODO : fix it! we need to wait for the slave sync to be finished
 			return
 
 		case rawAgg := <-ss.aggComm.RecvAgg():
@@ -172,6 +193,7 @@ func (ss *slaveSyncer) run() {
 	}
 }
 
+// replay a raw aggregation (in []byte) to the ardb slave
 func (ss *slaveSyncer) replay(rawAgg aggmq.AggMqMsg) (uint64, error) {
 	msg, err := capnp.NewDecoder(bytes.NewReader([]byte(rawAgg))).Decode()
 	if err != nil {
@@ -183,15 +205,45 @@ func (ss *slaveSyncer) replay(rawAgg aggmq.AggMqMsg) (uint64, error) {
 		return 0, fmt.Errorf("failed to read root tlog:%v", err)
 	}
 
-	if err := ss.player.ReplayAggregation(&agg, 0, 0); err != nil {
-		return 0, fmt.Errorf("replay agg failed: %v", err)
-	}
+	return ss.player.ReplayAggregationWithCallback(&agg, 0, 0, ss.setLastSynced)
+}
 
-	// get last sequence flusher
-	blocks, err := agg.Blocks()
+// set last synced sequence to slave metadata
+func (ss *slaveSyncer) setLastSynced(seq uint64) error {
+	rc := ss.metaPool.Get(ss.metaConf.Address, ss.metaConf.Database)
+	defer rc.Close()
+
+	_, err := rc.Do("SET", ss.lastSeqSyncedKey, seq)
+	return err
+}
+
+// initialize redis pool for metadata connection
+func (ss *slaveSyncer) initMetaRedisPool(configPath string) error {
+	// get meta storage config
+	metaStorConf, err := func(vdiskID string) (*config.StorageServerConfig, error) {
+		// read config
+		conf, err := config.ReadConfig(configPath, config.TlogServer)
+		if err != nil {
+			return nil, err
+		}
+		// get storage config for this vdisk
+		vdiskConf, ok := conf.Vdisks[ss.vdiskID]
+		if !ok {
+			return nil, fmt.Errorf("config for vdisk '%v' not found", vdiskID)
+		}
+
+		storClust, ok := conf.StorageClusters[vdiskConf.StorageCluster]
+		if !ok {
+			return nil, fmt.Errorf("no storageCluster for vdisk '%v", vdiskID)
+		}
+		return storClust.MetadataStorage, nil
+	}(ss.vdiskID)
+
 	if err != nil {
-		return 0, err
+		return err
 	}
 
-	return blocks.At(blocks.Len() - 1).Timestamp(), nil
+	ss.metaConf = metaStorConf
+	ss.metaPool = ardb.NewRedisPool(nil)
+	return nil
 }
