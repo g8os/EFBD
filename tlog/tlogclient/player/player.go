@@ -101,8 +101,8 @@ func NewPlayerWithPoolAndBackend(ctx context.Context, pool tlog.RedisPool, backe
 
 // Replay replays the tlog by decoding data from a tlog RedisPool.
 // The replay start from `startTs` timestamp.
-func (p *Player) Replay(startTs, endTs uint64) error {
-	aggChan := p.dec.Decode(startTs, endTs)
+func (p *Player) Replay(lmt decoder.Limiter) error {
+	aggChan := p.dec.Decode(lmt)
 	for {
 		da, more := <-aggChan
 		if !more {
@@ -113,20 +113,20 @@ func (p *Player) Replay(startTs, endTs uint64) error {
 			return fmt.Errorf("failed to get aggregation: %v", da.Err)
 		}
 
-		if err := p.ReplayAggregation(da.Agg, startTs, endTs); err != nil {
+		if err := p.ReplayAggregation(da.Agg, lmt); err != nil {
 			return err
 		}
 	}
 	return p.backend.Flush(p.ctx)
 }
 
-func (p *Player) ReplayAggregation(agg *schema.TlogAggregation, startTs, endTs uint64) error {
-	_, err := p.ReplayAggregationWithCallback(agg, startTs, endTs, OnReplayCbNone)
+func (p *Player) ReplayAggregation(agg *schema.TlogAggregation, lmt decoder.Limiter) error {
+	_, err := p.ReplayAggregationWithCallback(agg, lmt, OnReplayCbNone)
 	return err
 }
 
 // ReplayAggregation replays an aggregation
-func (p *Player) ReplayAggregationWithCallback(agg *schema.TlogAggregation, startTs, endTs uint64,
+func (p *Player) ReplayAggregationWithCallback(agg *schema.TlogAggregation, lmt decoder.Limiter,
 	onReplayCb OnReplayCb) (uint64, error) {
 
 	// some small checking
@@ -144,9 +144,11 @@ func (p *Player) ReplayAggregationWithCallback(agg *schema.TlogAggregation, star
 	for i := 0; i < blocks.Len(); i++ {
 		block := blocks.At(i)
 
-		if startTs != 0 && block.Timestamp() < startTs {
+		if !lmt.StartBlock(block) {
 			continue
-		} else if endTs != 0 && block.Timestamp() > endTs {
+		}
+
+		if lmt.EndBlock(block) {
 			return seq, nil
 		}
 

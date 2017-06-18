@@ -12,6 +12,7 @@ import (
 	zerodiskcfg "github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/gonbdserver/nbd"
 	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/player"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
 
@@ -177,7 +178,7 @@ func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 		return
 	}
 
-	err = player.Replay(startTs, lastBlockTs)
+	err = player.Replay(decoder.NewLimitByTimestamp(startTs, lastBlockTs))
 
 	t.Log("8. Validate that all replayed data is again retrievable and correct;")
 
@@ -206,7 +207,7 @@ func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 	}
 
 	t.Log("10 replay last block")
-	err = player.Replay(lastBlockTs, 0)
+	err = player.Replay(decoder.NewLimitByTimestamp(lastBlockTs, 0))
 
 	t.Log("11. Validate that last block is again retrievable and correct;")
 	{

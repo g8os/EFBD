@@ -11,6 +11,7 @@ import (
 	"github.com/zero-os/0-Disk/gonbdserver/nbd"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbdserver/ardb"
+	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/player"
 	"github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
@@ -65,7 +66,7 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	return player.Replay(vdiskCfg.StartTs, vdiskCfg.EndTs)
+	return player.Replay(decoder.NewLimitByTimestamp(vdiskCfg.StartTs, vdiskCfg.EndTs))
 }
 
 // create a new backend, used for writing

@@ -13,6 +13,7 @@ import (
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbdserver/ardb"
 	"github.com/zero-os/0-Disk/tlog/schema"
+	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/player"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/aggmq"
 )
@@ -89,6 +90,7 @@ type slaveSyncer struct {
 	metaPool         *ardb.RedisPool
 	metaConf         *config.StorageServerConfig
 	lastSeqSyncedKey string
+	decodeLimiter    decoder.Limiter
 }
 
 // newSlaveSyncer creates a new slave syncer
@@ -116,6 +118,7 @@ func newSlaveSyncer(ctx context.Context, configPath string, apc aggmq.AggProcess
 		mgr:              mgr,
 		player:           player,
 		lastSeqSyncedKey: "tlog:last_slave_sync_seq:" + apc.VdiskID,
+		decodeLimiter:    decoder.NewLimitByTimestamp(0, 0),
 	}
 
 	// create redis pool for the metadata
@@ -205,7 +208,7 @@ func (ss *slaveSyncer) replay(rawAgg aggmq.AggMqMsg) (uint64, error) {
 		return 0, fmt.Errorf("failed to read root tlog:%v", err)
 	}
 
-	return ss.player.ReplayAggregationWithCallback(&agg, 0, 0, ss.setLastSynced)
+	return ss.player.ReplayAggregationWithCallback(&agg, ss.decodeLimiter, ss.setLastSynced)
 }
 
 // set last synced sequence to slave metadata
