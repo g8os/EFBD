@@ -92,6 +92,12 @@ type slaveSyncer struct {
 	metaPool         *ardb.RedisPool             // ardb meta redis pool
 	metaConf         *config.StorageServerConfig // ardb meta redis config
 	lastSeqSyncedKey string                      // key of the last sequence synced
+
+	// we put these three  variables here
+	// to make it survive in case of restart
+	waitForSync   bool   // true if we currently wait for sync event
+	seqToWait     uint64 // sequence to wait to be synced
+	lastSyncedSeq uint64 // last synced sequence
 }
 
 // newSlaveSyncer creates a new slave syncer
@@ -137,40 +143,50 @@ func newSlaveSyncer(ctx context.Context, configPath string, apc aggmq.AggProcess
 // make sure to sync the latest synced sequence with
 // what stored in tlogserver
 func (ss *slaveSyncer) start() error {
+	var err error
 	// get slavesyncer's latest synced sequence
-	lastSyncedSeq, err := ss.getLastSyncedSeq()
+	ss.lastSyncedSeq, err = ss.getLastSyncedSeq()
 	if err != nil {
 		return fmt.Errorf("getLastSyncedSeq failed:%v", err)
 	}
 
 	// get tlog's latest flushed sequence and catch up if needed
 	// we can do it by simply replaying all sequence after last synced sequence
-	lastSyncedSeq, err = ss.player.ReplayWithCallback(ss.decodeLimiter(lastSyncedSeq),
+	ss.lastSyncedSeq, err = ss.player.ReplayWithCallback(ss.decodeLimiter(ss.lastSyncedSeq),
 		ss.setLastSyncedSeq)
 	if err != nil && err != decoder.ErrNilLastHash {
 		return err
 	}
 
-	go ss.run(lastSyncedSeq)
+	go ss.run()
 
 	return nil
 }
 
-func (ss *slaveSyncer) run(lastSeqSynced uint64) {
+func (ss *slaveSyncer) run() {
 	log.Infof("run slave syncer for vdisk '%v'", ss.vdiskID)
 
 	defer log.Infof("slave syncer for vdisk '%v' exited", ss.vdiskID)
 
-	var waitForSync bool // true if we currently wait for sync event
-	var seqToWait uint64 // sequence to wait to be synced
+	// true if we want to restart this syncer
+	// we simply restart in case of error, it is simpler yet more robust
+	var needRestart bool
 
 	// closure to mark that we've synced the slave
 	finishWaitForSync := func() {
-		waitForSync = false
-		ss.aggComm.SendResp(nil)
+		if ss.waitForSync && ss.lastSyncedSeq >= ss.seqToWait {
+			ss.waitForSync = false
+			ss.aggComm.SendResp(nil)
+		}
 	}
 
-	defer ss.mgr.remove(ss.vdiskID)
+	defer func() {
+		if needRestart {
+			ss.start()
+		} else {
+			ss.mgr.remove(ss.vdiskID)
+		}
+	}()
 
 	for {
 		select {
@@ -182,16 +198,14 @@ func (ss *slaveSyncer) run(lastSeqSynced uint64) {
 
 		case rawAgg := <-ss.aggComm.RecvAgg():
 			// raw aggregation []byte
-			seq, err := ss.replay(rawAgg, lastSeqSynced)
+			seq, err := ss.replay(rawAgg, ss.lastSyncedSeq)
 			if err != nil {
-				log.Error(err)
-				continue
+				needRestart = true
+				return
 			}
-			lastSeqSynced = seq
+			ss.lastSyncedSeq = seq
 
-			if waitForSync && lastSeqSynced >= seqToWait {
-				finishWaitForSync()
-			}
+			finishWaitForSync()
 
 		case cmd := <-ss.aggComm.RecvCmd():
 			// receive a command
@@ -201,12 +215,10 @@ func (ss *slaveSyncer) run(lastSeqSynced uint64) {
 
 			case aggmq.CmdWaitSlaveSync:
 				// wait for slave to be fully synced
-				seqToWait = cmd.Seq
-				if lastSeqSynced >= seqToWait {
-					finishWaitForSync()
-				} else {
-					waitForSync = true
-				}
+				ss.seqToWait = cmd.Seq
+				ss.waitForSync = true
+
+				finishWaitForSync()
 			}
 		}
 	}
