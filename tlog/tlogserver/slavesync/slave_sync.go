@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/garyburd/redigo/redis"
 	"zombiezen.com/go/capnproto2"
 
 	"github.com/zero-os/0-Disk/config"
@@ -87,10 +88,10 @@ type slaveSyncer struct {
 	aggComm          *aggmq.AggComm // the communication channel
 	player           *player.Player // tlog replay player
 	mgr              *Manager
-	metaPool         *ardb.RedisPool
-	metaConf         *config.StorageServerConfig
-	lastSeqSyncedKey string
-	decodeLimiter    decoder.Limiter
+	dec              *decoder.Decoder            // tlog decoder
+	metaPool         *ardb.RedisPool             // ardb meta redis pool
+	metaConf         *config.StorageServerConfig // ardb meta redis config
+	lastSeqSyncedKey string                      // key of the last sequence synced
 }
 
 // newSlaveSyncer creates a new slave syncer
@@ -118,7 +119,6 @@ func newSlaveSyncer(ctx context.Context, configPath string, apc aggmq.AggProcess
 		mgr:              mgr,
 		player:           player,
 		lastSeqSyncedKey: "tlog:last_slave_sync_seq:" + apc.VdiskID,
-		decodeLimiter:    decoder.NewLimitByTimestamp(0, 0),
 	}
 
 	// create redis pool for the metadata
@@ -126,7 +126,9 @@ func newSlaveSyncer(ctx context.Context, configPath string, apc aggmq.AggProcess
 		return nil, err
 	}
 
-	go ss.run()
+	if err := ss.start(); err != nil {
+		return nil, err
+	}
 
 	return ss, nil
 }
@@ -134,19 +136,33 @@ func newSlaveSyncer(ctx context.Context, configPath string, apc aggmq.AggProcess
 // start the slave syncer.
 // make sure to sync the latest synced sequence with
 // what stored in tlogserver
-func (ss *slaveSyncer) start() {
+func (ss *slaveSyncer) start() error {
 	// get slavesyncer's latest synced sequence
-	// get tlog's latest flushed sequence
-	// catch up if needed
+	lastSyncedSeq, err := ss.getLastSyncedSeq()
+	if err != nil {
+		return fmt.Errorf("getLastSyncedSeq failed:%v", err)
+	}
+
+	// get tlog's latest flushed sequence and catch up if needed
+	// we can do it by simply replaying all sequence after last synced sequence
+	lastSyncedSeq, err = ss.player.ReplayWithCallback(ss.decodeLimiter(lastSyncedSeq),
+		ss.setLastSyncedSeq)
+	if err != nil && err != decoder.ErrNilLastHash {
+		return err
+	}
+
+	go ss.run(lastSyncedSeq)
+
+	return nil
 }
-func (ss *slaveSyncer) run() {
+
+func (ss *slaveSyncer) run(lastSeqSynced uint64) {
 	log.Infof("run slave syncer for vdisk '%v'", ss.vdiskID)
 
 	defer log.Infof("slave syncer for vdisk '%v' exited", ss.vdiskID)
 
-	var waitForSync bool     // true if we currently wait for sync event
-	var seqToWait uint64     // sequence to wait to be synced
-	var lastSeqSynced uint64 // last sequence synced to slave
+	var waitForSync bool // true if we currently wait for sync event
+	var seqToWait uint64 // sequence to wait to be synced
 
 	// closure to mark that we've synced the slave
 	finishWaitForSync := func() {
@@ -166,7 +182,7 @@ func (ss *slaveSyncer) run() {
 
 		case rawAgg := <-ss.aggComm.RecvAgg():
 			// raw aggregation []byte
-			seq, err := ss.replay(rawAgg)
+			seq, err := ss.replay(rawAgg, lastSeqSynced)
 			if err != nil {
 				log.Error(err)
 				continue
@@ -196,8 +212,16 @@ func (ss *slaveSyncer) run() {
 	}
 }
 
+func (ss *slaveSyncer) decodeLimiter(lastSeqSynced uint64) decoder.Limiter {
+	startSeq := lastSeqSynced + 1
+	if lastSeqSynced == 0 {
+		startSeq = 0
+	}
+	return decoder.NewLimitBySequence(startSeq, 0)
+}
+
 // replay a raw aggregation (in []byte) to the ardb slave
-func (ss *slaveSyncer) replay(rawAgg aggmq.AggMqMsg) (uint64, error) {
+func (ss *slaveSyncer) replay(rawAgg aggmq.AggMqMsg, lastSeqSynced uint64) (uint64, error) {
 	msg, err := capnp.NewDecoder(bytes.NewReader([]byte(rawAgg))).Decode()
 	if err != nil {
 		return 0, fmt.Errorf("failed to decode agg:%v", err)
@@ -208,16 +232,28 @@ func (ss *slaveSyncer) replay(rawAgg aggmq.AggMqMsg) (uint64, error) {
 		return 0, fmt.Errorf("failed to read root tlog:%v", err)
 	}
 
-	return ss.player.ReplayAggregationWithCallback(&agg, ss.decodeLimiter, ss.setLastSynced)
+	return ss.player.ReplayAggregationWithCallback(&agg, ss.decodeLimiter(lastSeqSynced), ss.setLastSyncedSeq)
 }
 
 // set last synced sequence to slave metadata
-func (ss *slaveSyncer) setLastSynced(seq uint64) error {
+func (ss *slaveSyncer) setLastSyncedSeq(seq uint64) error {
 	rc := ss.metaPool.Get(ss.metaConf.Address, ss.metaConf.Database)
 	defer rc.Close()
 
 	_, err := rc.Do("SET", ss.lastSeqSyncedKey, seq)
 	return err
+}
+
+// get last synced sequence
+func (ss *slaveSyncer) getLastSyncedSeq() (uint64, error) {
+	rc := ss.metaPool.Get(ss.metaConf.Address, ss.metaConf.Database)
+	defer rc.Close()
+
+	seq, err := redis.Uint64(rc.Do("GET", ss.lastSeqSyncedKey))
+	if err == nil || err == redis.ErrNil {
+		return seq, nil
+	}
+	return seq, err
 }
 
 // initialize redis pool for metadata connection

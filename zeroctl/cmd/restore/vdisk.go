@@ -66,7 +66,8 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	return player.Replay(decoder.NewLimitByTimestamp(vdiskCfg.StartTs, vdiskCfg.EndTs))
+	_, err = player.Replay(decoder.NewLimitByTimestamp(vdiskCfg.StartTs, vdiskCfg.EndTs))
+	return err
 }
 
 // create a new backend, used for writing

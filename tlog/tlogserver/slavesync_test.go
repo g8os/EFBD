@@ -26,10 +26,19 @@ func init() {
 	log.SetLevel(log.DebugLevel)
 }
 
-// TestSlaveSync test the tlogserver ability to sync the ardb slave.
+// TestSlaveSyncWrite test the tlogserver ability to sync the ardb slave.
+// With failed operation during writing to master
 // It simulates the failing master by closing the master's redis pool
 // in the middle of writing the data
-func TestSlaveSync(t *testing.T) {
+func TestSlaveSyncRealWrite(t *testing.T) {
+	testSlaveSyncReal(t, false)
+}
+
+func TestSlaveSyncRealRead(t *testing.T) {
+	testSlaveSyncReal(t, true)
+}
+
+func testSlaveSyncReal(t *testing.T, isRead bool) {
 	ctx := context.Background()
 
 	const (
@@ -89,8 +98,8 @@ func TestSlaveSync(t *testing.T) {
 
 	for i := 0; i < blocks; i++ {
 		offset := i * blockSize
-		if i == blocks/2 {
-			log.Infof("CLOSING nbdstor")
+		if !isRead && i == blocks/2 {
+			t.Log("CLOSING nbdstor")
 			nbdStor.Close()
 		}
 
@@ -123,7 +132,13 @@ func TestSlaveSync(t *testing.T) {
 	t.Log("flush data")
 	err = backend1.Flush(ctx)
 	if !assert.Nil(t, err) {
+		log.Errorf("flush failed:%v", err)
 		return
+	}
+
+	if isRead {
+		t.Log("CLOSING nbdstor")
+		nbdStor.Close()
 	}
 
 	t.Log("== validate all data are correct == ")
@@ -132,9 +147,11 @@ func TestSlaveSync(t *testing.T) {
 		offset := i * blockSize
 		content, err := backend1.ReadAt(ctx, int64(offset), int64(blockSize))
 		if !assert.Nil(t, err) {
+			log.Errorf("read failed:%v", err)
 			return
 		}
 		if !assert.Equal(t, data[offset:offset+blockSize], content) {
+			log.Error("read doesn't return valid data")
 			return
 		}
 	}
@@ -234,7 +251,7 @@ func newTestNbdBackendWithConfigPath(ctx context.Context, t *testing.T, vdiskID,
 	config := ardb.BackendFactoryConfig{
 		Pool:              redisPool,
 		ConfigHotReloader: hotreloader,
-		LBACacheLimit:     ardb.DefaultLBACacheLimit,
+		LBACacheLimit:     1024 * 1024,
 		TLogRPCAddress:    tlogrpc,
 		ConfigPath:        configPath,
 	}

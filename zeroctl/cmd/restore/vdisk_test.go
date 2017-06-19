@@ -178,7 +178,7 @@ func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 		return
 	}
 
-	err = player.Replay(decoder.NewLimitByTimestamp(startTs, lastBlockTs))
+	_, err = player.Replay(decoder.NewLimitByTimestamp(startTs, lastBlockTs))
 
 	t.Log("8. Validate that all replayed data is again retrievable and correct;")
 
@@ -207,7 +207,7 @@ func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 	}
 
 	t.Log("10 replay last block")
-	err = player.Replay(decoder.NewLimitByTimestamp(lastBlockTs, 0))
+	_, err = player.Replay(decoder.NewLimitByTimestamp(lastBlockTs, 0))
 
 	t.Log("11. Validate that last block is again retrievable and correct;")
 	{
