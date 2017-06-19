@@ -1,6 +1,7 @@
 package tlogclient
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -14,6 +15,9 @@ import (
 // TestReconnectFromSend test client can connect again after getting disconnected
 // when doing 'Send'
 func TestReconnectFromSend(t *testing.T) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
 	const (
 		vdisk         = "12345"
 		firstSequence = 0
@@ -22,7 +26,7 @@ func TestReconnectFromSend(t *testing.T) {
 
 	serv, _, err := createTestServer()
 	assert.Nil(t, err)
-	go serv.Listen()
+	go serv.Listen(ctx)
 
 	client, err := New(serv.ListenAddr(), vdisk, firstSequence, false)
 	assert.Nil(t, err)
@@ -54,13 +58,16 @@ func TestReconnectFromSend(t *testing.T) {
 // (4) Send ForceFlush using private API, so it doesn't have reconnect logic
 // (5) wait for the confirmation, that force flush arrived
 func TestReconnectFromRead(t *testing.T) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
 	const (
 		vdisk = "12345"
 	)
 	// test server
 	s, _, err := createTestServer()
 	assert.Nil(t, err)
-	go s.Listen()
+	go s.Listen(ctx)
 
 	//readTimeout = 10 * time.Millisecond
 	// Step #1
@@ -102,13 +109,16 @@ func (c *Client) forceFlushAtSeq(seq uint64) error {
 }
 
 func TestReconnectFromForceFlush(t *testing.T) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
 	const (
 		vdisk = "12345"
 	)
 	// test server
 	s, _, err := createTestServer()
 	assert.Nil(t, err)
-	go s.Listen()
+	go s.Listen(ctx)
 
 	// Create client
 	client, err := New(s.ListenAddr(), vdisk, 0, false)

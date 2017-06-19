@@ -2,6 +2,7 @@ package ardb
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"sync"
 	"testing"
@@ -14,6 +15,9 @@ import (
 )
 
 func TestTlogStorageWithInMemory(t *testing.T) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
 	const (
 		vdiskID   = "a"
 		blockSize = 8
@@ -24,10 +28,12 @@ func TestTlogStorageWithInMemory(t *testing.T) {
 		return
 	}
 
-	testTlogStorage(t, vdiskID, blockSize, storage)
+	testTlogStorage(ctx, t, vdiskID, blockSize, storage)
 }
 
 func TestTlogStorageForceFlushWithInMemory(t *testing.T) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
 	const (
 		vdiskID   = "a"
 		blockSize = 8
@@ -38,10 +44,13 @@ func TestTlogStorageForceFlushWithInMemory(t *testing.T) {
 		return
 	}
 
-	testTlogStorageForceFlush(t, vdiskID, blockSize, storage)
+	testTlogStorageForceFlush(ctx, t, vdiskID, blockSize, storage)
 }
 
 func TestTlogStorageWithInMemoryDeadlock(t *testing.T) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
 	const (
 		vdiskID    = "a"
 		blockSize  = 128
@@ -53,10 +62,13 @@ func TestTlogStorageWithInMemoryDeadlock(t *testing.T) {
 		return
 	}
 
-	testTlogStorageDeadlock(t, vdiskID, blockSize, blockCount, storage)
+	testTlogStorageDeadlock(ctx, t, vdiskID, blockSize, blockCount, storage)
 }
 
 func TestTlogStorageWithDeduped(t *testing.T) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
 	memRedis := redisstub.NewMemoryRedis()
 	if !assert.NotNil(t, memRedis) {
 		return
@@ -77,10 +89,13 @@ func TestTlogStorageWithDeduped(t *testing.T) {
 		return
 	}
 
-	testTlogStorage(t, vdiskID, blockSize, storage)
+	testTlogStorage(ctx, t, vdiskID, blockSize, storage)
 }
 
 func TestTlogStorageForceFlushWithDeduped(t *testing.T) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
 	memRedis := redisstub.NewMemoryRedis()
 	if !assert.NotNil(t, memRedis) {
 		return
@@ -101,10 +116,13 @@ func TestTlogStorageForceFlushWithDeduped(t *testing.T) {
 		return
 	}
 
-	testTlogStorageForceFlush(t, vdiskID, blockSize, storage)
+	testTlogStorageForceFlush(ctx, t, vdiskID, blockSize, storage)
 }
 
 func TestTlogStorageDeadlockWithDeduped(t *testing.T) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
 	memRedis := redisstub.NewMemoryRedis()
 	if !assert.NotNil(t, memRedis) {
 		return
@@ -125,10 +143,13 @@ func TestTlogStorageDeadlockWithDeduped(t *testing.T) {
 		return
 	}
 
-	testTlogStorageDeadlock(t, vdiskID, blockSize, blockCount, storage)
+	testTlogStorageDeadlock(ctx, t, vdiskID, blockSize, blockCount, storage)
 }
 
 func TestTlogStorageWithNondeduped(t *testing.T) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
 	memRedis := redisstub.NewMemoryRedis()
 	if !assert.NotNil(t, memRedis) {
 		return
@@ -148,10 +169,13 @@ func TestTlogStorageWithNondeduped(t *testing.T) {
 		return
 	}
 
-	testTlogStorage(t, vdiskID, blockSize, storage)
+	testTlogStorage(ctx, t, vdiskID, blockSize, storage)
 }
 
 func TestTlogStorageForceFlushWithNondeduped(t *testing.T) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
 	memRedis := redisstub.NewMemoryRedis()
 	if !assert.NotNil(t, memRedis) {
 		return
@@ -171,10 +195,13 @@ func TestTlogStorageForceFlushWithNondeduped(t *testing.T) {
 		return
 	}
 
-	testTlogStorageForceFlush(t, vdiskID, blockSize, storage)
+	testTlogStorageForceFlush(ctx, t, vdiskID, blockSize, storage)
 }
 
 func TestTlogStorageDeadlockWithNondeduped(t *testing.T) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
 	memRedis := redisstub.NewMemoryRedis()
 	if !assert.NotNil(t, memRedis) {
 		return
@@ -195,11 +222,11 @@ func TestTlogStorageDeadlockWithNondeduped(t *testing.T) {
 		return
 	}
 
-	testTlogStorageDeadlock(t, vdiskID, blockSize, blockCount, storage)
+	testTlogStorageDeadlock(ctx, t, vdiskID, blockSize, blockCount, storage)
 }
 
-func testTlogStorage(t *testing.T, vdiskID string, blockSize int64, storage backendStorage) {
-	tlogrpc := newTlogTestServer(t)
+func testTlogStorage(ctx context.Context, t *testing.T, vdiskID string, blockSize int64, storage backendStorage) {
+	tlogrpc := newTlogTestServer(ctx, t)
 	if !assert.NotEmpty(t, tlogrpc) {
 		return
 	}
@@ -212,8 +239,8 @@ func testTlogStorage(t *testing.T, vdiskID string, blockSize int64, storage back
 	testBackendStorage(t, storage)
 }
 
-func testTlogStorageForceFlush(t *testing.T, vdiskID string, blockSize int64, storage backendStorage) {
-	tlogrpc := newTlogTestServer(t)
+func testTlogStorageForceFlush(ctx context.Context, t *testing.T, vdiskID string, blockSize int64, storage backendStorage) {
+	tlogrpc := newTlogTestServer(ctx, t)
 	if !assert.NotEmpty(t, tlogrpc) {
 		return
 	}
@@ -226,8 +253,8 @@ func testTlogStorageForceFlush(t *testing.T, vdiskID string, blockSize int64, st
 	testBackendStorageForceFlush(t, storage)
 }
 
-func testTlogStorageDeadlock(t *testing.T, vdiskID string, blockSize, blockCount int64, storage backendStorage) {
-	tlogrpc := newTlogTestServer(t)
+func testTlogStorageDeadlock(ctx context.Context, t *testing.T, vdiskID string, blockSize, blockCount int64, storage backendStorage) {
+	tlogrpc := newTlogTestServer(ctx, t)
 	if !assert.NotEmpty(t, tlogrpc) {
 		return
 	}
@@ -240,7 +267,7 @@ func testTlogStorageDeadlock(t *testing.T, vdiskID string, blockSize, blockCount
 	testBackendStorageDeadlock(t, blockSize, blockCount, storage)
 }
 
-func newTlogTestServer(t *testing.T) string {
+func newTlogTestServer(ctx context.Context, t *testing.T) string {
 	testConf := &server.Config{
 		K:          4,
 		M:          2,
@@ -262,7 +289,7 @@ func newTlogTestServer(t *testing.T) string {
 	if !assert.NoError(t, err) {
 		return ""
 	}
-	go s.Listen()
+	go s.Listen(ctx)
 
 	return s.ListenAddr()
 }

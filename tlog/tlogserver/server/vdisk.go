@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"net"
 	"sync"
 	"time"
@@ -97,9 +96,7 @@ func newVdisk(aggMq *aggmq.MQ, vdiskID string, f *flusher, firstSequence uint64,
 			PrivKey:  flusherConf.PrivKey,
 			HexNonce: flusherConf.HexNonce,
 		}
-		ctx, _ := context.WithCancel(context.Background()) // TODO : save and use the context properly
-
-		aggComm, err = aggMq.AskProcessor(ctx, apc)
+		aggComm, err = aggMq.AskProcessor(apc)
 		if err != nil {
 			return nil, err
 		}

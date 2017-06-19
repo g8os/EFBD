@@ -30,6 +30,9 @@ func TestEndToEndReplayDBdisk(t *testing.T) {
 }
 
 func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
 	t.Log("1. Start a tlogserver;")
 
 	testConf := &server.Config{
@@ -52,7 +55,7 @@ func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 	}
 
 	t.Log("make tlog server listen")
-	go s.Listen()
+	go s.Listen(ctx)
 
 	var (
 		tlogrpc = s.ListenAddr()
@@ -68,8 +71,6 @@ func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 	)
 
 	t.Log("2. Start an NBDServer Backend with tlogclient integration;")
-
-	ctx := context.Background()
 
 	t.Log("creating new test backend")
 	backend, err := newTestBackend(ctx, t, vdiskID, vdiskType, tlogrpc, blockSize, size)

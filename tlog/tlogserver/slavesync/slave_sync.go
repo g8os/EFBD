@@ -25,14 +25,16 @@ type Manager struct {
 	syncers    map[string]*slaveSyncer
 	configPath string
 	mux        sync.Mutex
+	ctx        context.Context
 }
 
 // NewManager creates new slave syncer manager
-func NewManager(apMq *aggmq.MQ, configPath string) *Manager {
+func NewManager(ctx context.Context, apMq *aggmq.MQ, configPath string) *Manager {
 	m := &Manager{
 		apMq:       apMq,
 		configPath: configPath,
 		syncers:    make(map[string]*slaveSyncer),
+		ctx:        ctx,
 	}
 	return m
 }
@@ -40,8 +42,12 @@ func NewManager(apMq *aggmq.MQ, configPath string) *Manager {
 // Run runs the slave syncer manager
 func (m *Manager) Run() {
 	for {
-		apr := <-m.apMq.NeedProcessorCh
-		m.handleReq(apr)
+		select {
+		case <-m.ctx.Done():
+			return
+		case apr := <-m.apMq.NeedProcessorCh:
+			m.handleReq(apr)
+		}
 	}
 }
 
@@ -59,7 +65,7 @@ func (m *Manager) handleReq(apr aggmq.AggProcessorReq) {
 	}
 
 	// create slave syncer
-	ss, err := newSlaveSyncer(apr.Context, m.configPath, apr.Config, apr.Comm, m)
+	ss, err := newSlaveSyncer(m.ctx, m.configPath, apr.Config, apr.Comm, m)
 	if err != nil {
 		log.Errorf("failed to create slave syncer: %v", err)
 		m.apMq.NeedProcessorResp <- err

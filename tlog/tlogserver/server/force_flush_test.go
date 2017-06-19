@@ -19,12 +19,15 @@ import (
 // 4. create goroutine to wait for force flushed seq
 // 5. client send the logs
 func TestForceFlushAtSeq(t *testing.T) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
 	// Step #1
 	// create and start server
 	s, conf, err := createTestServer(t, 1000)
 	assert.Nil(t, err)
 
-	go s.Listen()
+	go s.Listen(ctx)
 
 	t.Logf("listen addr=%v", s.ListenAddr())
 	const (
@@ -52,7 +55,6 @@ func TestForceFlushAtSeq(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(2)
-	ctx, cancelFunc := context.WithCancel(context.Background())
 
 	respChan := client.Recv()
 
@@ -89,12 +91,15 @@ func TestForceFlushAtSeqPossibleRace(t *testing.T) {
 // 4. client send the logs
 // 5. client force flushed that sequence
 func testForceFlushAtSeqPossibleRace(t *testing.T, withSleep bool) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
 	// Step #1
 	// create and start server
 	s, conf, err := createTestServer(t, 1000)
 	assert.Nil(t, err)
 
-	go s.Listen()
+	go s.Listen(ctx)
 
 	t.Logf("listen addr=%v", s.ListenAddr())
 	const (
@@ -117,7 +122,6 @@ func testForceFlushAtSeqPossibleRace(t *testing.T, withSleep bool) {
 	}
 
 	var wg sync.WaitGroup
-	ctx, cancelFunc := context.WithCancel(context.Background())
 	wg.Add(1)
 
 	respChan := client.Recv()

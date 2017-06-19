@@ -24,6 +24,7 @@ import (
 
 func init() {
 	log.SetLevel(log.DebugLevel)
+
 }
 
 // TestSlaveSyncWrite test the tlogserver ability to sync the ardb slave.
@@ -39,7 +40,9 @@ func TestSlaveSyncRealRead(t *testing.T) {
 }
 
 func testSlaveSyncReal(t *testing.T, isRead bool) {
-	ctx := context.Background()
+	ctx, cancelFunc := context.WithCancel(context.Background())
+
+	defer cancelFunc()
 
 	const (
 		vdiskID   = "myimg"
@@ -51,6 +54,8 @@ func testSlaveSyncReal(t *testing.T, isRead bool) {
 	t.Log("== Start tlogserver with slave syncer== ")
 	tlogConf := server.DefaultConfig()
 	tlogConf.ListenAddr = ""
+	tlogConf.K = 1
+	tlogConf.M = 1
 
 	t.Log("create slave syncer")
 	t.Log("create inmemory redis pool for ardb slave")
@@ -64,7 +69,7 @@ func testSlaveSyncReal(t *testing.T, isRead bool) {
 	// slave syncer manager
 	tlogConf.AggMq = aggmq.NewMQ()
 	tlogConf.ConfigPath = slavePoolConfPath
-	ssm := slavesync.NewManager(tlogConf.AggMq, tlogConf.ConfigPath)
+	ssm := slavesync.NewManager(ctx, tlogConf.AggMq, tlogConf.ConfigPath)
 	go ssm.Run()
 
 	t.Log("create inmemory redis pool for tlog")
@@ -74,13 +79,13 @@ func testSlaveSyncReal(t *testing.T, isRead bool) {
 	assert.Nil(t, err)
 
 	t.Log("start the server")
-	go tlogS.Listen()
+	go tlogS.Listen(ctx)
 
 	tlogrpc := tlogS.ListenAddr()
 	t.Logf("listen addr = %v", tlogrpc)
 
 	t.Logf("== start nbdserver backend with tlogrcp=%v and slave pool", tlogrpc)
-	nbdStor, backend1, err := newTestNbdBackend(ctx, t, vdiskID, tlogrpc, blockSize, size, slavePool)
+	_, masterPool, backend1, err := newTestNbdBackend(ctx, t, vdiskID, tlogrpc, blockSize, size, slavePool)
 	assert.Nil(t, err)
 
 	defer backend1.Close(ctx)
@@ -100,7 +105,7 @@ func testSlaveSyncReal(t *testing.T, isRead bool) {
 		offset := i * blockSize
 		if !isRead && i == blocks/2 {
 			t.Log("CLOSING nbdstor")
-			nbdStor.Close()
+			masterPool.Close()
 		}
 
 		op := mrand.Int() % 10
@@ -138,7 +143,7 @@ func testSlaveSyncReal(t *testing.T, isRead bool) {
 
 	if isRead {
 		t.Log("CLOSING nbdstor")
-		nbdStor.Close()
+		masterPool.Close()
 	}
 
 	t.Log("== validate all data are correct == ")
@@ -158,7 +163,218 @@ func testSlaveSyncReal(t *testing.T, isRead bool) {
 
 }
 
-// creates in memory redis pool and generate config that resemble this pool
+//	start nbd1(master,slave) with tlog(tlogPool) without slave sync
+// - do write operation
+// - close nbd1
+// start nbd2(master, slave) with tlog2(tlogPool) with slave sync
+// - close master
+// nbd2 use slave, try the read opertion
+// notes:
+// - we use two tlog the first one without, the later with slave sync
+// - both tlog same tlogpool
+// - it proves that even slave syncer started late, the slave still synced
+// TODO : we disabled it because of high memory usage (6GB)
+//        the solution is to create more memory efficient redis pool
+func testSlaveSyncRestart(t *testing.T) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
+	ctxTlog1, cancelFuncTlog1 := context.WithCancel(context.Background())
+
+	const (
+		vdiskID   = "myimg"
+		blockSize = 4096
+		size      = 1024 * 64
+		firstSeq  = 0
+	)
+
+	// ----------------------------
+	//	start nbd1(master,slave) with tlog(tlogPool) without slave sync
+	// - do write operation
+	// - close nbd1
+	// ---------------------------
+
+	t.Log("== Start tlogserver with slave syncer== ")
+
+	t.Log("create inmemory redis pool for ardb slave")
+	slavePool, metaPool, tlogConfPath, err := newTlogRedisPoolAndConfig(vdiskID, blockSize, size)
+	assert.Nil(t, err)
+	defer slavePool.Close()
+	defer metaPool.Close()
+	defer os.Remove(tlogConfPath)
+
+	tlogConf := server.DefaultConfig()
+	tlogConf.ListenAddr = ""
+	tlogConf.K = 1
+	tlogConf.M = 1
+	tlogConf.ConfigPath = tlogConfPath
+
+	t.Log("create inmemory redis pool for tlog")
+	serverConfigs, err := config.ParseCSStorageServerConfigStrings("")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// create any kind of valid pool factory
+	tlogPoolFact, err := tlog.AnyRedisPoolFactory(tlog.RedisPoolFactoryConfig{
+		RequiredDataServerCount: tlogConf.RequiredDataServers(),
+		ConfigPath:              tlogConf.ConfigPath,
+		ServerConfigs:           serverConfigs,
+		AutoFill:                true,
+		AllowInMemory:           true,
+	})
+	if err != nil {
+		log.Fatalf("failed to create redis pool factory: %s", err.Error())
+	}
+
+	tlogS, err := server.NewServer(tlogConf, tlogPoolFact)
+	assert.Nil(t, err)
+
+	t.Log("start the server")
+	go tlogS.Listen(ctxTlog1)
+
+	tlogrpc := tlogS.ListenAddr()
+	t.Logf("listen addr = %v", tlogrpc)
+
+	t.Logf("== start nbdserver backend with tlogrcp=%v and slave pool", tlogrpc)
+	nbdConfPath, master, backend1, err := newTestNbdBackend(ctx, t, vdiskID, tlogrpc, blockSize, size, slavePool)
+	assert.Nil(t, err)
+
+	t.Log("== generate some random data and write it to the nbdserver backend== ")
+
+	data := make([]byte, size)
+	_, err = crand.Read(data)
+	if !assert.Nil(t, err) {
+		return
+	}
+	blocks := size / blockSize
+
+	zeroBlock := make([]byte, blockSize)
+
+	for i := 0; i < blocks; i++ {
+		offset := i * blockSize
+
+		op := mrand.Int() % 10
+
+		if op > 5 && op < 8 { // zero block
+			_, err := backend1.WriteZeroesAt(ctx, int64(offset), int64(blockSize))
+			if !assert.Nil(t, err) {
+				return
+			}
+
+			copy(data[offset:], zeroBlock)
+			continue
+		}
+
+		if op > 8 {
+			// partial zero block
+			r := mrand.Int()
+			size := r % (blockSize / 2)
+			offset := offset + (r % (blockSize / 4))
+			copy(data[offset:], zeroBlock[:size])
+		}
+
+		_, err := backend1.WriteAt(ctx, data[offset:offset+blockSize], int64(offset))
+		if !assert.Nil(t, err) {
+			return
+		}
+	}
+
+	t.Log("flush data")
+	err = backend1.Flush(ctx)
+	if !assert.Nil(t, err) {
+		log.Errorf("flush failed:%v", err)
+		return
+	}
+	backend1.Close(ctx)
+	cancelFuncTlog1()
+
+	//----------------------------------------------------------
+	// start nbd2(master, slave) with tlog(tlogPool) with slave
+	// - close master
+	// -
+
+	// slave syncer manager
+	tlogConf.AggMq = aggmq.NewMQ()
+	ssm := slavesync.NewManager(ctx, tlogConf.AggMq, tlogConf.ConfigPath)
+	go ssm.Run()
+
+	tlogS2, err := server.NewServer(tlogConf, tlogPoolFact)
+	assert.Nil(t, err)
+	go tlogS2.Listen(ctx)
+
+	backend2, err := newTestNbdBackendWithConfigPath(ctx, t, vdiskID, tlogS2.ListenAddr(), blockSize,
+		size, nbdConfPath)
+	defer backend2.Close(ctx)
+
+	t.Log("Close the master")
+	master.Close()
+
+	// nbd2 use slave, try the read opertion
+	t.Log("== validate all data are correct == ")
+
+	for i := 0; i < blocks; i++ {
+		offset := i * blockSize
+		content, err := backend2.ReadAt(ctx, int64(offset), int64(blockSize))
+		if !assert.Nil(t, err) {
+			return
+		}
+		if !assert.Equal(t, data[offset:offset+blockSize], content) {
+			return
+		}
+	}
+
+}
+
+func newTlogRedisPoolAndConfig(vdiskID string, blockSize, size uint64) (*redisstub.MemoryRedis, *redisstub.MemoryRedis, string, error) {
+	stor1 := redisstub.NewMemoryRedis()
+	stor2 := redisstub.NewMemoryRedis()
+
+	// create conf file
+	confFile, err := ioutil.TempFile("", "zerodisk")
+	if err != nil {
+		return nil, nil, "", err
+	}
+
+	go stor1.Listen()
+	go stor2.Listen()
+
+	conf := config.Config{
+		Vdisks: map[string]config.VdiskConfig{
+			vdiskID: config.VdiskConfig{
+				BlockSize:          blockSize,
+				ReadOnly:           false,
+				Size:               size,
+				StorageCluster:     "mycluster",
+				Type:               config.VdiskTypeBoot,
+				TlogSlaveSync:      true,
+				TlogStorageCluster: "tlogCluster",
+			},
+		},
+		StorageClusters: map[string]config.StorageClusterConfig{
+			"mycluster": config.StorageClusterConfig{
+				DataStorage: []config.StorageServerConfig{
+					config.StorageServerConfig{Address: stor1.Address()},
+				},
+				MetadataStorage: &config.StorageServerConfig{Address: stor1.Address()},
+			},
+			"tlogCluster": config.StorageClusterConfig{ // dummy cluster, not really used
+				DataStorage: []config.StorageServerConfig{
+					config.StorageServerConfig{Address: stor1.Address()},
+					config.StorageServerConfig{Address: stor2.Address()},
+				},
+			},
+		},
+	}
+
+	// serialize the config to file
+	if _, err := confFile.Write([]byte(conf.String())); err != nil {
+		return nil, nil, "", err
+	}
+	return stor1, stor2, confFile.Name(), nil
+}
+
+// creates in memory redis pool nbd server and generate config that resemble this pool
 // it also generate config for slave if slave pool is not nil
 func newRedisPoolAndConfig(vdiskID string, blockSize, size uint64,
 	slavePool *redisstub.MemoryRedis) (*redisstub.MemoryRedis, string, error) {
@@ -225,15 +441,15 @@ func newRedisPoolAndConfig(vdiskID string, blockSize, size uint64,
 // create a new backend, used for writing.
 // it returns the master pool and the nbd backend
 func newTestNbdBackend(ctx context.Context, t *testing.T, vdiskID, tlogrpc string,
-	blockSize, size uint64, slavePool *redisstub.MemoryRedis) (*redisstub.MemoryRedis, nbd.Backend, error) {
+	blockSize, size uint64, slavePool *redisstub.MemoryRedis) (string, *redisstub.MemoryRedis, nbd.Backend, error) {
 
 	masterPool, configPath, err := newRedisPoolAndConfig(vdiskID, blockSize, size, slavePool)
 	if err != nil {
-		return nil, nil, err
+		return "", nil, nil, err
 	}
 
 	backend, err := newTestNbdBackendWithConfigPath(ctx, t, vdiskID, tlogrpc, blockSize, size, configPath)
-	return masterPool, backend, err
+	return configPath, masterPool, backend, err
 }
 
 func newTestNbdBackendWithConfigPath(ctx context.Context, t *testing.T, vdiskID, tlogrpc string,

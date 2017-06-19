@@ -1,7 +1,6 @@
 package aggmq
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -26,9 +25,8 @@ type AggProcessorConfig struct {
 
 // AggProcessorReq defines request to the processor provider
 type AggProcessorReq struct {
-	Comm    *AggComm
-	Config  AggProcessorConfig
-	Context context.Context
+	Comm   *AggComm
+	Config AggProcessorConfig
 }
 
 // MQ defines this message queue
@@ -50,7 +48,7 @@ func NewMQ() *MQ {
 
 // AskProcessor as for aggregation processor.
 // we currently only have slave syncer
-func (mq *MQ) AskProcessor(ctx context.Context, apc AggProcessorConfig) (*AggComm, error) {
+func (mq *MQ) AskProcessor(apc AggProcessorConfig) (*AggComm, error) {
 	mq.mux.Lock()
 	defer mq.mux.Unlock()
 
@@ -62,9 +60,8 @@ func (mq *MQ) AskProcessor(ctx context.Context, apc AggProcessorConfig) (*AggCom
 	comm := newAggComm(mq, apc.VdiskID)
 	// ask for processor
 	mq.NeedProcessorCh <- AggProcessorReq{
-		Comm:    comm,
-		Config:  apc,
-		Context: ctx,
+		Comm:   comm,
+		Config: apc,
 	}
 
 	// wait for the resp

@@ -86,38 +86,42 @@ func NewServer(conf *Config, poolFactory tlog.RedisPoolFactory) (*Server, error)
 }
 
 // Listen to incoming (tcp) Requests
-func (s *Server) Listen() {
+func (s *Server) Listen(ctx context.Context) {
 	defer s.listener.Close()
 
 	for {
-		conn, err := s.listener.Accept()
-		if err != nil {
-			log.Infof("couldn't accept connection: %v", err)
-			continue
-		}
-		tcpConn, ok := conn.(*net.TCPConn)
-		if !ok {
-			log.Info("received conn is not tcp conn")
-			continue
-		}
-		go func() {
-			defer func() {
-				// recover from handle panics,
-				// to keep server up and running at all costs
-				if r := recover(); r != nil {
-					log.Error("connection dropped because of an internal panic: ", r)
+		select {
+		case <-ctx.Done():
+		default:
+			conn, err := s.listener.Accept()
+			if err != nil {
+				log.Infof("couldn't accept connection: %v", err)
+				continue
+			}
+			tcpConn, ok := conn.(*net.TCPConn)
+			if !ok {
+				log.Info("received conn is not tcp conn")
+				continue
+			}
+			go func() {
+				defer func() {
+					// recover from handle panics,
+					// to keep server up and running at all costs
+					if r := recover(); r != nil {
+						log.Error("connection dropped because of an internal panic: ", r)
+					}
+				}()
+
+				addr := conn.RemoteAddr()
+
+				err := s.handle(tcpConn)
+				if err == nil {
+					log.Infof("connection from %s dropped", addr.String())
+				} else {
+					log.Errorf("connection from %s dropped with an error: %s", addr.String(), err.Error())
 				}
 			}()
-
-			addr := conn.RemoteAddr()
-
-			err := s.handle(tcpConn)
-			if err == nil {
-				log.Infof("connection from %s dropped", addr.String())
-			} else {
-				log.Errorf("connection from %s dropped with an error: %s", addr.String(), err.Error())
-			}
-		}()
+		}
 	}
 }
 
