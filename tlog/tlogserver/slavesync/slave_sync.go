@@ -172,6 +172,10 @@ func (ss *slaveSyncer) run() {
 	// we simply restart in case of error, it is simpler yet more robust
 	var needRestart bool
 
+	// true if tlog vdisk already exited
+	// we also need to exit :)
+	var vdiskExited bool
+
 	// closure to mark that we've synced the slave
 	finishWaitForSync := func() {
 		if ss.waitForSync && ss.lastSyncedSeq >= ss.seqToWait {
@@ -181,7 +185,7 @@ func (ss *slaveSyncer) run() {
 	}
 
 	defer func() {
-		if needRestart {
+		if needRestart && !vdiskExited {
 			ss.start()
 		} else {
 			ss.mgr.remove(ss.vdiskID)
@@ -193,10 +197,16 @@ func (ss *slaveSyncer) run() {
 		case <-ss.ctx.Done():
 			// our producer (tlog's vdisk) exited
 			// so we are!
-			// TODO : fix it! we need to wait for the slave sync to be finished
-			return
+			// but we need to wait until we sync all of it
+			if len(ss.aggComm.RecvAgg()) == 0 {
+				return
+			}
+			vdiskExited = true
 
-		case rawAgg := <-ss.aggComm.RecvAgg():
+		case rawAgg, more := <-ss.aggComm.RecvAgg():
+			if !more {
+				return
+			}
 			// raw aggregation []byte
 			seq, err := ss.replay(rawAgg, ss.lastSyncedSeq)
 			if err != nil {
@@ -206,6 +216,10 @@ func (ss *slaveSyncer) run() {
 			ss.lastSyncedSeq = seq
 
 			finishWaitForSync()
+
+			if vdiskExited {
+				return
+			}
 
 		case cmd := <-ss.aggComm.RecvCmd():
 			// receive a command
