@@ -247,9 +247,7 @@ func (c *Client) Recv() <-chan *Result {
 							c.blockBuffer.Delete(tr.Sequences[0])
 						}
 					case tlog.BlockStatusWaitNbdSlaveSyncReceived:
-						c.waitSlaveSyncCond.L.Lock()
-						c.waitSlaveSyncCond.Broadcast()
-						c.waitSlaveSyncCond.L.Unlock()
+						c.signalCond(c.waitSlaveSyncCond)
 					}
 				}
 
@@ -267,10 +265,6 @@ func (c *Client) Recv() <-chan *Result {
 func (c *Client) recvOne() (*Response, error) {
 	c.rLock.Lock()
 	defer c.rLock.Unlock()
-
-	// set read deadline, so we don't have deadlock
-	// for rLock
-	//c.conn.SetReadDeadline(time.Now().Add(readTimeout))
 
 	// decode capnp and build response
 	tr, err := c.decodeBlockResponse(c.rd)
@@ -339,9 +333,6 @@ func (c *Client) WaitNbdSlaveSync() error {
 	c.wLock.Lock()
 	defer c.wLock.Unlock()
 
-	// TODO :
-	// - add resend
-
 	sender := func() (interface{}, error) {
 		if err := tlog.WriteMessageType(c.bw, tlog.MessageWaitNbdSlaveSync); err != nil {
 			return nil, err
@@ -352,35 +343,45 @@ func (c *Client) WaitNbdSlaveSync() error {
 		return nil, c.bw.Flush()
 	}
 
-	// create goroutine to listen to it's completeness
-	// we start it before it  even started to avoid race condition.
-	doneCh := make(chan struct{})
-	go func() {
-		c.waitSlaveSyncCond.L.Lock()
-		c.waitSlaveSyncCond.Wait()
-		c.waitSlaveSyncCond.L.Unlock()
-		close(doneCh)
-	}()
-
-	defer func() {
-		// execute it in case of above listener still waiting
-		// it won't harm when there is no waiter
-		c.waitSlaveSyncCond.L.Lock()
-		c.waitSlaveSyncCond.Signal()
-		c.waitSlaveSyncCond.L.Unlock()
-	}()
+	// start the waiter now, so we don't miss the reply
+	doneCh := c.waitCond(c.waitSlaveSyncCond)
 
 	if _, err := c.sendReconnect(sender); err != nil {
 		return err
 	}
 
 	// the actual wait
-	select {
-	case <-time.After(20 * time.Second):
-		return ErrWaitSlaveSyncTimeout
-	case <-doneCh:
+	for {
+		select {
+		case <-time.After(20 * time.Second):
+			c.signalCond(c.waitSlaveSyncCond)
+			return ErrWaitSlaveSyncTimeout
+		case <-doneCh:
+			return nil
+		}
 	}
-	return nil
+	return ErrWaitSlaveSyncTimeout
+}
+
+// wait for a condition to happens
+// it happens when the channel is closed
+func (c *Client) waitCond(cond *sync.Cond) chan struct{} {
+	// create goroutine to listen to it's completeness
+	doneCh := make(chan struct{})
+	go func() {
+		cond.L.Lock()
+		cond.Wait()
+		cond.L.Unlock()
+		close(doneCh)
+	}()
+	return doneCh
+}
+
+// Signal to a condition variable
+func (c *Client) signalCond(cond *sync.Cond) {
+	cond.L.Lock()
+	cond.Signal()
+	cond.L.Unlock()
 }
 
 // Send sends the transaction tlog to server.
