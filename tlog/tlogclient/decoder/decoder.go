@@ -66,27 +66,14 @@ func New(pool tlog.RedisPool, k, m int, vdiskID, privKey, hexNonce string) (*Dec
 // startTs timestamp to endTs timestamp.
 // If startTs == 0, it means from the beginning of transaction.
 // If endTs == 0, it means until the end of transaction
-func (d *Decoder) Decode(startTs, endTs uint64) <-chan *DecodedAggregation {
+func (d *Decoder) Decode(lmt Limiter) <-chan *DecodedAggregation {
 	daChan := make(chan *DecodedAggregation, 1)
-
-	// func to check if this aggregation is the end (exclusive)
-	// of desired aggregation
-	isEnd := func(agg *schema.TlogAggregation) (bool, error) {
-		if endTs == 0 {
-			return false, nil
-		}
-		minTs, err := minAggTimestamp(agg)
-		if err != nil {
-			return false, err
-		}
-		return minTs > endTs, nil
-	}
 
 	go func() {
 		defer close(daChan)
 
 		// get all keys after the specified timestamp
-		keys, err := d.getKeysAfter(startTs, endTs)
+		keys, err := d.getKeysAfter(lmt)
 		if err != nil {
 			da := &DecodedAggregation{
 				Agg: nil,
@@ -104,26 +91,28 @@ func (d *Decoder) Decode(startTs, endTs uint64) <-chan *DecodedAggregation {
 				Agg: agg,
 				Err: err,
 			}
+			daChan <- da
 
 			// return if this aggregation is errored
 			if err != nil {
-				daChan <- da
+				return
+			}
+			blocks, err := agg.Blocks()
+			if err != nil {
 				return
 			}
 
 			// return if it is the last aggregation we want
-			end, err := isEnd(agg)
-			if end || err != nil {
+			if lmt.EndAgg(agg, blocks) {
 				return
 			}
-			daChan <- da
 		}
 	}()
 	return daChan
 }
 
 // getAllKeys of this vdisk ID after specified timestamp
-func (d *Decoder) getKeysAfter(startTs, endTs uint64) ([][]byte, error) {
+func (d *Decoder) getKeysAfter(lmt Limiter) ([][]byte, error) {
 
 	key, err := d.getLastHash()
 	if err != nil {
@@ -137,22 +126,17 @@ func (d *Decoder) getKeysAfter(startTs, endTs uint64) ([][]byte, error) {
 		if err != nil {
 			return keys, err
 		}
-
-		// we'have passed the startTs.
-		// it happens when max timestamp of
-		// this aggregation is older than startTs.
-		// we return without include this aggregation
-		maxTs, err := maxAggTimestamp(agg)
+		blocks, err := agg.Blocks()
 		if err != nil {
 			return keys, err
-		}
-		if maxTs < startTs {
-			return keys, nil
 		}
 
 		// add this aggregation
 		keys = append(keys, key)
 
+		if lmt.StartAgg(agg, blocks) {
+			return keys, nil
+		}
 		// check if we already in very first key
 		prev, err := agg.Prev()
 		if err != nil {

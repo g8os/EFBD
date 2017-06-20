@@ -23,6 +23,9 @@ import (
 // (5) Client #2 send another (n*FlushSize) logs
 // (6) Client #2 must receive flush response for all of it's logs
 func TestResetFirstSequence(t *testing.T) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
 	// config
 	conf := testConf
 	conf.FlushTime = 100 // make it high value to avoid flush by timeout
@@ -34,7 +37,7 @@ func TestResetFirstSequence(t *testing.T) {
 	s, err := NewServer(conf, poolFactory)
 	assert.Nil(t, err)
 
-	go s.Listen()
+	go s.Listen(ctx)
 
 	t.Logf("listen addr=%v", s.ListenAddr())
 	const (

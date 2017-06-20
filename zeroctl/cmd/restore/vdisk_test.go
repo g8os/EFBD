@@ -12,6 +12,7 @@ import (
 	zerodiskcfg "github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/gonbdserver/nbd"
 	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/player"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
 
@@ -29,6 +30,9 @@ func TestEndToEndReplayDBdisk(t *testing.T) {
 }
 
 func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
 	t.Log("1. Start a tlogserver;")
 
 	testConf := &server.Config{
@@ -51,7 +55,7 @@ func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 	}
 
 	t.Log("make tlog server listen")
-	go s.Listen()
+	go s.Listen(ctx)
 
 	var (
 		tlogrpc = s.ListenAddr()
@@ -67,8 +71,6 @@ func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 	)
 
 	t.Log("2. Start an NBDServer Backend with tlogclient integration;")
-
-	ctx := context.Background()
 
 	t.Log("creating new test backend")
 	backend, err := newTestBackend(ctx, t, vdiskID, vdiskType, tlogrpc, blockSize, size)
@@ -177,7 +179,7 @@ func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 		return
 	}
 
-	err = player.Replay(startTs, lastBlockTs)
+	_, err = player.Replay(decoder.NewLimitByTimestamp(startTs, lastBlockTs))
 
 	t.Log("8. Validate that all replayed data is again retrievable and correct;")
 
@@ -206,7 +208,7 @@ func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 	}
 
 	t.Log("10 replay last block")
-	err = player.Replay(lastBlockTs, 0)
+	_, err = player.Replay(decoder.NewLimitByTimestamp(lastBlockTs, 0))
 
 	t.Log("11. Validate that last block is again retrievable and correct;")
 	{

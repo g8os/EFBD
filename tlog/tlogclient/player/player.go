@@ -23,6 +23,12 @@ type Player struct {
 	ctx     context.Context
 }
 
+type OnReplayCb func(seq uint64) error
+
+func OnReplayCbNone(seq uint64) error {
+	return nil
+}
+
 // NewPlayer creates new tlog player
 func NewPlayer(ctx context.Context, configPath string, serverConfigs []zerodiskcfg.StorageServerConfig,
 	vdiskID, privKey, hexNonce string, k, m int) (*Player, error) {
@@ -95,8 +101,15 @@ func NewPlayerWithPoolAndBackend(ctx context.Context, pool tlog.RedisPool, backe
 
 // Replay replays the tlog by decoding data from a tlog RedisPool.
 // The replay start from `startTs` timestamp.
-func (p *Player) Replay(startTs, endTs uint64) error {
-	aggChan := p.dec.Decode(startTs, endTs)
+func (p *Player) Replay(lmt decoder.Limiter) (uint64, error) {
+	return p.ReplayWithCallback(lmt, OnReplayCbNone)
+}
+
+func (p *Player) ReplayWithCallback(lmt decoder.Limiter, onReplayCb OnReplayCb) (uint64, error) {
+	var lastSeq uint64
+	var err error
+
+	aggChan := p.dec.Decode(lmt)
 	for {
 		da, more := <-aggChan
 		if !more {
@@ -104,37 +117,48 @@ func (p *Player) Replay(startTs, endTs uint64) error {
 		}
 
 		if da.Err != nil {
-			return fmt.Errorf("failed to get aggregation: %v", da.Err)
+			return lastSeq, da.Err
 		}
 
-		if err := p.ReplayAggregation(da.Agg, startTs, endTs); err != nil {
-			return err
+		if lastSeq, err = p.ReplayAggregationWithCallback(da.Agg, lmt, onReplayCb); err != nil {
+			return lastSeq, err
 		}
 	}
-	return p.backend.Flush(p.ctx)
+	return lastSeq, p.backend.Flush(p.ctx)
+}
+
+func (p *Player) ReplayAggregation(agg *schema.TlogAggregation, lmt decoder.Limiter) (uint64, error) {
+	return p.ReplayAggregationWithCallback(agg, lmt, OnReplayCbNone)
 }
 
 // ReplayAggregation replays an aggregation
-func (p *Player) ReplayAggregation(agg *schema.TlogAggregation, startTs, endTs uint64) error {
+func (p *Player) ReplayAggregationWithCallback(agg *schema.TlogAggregation, lmt decoder.Limiter,
+	onReplayCb OnReplayCb) (uint64, error) {
+
 	// some small checking
 	storedViskID, err := agg.VdiskID()
 	if err != nil {
-		return fmt.Errorf("failed to get vdisk id from aggregation: %v", err)
+		return 0, fmt.Errorf("failed to get vdisk id from aggregation: %v", err)
 	}
 	if strings.Compare(storedViskID, p.vdiskID) != 0 {
-		return fmt.Errorf("vdisk id not mactched .expected=%v, got=%v", p.vdiskID, storedViskID)
+		return 0, fmt.Errorf("vdisk id not mactched .expected=%v, got=%v", p.vdiskID, storedViskID)
 	}
 
+	var seq uint64
 	// replay all the blocks
 	blocks, err := agg.Blocks()
 	for i := 0; i < blocks.Len(); i++ {
 		block := blocks.At(i)
 
-		if startTs != 0 && block.Timestamp() < startTs {
+		if !lmt.StartBlock(block) {
 			continue
-		} else if endTs != 0 && block.Timestamp() > endTs {
-			return nil
 		}
+
+		if lmt.EndBlock(block) {
+			return seq, nil
+		}
+
+		seq = block.Sequence()
 
 		offset := block.Offset()
 
@@ -142,16 +166,26 @@ func (p *Player) ReplayAggregation(agg *schema.TlogAggregation, startTs, endTs u
 		case schema.OpWrite:
 			data, err := block.Data()
 			if err != nil {
-				return fmt.Errorf("failed to get data block of offset=%v, err=%v", offset, err)
+				return seq - 1, fmt.Errorf("failed to get data block of offset=%v, err=%v", offset, err)
 			}
 			if _, err := p.backend.WriteAt(p.ctx, data, int64(offset)); err != nil {
-				return fmt.Errorf("failed to WriteAt offset=%v, err=%v", offset, err)
+				return seq - 1, fmt.Errorf("failed to WriteAt offset=%v, err=%v", offset, err)
 			}
 		case schema.OpWriteZeroesAt:
 			if _, err := p.backend.WriteZeroesAt(p.ctx, int64(offset), int64(block.Size())); err != nil {
-				return fmt.Errorf("failed to WriteAt offset=%v, err=%v", offset, err)
+				return seq - 1, fmt.Errorf("failed to WriteAt offset=%v, err=%v", offset, err)
 			}
 		}
+		// we flush it per sequence instead of per aggregation to
+		// make sure we have sequence level accuracy about what we've replayed
+		if err := p.backend.Flush(p.ctx); err != nil {
+			return seq - 1, err
+		}
+
+		// execute the callback
+		if err := onReplayCb(seq); err != nil {
+			return seq, err
+		}
 	}
-	return p.backend.Flush(p.ctx)
+	return seq, nil
 }

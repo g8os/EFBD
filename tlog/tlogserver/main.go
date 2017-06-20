@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net/http"
@@ -103,17 +104,21 @@ func main() {
 		AutoFill:                true,
 		AllowInMemory:           true,
 	})
+
 	if err != nil {
 		log.Fatalf("failed to create redis pool factory: %s", err.Error())
 	}
 	defer poolFactory.Close()
+
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
 
 	if withSlaveSync {
 		// aggregation MQ
 		conf.AggMq = aggmq.NewMQ()
 
 		// slave syncer manager
-		ssm := slavesync.NewManager(conf.AggMq, conf.ConfigPath)
+		ssm := slavesync.NewManager(ctx, conf.AggMq, conf.ConfigPath)
 		go ssm.Run()
 	}
 
@@ -123,7 +128,7 @@ func main() {
 		log.Fatalf("failed to create server: %v", err)
 	}
 
-	server.Listen()
+	server.Listen(ctx)
 }
 
 func init() {

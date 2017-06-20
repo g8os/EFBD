@@ -83,6 +83,7 @@ func main() {
 		}()
 	}
 
+	ctx, cancelFunc := context.WithCancel(context.Background())
 	// create embedded tlog api if needed
 	if tlogrpcaddress == "auto" {
 		log.Info("Starting embedded (in-memory) tlogserver")
@@ -111,7 +112,7 @@ func main() {
 		tlogrpcaddress = server.ListenAddr()
 
 		log.Debug("embedded (in-memory) tlogserver up and running")
-		go server.Listen()
+		go server.Listen(ctx)
 	}
 	if tlogrpcaddress != "" {
 		log.Info("Using tlog rpc at", tlogrpcaddress)
@@ -119,7 +120,6 @@ func main() {
 
 	var sessionWaitGroup sync.WaitGroup
 
-	ctx, cancelFunc := context.WithCancel(context.Background())
 	configCtx, configCancelFunc := context.WithCancel(ctx)
 	defer func() {
 		log.Info("Shutting down")

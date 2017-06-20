@@ -20,6 +20,9 @@ func TestTlogStorageSlow(t *testing.T) {
 		blockCount = 512
 	)
 
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
 	const sleepTime = time.Millisecond * 25
 
 	slowStorage := &slowInMemoryStorage{
@@ -30,7 +33,7 @@ func TestTlogStorageSlow(t *testing.T) {
 		return
 	}
 
-	tlogrpc := newTlogTestServer(t)
+	tlogrpc := newTlogTestServer(ctx, t)
 	if !assert.NotEmpty(t, tlogrpc) {
 		return
 	}
@@ -39,9 +42,6 @@ func TestTlogStorageSlow(t *testing.T) {
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}
-
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	defer cancelFunc()
 	go storage.GoBackground(ctx)
 	defer storage.Close()
 

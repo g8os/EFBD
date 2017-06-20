@@ -1,6 +1,7 @@
 package tlogclient
 
 import (
+	"context"
 	"io"
 	"sync"
 	"testing"
@@ -117,6 +118,9 @@ func (ds *dummyServer) run(t *testing.T, logsToIgnore map[uint64]struct{}) error
 // it simulates timeout by create dummy server that
 // ignore some of the logs
 func TestResendTimeout(t *testing.T) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
 	const (
 		vdisk         = "12345"
 		firstSequence = 0
@@ -127,7 +131,7 @@ func TestResendTimeout(t *testing.T) {
 	// TODO : remove the need to this unused server
 	unusedServer, _, err := createTestServer()
 	assert.Nil(t, err)
-	go unusedServer.Listen()
+	go unusedServer.Listen(ctx)
 
 	// list of sequences for the server to ignores.
 	// it simulates timeout

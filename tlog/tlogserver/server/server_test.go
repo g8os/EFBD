@@ -29,6 +29,9 @@ var (
 
 // Test that we can send the data to tlog and decode it again correctly
 func TestEndToEnd(t *testing.T) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
 	// config
 	conf := testConf
 
@@ -39,7 +42,7 @@ func TestEndToEnd(t *testing.T) {
 	s, err := NewServer(conf, poolFactory)
 	assert.Nil(t, err)
 
-	go s.Listen()
+	go s.Listen(ctx)
 	t.Logf("listen addr=%v", s.ListenAddr())
 
 	const (
@@ -117,7 +120,7 @@ func TestEndToEnd(t *testing.T) {
 		expectedVdiskID, conf.PrivKey, conf.HexNonce)
 	assert.Nil(t, err)
 
-	aggChan := dec.Decode(0, 0)
+	aggChan := dec.Decode(decoder.NewLimitByTimestamp(0, 0))
 
 	aggReceived := 0
 	for {
@@ -154,6 +157,9 @@ func TestEndToEnd(t *testing.T) {
 
 // Test tlog server ability to handle unordered message
 func TestUnordered(t *testing.T) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
 	// config
 	conf := testConf
 
@@ -164,7 +170,7 @@ func TestUnordered(t *testing.T) {
 	s, err := NewServer(conf, poolFactory)
 	assert.Nil(t, err)
 
-	go s.Listen()
+	go s.Listen(ctx)
 
 	t.Logf("listen addr=%v", s.ListenAddr())
 	const (
@@ -191,8 +197,6 @@ func TestUnordered(t *testing.T) {
 	for i := 0; i < numLogs; i++ {
 		seqs = append(seqs, uint64(i)+firstSequence)
 	}
-
-	ctx, cancelFunc := context.WithCancel(context.Background())
 
 	// send tlog
 	go func() {
@@ -271,7 +275,7 @@ func TestUnordered(t *testing.T) {
 		vdiskID, conf.PrivKey, conf.HexNonce)
 	assert.Nil(t, err)
 
-	aggChan := dec.Decode(0, 0)
+	aggChan := dec.Decode(decoder.NewLimitByTimestamp(0, 0))
 
 	var expectedSequence = uint64(firstSequence)
 	for {
