@@ -306,12 +306,11 @@ func (c *Client) createConn() error {
 }
 
 // ForceFlushAtSeq force flush at given sequence
+// NOTE : this func doesn't have retry logic, user need to
+// add it
 func (c *Client) ForceFlushAtSeq(seq uint64) error {
 	c.wLock.Lock()
 	defer c.wLock.Unlock()
-
-	// TODO :
-	// - add resend
 
 	sender := func() (interface{}, error) {
 		if err := tlog.WriteMessageType(c.bw, tlog.MessageForceFlushAtSeq); err != nil {
