@@ -175,7 +175,7 @@ func testSlaveSyncReal(t *testing.T, isRead bool) {
 // - it proves that even slave syncer started late, the slave still synced
 // TODO : we disabled it because of high memory usage (6GB)
 //        the solution is to create more memory efficient redis pool
-func testSlaveSyncRestart(t *testing.T) {
+func TestSlaveSyncRestart(t *testing.T) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
@@ -346,7 +346,7 @@ func newTlogRedisPoolAndConfig(vdiskID string, blockSize, size uint64) (*redisst
 				ReadOnly:           false,
 				Size:               size,
 				StorageCluster:     "mycluster",
-				Type:               config.VdiskTypeBoot,
+				Type:               config.VdiskTypeDB,
 				TlogSlaveSync:      true,
 				TlogStorageCluster: "tlogCluster",
 			},
@@ -395,7 +395,7 @@ func newRedisPoolAndConfig(vdiskID string, blockSize, size uint64,
 				ReadOnly:           false,
 				Size:               size,
 				StorageCluster:     "mycluster",
-				Type:               config.VdiskTypeBoot,
+				Type:               config.VdiskTypeDB,
 				TlogSlaveSync:      true,
 				TlogStorageCluster: "tlogCluster",
 			},
