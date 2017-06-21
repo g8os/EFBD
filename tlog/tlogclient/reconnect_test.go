@@ -159,12 +159,19 @@ func waitForBlockReceivedResponse(t *testing.T, client *Client, minSequence, max
 
 		if resp.Err == nil {
 			// check response content
-			if resp.Resp != nil && resp.Resp.Status == tlog.BlockStatusRecvOK {
-				assert.Equal(t, 1, len(resp.Resp.Sequences))
-				seqResp := resp.Resp.Sequences[0]
-
-				if _, ok := logsToRecv[seqResp]; ok {
-					delete(logsToRecv, seqResp)
+			response := resp.Resp
+			if response == nil {
+				continue
+			}
+			switch response.Status {
+			case tlog.BlockStatusRecvOK:
+				assert.Equal(t, 1, len(response.Sequences))
+				delete(logsToRecv, response.Sequences[0])
+			case tlog.BlockStatusFlushOK: // if flushed, it means all previous already received
+				maxSeq := response.Sequences[len(response.Sequences)-1]
+				var seq uint64
+				for seq = 0; seq <= maxSeq; seq++ {
+					delete(logsToRecv, seq)
 				}
 			}
 		}

@@ -3,7 +3,6 @@ package blockbuffer
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -16,51 +15,63 @@ var (
 )
 
 // Buffer defines buffer of tlog blocks that already sent
-// but still waiting to be succesfully received by the server
+// but still waiting for:
+// - to be succesfully received by the server
+// - to be flushed
 type Buffer struct {
-	lock            sync.RWMutex
-	entries         map[uint64]*entry
-	seqToTimeout    []uint64
-	readyChan       chan *schema.TlogBlock
-	timeout         time.Duration
-	maxRetry        int
-	highestSequence uint64 // the highest sequence we received
+	lock sync.RWMutex
+
+	// map of sent block
+	entries map[uint64]*entry
+
+	// Array of ordered sent sequence.
+	// It is used to find the timed out block
+	seqToTimeout []uint64
+
+	// map of entries that waiting to be flushed
+	waitToFlush map[uint64]*entry
+
+	// channel of blocks that ready to be re-sent
+	readyChan chan *schema.TlogBlock
+
+	// block timeout value. Block will be re-send
+	// if reach this timeout value
+	timeout time.Duration
+
+	// the highest sequence we received
+	highestSequence uint64
 }
 
 // NewBuffer creates a new tlog blocks buffer
 func NewBuffer(timeout time.Duration) *Buffer {
 	return &Buffer{
-		readyChan: make(chan *schema.TlogBlock, 1),
-		entries:   map[uint64]*entry{},
-		timeout:   timeout,
-		maxRetry:  3,
+		readyChan:   make(chan *schema.TlogBlock, 1),
+		entries:     make(map[uint64]*entry),
+		waitToFlush: make(map[uint64]*entry),
+		timeout:     timeout,
 	}
 }
 
-// Len returns number of blocks in this buffer
-func (b *Buffer) Len() int {
+// SetResendAll resets this buffer, make all blocks
+// need to be resend right now
+func (b *Buffer) SetResendAll() {
 	b.lock.RLock()
 	defer b.lock.RUnlock()
-	return len(b.entries)
-}
 
-// Promote sets a block with given sequence to be timed out now.
-// It returns error if the block already exceed it's retry quota.
-func (b *Buffer) Promote(seq uint64) error {
-	b.lock.Lock()
-	defer b.lock.Unlock()
+	b.seqToTimeout = make([]uint64, 0, len(b.entries)+len(b.waitToFlush))
 
-	ent, exist := b.entries[seq]
-	if !exist {
-		return fmt.Errorf("tlog client blockbuffer: seq %v not exist", seq)
+	for seq, ent := range b.entries {
+		b.seqToTimeout = append(b.seqToTimeout, seq)
+		ent.setZero()
 	}
 
-	if ent.retryNum >= b.maxRetry {
-		return ErrRetryExceeded
+	for seq, ent := range b.waitToFlush {
+		b.seqToTimeout = append(b.seqToTimeout, seq)
+		ent.setZero()
+		b.entries[seq] = ent
 	}
 
-	ent.setTimeout()
-	return nil
+	b.waitToFlush = make(map[uint64]*entry)
 }
 
 // Add adds a block to this buffer.
@@ -91,10 +102,30 @@ func (b *Buffer) Add(block *schema.TlogBlock) {
 	b.entries[seq] = ent
 }
 
-// Delete deletes an entry from buffer.
-func (b *Buffer) Delete(seq uint64) {
+func (b *Buffer) LenWaitFlush() {
+}
+
+// SetFlushed set this sequence as succesfully flushed
+func (b *Buffer) SetFlushed(seqs []uint64) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
+
+	for _, seq := range seqs {
+		delete(b.waitToFlush, seq)
+		delete(b.entries, seq) // we normally don't need to do this
+	}
+}
+
+// SetSent set this sequence as succesfully sent
+func (b *Buffer) SetSent(seq uint64) {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	ent, ok := b.entries[seq]
+	if !ok {
+		return
+	}
+	b.waitToFlush[seq] = ent
 
 	delete(b.entries, seq)
 }

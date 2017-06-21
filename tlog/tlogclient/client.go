@@ -244,8 +244,10 @@ func (c *Client) Recv() <-chan *Result {
 					switch tr.Status {
 					case tlog.BlockStatusRecvOK:
 						if len(tr.Sequences) > 0 { // should always be true, but we anticipate.
-							c.blockBuffer.Delete(tr.Sequences[0])
+							c.blockBuffer.SetSent(tr.Sequences[0])
 						}
+					case tlog.BlockStatusFlushOK:
+						c.blockBuffer.SetFlushed(tr.Sequences)
 					case tlog.BlockStatusWaitNbdSlaveSyncReceived:
 						c.signalCond(c.waitSlaveSyncCond)
 					}
