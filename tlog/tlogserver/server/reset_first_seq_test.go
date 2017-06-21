@@ -48,7 +48,7 @@ func TestResetFirstSequence(t *testing.T) {
 
 	// Step #1
 	// create tlog client
-	client1, err := tlogclient.New(s.ListenAddr(), vdiskID, 0, false)
+	client1, err := tlogclient.New([]string{s.ListenAddr()}, vdiskID, 0, false)
 	if !assert.Nil(t, err) {
 		return
 	}
@@ -62,7 +62,7 @@ func TestResetFirstSequence(t *testing.T) {
 	client1.Close()
 
 	// Step #3
-	client2, err := tlogclient.New(s.ListenAddr(), vdiskID, 0, true)
+	client2, err := tlogclient.New([]string{s.ListenAddr()}, vdiskID, 0, true)
 	if !assert.Nil(t, err) {
 		return
 	}

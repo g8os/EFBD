@@ -145,7 +145,7 @@ func TestResendTimeout(t *testing.T) {
 	ds := newDummyServer(unusedServer)
 	go ds.run(t, logsToIgnore)
 
-	client, err := New(unusedServer.ListenAddr(), vdisk, firstSequence, false)
+	client, err := New([]string{unusedServer.ListenAddr()}, vdisk, firstSequence, false)
 	assert.Nil(t, err)
 	defer client.Close()
 

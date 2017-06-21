@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"sort"
 	"sync"
 	"time"
 
@@ -52,6 +53,13 @@ func NewBuffer(timeout time.Duration) *Buffer {
 	}
 }
 
+// implement sort interface for buffer.seqToTimeout
+type Uint64Slice []uint64
+
+func (us Uint64Slice) Len() int           { return len(us) }
+func (us Uint64Slice) Swap(i, j int)      { us[i], us[j] = us[j], us[i] }
+func (us Uint64Slice) Less(i, j int) bool { return us[i] < us[j] }
+
 // SetResendAll resets this buffer, make all blocks
 // need to be resend right now
 func (b *Buffer) SetResendAll() {
@@ -70,6 +78,8 @@ func (b *Buffer) SetResendAll() {
 		ent.setZero()
 		b.entries[seq] = ent
 	}
+
+	sort.Sort(Uint64Slice(b.seqToTimeout))
 
 	b.waitToFlush = make(map[uint64]*entry)
 }
@@ -204,17 +214,26 @@ func (b *Buffer) MinSequence() uint64 {
 	b.lock.RLock()
 	defer b.lock.RUnlock()
 
-	if len(b.entries) == 0 {
+	minUnflushed := b.minSeq(b.waitToFlush)
+	minNotDelivered := b.minSeq(b.entries)
+
+	if minUnflushed < minNotDelivered {
+		return minUnflushed
+	}
+	return minNotDelivered
+}
+
+func (b *Buffer) minSeq(m map[uint64]*entry) uint64 {
+	if len(m) == 0 {
 		return b.highestSequence + 1
 	}
 
-	var seq uint64 = math.MaxUint64
-	var blockSeq uint64
-	for _, ent := range b.entries {
-		blockSeq = ent.block.Sequence()
-		if blockSeq < seq {
-			seq = blockSeq
+	var min uint64 = math.MaxUint64
+	for seq := range m {
+		if seq < min {
+			min = seq
 		}
 	}
-	return seq
+	return min
+
 }

@@ -25,7 +25,7 @@ const (
 )
 
 func newTlogStorage(vdiskID, tlogrpc, configPath string, blockSize int64, storage backendStorage) (backendStorage, error) {
-	client, err := tlogclient.New(tlogrpc, vdiskID, 0, true)
+	client, err := tlogclient.New([]string{tlogrpc}, vdiskID, 0, true)
 	if err != nil {
 		return nil, fmt.Errorf("tlogStorage requires a valid tlogclient: %s", err.Error())
 	}

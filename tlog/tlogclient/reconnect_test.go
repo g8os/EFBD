@@ -28,7 +28,7 @@ func TestReconnectFromSend(t *testing.T) {
 	assert.Nil(t, err)
 	go serv.Listen(ctx)
 
-	client, err := New(serv.ListenAddr(), vdisk, firstSequence, false)
+	client, err := New([]string{serv.ListenAddr()}, vdisk, firstSequence, false)
 	assert.Nil(t, err)
 	defer client.Close()
 
@@ -71,7 +71,7 @@ func TestReconnectFromRead(t *testing.T) {
 
 	//readTimeout = 10 * time.Millisecond
 	// Step #1
-	client, err := New(s.ListenAddr(), vdisk, 0, false)
+	client, err := New([]string{s.ListenAddr()}, vdisk, 0, false)
 	assert.Nil(t, err)
 
 	// Step #2
@@ -121,7 +121,7 @@ func TestReconnectFromForceFlush(t *testing.T) {
 	go s.Listen(ctx)
 
 	// Create client
-	client, err := New(s.ListenAddr(), vdisk, 0, false)
+	client, err := New([]string{s.ListenAddr()}, vdisk, 0, false)
 	assert.Nil(t, err)
 
 	// Simulate closed connection
