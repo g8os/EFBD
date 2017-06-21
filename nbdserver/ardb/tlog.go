@@ -19,8 +19,9 @@ import (
 )
 
 const (
-	// maximum duration we wait for flush to finish
-	tlogFlushWait = 10 * time.Second
+	tlogFlushWaitSecondRetry = 5 * time.Second  // retry(1st) force flush after this timeout
+	tlogFlushWaitFirstRetry  = 10 * time.Second // retry(2nd) force flush after this timeout
+	tlogFlushWait            = 15 * time.Second // maximum duration we wait for flush to finish
 )
 
 func newTlogStorage(vdiskID, tlogrpc, configPath string, blockSize int64, storage backendStorage) (backendStorage, error) {
@@ -216,7 +217,8 @@ func (tls *tlogStorage) Flush() (err error) {
 	defer tls.mux.Unlock()
 
 	// ForceFlush at the latest sequence
-	tls.tlog.ForceFlushAtSeq(tls.getLatestSequence())
+	latestSeq := tls.getLatestSequence()
+	tls.tlog.ForceFlushAtSeq(latestSeq)
 
 	// wait until the cache is empty or timeout
 	doneCh := make(chan struct{})
@@ -229,15 +231,22 @@ func (tls *tlogStorage) Flush() (err error) {
 		close(doneCh)
 	}()
 
-	select {
-	case <-time.After(tlogFlushWait):
-		// if timeout, signal the condition variable anyway
-		// to avoid the goroutine blocked forever
-		tls.cacheEmptyCond.Signal()
-		return errFlushTimeout
-
-	case <-doneCh:
-		// wait returned
+	var finished bool
+	for !finished {
+		select {
+		case <-time.After(tlogFlushWait):
+			// if timeout, signal the condition variable anyway
+			// to avoid the goroutine blocked forever
+			tls.cacheEmptyCond.Signal()
+			return errFlushTimeout
+		case <-time.After(tlogFlushWaitFirstRetry): // retry it
+			tls.tlog.ForceFlushAtSeq(latestSeq)
+		case <-time.After(tlogFlushWaitSecondRetry): // retry it
+			tls.tlog.ForceFlushAtSeq(latestSeq)
+		case <-doneCh:
+			// wait returned
+			finished = true
+		}
 	}
 
 	// flush actual storage
