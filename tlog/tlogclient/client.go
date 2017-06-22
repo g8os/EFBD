@@ -105,9 +105,12 @@ func New(addrs []string, vdiskID string, firstSequence uint64, resetFirstSeq boo
 	return client, nil
 }
 
+// ChangeServerAddrs change server addresses to the
+// given addresses addrs
 func (c *Client) ChangeServerAddrs(addrs []string) {
 	c.serverAddrLock.Lock()
 	c.serverAddrLock.Unlock()
+
 	if len(addrs) == 0 {
 		return
 	}
@@ -177,7 +180,6 @@ func (c *Client) reconnect(closedTime time.Time, switchOther bool) error {
 		// try other server
 		c.shiftServerAddr()
 	}
-	return err
 }
 
 // connect to server
@@ -435,7 +437,6 @@ func (c *Client) WaitNbdSlaveSync() error {
 			return nil
 		}
 	}
-	return ErrWaitSlaveSyncTimeout
 }
 
 // wait for a condition to happens

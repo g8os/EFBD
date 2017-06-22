@@ -48,5 +48,4 @@ func testClientWaitSeqFlushed(ctx context.Context, t *testing.T, respChan <-chan
 			return
 		}
 	}
-	return
 }
