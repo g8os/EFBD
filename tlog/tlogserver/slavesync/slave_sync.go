@@ -10,7 +10,6 @@ import (
 	"zombiezen.com/go/capnproto2"
 
 	"github.com/zero-os/0-Disk/config"
-	zerodiskcfg "github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbdserver/ardb"
 	"github.com/zero-os/0-Disk/tlog/schema"
@@ -98,6 +97,8 @@ type slaveSyncer struct {
 	metaPool         *ardb.RedisPool             // ardb meta redis pool
 	metaConf         *config.StorageServerConfig // ardb meta redis config
 	lastSeqSyncedKey string                      // key of the last sequence synced
+	configPath       string
+	apc              aggmq.AggProcessorConfig
 
 	// we put these three  variables here
 	// to make it survive in case of restart
@@ -110,39 +111,47 @@ type slaveSyncer struct {
 func newSlaveSyncer(ctx context.Context, configPath string, apc aggmq.AggProcessorConfig,
 	aggComm *aggmq.AggComm, mgr *Manager) (*slaveSyncer, error) {
 
-	// create config object from empty string
-	// we need this to create nbd backend
-	serverConfigs, err := zerodiskcfg.ParseCSStorageServerConfigStrings("")
-	if err != nil {
-		return nil, err
-	}
-
-	// tlog replay player
-	player, err := player.NewPlayer(ctx, configPath, serverConfigs, apc.VdiskID, apc.PrivKey,
-		apc.HexNonce, apc.K, apc.M)
-	if err != nil {
-		return nil, err
-	}
-
 	ss := &slaveSyncer{
 		vdiskID:          apc.VdiskID,
 		ctx:              ctx,
 		aggComm:          aggComm,
 		mgr:              mgr,
-		player:           player,
+		configPath:       configPath,
+		apc:              apc,
 		lastSeqSyncedKey: "tlog:last_slave_sync_seq:" + apc.VdiskID,
 	}
+	return ss, ss.init()
+}
+
+func (ss *slaveSyncer) init() error {
+
+	// tlog replay player
+	player, err := player.NewPlayer(ss.ctx, ss.configPath, nil, ss.apc.VdiskID, ss.apc.PrivKey,
+		ss.apc.HexNonce, ss.apc.K, ss.apc.M)
+	if err != nil {
+		return err
+	}
+
+	ss.player = player
 
 	// create redis pool for the metadata
-	if err := ss.initMetaRedisPool(configPath); err != nil {
-		return nil, err
+	if err := ss.initMetaRedisPool(); err != nil {
+		return err
 	}
 
 	if err := ss.start(); err != nil {
-		return nil, err
+		return err
 	}
 
-	return ss, nil
+	return nil
+}
+
+func (ss *slaveSyncer) restart() {
+	if err := ss.init(); err != nil {
+		log.Errorf("restarting slave syncer for `%v` failed: %v", err)
+		return
+	}
+	ss.run()
 }
 
 // start the slave syncer.
@@ -192,7 +201,7 @@ func (ss *slaveSyncer) run() {
 
 	defer func() {
 		if needRestart && !vdiskExited {
-			ss.start()
+			ss.restart()
 		} else {
 			ss.mgr.remove(ss.vdiskID)
 		}
@@ -289,11 +298,11 @@ func (ss *slaveSyncer) getLastSyncedSeq() (uint64, error) {
 }
 
 // initialize redis pool for metadata connection
-func (ss *slaveSyncer) initMetaRedisPool(configPath string) error {
+func (ss *slaveSyncer) initMetaRedisPool() error {
 	// get meta storage config
 	metaStorConf, err := func(vdiskID string) (*config.StorageServerConfig, error) {
 		// read config
-		conf, err := config.ReadConfig(configPath, config.TlogServer)
+		conf, err := config.ReadConfig(ss.configPath, config.TlogServer)
 		if err != nil {
 			return nil, err
 		}
