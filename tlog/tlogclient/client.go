@@ -103,6 +103,12 @@ func New(addrs []string, vdiskID string, firstSequence uint64, resetFirstSeq boo
 	return client, nil
 }
 
+// shift server address move current active client to the back
+// and use 2nd entry as main server
+func (c *Client) shifServerAddr() {
+	c.addrs = append(c.addrs[1:], c.addrs[0])
+}
+
 // reconnect to server
 // it must be called under wLock
 func (c *Client) reconnect(closedTime time.Time, switchOther bool) error {
@@ -117,19 +123,22 @@ func (c *Client) reconnect(closedTime time.Time, switchOther bool) error {
 	}
 
 	if switchOther {
-		c.addrs = append(c.addrs[1:], c.addrs[0])
+		c.shifServerAddr()
 	}
 
-	for i := 0; i < len(c.addrs); i++ {
+	for {
 		if err = c.connect(c.blockBuffer.MinSequence(), false); err == nil {
 			c.lastConnected = time.Now()
+
 			// if reconnect success, sent all unflushed blocks
+			// because we don't know what happens in servers.
+			// it might crashed
 			c.blockBuffer.SetResendAll()
 			return nil
 		}
 
 		// try other server
-		c.addrs = append(c.addrs[1:], c.addrs[0])
+		c.shifServerAddr()
 	}
 	return err
 }
@@ -321,15 +330,12 @@ func (c *Client) recvOne() (*Response, error) {
 }
 
 func (c *Client) createConn() error {
-	tcpAddr, err := net.ResolveTCPAddr("tcp", c.addrs[0])
+	genericConn, err := net.DialTimeout("tcp", c.addrs[0], time.Second)
 	if err != nil {
 		return err
 	}
 
-	conn, err := net.DialTCP("tcp", nil, tcpAddr)
-	if err != nil {
-		return err
-	}
+	conn := genericConn.(*net.TCPConn)
 
 	conn.SetKeepAlive(true)
 	c.conn = conn
