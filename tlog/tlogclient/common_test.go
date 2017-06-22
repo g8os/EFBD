@@ -3,6 +3,7 @@ package tlogclient
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -18,19 +19,20 @@ func testClientSend(t *testing.T, client *Client, startSeq, endSeq uint64, data 
 
 }
 func testClientWaitSeqFlushed(ctx context.Context, t *testing.T, respChan <-chan *Result,
-	cancelFunc func(), seqWait uint64) {
+	cancelFunc func(), seqWait uint64) (finished bool) {
 
 	for {
 		select {
+		case <-time.After(15 * time.Second):
+			t.Fatal("testClientWaitSeqFlushed timeout")
 		case re := <-respChan:
-			if !assert.Nil(t, re.Err) {
-				cancelFunc()
+			if re.Err != nil {
+				t.Logf("recv err = %v", re.Err)
 				return
 			}
 			status := re.Resp.Status
-			if !assert.Equal(t, true, status > 0) {
-				cancelFunc()
-				return
+			if status < 0 {
+				continue
 			}
 
 			if status == tlog.BlockStatusFlushOK {
@@ -38,6 +40,7 @@ func testClientWaitSeqFlushed(ctx context.Context, t *testing.T, respChan <-chan
 				seq := seqs[len(seqs)-1]
 
 				if seq >= seqWait { // we've received all sequences
+					finished = true
 					return
 				}
 			}
@@ -45,5 +48,5 @@ func testClientWaitSeqFlushed(ctx context.Context, t *testing.T, respChan <-chan
 			return
 		}
 	}
-
+	return
 }

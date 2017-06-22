@@ -27,6 +27,9 @@ type testTwoServerConf struct {
 	secondSendStartSeq uint64
 	secondSendEndSeq   uint64
 	secondWaitEndSeq   uint64
+
+	masterStopped       bool
+	masterFailedToFlush bool
 }
 
 // Test client with two tlog servers in normal condition:
@@ -44,13 +47,22 @@ type testTwoServerConf struct {
 // Start tlog decoder
 // - make sure all sequence successfully decoded
 func TestMultipleServerBasic(t *testing.T) {
+	testMultipleServerBasic(t, true, false)
+}
+
+func TestMultipleServerBasicMasterFailToFlush(t *testing.T) {
+	testMultipleServerBasic(t, false, true)
+}
+func testMultipleServerBasic(t *testing.T, masterStopped, masterFailFlush bool) {
 	conf := testTwoServerConf{
-		firstSendStartSeq:  0,
-		firstSendEndSeq:    99,
-		firstWaitEndSeq:    99,
-		secondSendStartSeq: 100,
-		secondSendEndSeq:   199,
-		secondWaitEndSeq:   199,
+		firstSendStartSeq:   0,
+		firstSendEndSeq:     99,
+		firstWaitEndSeq:     99,
+		secondSendStartSeq:  100,
+		secondSendEndSeq:    199,
+		secondWaitEndSeq:    199,
+		masterStopped:       masterStopped,
+		masterFailedToFlush: masterFailFlush,
 	}
 	testTwoServers(t, conf)
 }
@@ -58,16 +70,24 @@ func TestMultipleServerBasic(t *testing.T) {
 // TestMultipleServerResendUnflushed test multiple servers
 // in case the 1st tlog server has some unflushed blocks
 func TestMultipleServerResendUnflushed(t *testing.T) {
+	testMultipleServerResendUnflushed(t, true, false)
+}
+
+func TestMultipleServerResendUnflushedMasterFailFlush(t *testing.T) {
+	testMultipleServerResendUnflushed(t, false, true)
+}
+func testMultipleServerResendUnflushed(t *testing.T, masterStopped, masterFailedToFlush bool) {
 	conf := testTwoServerConf{
-		firstSendStartSeq:  0,
-		firstSendEndSeq:    90,
-		firstWaitEndSeq:    74,
-		secondSendStartSeq: 91,
-		secondSendEndSeq:   199,
-		secondWaitEndSeq:   199,
+		firstSendStartSeq:   0,
+		firstSendEndSeq:     90,
+		firstWaitEndSeq:     74,
+		secondSendStartSeq:  91,
+		secondSendEndSeq:    199,
+		secondWaitEndSeq:    199,
+		masterStopped:       masterStopped,
+		masterFailedToFlush: masterFailedToFlush,
 	}
 	testTwoServers(t, conf)
-
 }
 
 func testTwoServers(t *testing.T, ttConf testTwoServerConf) {
@@ -124,9 +144,13 @@ func testTwoServers(t *testing.T, ttConf testTwoServerConf) {
 	// simulate stopping server 1
 	// - cancel it (not works)
 	// - remove server 1 from client's addrs and disconnect the socket
-	cancelFunc1()
-	client.addrs = client.addrs[1:]
-	client.conn.Close()
+	if ttConf.masterStopped {
+		client.addrs = client.addrs[1:]
+		client.conn.Close()
+	}
+	if ttConf.masterFailedToFlush {
+		pool1.Close()
+	}
 
 	t.Log("write data to server #2")
 	for i := ttConf.secondSendStartSeq; i <= ttConf.secondSendEndSeq; i++ {
@@ -138,7 +162,9 @@ func testTwoServers(t *testing.T, ttConf testTwoServerConf) {
 	}()
 
 	// wait for it to be flushed
-	testClientWaitSeqFlushed(ctx2, t, respChan, cancelFunc1, ttConf.secondWaitEndSeq)
+	if !assert.True(t, testClientWaitSeqFlushed(ctx2, t, respChan, cancelFunc1, ttConf.secondWaitEndSeq)) {
+		return
+	}
 
 	// validate with the decoder
 	flushedAll, err := validateWithDecoder(seqs, pool2, tlogConf.K, tlogConf.M, vdiskID,
@@ -191,7 +217,7 @@ func createTestTlogServer(ctx context.Context, vdiskID string,
 	}
 
 	// create any kind of valid pool factory
-	poolFact, err := tlog.AnyRedisPoolFactory(tlog.RedisPoolFactoryConfig{
+	poolFact, err := tlog.AnyRedisPoolFactory(ctx, tlog.RedisPoolFactoryConfig{
 		RequiredDataServerCount: len(stors),
 		ServerConfigs:           serverConfigs,
 		AutoFill:                true,
