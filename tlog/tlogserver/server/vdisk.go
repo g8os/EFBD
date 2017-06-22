@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net"
 	"sync"
 	"time"
@@ -80,8 +81,8 @@ func (vd *vdisk) ResponseChan() <-chan *BlockResponse {
 // creates vdisk with given vdiskID, flusher, and first sequence.
 // firstSequence is the very first sequence that this vdisk will receive.
 // blocks with sequence < firstSequence are going to be ignored.
-func newVdisk(aggMq *aggmq.MQ, vdiskID string, f *flusher, firstSequence uint64, flusherConf *flusherConfig,
-	segmentBufLen int, withSlaveSync bool) (*vdisk, error) {
+func newVdisk(ctx context.Context, aggMq *aggmq.MQ, vdiskID string, f *flusher, firstSequence uint64,
+	flusherConf *flusherConfig, segmentBufLen int, withSlaveSync bool) (*vdisk, error) {
 
 	var aggComm *aggmq.AggComm
 	var withSlaveSyncer bool
@@ -130,8 +131,8 @@ func newVdisk(aggMq *aggmq.MQ, vdiskID string, f *flusher, firstSequence uint64,
 	}
 
 	// run vdisk goroutines
-	go vd.runFlusher()
-	go vd.runBlockReceiver()
+	go vd.runFlusher(ctx)
+	go vd.runBlockReceiver(ctx)
 
 	return vd, nil
 }
@@ -213,11 +214,13 @@ func (vd *vdisk) doWaitSlaveSync(respCh chan error, lastSeqFlushed uint64) {
 }
 
 // this is the flusher routine that receive the blocks and order it.
-func (vd *vdisk) runBlockReceiver() {
+func (vd *vdisk) runBlockReceiver(ctx context.Context) {
 	buffer := treeset.NewWith(tlogBlockComparator)
 
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case cmd := <-vd.blockRecvCmdChan:
 			if cmd == vdiskCmdClearUnorderedBlocksBlocking {
 				buffer.Clear()
@@ -276,7 +279,7 @@ func (vd *vdisk) runBlockReceiver() {
 }
 
 // this is the flusher routine that does the flush asynchronously
-func (vd *vdisk) runFlusher() {
+func (vd *vdisk) runFlusher(ctx context.Context) {
 	// buffer of all ordered tlog blocks
 	tlogs := []*schema.TlogBlock{}
 
@@ -302,6 +305,8 @@ func (vd *vdisk) runFlusher() {
 	for {
 		cmdType = -1
 		select {
+		case <-ctx.Done():
+			return
 		case tlb := <-vd.orderedBlockChan:
 			// we receive tlog block, it already ordered
 			tlogs = append(tlogs, tlb)

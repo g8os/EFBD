@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net"
 	"sync"
 
@@ -35,8 +36,8 @@ func newVdiskManager(aggMq *aggmq.MQ, blockSize, flushSize int, configPath strin
 type flusherFactory func(vdiskID string, flusherConf *flusherConfig) (*flusher, error)
 
 // get or create the vdisk
-func (vt *vdiskManager) Get(fileConfig *config.Config, vdiskID string, firstSequence uint64, ff flusherFactory,
-	conn *net.TCPConn, flusherConf *flusherConfig) (vd *vdisk, err error) {
+func (vt *vdiskManager) Get(ctx context.Context, fileConfig *config.Config, vdiskID string, firstSequence uint64,
+	ff flusherFactory, conn *net.TCPConn, flusherConf *flusherConfig) (vd *vdisk, err error) {
 
 	vt.lock.Lock()
 	defer vt.lock.Unlock()
@@ -64,7 +65,7 @@ func (vt *vdiskManager) Get(fileConfig *config.Config, vdiskID string, firstSequ
 	}()
 
 	// create vdisk
-	vd, err = newVdisk(vt.aggMq, vdiskID, f, firstSequence, flusherConf, vt.maxSegmentBufLen, withSlaveSync)
+	vd, err = newVdisk(ctx, vt.aggMq, vdiskID, f, firstSequence, flusherConf, vt.maxSegmentBufLen, withSlaveSync)
 	if err != nil {
 		return
 	}

@@ -26,6 +26,7 @@ type Server struct {
 	flusherConf          *flusherConfig
 	vdiskMgr             *vdiskManager
 	fileConf             *config.Config
+	ctx                  context.Context
 }
 
 // NewServer creates a new tlog server
@@ -87,6 +88,7 @@ func NewServer(conf *Config, poolFactory tlog.RedisPoolFactory) (*Server, error)
 
 // Listen to incoming (tcp) Requests
 func (s *Server) Listen(ctx context.Context) {
+	s.ctx = ctx
 	defer s.listener.Close()
 
 	for {
@@ -172,7 +174,7 @@ func (s *Server) handshake(r io.Reader, w io.Writer, conn *net.TCPConn) (vd *vdi
 		return // error return
 	}
 
-	vd, err = s.vdiskMgr.Get(s.fileConf, vdiskID, req.FirstSequence(), s.createFlusher, conn, s.flusherConf)
+	vd, err = s.vdiskMgr.Get(s.ctx, s.fileConf, vdiskID, req.FirstSequence(), s.createFlusher, conn, s.flusherConf)
 	if err != nil {
 		status = tlog.HandshakeStatusInternalServerError
 		err = fmt.Errorf("couldn't create vdisk %s: %s", vdiskID, err.Error())
