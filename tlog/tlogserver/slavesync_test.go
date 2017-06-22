@@ -216,7 +216,7 @@ func TestSlaveSyncRestart(t *testing.T) {
 	}
 
 	// create any kind of valid pool factory
-	tlogPoolFact, err := tlog.AnyRedisPoolFactory(tlog.RedisPoolFactoryConfig{
+	tlogPoolFact, err := tlog.AnyRedisPoolFactory(ctx, tlog.RedisPoolFactoryConfig{
 		RequiredDataServerCount: tlogConf.RequiredDataServers(),
 		ConfigPath:              tlogConf.ConfigPath,
 		ServerConfigs:           serverConfigs,

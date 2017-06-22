@@ -90,6 +90,9 @@ func main() {
 		}()
 	}
 
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
 	// return server configs based on the given storage addresses
 	serverConfigs, err := config.ParseCSStorageServerConfigStrings(storageAddresses)
 	if err != nil {
@@ -97,7 +100,7 @@ func main() {
 	}
 
 	// create any kind of valid pool factory
-	poolFactory, err := tlog.AnyRedisPoolFactory(tlog.RedisPoolFactoryConfig{
+	poolFactory, err := tlog.AnyRedisPoolFactory(ctx, tlog.RedisPoolFactoryConfig{
 		RequiredDataServerCount: conf.RequiredDataServers(),
 		ConfigPath:              conf.ConfigPath,
 		ServerConfigs:           serverConfigs,
@@ -109,9 +112,6 @@ func main() {
 		log.Fatalf("failed to create redis pool factory: %s", err.Error())
 	}
 	defer poolFactory.Close()
-
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	defer cancelFunc()
 
 	if withSlaveSync {
 		// aggregation MQ
