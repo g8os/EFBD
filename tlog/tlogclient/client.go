@@ -76,6 +76,8 @@ type Client struct {
 	stopped       bool
 
 	waitSlaveSyncCond *sync.Cond
+
+	serverAddrLock sync.Mutex
 }
 
 // New creates a new tlog client for a vdisk with 'addrs' is the tlogserver addresses.
@@ -103,10 +105,45 @@ func New(addrs []string, vdiskID string, firstSequence uint64, resetFirstSeq boo
 	return client, nil
 }
 
+func (c *Client) ChangeServerAddrs(addrs []string) {
+	c.serverAddrLock.Lock()
+	c.serverAddrLock.Unlock()
+	if len(addrs) == 0 {
+		return
+	}
+
+	// reconnect client if current server not exist in the
+	// new addresses
+	curExist := func() bool {
+		for _, addr := range addrs {
+			if c.addrs[0] == addr {
+				return true
+			}
+		}
+		return false
+	}()
+	c.addrs = addrs
+
+	if !curExist {
+		c.conn.Close()
+	}
+
+}
+
 // shift server address move current active client to the back
 // and use 2nd entry as main server
-func (c *Client) shifServerAddr() {
+func (c *Client) shiftServerAddr() {
+	c.serverAddrLock.Lock()
+	c.serverAddrLock.Unlock()
+
 	c.addrs = append(c.addrs[1:], c.addrs[0])
+}
+
+func (c *Client) curServerAddr() string {
+	c.serverAddrLock.Lock()
+	c.serverAddrLock.Unlock()
+
+	return c.addrs[0]
 }
 
 // reconnect to server
@@ -123,7 +160,7 @@ func (c *Client) reconnect(closedTime time.Time, switchOther bool) error {
 	}
 
 	if switchOther {
-		c.shifServerAddr()
+		c.shiftServerAddr()
 	}
 
 	for {
@@ -138,7 +175,7 @@ func (c *Client) reconnect(closedTime time.Time, switchOther bool) error {
 		}
 
 		// try other server
-		c.shifServerAddr()
+		c.shiftServerAddr()
 	}
 	return err
 }
@@ -330,7 +367,7 @@ func (c *Client) recvOne() (*Response, error) {
 }
 
 func (c *Client) createConn() error {
-	genericConn, err := net.DialTimeout("tcp", c.addrs[0], time.Second)
+	genericConn, err := net.DialTimeout("tcp", c.curServerAddr(), time.Second)
 	if err != nil {
 		return err
 	}
