@@ -28,7 +28,7 @@ func TestReconnectFromSend(t *testing.T) {
 	assert.Nil(t, err)
 	go serv.Listen(ctx)
 
-	client, err := New(serv.ListenAddr(), vdisk, firstSequence, false)
+	client, err := New([]string{serv.ListenAddr()}, vdisk, firstSequence, false)
 	assert.Nil(t, err)
 	defer client.Close()
 
@@ -71,7 +71,7 @@ func TestReconnectFromRead(t *testing.T) {
 
 	//readTimeout = 10 * time.Millisecond
 	// Step #1
-	client, err := New(s.ListenAddr(), vdisk, 0, false)
+	client, err := New([]string{s.ListenAddr()}, vdisk, 0, false)
 	assert.Nil(t, err)
 
 	// Step #2
@@ -121,7 +121,7 @@ func TestReconnectFromForceFlush(t *testing.T) {
 	go s.Listen(ctx)
 
 	// Create client
-	client, err := New(s.ListenAddr(), vdisk, 0, false)
+	client, err := New([]string{s.ListenAddr()}, vdisk, 0, false)
 	assert.Nil(t, err)
 
 	// Simulate closed connection
@@ -159,12 +159,19 @@ func waitForBlockReceivedResponse(t *testing.T, client *Client, minSequence, max
 
 		if resp.Err == nil {
 			// check response content
-			if resp.Resp != nil && resp.Resp.Status == tlog.BlockStatusRecvOK {
-				assert.Equal(t, 1, len(resp.Resp.Sequences))
-				seqResp := resp.Resp.Sequences[0]
-
-				if _, ok := logsToRecv[seqResp]; ok {
-					delete(logsToRecv, seqResp)
+			response := resp.Resp
+			if response == nil {
+				continue
+			}
+			switch response.Status {
+			case tlog.BlockStatusRecvOK:
+				assert.Equal(t, 1, len(response.Sequences))
+				delete(logsToRecv, response.Sequences[0])
+			case tlog.BlockStatusFlushOK: // if flushed, it means all previous already received
+				maxSeq := response.Sequences[len(response.Sequences)-1]
+				var seq uint64
+				for seq = 0; seq <= maxSeq; seq++ {
+					delete(logsToRecv, seq)
 				}
 			}
 		}

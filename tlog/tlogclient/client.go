@@ -33,6 +33,9 @@ var (
 
 	// ErrWaitSlaveSyncTimeout returned when nbd slave sync couldn't be finished
 	ErrWaitSlaveSyncTimeout = errors.New("wait nbd slave sync timed out")
+
+	// ErrFlushFailed returned when client failed to do flush
+	ErrFlushFailed = errors.New("tlogserver failed to flush")
 )
 
 // Response defines a response from tlog server
@@ -51,7 +54,7 @@ type Result struct {
 // Client defines a Tlog Client.
 // This client is not thread/goroutine safe.
 type Client struct {
-	addr            string
+	addrs           []string
 	vdiskID         string
 	conn            *net.TCPConn
 	bw              writerFlusher
@@ -75,14 +78,16 @@ type Client struct {
 	waitSlaveSyncCond *sync.Cond
 }
 
-// New creates a new tlog client for a vdisk with 'addr' is the tlogserver address.
+// New creates a new tlog client for a vdisk with 'addrs' is the tlogserver addresses.
+// Client is going to use first address and then move to next addresses if the first address
+// is failed.
 // 'firstSequence' is the first sequence number this client is going to send.
 // Set 'resetFirstSeq' to true to force reset the vdisk first/expected sequence.
 // The client is not goroutine safe.
-func New(addr, vdiskID string, firstSequence uint64, resetFirstSeq bool) (*Client, error) {
+func New(addrs []string, vdiskID string, firstSequence uint64, resetFirstSeq bool) (*Client, error) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	client := &Client{
-		addr:              addr,
+		addrs:             addrs,
 		vdiskID:           vdiskID,
 		blockBuffer:       blockbuffer.NewBuffer(resendTimeoutDur),
 		ctx:               ctx,
@@ -100,19 +105,33 @@ func New(addr, vdiskID string, firstSequence uint64, resetFirstSeq bool) (*Clien
 
 // reconnect to server
 // it must be called under wLock
-func (c *Client) reconnect(closedTime time.Time) (err error) {
+func (c *Client) reconnect(closedTime time.Time, switchOther bool) error {
+	var err error
+
 	if c.stopped {
 		return ErrClientClosed
 	}
 
 	if c.lastConnected.After(closedTime) { // another goroutine made the connection work again
-		return
+		return nil
 	}
 
-	if err = c.connect(c.blockBuffer.MinSequence(), false); err == nil {
-		c.lastConnected = time.Now()
+	if switchOther {
+		c.addrs = append(c.addrs[1:], c.addrs[0])
 	}
-	return
+
+	for i := 0; i < len(c.addrs); i++ {
+		if err = c.connect(c.blockBuffer.MinSequence(), false); err == nil {
+			c.lastConnected = time.Now()
+			// if reconnect success, sent all unflushed blocks
+			c.blockBuffer.SetResendAll()
+			return nil
+		}
+
+		// try other server
+		c.addrs = append(c.addrs[1:], c.addrs[0])
+	}
+	return err
 }
 
 // connect to server
@@ -228,15 +247,7 @@ func (c *Client) Recv() <-chan *Result {
 
 				// EOF and other network error triggers reconnection
 				if isNetErr || err == io.EOF {
-					log.Infof("tlogclient : reconnect from read because of : %v", err)
-					err := func() error {
-						c.wLock.Lock()
-						defer c.wLock.Unlock()
-						return c.reconnect(time.Now())
-					}()
-					if err != nil {
-						log.Infof("Recv failed to reconnect: %v", err)
-					}
+					c.reconnectFromRead(err, false)
 					continue
 				}
 
@@ -244,10 +255,18 @@ func (c *Client) Recv() <-chan *Result {
 					switch tr.Status {
 					case tlog.BlockStatusRecvOK:
 						if len(tr.Sequences) > 0 { // should always be true, but we anticipate.
-							c.blockBuffer.Delete(tr.Sequences[0])
+							c.blockBuffer.SetSent(tr.Sequences[0])
 						}
+					case tlog.BlockStatusFlushOK:
+						c.blockBuffer.SetFlushed(tr.Sequences)
 					case tlog.BlockStatusWaitNbdSlaveSyncReceived:
 						c.signalCond(c.waitSlaveSyncCond)
+					case tlog.BlockStatusFlushFailed:
+						if err := c.reconnectFromRead(ErrFlushFailed, true); err != nil {
+							reChan <- &Result{
+								Err: ErrFlushFailed,
+							}
+						}
 					}
 				}
 
@@ -259,6 +278,21 @@ func (c *Client) Recv() <-chan *Result {
 		}
 	}()
 	return reChan
+}
+
+// reconnect from read do re-connect from reading goroutine
+func (c *Client) reconnectFromRead(errCause error, switchOther bool) error {
+	closedTime := time.Now()
+	log.Infof("tlogclient : reconnect from read because of : %v", errCause)
+
+	c.wLock.Lock()
+	defer c.wLock.Unlock()
+
+	if err := c.reconnect(closedTime, switchOther); err != nil {
+		log.Infof("tlogclient: reconnect because `%v` failed: %v", errCause, err)
+		return err
+	}
+	return nil
 }
 
 // recvOne receive one response
@@ -287,8 +321,7 @@ func (c *Client) recvOne() (*Response, error) {
 }
 
 func (c *Client) createConn() error {
-
-	tcpAddr, err := net.ResolveTCPAddr("tcp", c.addr)
+	tcpAddr, err := net.ResolveTCPAddr("tcp", c.addrs[0])
 	if err != nil {
 		return err
 	}
@@ -451,7 +484,7 @@ func (c *Client) sendReconnect(sender func() (interface{}, error)) (interface{},
 			// the network connection or the tlog server that need time to be recovered.
 			time.Sleep(time.Duration(i-1) * sendSleepTime)
 
-			if err = c.reconnect(closedTime); err != nil {
+			if err = c.reconnect(closedTime, false); err != nil {
 				log.Infof("tlog client : reconnect from send attemp(%v) failed:%v", i, err)
 				continue
 			}

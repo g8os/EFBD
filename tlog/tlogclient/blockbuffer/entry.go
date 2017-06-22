@@ -35,3 +35,8 @@ func (ent *entry) isTimeout(now time.Time) bool {
 func (ent *entry) setTimeout() {
 	ent.timeout = time.Now().UnixNano()
 }
+
+func (ent *entry) setZero() {
+	ent.retryNum = 0
+	ent.timeout = 0
+}

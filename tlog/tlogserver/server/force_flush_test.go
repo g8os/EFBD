@@ -44,7 +44,7 @@ func TestForceFlushAtSeq(t *testing.T) {
 	forceFlushedSeq := uint64(numLogs - 5)
 
 	// create tlog client
-	client, err := tlogclient.New(s.ListenAddr(), vdiskID, firstSequence, false)
+	client, err := tlogclient.New([]string{s.ListenAddr()}, vdiskID, firstSequence, false)
 	if !assert.Nil(t, err) {
 		return
 	}
@@ -116,7 +116,7 @@ func testForceFlushAtSeqPossibleRace(t *testing.T, withSleep bool) {
 	forceFlushedSeq := uint64(numLogs - 1)
 
 	// create tlog client
-	client, err := tlogclient.New(s.ListenAddr(), vdiskID, firstSequence, false)
+	client, err := tlogclient.New([]string{s.ListenAddr()}, vdiskID, firstSequence, false)
 	if !assert.Nil(t, err) {
 		return
 	}
