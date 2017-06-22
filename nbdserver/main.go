@@ -97,7 +97,7 @@ func main() {
 		if inMemoryStorage {
 			poolFactory = tlog.InMemoryRedisPoolFactory(requiredDataServers)
 		} else {
-			poolFactory, err = tlog.ConfigRedisPoolFactory(requiredDataServers, configPath)
+			poolFactory, err = tlog.ConfigRedisPoolFactory(ctx, requiredDataServers, configPath)
 			if err != nil {
 				log.Fatalf("couldn't create embedded tlogserver: %v", err)
 			}

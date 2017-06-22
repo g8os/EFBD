@@ -1,6 +1,7 @@
 package tlog
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -22,7 +23,7 @@ import (
 //   a RedisPoolFactory based on that config file will be created;
 // + if no config path and no server configs are given,
 //   an inmemory redis pool will be created instead;
-func AnyRedisPoolFactory(cfg RedisPoolFactoryConfig) (RedisPoolFactory, error) {
+func AnyRedisPoolFactory(ctx context.Context, cfg RedisPoolFactoryConfig) (RedisPoolFactory, error) {
 	if length := len(cfg.ServerConfigs); length > 0 {
 		serverConfigs := cfg.ServerConfigs
 		if length < cfg.RequiredDataServerCount {
@@ -44,7 +45,7 @@ func AnyRedisPoolFactory(cfg RedisPoolFactoryConfig) (RedisPoolFactory, error) {
 
 	// most desired option: config-based storage
 	if cfg.ConfigPath != "" {
-		return ConfigRedisPoolFactory(cfg.RequiredDataServerCount, cfg.ConfigPath)
+		return ConfigRedisPoolFactory(ctx, cfg.RequiredDataServerCount, cfg.ConfigPath)
 	}
 
 	// final resort: inmemory storage
@@ -77,11 +78,12 @@ func StaticRedisPoolFactory(requiredDataServerCount int, storageServers []config
 // The required amount of data servers is specified upfront,
 // such that at creation of a RedisPool, it is validated that the
 // storage cluster in question has sufficient data servers available.
-func ConfigRedisPoolFactory(requiredDataServerCount int, configPath string) (RedisPoolFactory, error) {
+func ConfigRedisPoolFactory(ctx context.Context, requiredDataServerCount int, configPath string) (RedisPoolFactory, error) {
 	reloader, err := config.NewHotReloader(configPath, config.TlogServer)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't create RedisPoolFactory: %s", err.Error())
 	}
+	go reloader.Listen(ctx)
 
 	return &configRedisPoolFactory{
 		reloader:                reloader,
