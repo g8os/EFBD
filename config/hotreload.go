@@ -68,7 +68,6 @@ type defaultHotReloader struct {
 	cfg          *Config
 	fullReloadCh chan struct{}
 	done         chan struct{}
-	handlerMux   sync.Mutex
 	mux          sync.RWMutex
 }
 
@@ -78,8 +77,8 @@ func (hr *defaultHotReloader) Subscribe(c chan<- VdiskClusterConfig, vdiskID str
 		return errors.New("zero-os/0-Disk: Subscribe using nil channel")
 	}
 
-	hr.handlerMux.Lock()
-	defer hr.handlerMux.Unlock()
+	hr.mux.Lock()
+	defer hr.mux.Unlock()
 
 	log.Debugf("subscribe %v for vdisk %s", c, vdiskID)
 
@@ -92,9 +91,8 @@ func (hr *defaultHotReloader) Unsubscribe(c chan<- VdiskClusterConfig) error {
 	if c == nil {
 		return errors.New("zero-os/0-Disk: Unsubscribe using nil channel")
 	}
-
-	hr.handlerMux.Lock()
-	defer hr.handlerMux.Unlock()
+	hr.mux.Lock()
+	defer hr.mux.Unlock()
 
 	log.Debugf("unsubscribe %v for vdisk %s", c, hr.handlers[c])
 
@@ -210,10 +208,11 @@ func (hr *defaultHotReloader) reloader(ctx context.Context) {
 // and sends the specific vdisk cluster configs to each registered notifier
 // using the freshly cached configs
 func (hr *defaultHotReloader) reloadVdiskClusterConfigs() error {
+	hr.mux.Lock()
+	defer hr.mux.Unlock()
+
 	// load config
 	err := func() error {
-		hr.mux.Lock()
-		defer hr.mux.Unlock()
 
 		var err error
 		hr.cfg, err = ReadConfig(hr.cfgpath, hr.cfguser)
@@ -233,12 +232,6 @@ func (hr *defaultHotReloader) reloadVdiskClusterConfigs() error {
 	}
 
 	var errs reloadErrors
-
-	hr.handlerMux.Lock()
-	defer hr.handlerMux.Unlock()
-
-	hr.mux.RLock()
-	defer hr.mux.RUnlock()
 
 	for c, vdiskID := range hr.handlers {
 		err = hr.reloadVdiskClusterConfig(c, vdiskID, 100*time.Millisecond)
