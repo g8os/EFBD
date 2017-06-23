@@ -10,7 +10,6 @@ import (
 	"zombiezen.com/go/capnproto2"
 
 	"github.com/zero-os/0-Disk/config"
-	zerodiskcfg "github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbdserver/ardb"
 	"github.com/zero-os/0-Disk/tlog/schema"
@@ -56,7 +55,7 @@ func (m *Manager) handleReq(apr aggmq.AggProcessorReq) {
 	m.mux.Lock()
 	defer m.mux.Unlock()
 
-	log.Debugf("slavesync manager : create for vdisk: %v", apr.Config.VdiskID)
+	log.Infof("slavesync mgr: create for vdisk: %v", apr.Config.VdiskID)
 
 	// check if the syncer already exist
 	if _, ok := m.syncers[apr.Config.VdiskID]; ok {
@@ -67,7 +66,7 @@ func (m *Manager) handleReq(apr aggmq.AggProcessorReq) {
 	// create slave syncer
 	ss, err := newSlaveSyncer(m.ctx, m.configPath, apr.Config, apr.Comm, m)
 	if err != nil {
-		log.Errorf("failed to create slave syncer: %v", err)
+		log.Errorf("slavesync mgr: failed to create syncer for vdisk: %v, err: %v", apr.Config.VdiskID, err)
 		m.apMq.NeedProcessorResp <- err
 		return
 	}
@@ -75,8 +74,6 @@ func (m *Manager) handleReq(apr aggmq.AggProcessorReq) {
 
 	// send response
 	m.apMq.NeedProcessorResp <- nil
-
-	log.Debugf("slave syncer created for vdisk: %v", apr.Config.VdiskID)
 }
 
 // remove slave syncer for given vdiskID
@@ -98,6 +95,8 @@ type slaveSyncer struct {
 	metaPool         *ardb.RedisPool             // ardb meta redis pool
 	metaConf         *config.StorageServerConfig // ardb meta redis config
 	lastSeqSyncedKey string                      // key of the last sequence synced
+	configPath       string
+	apc              aggmq.AggProcessorConfig
 
 	// we put these three  variables here
 	// to make it survive in case of restart
@@ -110,39 +109,50 @@ type slaveSyncer struct {
 func newSlaveSyncer(ctx context.Context, configPath string, apc aggmq.AggProcessorConfig,
 	aggComm *aggmq.AggComm, mgr *Manager) (*slaveSyncer, error) {
 
-	// create config object from empty string
-	// we need this to create nbd backend
-	serverConfigs, err := zerodiskcfg.ParseCSStorageServerConfigStrings("")
-	if err != nil {
-		return nil, err
-	}
-
-	// tlog replay player
-	player, err := player.NewPlayer(ctx, configPath, serverConfigs, apc.VdiskID, apc.PrivKey,
-		apc.HexNonce, apc.K, apc.M)
-	if err != nil {
-		return nil, err
-	}
-
 	ss := &slaveSyncer{
 		vdiskID:          apc.VdiskID,
 		ctx:              ctx,
 		aggComm:          aggComm,
 		mgr:              mgr,
-		player:           player,
+		configPath:       configPath,
+		apc:              apc,
 		lastSeqSyncedKey: "tlog:last_slave_sync_seq:" + apc.VdiskID,
 	}
+	return ss, ss.init()
+}
+
+func (ss *slaveSyncer) init() error {
+
+	// tlog replay player
+	player, err := player.NewPlayer(ss.ctx, ss.configPath, nil, ss.apc.VdiskID, ss.apc.PrivKey,
+		ss.apc.HexNonce, ss.apc.K, ss.apc.M)
+	if err != nil {
+		return err
+	}
+
+	ss.player = player
 
 	// create redis pool for the metadata
-	if err := ss.initMetaRedisPool(configPath); err != nil {
-		return nil, err
+	if err := ss.initMetaRedisPool(); err != nil {
+		return err
 	}
 
 	if err := ss.start(); err != nil {
-		return nil, err
+		return err
 	}
 
-	return ss, nil
+	return nil
+}
+
+func (ss *slaveSyncer) Close() {
+	ss.player.Close()
+}
+
+func (ss *slaveSyncer) restart() {
+	if err := ss.init(); err != nil {
+		log.Errorf("restarting slave syncer for `%v` failed: %v", err)
+		return
+	}
 }
 
 // start the slave syncer.
@@ -170,10 +180,9 @@ func (ss *slaveSyncer) start() error {
 }
 
 func (ss *slaveSyncer) run() {
-	log.Infof("run slave syncer for vdisk '%v'", ss.vdiskID)
+	log.Infof("slave syncer (%v): started", ss.vdiskID)
 
-	defer log.Infof("slave syncer for vdisk '%v' exited", ss.vdiskID)
-
+	defer log.Infof("slave syncer (%v): exited", ss.vdiskID)
 	// true if we want to restart this syncer
 	// we simply restart in case of error, it is simpler yet more robust
 	var needRestart bool
@@ -192,7 +201,7 @@ func (ss *slaveSyncer) run() {
 
 	defer func() {
 		if needRestart && !vdiskExited {
-			ss.start()
+			ss.restart()
 		} else {
 			ss.mgr.remove(ss.vdiskID)
 		}
@@ -231,6 +240,18 @@ func (ss *slaveSyncer) run() {
 			// receive a command
 			switch cmd.Type {
 			case aggmq.CmdKillMe:
+				log.Infof("slave syncer (%v): killed", ss.vdiskID)
+
+				ss.Close()
+				ss.mgr.remove(ss.vdiskID)
+
+				return
+			case aggmq.CmdRestartSlaveSyncer:
+				log.Infof("slave syncer (%v): restarted", ss.vdiskID)
+
+				ss.Close()
+				needRestart = true
+
 				return
 
 			case aggmq.CmdWaitSlaveSync:
@@ -289,11 +310,11 @@ func (ss *slaveSyncer) getLastSyncedSeq() (uint64, error) {
 }
 
 // initialize redis pool for metadata connection
-func (ss *slaveSyncer) initMetaRedisPool(configPath string) error {
+func (ss *slaveSyncer) initMetaRedisPool() error {
 	// get meta storage config
 	metaStorConf, err := func(vdiskID string) (*config.StorageServerConfig, error) {
 		// read config
-		conf, err := config.ReadConfig(configPath, config.TlogServer)
+		conf, err := config.ReadConfig(ss.configPath, config.TlogServer)
 		if err != nil {
 			return nil, err
 		}

@@ -8,6 +8,7 @@ import (
 const (
 	_ = iota
 	CmdWaitSlaveSync
+	CmdRestartSlaveSyncer
 	CmdKillMe
 )
 
@@ -94,9 +95,8 @@ func (comm *AggComm) SendResp(err error) {
 // Destroy destroys this communication channel.
 // It also means destroying the consumer
 func (comm *AggComm) Destroy() {
-	defer comm.mq.deleteProcessor(comm.vdiskID)
-
 	comm.cmdCh <- Command{
 		Type: CmdKillMe,
 	}
+	comm.mq.deleteProcessor(comm.vdiskID)
 }

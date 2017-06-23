@@ -3,11 +3,15 @@ package server
 import (
 	"context"
 	"net"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/emirpasic/gods/sets/treeset"
 
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
@@ -44,6 +48,7 @@ type vdisk struct {
 	lastHash    []byte              // current in memory last hash
 	lastHashKey []byte              // redis key of the last hash
 	respChan    chan *BlockResponse // channel of responses to be sent to client
+	configPath  string
 
 	// channels for block receiver
 	blockInputChan       chan *schema.TlogBlock // input channel of block received from client
@@ -66,7 +71,10 @@ type vdisk struct {
 	clientsTabLock sync.Mutex
 
 	aggComm         *aggmq.AggComm
+	aggMq           *aggmq.MQ
+	apc             aggmq.AggProcessorConfig
 	withSlaveSyncer bool
+	ssMux           sync.Mutex
 }
 
 // ID returns the ID of this vdisk
@@ -82,27 +90,19 @@ func (vd *vdisk) ResponseChan() <-chan *BlockResponse {
 // creates vdisk with given vdiskID, flusher, and first sequence.
 // firstSequence is the very first sequence that this vdisk will receive.
 // blocks with sequence < firstSequence are going to be ignored.
-func newVdisk(ctx context.Context, aggMq *aggmq.MQ, vdiskID string, f *flusher, firstSequence uint64,
-	flusherConf *flusherConfig, segmentBufLen int, withSlaveSync bool) (*vdisk, error) {
+func newVdisk(ctx context.Context, aggMq *aggmq.MQ, vdiskID, configPath string, f *flusher, firstSequence uint64,
+	flusherConf *flusherConfig, segmentBufLen int) (*vdisk, error) {
 
 	var aggComm *aggmq.AggComm
 	var withSlaveSyncer bool
 
 	// create slave syncer
-	if aggMq != nil && withSlaveSync {
-		var err error
-		apc := aggmq.AggProcessorConfig{
-			VdiskID:  vdiskID,
-			K:        flusherConf.K,
-			M:        flusherConf.M,
-			PrivKey:  flusherConf.PrivKey,
-			HexNonce: flusherConf.HexNonce,
-		}
-		aggComm, err = aggMq.AskProcessor(apc)
-		if err != nil {
-			return nil, err
-		}
-		withSlaveSyncer = true
+	apc := aggmq.AggProcessorConfig{
+		VdiskID:  vdiskID,
+		K:        flusherConf.K,
+		M:        flusherConf.M,
+		PrivKey:  flusherConf.PrivKey,
+		HexNonce: flusherConf.HexNonce,
 	}
 
 	// get last hash from storage
@@ -117,6 +117,7 @@ func newVdisk(ctx context.Context, aggMq *aggmq.MQ, vdiskID string, f *flusher, 
 		lastHashKey: decoder.GetLashHashKey(vdiskID),
 		lastHash:    lastHash,
 		respChan:    make(chan *BlockResponse, respChanSize),
+		configPath:  configPath,
 
 		// block receiver
 		blockInputChan:       make(chan *schema.TlogBlock, maxTlbInBuffer),
@@ -135,11 +136,17 @@ func newVdisk(ctx context.Context, aggMq *aggmq.MQ, vdiskID string, f *flusher, 
 		clientsTab:      make(map[string]*net.TCPConn),
 		withSlaveSyncer: withSlaveSyncer,
 		aggComm:         aggComm,
+		aggMq:           aggMq,
+		apc:             apc,
+	}
+	if err := vd.manageSlaveSync(); err != nil {
+		return nil, err
 	}
 
 	// run vdisk goroutines
 	go vd.runFlusher(ctx)
 	go vd.runBlockReceiver(ctx)
+	go vd.handleSighup(ctx)
 
 	return vd, nil
 }
@@ -205,9 +212,7 @@ func (vd *vdisk) waitSlaveSync() error {
 		// we've successfully synced the slave
 		// it means the slave is going to be used by nbdserver as it's master
 		// so we disable it and kill the slave syncer
-		vd.withSlaveSyncer = false
-		vd.aggComm.Destroy()
-		vd.aggComm = nil
+		vd.destroySlaveSync()
 	}
 
 	return err
@@ -424,9 +429,7 @@ func (vd *vdisk) runFlusher(ctx context.Context) {
 		}
 
 		// send aggregation to slave syncer
-		if vd.withSlaveSyncer {
-			vd.aggComm.SendAgg(aggmq.AggMqMsg(rawAgg))
-		}
+		vd.sendAggToSlaveSync(rawAgg)
 	}
 }
 
@@ -491,4 +494,87 @@ func tlogBlockComparator(a, b interface{}) int {
 	default: // tlbA.Sequence() == tlbB.Sequence():
 		return 0
 	}
+}
+
+// handle SIGHUP
+func (vd *vdisk) handleSighup(ctx context.Context) {
+	sigs := make(chan os.Signal)
+	signal.Notify(sigs, syscall.SIGHUP)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-sigs:
+			vd.manageSlaveSync()
+		}
+	}
+}
+
+// send raw aggregation to slave syncer
+func (vd *vdisk) sendAggToSlaveSync(rawAgg []byte) {
+	vd.ssMux.Lock()
+	defer vd.ssMux.Unlock()
+
+	if vd.withSlaveSyncer {
+		vd.aggComm.SendAgg(aggmq.AggMqMsg(rawAgg))
+	}
+}
+
+// destroy slave syncer
+func (vd *vdisk) destroySlaveSync() {
+	vd.ssMux.Lock()
+	defer vd.ssMux.Unlock()
+
+	if !vd.withSlaveSyncer {
+		return
+	}
+	vd.withSlaveSyncer = false
+	vd.aggComm.Destroy()
+	vd.aggComm = nil
+}
+
+// manage slave syncer life cycle
+func (vd *vdisk) manageSlaveSync() error {
+	vd.ssMux.Lock()
+	defer vd.ssMux.Unlock()
+
+	if vd.aggMq == nil {
+		return nil
+	}
+
+	// read config
+	conf, err := config.ReadConfig(vd.configPath, config.TlogServer)
+	if err != nil {
+		return err
+	}
+
+	vdiskConf, ok := conf.Vdisks[vd.vdiskID]
+	if !ok {
+		return nil
+	}
+
+	// it shouldn't be exist, simply return
+	if !vdiskConf.TlogSlaveSync {
+		// kill the slave syncer first
+		if vd.withSlaveSyncer {
+			vd.aggComm.Destroy()
+			vd.withSlaveSyncer = false
+		}
+		return nil
+	}
+
+	if !vd.withSlaveSyncer {
+		aggComm, err := vd.aggMq.AskProcessor(vd.apc)
+		if err != nil {
+			return err
+		}
+
+		vd.aggComm = aggComm
+		vd.withSlaveSyncer = true
+	} else {
+		// slave syncer already exist, simply restart it
+		vd.aggComm.SendCmd(aggmq.CmdRestartSlaveSyncer, 0)
+	}
+	return nil
 }

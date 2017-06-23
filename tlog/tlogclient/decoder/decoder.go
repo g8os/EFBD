@@ -62,6 +62,10 @@ func New(pool tlog.RedisPool, k, m int, vdiskID, privKey, hexNonce string) (*Dec
 	}, nil
 }
 
+func (d *Decoder) Close() {
+	d.pool.Close()
+}
+
 // Decode decodes all tlog transaction started from
 // startTs timestamp to endTs timestamp.
 // If startTs == 0, it means from the beginning of transaction.

@@ -99,6 +99,11 @@ func NewPlayerWithPoolAndBackend(ctx context.Context, pool tlog.RedisPool, backe
 
 }
 
+func (p *Player) Close() {
+	p.dec.Close()
+	p.backend.Close(p.ctx)
+}
+
 // Replay replays the tlog by decoding data from a tlog RedisPool.
 // The replay start from `startTs` timestamp.
 func (p *Player) Replay(lmt decoder.Limiter) (uint64, error) {
