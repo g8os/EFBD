@@ -171,10 +171,8 @@ func testSlaveSyncReal(t *testing.T, isRead bool) {
 // nbd2 use slave, try the read opertion
 // notes:
 // - we use two tlog the first one without, the later with slave sync
-// - both tlog same tlogpool
+// - both tlog use same tlogpool
 // - it proves that even slave syncer started late, the slave still synced
-// TODO : we disabled it because of high memory usage (6GB)
-//        the solution is to create more memory efficient redis pool
 func TestSlaveSyncRestart(t *testing.T) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
