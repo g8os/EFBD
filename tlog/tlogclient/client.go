@@ -114,6 +114,7 @@ func (c *Client) ChangeServerAddrs(addrs []string) {
 	if len(addrs) == 0 {
 		return
 	}
+	log.Infof("tlogclient vdisk '%v' change server addrs to '%v'", c.vdiskID, addrs)
 
 	// reconnect client if current server not exist in the
 	// new addresses
@@ -128,6 +129,7 @@ func (c *Client) ChangeServerAddrs(addrs []string) {
 	c.addrs = addrs
 
 	if !curExist {
+		log.Infof("tlogclient vdisk '%v' current server is not in new address, close it", c.vdiskID)
 		c.conn.Close()
 	}
 

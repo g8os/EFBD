@@ -189,7 +189,7 @@ func TestUnordered(t *testing.T) {
 
 	var wg sync.WaitGroup
 
-	wg.Add(2)
+	wg.Add(1)
 
 	const numFlush = 4
 	numLogs := conf.FlushSize * numFlush // number of logs to send.
@@ -232,36 +232,11 @@ func TestUnordered(t *testing.T) {
 		}
 	}()
 
-	expected := (numLogs * 2) + numFlush // multiply by 2 because we send duplicated message
-	received := 0
-
 	// recv it
-	go func() {
-		defer wg.Done()
-
-		respChan := client.Recv()
-		for received < expected {
-			select {
-			case re := <-respChan:
-				received++
-				if !assert.Nil(t, re.Err) {
-					cancelFunc()
-					return
-				}
-				if !assert.Equal(t, true, re.Resp.Status > 0) {
-					cancelFunc()
-					return
-				}
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
+	respChan := client.Recv()
+	testClientWaitSeqFlushed(ctx, t, respChan, cancelFunc, uint64(firstSequence+numLogs-1), false)
 
 	wg.Wait()
-	if !assert.Equal(t, expected, received) {
-		return
-	}
 
 	// get the redis pool for the vdisk
 	pool, err := s.poolFactory.NewRedisPool(vdiskID)

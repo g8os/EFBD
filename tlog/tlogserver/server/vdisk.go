@@ -349,14 +349,12 @@ func (vd *vdisk) runFlusher(ctx context.Context) {
 			// - already received
 			// - already flushed
 			seq := tlb.Sequence()
-			status := tlog.BlockStatusRecvOK
 			if seq <= lastSeqFlushed {
-				status = tlog.BlockStatusFlushOK
-			}
-			vd.respChan <- &BlockResponse{
-				Status:    status.Int8(),
-				Sequences: []uint64{seq},
-			}
+				vd.respChan <- &BlockResponse{
+					Status:    int8(tlog.BlockStatusFlushOK),
+					Sequences: []uint64{seq},
+				}
+			} // block received response already sent by main server handler
 			continue
 
 		case flusherCmd = <-vd.flusherCmdChan:
