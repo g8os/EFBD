@@ -70,7 +70,7 @@ func (mq *MQ) AskProcessor(apc AggProcessorConfig) (*AggComm, error) {
 		if err != nil {
 			return nil, fmt.Errorf("slave syncer failed to be created:%v", err)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		return nil, ErrSlaveSyncTimeout
 	}
 

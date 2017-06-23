@@ -5,7 +5,6 @@ import (
 	"net"
 	"sync"
 
-	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/aggmq"
 )
@@ -36,7 +35,7 @@ func newVdiskManager(aggMq *aggmq.MQ, blockSize, flushSize int, configPath strin
 type flusherFactory func(vdiskID string, flusherConf *flusherConfig) (*flusher, error)
 
 // get or create the vdisk
-func (vt *vdiskManager) Get(ctx context.Context, fileConfig *config.Config, vdiskID string, firstSequence uint64,
+func (vt *vdiskManager) Get(ctx context.Context, vdiskID string, firstSequence uint64,
 	ff flusherFactory, conn *net.TCPConn, flusherConf *flusherConfig) (vd *vdisk, err error) {
 
 	vt.lock.Lock()
@@ -55,17 +54,8 @@ func (vt *vdiskManager) Get(ctx context.Context, fileConfig *config.Config, vdis
 		return
 	}
 
-	withSlaveSync := func() bool {
-		if fileConfig != nil {
-			if vdiskConf, ok := fileConfig.Vdisks[vdiskID]; ok {
-				return vdiskConf.TlogSlaveSync
-			}
-		}
-		return false
-	}()
-
 	// create vdisk
-	vd, err = newVdisk(ctx, vt.aggMq, vdiskID, f, firstSequence, flusherConf, vt.maxSegmentBufLen, withSlaveSync)
+	vd, err = newVdisk(ctx, vt.aggMq, vdiskID, vt.configPath, f, firstSequence, flusherConf, vt.maxSegmentBufLen)
 	if err != nil {
 		return
 	}
