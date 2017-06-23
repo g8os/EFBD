@@ -55,11 +55,11 @@ func NewBackendFactory(cfg BackendFactoryConfig) (*BackendFactory, error) {
 	}
 
 	return &BackendFactory{
-		backendPool:    cfg.Pool,
-		cfgHotReloader: cfg.ConfigHotReloader,
-		tlogRPCAddress: cfg.TLogRPCAddress,
-		lbaCacheLimit:  cfg.LBACacheLimit,
-		configPath:     cfg.ConfigPath,
+		backendPool:       cfg.Pool,
+		cfgHotReloader:    cfg.ConfigHotReloader,
+		cmdTlogRPCAddress: cfg.TLogRPCAddress,
+		lbaCacheLimit:     cfg.LBACacheLimit,
+		configPath:        cfg.ConfigPath,
 	}, nil
 }
 
@@ -67,11 +67,11 @@ func NewBackendFactory(cfg BackendFactoryConfig) (*BackendFactory, error) {
 // that can not be passed in the exportconfig like the pool of ardbconnections
 // I hate the factory pattern but I hate global variables even more
 type BackendFactory struct {
-	backendPool    *RedisPool
-	cfgHotReloader config.HotReloader
-	tlogRPCAddress string
-	lbaCacheLimit  int64
-	configPath     string
+	backendPool       *RedisPool
+	cfgHotReloader    config.HotReloader
+	cmdTlogRPCAddress string // tlogrpc address from command line
+	lbaCacheLimit     int64
+	configPath        string
 }
 
 //NewBackend generates a new ardb backend
@@ -136,12 +136,22 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 		err = fmt.Errorf("unsupported vdisk storage type %q", storageType)
 	}
 
-	if vdisk.TlogSupport() && f.tlogRPCAddress != "" {
-		log.Debugf("creating tlogStorage for backend %v (%v)", vdiskID, vdisk.Type)
-		storage, err = newTlogStorage(vdiskID, f.tlogRPCAddress, f.configPath, blockSize, storage)
+	if vdisk.TlogSupport() {
+		var tlogRPCAddrs string
+
+		tlogRPCAddrs, err = f.tlogRPCAddrs()
 		if err != nil {
-			log.Infof("couldn't create tlog storage: %s", err.Error())
+			log.Errorf("couldn't create tlog storage. invalid TLogRPCAddress: %s", err.Error())
 			return
+		}
+
+		if tlogRPCAddrs != "" {
+			log.Debugf("creating tlogStorage for backend %v (%v)", vdiskID, vdisk.Type)
+			storage, err = newTlogStorage(vdiskID, tlogRPCAddrs, f.configPath, blockSize, storage)
+			if err != nil {
+				log.Infof("couldn't create tlog storage: %s", err.Error())
+				return
+			}
 		}
 	}
 
@@ -153,6 +163,22 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	)
 
 	return
+}
+
+func (f BackendFactory) tlogRPCAddrs() (string, error) {
+	if f.cmdTlogRPCAddress != "" {
+		return f.cmdTlogRPCAddress, nil
+	}
+
+	if f.configPath == "" {
+		return "", nil
+	}
+
+	cfg, err := config.ReadConfig(f.configPath, config.NBDServer)
+	if err != nil {
+		return "", err
+	}
+	return cfg.TlogRPC, nil
 }
 
 // newRedisProvider creates a new redis provider

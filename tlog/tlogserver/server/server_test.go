@@ -283,7 +283,10 @@ func TestUnordered(t *testing.T) {
 		if !more {
 			break
 		}
-		assert.Nil(t, da.Err)
+		if !assert.Nil(t, da.Err) {
+			t.Fatalf("unexpected error on the aggregations:%v", err)
+			return
+		}
 
 		agg := da.Agg
 

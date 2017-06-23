@@ -7,6 +7,8 @@ import (
 	"io/ioutil"
 	"math"
 	"os"
+	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -25,7 +27,7 @@ const (
 )
 
 func newTlogStorage(vdiskID, tlogrpc, configPath string, blockSize int64, storage backendStorage) (backendStorage, error) {
-	client, err := tlogclient.New([]string{tlogrpc}, vdiskID, 0, true)
+	client, err := tlogclient.New(strings.Split(tlogrpc, ","), vdiskID, 0, true)
 	if err != nil {
 		return nil, fmt.Errorf("tlogStorage requires a valid tlogclient: %s", err.Error())
 	}
@@ -284,6 +286,8 @@ func (tls *tlogStorage) GoBackground(ctx context.Context) {
 			log.Info("error while closing tlog client: ", err)
 		}
 	}()
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGHUP)
 
 	recvCh := tls.tlog.Recv()
 
@@ -295,6 +299,9 @@ func (tls *tlogStorage) GoBackground(ctx context.Context) {
 
 	for {
 		select {
+		case <-sigs:
+			tls.handleSighup()
+
 		case res := <-recvCh:
 			if res.Err != nil {
 				panic(fmt.Errorf(
@@ -448,6 +455,19 @@ func (tls *tlogStorage) switchToArdbSlave() error {
 	return nil
 }
 
+// see if there is a change in the tlogrpc
+func (tls *tlogStorage) handleSighup() {
+	conf, err := config.ReadConfig(tls.configPath, config.NBDServer)
+	if err != nil {
+		log.Errorf("handleSighup failed to read config: %v", err)
+		return
+	}
+
+	if conf.TlogRPC != "" {
+		tls.tlog.ChangeServerAddrs(strings.Split(conf.TlogRPC, ","))
+	}
+}
+
 func (tls *tlogStorage) flushCachedContent(sequences []uint64) error {
 	defer func() {
 		tls.cacheEmptyCond.L.Lock()
@@ -573,6 +593,7 @@ type tlogClient interface {
 	Send(op uint8, seq, offset, timestamp uint64, data []byte, size uint64) error
 	ForceFlushAtSeq(uint64) error
 	WaitNbdSlaveSync() error
+	ChangeServerAddrs([]string)
 	Recv() <-chan *tlogclient.Result
 	Close() error
 }

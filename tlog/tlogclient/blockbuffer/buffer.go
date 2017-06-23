@@ -195,7 +195,10 @@ func (b *Buffer) TimedOut(ctx context.Context) <-chan *schema.TlogBlock {
 				}
 
 				// nanosecond left before timeout
+				b.lock.RLock()
 				toTime := ent.timeout - time.Now().UnixNano()
+				b.lock.RUnlock()
+
 				if toTime > 0 {
 					time.Sleep(time.Duration(toTime) * time.Nanosecond)
 				}

@@ -50,6 +50,10 @@ vdisks: # A required map of vdisks,
                # which also defines if its deduped or nondeduped,
                # valid types are: `boot`, `db`, `cache` and `tmp`
   # ... more (optional) vdisks
+
+tlogrpc: 127.0.0.1:11211,127.0.0.1:11221 # addresses of the tlogrpc server.
+                                         # it is optional and going to be ignored if `tlogrpc` command 
+                                         # line option is specified
 ```
 
 As you can see, both the storage clusters and vdisks are configured in
