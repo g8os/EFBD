@@ -45,8 +45,9 @@ type vdiskFlusherCmd struct {
 
 type vdisk struct {
 	vdiskID     string
-	lastHash    []byte // current in memory last hash
-	lastHashKey []byte // redis key of the last hash
+	lastHash    []byte              // current in memory last hash
+	lastHashKey []byte              // redis key of the last hash
+	respChan    chan *BlockResponse // channel of responses to be sent to client
 	configPath  string
 
 	// channels for block receiver
@@ -58,7 +59,7 @@ type vdisk struct {
 	orderedBlockChan   chan *schema.TlogBlock // ordered blocks from blockInputChan
 	flusherCmdChan     chan vdiskFlusherCmd   // channel of flusher command
 	flusherCmdRespChan chan struct{}          // channel of flusher command response
-	respChan           chan *BlockResponse    // channel of responses to be sent to client
+	unwantedBlockChan  chan *schema.TlogBlock // channel of unwanted block : e.g.: double sent
 
 	flusher              *flusher
 	segmentBuf           []byte // capnp segment buffer used by the flusher
@@ -112,25 +113,31 @@ func newVdisk(ctx context.Context, aggMq *aggmq.MQ, vdiskID, configPath string, 
 	maxTlbInBuffer := f.flushSize * tlogBlockFactorSize
 
 	vd := &vdisk{
-		vdiskID:              vdiskID,
-		lastHashKey:          decoder.GetLashHashKey(vdiskID),
-		lastHash:             lastHash,
-		configPath:           configPath,
+		vdiskID:     vdiskID,
+		lastHashKey: decoder.GetLashHashKey(vdiskID),
+		lastHash:    lastHash,
+		respChan:    make(chan *BlockResponse, respChanSize),
+		configPath:  configPath,
+
+		// block receiver
 		blockInputChan:       make(chan *schema.TlogBlock, maxTlbInBuffer),
 		blockRecvCmdChan:     make(chan uint8, 1),
 		blockRecvCmdRespChan: make(chan struct{}, 1),
-		orderedBlockChan:     make(chan *schema.TlogBlock, maxTlbInBuffer),
-		flusherCmdChan:       make(chan vdiskFlusherCmd, 1),
-		flusherCmdRespChan:   make(chan struct{}, 1),
-		respChan:             make(chan *BlockResponse, respChanSize),
 		expectedSequence:     firstSequence,
-		segmentBuf:           make([]byte, 0, segmentBufLen),
-		flusher:              f,
-		clientsTab:           make(map[string]*net.TCPConn),
-		withSlaveSyncer:      withSlaveSyncer,
-		aggComm:              aggComm,
-		aggMq:                aggMq,
-		apc:                  apc,
+
+		// flusher
+		orderedBlockChan:   make(chan *schema.TlogBlock, maxTlbInBuffer),
+		flusherCmdChan:     make(chan vdiskFlusherCmd, 1),
+		flusherCmdRespChan: make(chan struct{}, 1),
+		unwantedBlockChan:  make(chan *schema.TlogBlock, 2),
+		segmentBuf:         make([]byte, 0, segmentBufLen),
+		flusher:            f,
+
+		clientsTab:      make(map[string]*net.TCPConn),
+		withSlaveSyncer: withSlaveSyncer,
+		aggComm:         aggComm,
+		aggMq:           aggMq,
+		apc:             apc,
 	}
 	if err := vd.manageSlaveSync(); err != nil {
 		return nil, err
@@ -251,7 +258,8 @@ func (vd *vdisk) runBlockReceiver(ctx context.Context) {
 					// if this is not what we wait, buffer it
 					buffer.Add(tlb)
 				} else { // tlb.Sequence() < vd.expectedSequence -> duplicated message
-					return // drop it and no need to check the buffer because all condition doesn't change
+					vd.unwantedBlockChan <- tlb
+					return
 				}
 
 				if buffer.Empty() {
@@ -340,6 +348,19 @@ func (vd *vdisk) runFlusher(ctx context.Context) {
 				continue
 			}
 			toFlushLen = len(tlogs)
+
+		case tlb := <-vd.unwantedBlockChan:
+			// it is block that not expected to come:
+			// - already received
+			// - already flushed
+			seq := tlb.Sequence()
+			if seq <= lastSeqFlushed {
+				vd.respChan <- &BlockResponse{
+					Status:    int8(tlog.BlockStatusFlushOK),
+					Sequences: []uint64{seq},
+				}
+			} // block received response already sent by main server handler
+			continue
 
 		case flusherCmd = <-vd.flusherCmdChan:
 			// got command

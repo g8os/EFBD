@@ -60,6 +60,7 @@ const (
 type Config struct {
 	StorageClusters map[string]StorageClusterConfig `yaml:"storageClusters" valid:"required"`
 	Vdisks          map[string]VdiskConfig          `yaml:"vdisks" valid:"required"`
+	TlogRPC         string                          `yaml:"tlogrpc" valid:"optional"`
 
 	// information used to specialize validation of the config
 	user User

@@ -109,41 +109,6 @@ func testClientSendWaitFlushResp(t *testing.T, c *tlogclient.Client, respChan <-
 	wg.Wait()
 }
 
-// wait for sequence seqWait to be flushed
-func testClientWaitSeqFlushed(ctx context.Context, t *testing.T, respChan <-chan *tlogclient.Result,
-	cancelFunc func(), seqWait uint64, exactSeq bool) {
-
-	for {
-		select {
-		case re := <-respChan:
-			if !assert.Nil(t, re.Err) {
-				cancelFunc()
-				return
-			}
-			status := re.Resp.Status
-			if !assert.Equal(t, true, status > 0) {
-				cancelFunc()
-				return
-			}
-
-			if status == tlog.BlockStatusFlushOK {
-				seqs := re.Resp.Sequences
-				seq := seqs[len(seqs)-1]
-
-				if exactSeq && seq == seqWait {
-					return
-				}
-				if !exactSeq && seq >= seqWait { // we've received all sequences
-					return
-				}
-			}
-		case <-ctx.Done():
-			return
-		}
-	}
-
-}
-
 // send `numLogs` of logs, starting from sequence number=seq
 func testClientSendLog(ctx context.Context, t *testing.T, c *tlogclient.Client, cancelFunc func(),
 	startSeq uint64, numLogs int, data []byte) {

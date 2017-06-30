@@ -144,6 +144,7 @@ func (f *flusher) encodeCapnp(blocks []*schema.TlogBlock, vd *vdisk) ([]byte, er
 
 func (f *flusher) storeEncoded(vd *vdisk, key []byte, encoded [][]byte) error {
 	var wg sync.WaitGroup
+	var errMux sync.Mutex
 
 	length := f.k + f.m
 	wg.Add(length)
@@ -159,6 +160,8 @@ func (f *flusher) storeEncoded(vd *vdisk, key []byte, encoded [][]byte) error {
 			ef := f.storeAndRetry(idx, key, vd.lastHashKey, blocks)
 			if !ef.Nil() {
 				err := fmt.Errorf("error during flush idx %v: %v", idx, ef)
+				errMux.Lock()
+				defer errMux.Unlock()
 				allErr = append(allErr, err)
 			}
 		}(i)

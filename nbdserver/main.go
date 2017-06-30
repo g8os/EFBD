@@ -39,7 +39,7 @@ func main() {
 	flag.StringVar(&profileAddress, "profile-address", "", "Enables profiling of this server as an http service")
 	flag.StringVar(&protocol, "protocol", "unix", "Protocol to listen on, 'tcp' or 'unix'")
 	flag.StringVar(&address, "address", "/tmp/nbd-socket", "Address to listen on, unix socket or tcp address, ':6666' for example")
-	flag.StringVar(&tlogrpcaddress, "tlogrpc", "", "Address of the tlog RPC, set to 'auto' to use the inmemory version (test/dev only)")
+	flag.StringVar(&tlogrpcaddress, "tlogrpc", "", "Addresses of the tlog RPC, set to 'auto' to use the inmemory version (test/dev only)")
 	flag.StringVar(&configPath, "config", "config.yml", "ARDB Config YAML File")
 	flag.Int64Var(&lbacachelimit, "lbacachelimit", ardb.DefaultLBACacheLimit,
 		fmt.Sprintf("Cache limit of LBA in bytes, needs to be higher then %d (bytes in 1 shard)", lba.BytesPerShard))
