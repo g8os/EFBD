@@ -145,7 +145,7 @@ func (ab *Backend) ReadAt(ctx context.Context, offset, length int64) (payload []
 
 //TrimAt implements nbd.Backend.TrimAt
 func (ab *Backend) TrimAt(ctx context.Context, offset, length int64) (int64, error) {
-	return 0, nil
+	return ab.WriteZeroesAt(ctx, offset, length)
 }
 
 //Flush implements nbd.Backend.Flush

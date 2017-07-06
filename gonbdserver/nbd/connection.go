@@ -1109,7 +1109,7 @@ func (c *Connection) connectExport(ctx context.Context, ec *ExportConfig) (*Expo
 		gem.MaximumBlockSize = gem.PreferredBlockSize
 	}
 
-	flags := uint16(NBD_FLAG_HAS_FLAGS | NBD_FLAG_SEND_WRITE_ZEROES | NBD_FLAG_SEND_CLOSE)
+	flags := uint16(NBD_FLAG_HAS_FLAGS | NBD_FLAG_SEND_WRITE_ZEROES | NBD_FLAG_SEND_CLOSE | NBD_FLAG_SEND_TRIM)
 	if backend.HasFua(ctx) || forceFua {
 		flags |= NBD_FLAG_SEND_FUA
 	}
