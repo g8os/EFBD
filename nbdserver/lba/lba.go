@@ -30,9 +30,10 @@ func NewLBA(vdiskID string, blockCount, cacheLimitInBytes int64, provider MetaRe
 	}
 
 	lba = &LBA{
-		provider: provider,
-		vdiskID:  vdiskID,
-		shardMux: make([]sync.RWMutex, muxCount),
+		provider:   provider,
+		vdiskID:    vdiskID,
+		storageKey: StorageKey(vdiskID),
+		shardMux:   make([]sync.RWMutex, muxCount),
 	}
 
 	lba.cache, err = newShardCache(cacheLimitInBytes, lba.onCacheEviction)
@@ -54,7 +55,9 @@ type LBA struct {
 	shardMux []sync.RWMutex
 
 	provider MetaRedisProvider
-	vdiskID  string
+
+	vdiskID    string
+	storageKey string
 }
 
 // Set the content hash for a specific block.
@@ -191,7 +194,7 @@ func (lba *LBA) getShardFromExternalStorage(index int64) (shard *shard, err erro
 		return
 	}
 	defer conn.Close()
-	reply, err := conn.Do("HGET", lba.vdiskID, index)
+	reply, err := conn.Do("HGET", lba.storageKey, index)
 	if err != nil || reply == nil {
 		return
 	}
@@ -217,9 +220,9 @@ func (lba *LBA) storeCacheInExternalStorage() (err error) {
 	var cmdCount int64
 	lba.cache.Serialize(func(index int64, bytes []byte) (err error) {
 		if bytes != nil {
-			err = conn.Send("HSET", lba.vdiskID, index, bytes)
+			err = conn.Send("HSET", lba.storageKey, index, bytes)
 		} else {
-			err = conn.Send("HDEL", lba.vdiskID, index)
+			err = conn.Send("HDEL", lba.storageKey, index)
 		}
 
 		cmdCount++
@@ -275,7 +278,7 @@ func (lba *LBA) storeShardInExternalStorage(index int64, shard *shard) (err erro
 	}
 	defer conn.Close()
 
-	_, err = conn.Do("HSET", lba.vdiskID, index, buffer.Bytes())
+	_, err = conn.Do("HSET", lba.storageKey, index, buffer.Bytes())
 	if err != nil {
 		shard.UnsetDirty()
 	}
@@ -291,7 +294,7 @@ func (lba *LBA) deleteShardFromExternalStorage(index int64) (err error) {
 	}
 	defer conn.Close()
 
-	_, err = conn.Do("HDEL", lba.vdiskID, index)
+	_, err = conn.Do("HDEL", lba.storageKey, index)
 
 	return
 }
@@ -307,4 +310,10 @@ func (e flushError) Error() (s string) {
 		s += `"` + err.Error() + `";`
 	}
 	return
+}
+
+// StorageKey returns the storage key that can/will be
+// used to store the LBA data for the given vdiskID
+func StorageKey(vdiskID string) string {
+	return "lba:" + vdiskID
 }

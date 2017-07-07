@@ -6,6 +6,7 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/nbdserver/ardb"
 )
 
 // delete the data of nondeduped vdisks
@@ -26,7 +27,7 @@ func deleleNondedupedVdisks(force bool, cfg config.StorageServerConfig, vdiskids
 	var delVdisks []string
 	for _, vdiskID := range vdiskids {
 		log.Infof("deleting data of nondeduped vdisk %s...", vdiskID)
-		err := conn.Send("DEL", vdiskID)
+		err := conn.Send("DEL", ardb.NonDedupedStorageKey(vdiskID))
 		if err != nil {
 			if !force {
 				return err

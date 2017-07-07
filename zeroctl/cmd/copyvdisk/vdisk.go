@@ -74,7 +74,7 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 			sourceVdiskID, targetVdiskID,
 			cfg.StorageClusters[sourceVdisk.StorageCluster],
 			cfg.StorageClusters[targetStorageCluster])
-	case config.StorageNondeduped:
+	case config.StorageNonDeduped:
 		return copyNondedupedVdisk(
 			sourceVdiskID, targetVdiskID,
 			cfg.StorageClusters[sourceVdisk.StorageCluster],

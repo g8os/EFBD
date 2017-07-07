@@ -26,9 +26,9 @@ See [/docs/nbd/lbalookups.md](/docs/nbd/lbalookups.md) more information about th
 
 See [the deduped code](/nbdserver/ardb/deduped.go) for more information.
 
-## Nondeduped Storage
+## NonDeduped Storage
 
-Not all [vdisks][vdisk] managed by the NBDServer are deduped. Databases and caches are stored as nondeduped [vdisks][vdisk] for example.
+Not all [vdisks][vdisk] managed by the NBDServer are deduped. Caches are stored as nondeduped [vdisks][vdisk] for example.
 
 Nondeduped [vdisks][vdisk] store, modify, access and delete their content directly in/from the local storage. All content of a single [vdisk][vdisk] is stored within the same hash map. Each content (block) is identified by the block index itself (field), within the namespace of the [vdisk][vdisk] (vdiskID, the key of the hashmap):
 
@@ -42,6 +42,31 @@ key[field] = <block> # a block is a raw byte slice a fixed
 This makes the [nondeduped storage][ardb.nondeduped] and its operations very straightforward. 
 
 See [the nondeduped code](/nbdserver/ardb/nondeduped.go) for more information.
+
+## SemiDeduped Storage
+
+Boot vdisks are special, as in that they usually have a template (see: root storage) defined.
+In such cases we have a vdisk which is mostly deduped, but partly nondeduped.
+Effecitvaly it will have a storage type which composes both a [deduped][ardb.deduped] and [nondeduped][ardb.nondeduped] storage,
+and both internal storages use the same data storage servers.
+
+The installed OS and other built-in content will all be [deduped][ardb.deduped],
+but any user-specific content, such as configurations, registers, and any other small data,
+will be stored as [nondeduped][ardb.nondeduped] content.
+
+The reasoning behind this is that such user-specific content,
+is expected to change often, resulting in many unique content hashes,
+whilst mostly referenced once.
+
+From a user-perspecitive (e.g. when mounting a boot vdisk via qemu),
+the (local) [deduped][ardb.deduped] storage is read-only, and is only ever written to by the template (root) storage.
+When the user writes (or merges) content, it will always be stored as [nondeduped][ardb.nondeduped] content.
+
+When retreiving content, the [nondeduped][ardb.nondeduped] storage has priority over the [deduped][ardb.deduped] storage,
+as it is assumed that if a block exists on both the [nondeduped][ardb.nondeduped] storage and the [deduped][ardb.deduped] storage,
+that the version available on the [nondeduped][ardb.nondeduped] storage is newer.
+
+When deleting a block index, it will be deleted from both internal (local) storages.
 
 ## Tlog Storage
 

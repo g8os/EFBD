@@ -6,6 +6,7 @@ import (
 
 	"github.com/garyburd/redigo/redis"
 	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/nbdserver/ardb"
 )
 
 func copyNondedupedSameConnection(sourceID, targetID string, conn redis.Conn) (err error) {
@@ -31,7 +32,10 @@ return redis.call("HLEN", destination)
 	log.Infof("dumping vdisk %q and restoring it as vdisk %q",
 		sourceID, targetID)
 
-	indexCount, err := redis.Int64(script.Do(conn, sourceID, targetID))
+	sourceKey := ardb.NonDedupedStorageKey(sourceID)
+	targetKey := ardb.NonDedupedStorageKey(targetID)
+
+	indexCount, err := redis.Int64(script.Do(conn, sourceKey, targetKey))
 	if err == nil {
 		log.Infof("copied %d block indices to vdisk %q",
 			indexCount, targetID)
@@ -46,11 +50,15 @@ func copyNondedupedDifferentConnections(sourceID, targetID string, connA, connB 
 		connB.Close()
 	}()
 
+	sourceKey := ardb.NonDedupedStorageKey(sourceID)
+	targetKey := ardb.NonDedupedStorageKey(targetID)
+
 	// get data from source connection
 	log.Infof("collecting all data from source vdisk %q...", sourceID)
-	data, err := redis.StringMap(connA.Do("HGETALL", sourceID))
+	data, err := redis.StringMap(connA.Do("HGETALL", sourceKey))
 	if err != nil {
 		return
+
 	}
 	if len(data) == 0 {
 		err = fmt.Errorf("%q does not exist", sourceID)
@@ -65,7 +73,7 @@ func copyNondedupedDifferentConnections(sourceID, targetID string, connA, connB 
 	}
 
 	// delete any existing vdisk
-	if err = connB.Send("DEL", targetID); err != nil {
+	if err = connB.Send("DEL", targetKey); err != nil {
 		return
 	}
 
@@ -79,7 +87,7 @@ func copyNondedupedDifferentConnections(sourceID, targetID string, connA, connB 
 			return
 		}
 
-		connB.Send("HSET", targetID, index, []byte(content))
+		connB.Send("HSET", targetKey, index, []byte(content))
 	}
 
 	// send all data to target connection (execute the transaction)

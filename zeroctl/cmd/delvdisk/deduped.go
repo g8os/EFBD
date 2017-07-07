@@ -6,6 +6,7 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/nbdserver/lba"
 )
 
 // delete the metadata of deduped vdisks
@@ -26,7 +27,7 @@ func deleleDedupedVdisksMetadata(force bool, cfg config.StorageServerConfig, vdi
 	var delVdisks []string
 	for _, vdiskID := range vdiskids {
 		log.Infof("deleting metadata of vdisk %s...", vdiskID)
-		err := conn.Send("DEL", vdiskID)
+		err := conn.Send("DEL", lba.StorageKey(vdiskID))
 		if err != nil {
 			if !force {
 				return err

@@ -61,7 +61,7 @@ func deleteVdisks(cmd *cobra.Command, args []string) error {
 			vdiskids = dedupedVdisksMetadata[*cluster.MetadataStorage]
 			dedupedVdisksMetadata[*cluster.MetadataStorage] = append(vdiskids, vdiskID)
 
-		case config.StorageNondeduped:
+		case config.StorageNonDeduped:
 			for _, storage := range cluster.DataStorage {
 				vdiskids = nondedupedVdisks[storage]
 				nondedupedVdisks[storage] = append(vdiskids, vdiskID)

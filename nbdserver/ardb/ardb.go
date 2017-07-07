@@ -115,12 +115,12 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	// which is in function of the vdisk's properties.
 	switch storageType := vdisk.StorageType(); storageType {
 	// non deduped storage
-	case config.StorageNondeduped:
+	case config.StorageNonDeduped:
 		storage = newNonDedupedStorage(
 			vdiskID, vdisk.RootVdiskID, blockSize, templateSupport, redisProvider)
 
-	// deduped storage
-	case config.StorageDeduped:
+	// (semi) deduped sotrage
+	case config.StorageDeduped, config.StorageSemiDeduped:
 		// define the LBA cache limit
 		cacheLimit := f.lbaCacheLimit
 		if cacheLimit < lba.BytesPerShard {
@@ -149,9 +149,14 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 			return
 		}
 
-		// create the actual deduped storage
-		storage = newDedupedStorage(
-			vdiskID, blockSize, redisProvider, templateSupport, vlba)
+		// create the actual (semi-)deduped storage
+		if storageType == config.StorageSemiDeduped {
+			storage = newSemiDedupedStorage(
+				vdiskID, blockSize, redisProvider, vlba)
+		} else { // config.StorageDeduped
+			storage = newDedupedStorage(
+				vdiskID, blockSize, redisProvider, templateSupport, vlba)
+		}
 
 	default:
 		err = fmt.Errorf("unsupported vdisk storage type %q", storageType)
