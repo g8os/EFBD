@@ -19,6 +19,9 @@ func newInMemoryStorage(vdiskID string, blockSize int64) backendStorage {
 // inMemoryStorage is a backendStorage implementation,
 // that simply stores each block in-memory,
 // only meant for dev and test purposes.
+// Altought we might want to turn this into a proper supported storage,
+// see the following open issue for more info:
+// https://github.com/zero-os/0-Disk/issues/222
 type inMemoryStorage struct {
 	blockSize int64
 	vdiskID   string

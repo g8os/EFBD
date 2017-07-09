@@ -46,16 +46,13 @@ func NewPlayer(ctx context.Context, configPath string, serverConfigs []zerodiskc
 		return nil, err
 	}
 
-	// create ardb backend
-	redisPool := ardb.NewRedisPool(nil)
-
 	hotreloader, err := zerodiskcfg.NopHotReloader(configPath, zerodiskcfg.NBDServer)
 	if err != nil {
 		return nil, err
 	}
 
 	config := ardb.BackendFactoryConfig{
-		Pool:              redisPool,
+		PoolFactory:       ardb.NewRedisPoolFactory(nil),
 		ConfigHotReloader: hotreloader,
 		LBACacheLimit:     ardb.DefaultLBACacheLimit,
 	}

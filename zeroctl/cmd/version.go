@@ -23,6 +23,8 @@ var VersionCmd = &cobra.Command{
 	Run:   outputVersion,
 }
 
+// outputVersion prints to the STDOUT,
+// the tool version, runtime info, and optionally the commit hash.
 func outputVersion(*cobra.Command, []string) {
 	// Tool Version
 	version := "Version: " + zerodisk.CurrentVersion.String()

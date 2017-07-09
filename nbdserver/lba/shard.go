@@ -9,13 +9,15 @@ import (
 )
 
 const (
-	//NumberOfRecordsPerLBAShard is the fixed length of the LBAShards
+	// NumberOfRecordsPerLBAShard is the fixed length of the LBAShards
 	NumberOfRecordsPerLBAShard = 128
 	// BytesPerShard defines how many bytes each shards requires
 	BytesPerShard = NumberOfRecordsPerLBAShard * zerodisk.HashSize
 )
 
 var (
+	// internal error which is returned
+	// in case a pure nil shard is being written
 	errNilShardWrite = errors.New("shard is nil, and cannot be written")
 )
 

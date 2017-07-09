@@ -82,7 +82,8 @@ func TestTlogStorageSlow(t *testing.T) {
 
 // slowInMemoryStorage is a wrapper of the inMemoryStorage
 // which simply slows done the speed of its operations
-// by sleeping before actually running a modification command
+// by sleeping before actually running a modification command.
+// Used only in TestTlogStorageSlow.
 type slowInMemoryStorage struct {
 	storage      *inMemoryStorage
 	modSleepTime time.Duration

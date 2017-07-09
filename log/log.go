@@ -1,3 +1,5 @@
+// Package log defines a complete logging API,
+// and is to be used for all 0-Disk info/error logging purposes.
 package log
 
 import (

@@ -4,22 +4,24 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/zero-os/0-Disk/log"
 	"github.com/garyburd/redigo/redis"
 	"github.com/siddontang/ledisdb/config"
 	"github.com/siddontang/ledisdb/server"
+	"github.com/zero-os/0-Disk/log"
 )
 
 // NewMemoryRedis creates a new in-memory redis stub.
 // It must be noted that the stub only partially redis-compliant,
 // not all commands (such as MULTI/EXEC) are supported.
+// All available commands can be found at:
+// https://github.com/siddontang/ledisdb/blob/master/doc/commands.md
 // WARNING: should be used for testing/dev purposes only!
 func NewMemoryRedis() *MemoryRedis {
 	cfg := config.NewConfigDefault()
 	cfg.DBName = "memory"
 	cfg.DataDir, _ = ioutil.TempDir("", "redisstub")
 	// assigning the empty string to Addr,
-	// such that it chooses a local port by itself
+	// such that it auto-assigns a free local port
 	cfg.Addr = ""
 
 	app, err := server.NewApp(cfg)
@@ -54,7 +56,8 @@ func (mr *MemoryRedis) Dial(connectionString string, database int) (redis.Conn, 
 	return redis.Dial("tcp", mr.addr, redis.DialDatabase(database))
 }
 
-// Close the embedded Go Redis Server.
+// Close the embedded Go Redis Server,
+// and delete the used datadir.
 func (mr *MemoryRedis) Close() {
 	os.Remove(mr.datadir)
 	mr.app.Close()

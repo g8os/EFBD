@@ -35,8 +35,8 @@ func (v Version) Compare(other Version) int {
 
 	// actual versions are equal, so let's see if one
 	// of them is in the non-production stage,
-	// in which case the 1 in production is greater
-	// then the one in prerelease or lower
+	// in which case the one in production is greater
+	// than the one in prerelease
 
 	preA := VersionStage(v)
 	preB := VersionStage(other)
@@ -84,7 +84,8 @@ func (v Version) String() string {
 	return str
 }
 
-// VersionStage defines the stage of the version
+// VersionStage defines the stage of the version.
+// This type can also be used to cast a Version to a VersionStage.
 type VersionStage uint8
 
 // The different version stages

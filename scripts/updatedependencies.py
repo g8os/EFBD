@@ -5,6 +5,7 @@ import json
 
 from subprocess import call
 
+# define the absolute location of the Godeps dependency file
 GO_SRC_DIR = os.path.join(os.environ["GOPATH"], "src")
 ROOT_DIR = os.path.join(GO_SRC_DIR, "github.com", "zero-os", "0-Disk")
 DEPS_FILE = os.path.join(ROOT_DIR, "Godeps", "Godeps.json")

@@ -24,7 +24,7 @@ func NewExportController(cfg config.HotReloader, tlsOnly bool) (controller *Expo
 }
 
 // ExportController implements nbd.ExportConfigManager
-// using the GridAPI stateless client internally
+// using the NBDServer HotReloader internally.
 type ExportController struct {
 	cfg     config.HotReloader
 	tlsOnly bool

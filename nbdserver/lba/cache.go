@@ -41,7 +41,8 @@ func newShardCache(sizeLimitInBytes int64, cb evictCallback) (cache *shardCache,
 	return
 }
 
-// shardache contains all cached shards
+// shardCache contains all cached shards,
+// only the most recent shards are kept.
 type shardCache struct {
 	shards    map[int64]*list.Element
 	onEvict   evictCallback
@@ -59,6 +60,7 @@ func (c *shardCache) Add(shardIndex int64, shard *shard) bool {
 
 	// Check for existing item
 	if entry, ok := c.shards[shardIndex]; ok {
+		// update an existing item
 		c.evictList.MoveToFront(entry)
 		entry.Value.(*cacheEntry).shard = shard
 		return false
@@ -74,12 +76,14 @@ func (c *shardCache) Add(shardIndex int64, shard *shard) bool {
 	evict := c.evictList.Len() > c.size
 	// Verify size not exceeded
 	if evict {
+		// size exceeded, thus evict the oldest one
 		c.removeOldest()
 	}
 	return evict
 }
 
-// Get a cached shard, if possible
+// Get a cached shard, if possible,
+// return false otherwise.
 func (c *shardCache) Get(shardIndex int64) (shard *shard, ok bool) {
 	c.mux.Lock()
 	defer c.mux.Unlock()
@@ -111,9 +115,6 @@ func (c *shardCache) Delete(shardIndex int64) (deleted bool) {
 
 // Serialize the entire cache
 func (c *shardCache) Serialize(onSerialize serializeCallback) (err error) {
-	c.mux.Lock()
-	defer c.mux.Unlock()
-
 	if onSerialize == nil {
 		err = errors.New("no serialization callback given")
 		return
@@ -121,6 +122,9 @@ func (c *shardCache) Serialize(onSerialize serializeCallback) (err error) {
 
 	var buffer bytes.Buffer
 	var entry *cacheEntry
+
+	c.mux.Lock()
+	defer c.mux.Unlock()
 
 	for elem := c.evictList.Front(); elem != nil; elem = elem.Next() {
 		entry = elem.Value.(*cacheEntry)
@@ -130,12 +134,13 @@ func (c *shardCache) Serialize(onSerialize serializeCallback) (err error) {
 		}
 
 		if err = entry.shard.Write(&buffer); err != nil {
-			// occurs when all shards in a shard were nil
 			if err != errNilShardWrite {
 				return
 			}
 
-			// indicate that shard can be deleted
+			// indicate that shard can be deleted,
+			// as the `errNilShardWrite` indicates
+			// that all hashes in this shard were nil
 			err = onSerialize(entry.shardIndex, nil)
 		} else {
 			err = onSerialize(entry.shardIndex, buffer.Bytes())

@@ -12,12 +12,6 @@ func copyDedupedSameConnection(sourceID, targetID string, conn redis.Conn) (err 
 	defer conn.Close()
 
 	script := redis.NewScript(0, `
-if #ARGV ~= 2 then
-    local usage = "copyDedupedSameConnection script usage: source destination"
-    redis.log(redis.LOG_NOTICE, usage)
-    error("copyDedupedSameConnection script requires 2 arguments (source destination)")
-end
-
 local source = ARGV[1]
 local destination = ARGV[2]
 
@@ -57,17 +51,14 @@ func copyDedupedDifferentConnections(sourceID, targetID string, connA, connB red
 	if err != nil {
 		return
 	}
-	if len(data) == 0 {
+	dataLength := len(data)
+	if dataLength == 0 {
 		err = fmt.Errorf("%q does not exist", sourceID)
 		return
 	}
-	log.Infof("collected %d meta indices from source vdisk %q",
-		len(data), sourceID)
 
-	// ensure the vdisk isn't touched while we're creating it
-	if err = connB.Send("WATCH", targetID); err != nil {
-		return
-	}
+	log.Infof("collected %d meta indices from source vdisk %q",
+		dataLength, sourceID)
 
 	// start the copy transaction
 	if err = connB.Send("MULTI"); err != nil {

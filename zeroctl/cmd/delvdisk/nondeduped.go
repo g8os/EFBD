@@ -11,7 +11,7 @@ import (
 // delete the data of nondeduped vdisks
 func deleleNondedupedVdisks(force bool, cfg config.StorageServerConfig, vdiskids ...string) error {
 	if len(vdiskids) == 0 {
-		return nil
+		return nil // no vdisks to delete, early return
 	}
 
 	// open redis connection
@@ -22,7 +22,7 @@ func deleleNondedupedVdisks(force bool, cfg config.StorageServerConfig, vdiskids
 	}
 	defer conn.Close()
 
-	// cache delete request of each vdisk
+	// add each delete request to the pipeline
 	var delVdisks []string
 	for _, vdiskID := range vdiskids {
 		log.Infof("deleting data of nondeduped vdisk %s...", vdiskID)
@@ -31,9 +31,10 @@ func deleleNondedupedVdisks(force bool, cfg config.StorageServerConfig, vdiskids
 			if !force {
 				return err
 			}
-			log.Error("could not delete nondeduped vdisk: ", vdiskID)
+			log.Error("could not add delete request for vdisk: ", vdiskID)
 			continue
 		}
+
 		delVdisks = append(delVdisks, vdiskID)
 	}
 

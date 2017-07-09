@@ -40,6 +40,9 @@ func FileHandler(path string) (Handler, error) {
 
 // SyslogHandler opens a connection to the system syslog daemon
 // by calling syslog.New and writes all records to it.
+//
+// WARNING: this function has never been tested,
+// consequently it is unknown if its behavior is actually working.
 func SyslogHandler(tag string) (Handler, error) {
 	handler, err := log.SyslogHandler(syslog.LOG_KERN, tag, log.LogfmtFormat())
 	if err != nil {
@@ -51,7 +54,10 @@ func SyslogHandler(tag string) (Handler, error) {
 
 // EmailHandler returns a handler which sends an email to the
 // given email address in case a logged record is of the
-// specified minimum level
+// specified minimum level.
+//
+// WARNING: this function has never been tested,
+// consequently it is unknown if its behavior is actually working.
 func EmailHandler(minLevel Level, module string, to []string, from, smtp string, auth smtp.Auth) (Handler, error) {
 	if auth == nil {
 		return nil, errors.New("EmailHandler requires a valid and non-nil smtp Auth object")
@@ -180,6 +186,11 @@ func callerFileLog15Handler(callDepth int, h log.Handler) log.Handler {
 	})
 }
 
+// newLoggerHandler creates a new log handler.
+// the specified level and above defines what is to be logged,
+// the extraStackDepth ensures the correct file-source is attached to each log,
+// and optionally handlers can defined.
+// If no handlers are defined, the StderrHandler is used.
 func newLoggerHandler(level Level, extraStackDepth int, handlers []Handler) log.Handler {
 	var logHandler log.Handler
 
@@ -196,7 +207,12 @@ func newLoggerHandler(level Level, extraStackDepth int, handlers []Handler) log.
 			}
 			handlerArr = append(handlerArr, lh)
 		}
-		logHandler = log.MultiHandler(handlerArr...)
+
+		if len(handlerArr) == 1 {
+			logHandler = handlerArr[0]
+		} else {
+			logHandler = log.MultiHandler(handlerArr...)
+		}
 	}
 
 	return log.LvlFilterHandler(log.Lvl(level),

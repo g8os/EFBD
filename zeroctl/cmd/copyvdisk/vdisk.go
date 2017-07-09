@@ -53,7 +53,7 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// get source vdisk, and ensure that targetCluster has a value
+	// get source vdisk, and ensure that targetCluster has a valid value
 	sourceVdisk, ok := cfg.Vdisks[sourceVdiskID]
 	if !ok {
 		return fmt.Errorf("vdisk %s could not be found in config %s",
@@ -85,7 +85,7 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 	}
 }
 
-// NOTE: copies metadata onlY!
+// NOTE: copies metadata only!
 func copyDedupedVdisk(sourceID, targetID string, sourceCluster, targetCluster config.StorageClusterConfig) error {
 	if sourceCluster.MetadataStorage == nil {
 		return errors.New("no metaDataServer given for source")
@@ -127,10 +127,12 @@ func copyNondedupedVdisk(sourceID, targetID string, sourceCluster, targetCluster
 	// WARNING: [TODO]
 	// Currently the result will be WRONG in case targetDataServerCount != sourceDataServerCount,
 	// as the storage data spread will not be the same,
-	// to what the nbdserver read calls will expect
+	// to what the nbdserver read calls will expect.
+	// See open issue for more information:
+	// https://github.com/zero-os/0-Disk/issues/206
 	for i := 0; i < sourceDataServerCount; i++ {
 		sourceCfg = sourceCluster.DataStorage[i]
-		targetCfg = targetCluster.DataStorage[i%targetDataServerCount]
+		targetCfg = targetCluster.DataStorage[i]
 
 		// within same storage server
 		if sourceCfg == targetCfg {

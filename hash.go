@@ -38,5 +38,5 @@ func (h Hash) Equals(compareTo Hash) bool {
 
 //Bytes returns the hash as a slice of bytes
 func (h Hash) Bytes() []byte {
-	return h[:]
+	return h
 }

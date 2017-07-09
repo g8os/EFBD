@@ -39,8 +39,8 @@ func main() {
 	flag.StringVar(&profileAddress, "profile-address", "", "Enables profiling of this server as an http service")
 	flag.StringVar(&protocol, "protocol", "unix", "Protocol to listen on, 'tcp' or 'unix'")
 	flag.StringVar(&address, "address", "/tmp/nbd-socket", "Address to listen on, unix socket or tcp address, ':6666' for example")
-	flag.StringVar(&tlogrpcaddress, "tlogrpc", "", "Addresses of the tlog RPC, set to 'auto' to use the inmemory version (test/dev only)")
-	flag.StringVar(&configPath, "config", "config.yml", "ARDB Config YAML File")
+	flag.StringVar(&tlogrpcaddress, "tlogrpc", "", "Addresses of the tlog server, set to 'auto' to use the inmemory version (test/dev only)")
+	flag.StringVar(&configPath, "config", "config.yml", "NBDServer Config YAML File")
 	flag.Int64Var(&lbacachelimit, "lbacachelimit", ardb.DefaultLBACacheLimit,
 		fmt.Sprintf("Cache limit of LBA in bytes, needs to be higher then %d (bytes in 1 shard)", lba.BytesPerShard))
 	flag.Parse()
@@ -59,9 +59,8 @@ func main() {
 			log.Fatal(err)
 		}
 		logHandlers = append(logHandlers, handler)
+		log.SetHandlers(logHandlers...)
 	}
-
-	log.SetHandlers(logHandlers...)
 
 	log.Debugf("flags parsed: memorystorage=%t tlsonly=%t profileaddress=%q protocol=%q address=%q tlogrpc=%q config=%q lbacachelimit=%d logfile=%q",
 		inMemoryStorage, tlsonly,
@@ -115,7 +114,7 @@ func main() {
 		go server.Listen(ctx)
 	}
 	if tlogrpcaddress != "" {
-		log.Info("Using tlog rpc at", tlogrpcaddress)
+		log.Info("Using tlog server at", tlogrpcaddress)
 	}
 
 	var sessionWaitGroup sync.WaitGroup
@@ -135,6 +134,11 @@ func main() {
 		DefaultExport: "", // no default export is useful for our usecase
 	}
 
+	// Only when we want to use inmemory (ledis) storage (for dev purposes),
+	// do we define a poolDial func, which will be used in the redis pool.
+	// In production no dial function is defined,
+	// hence the redis pool will simply dial a TCP connection using
+	// a given address and database number.
 	var poolDial ardb.DialFunc
 	if inMemoryStorage {
 		log.Info("Using in-memory block storage")
@@ -144,8 +148,11 @@ func main() {
 		poolDial = memoryRedis.Dial
 	}
 
-	redisPool := ardb.NewRedisPool(poolDial)
-	defer redisPool.Close()
+	// A pool factory is used,
+	// such that each Vdisk can get its own redis pool,
+	// rather than having a shared redis pool
+	// between all vdisks ever...
+	redisPoolFactory := ardb.NewRedisPoolFactory(poolDial)
 
 	configHotReloader, err := config.NewHotReloader(configPath, config.NBDServer)
 	if err != nil {
@@ -155,7 +162,7 @@ func main() {
 	defer configHotReloader.Close()
 
 	backendFactory, err := ardb.NewBackendFactory(ardb.BackendFactoryConfig{
-		Pool:              redisPool,
+		PoolFactory:       redisPoolFactory,
 		ConfigHotReloader: configHotReloader,
 		TLogRPCAddress:    tlogrpcaddress,
 		LBACacheLimit:     lbacachelimit,
