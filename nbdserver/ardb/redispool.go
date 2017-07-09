@@ -54,6 +54,7 @@ func (p *RedisPool) getConnectionSpecificPool(connectionString string, database 
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
+	// get an existing or create a new redis pool map for a given connection string
 	singleConnectionPool, ok := p.connectionSpecificPools[connectionString]
 	if ok {
 		singleServerPool = singleConnectionPool[database]
@@ -65,6 +66,12 @@ func (p *RedisPool) getConnectionSpecificPool(connectionString string, database 
 		p.connectionSpecificPools[connectionString] = singleConnectionPool
 	}
 
+	// get an existing storage server pool
+	if singleServerPool, ok = singleConnectionPool[database]; ok {
+		return
+	}
+
+	// create a new storage server pool
 	singleServerPool = &redis.Pool{
 		MaxActive:   10,
 		MaxIdle:     10,
