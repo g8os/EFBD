@@ -174,7 +174,7 @@ func testTwoServers(t *testing.T, ttConf testTwoServerConf) {
 
 	respChan := client.Recv()
 
-	t.Log("write data to server #1")
+	log.Info("write data to server #1")
 
 	seqs := make(map[uint64]struct{})
 	for i := ttConf.firstSendStartSeq; i <= ttConf.firstSendEndSeq; i++ {
@@ -188,6 +188,7 @@ func testTwoServers(t *testing.T, ttConf testTwoServerConf) {
 	// wait for it to be flushed
 	testClientWaitSeqFlushed(ctx1, t, respChan, cancelFunc1, ttConf.firstWaitEndSeq)
 
+	log.Info("simulate failover scenario")
 	switch {
 	case ttConf.masterStopped:
 		// simulate stopping server 1
@@ -203,7 +204,7 @@ func testTwoServers(t *testing.T, ttConf testTwoServerConf) {
 		client.ChangeServerAddrs([]string{t2.ListenAddr()})
 	}
 
-	t.Log("write data to server #2")
+	log.Info("write data again, should be handled by server #2")
 	for i := ttConf.secondSendStartSeq; i <= ttConf.secondSendEndSeq; i++ {
 		seqs[i] = struct{}{}
 	}

@@ -43,6 +43,8 @@ type vdiskFlusherCmd struct {
 	respCh   chan error
 }
 
+type vdiskCleanupFunc func(vdiskID string)
+
 type vdisk struct {
 	vdiskID     string
 	lastHash    []byte              // current in memory last hash
@@ -90,8 +92,8 @@ func (vd *vdisk) ResponseChan() <-chan *BlockResponse {
 // creates vdisk with given vdiskID, flusher, and first sequence.
 // firstSequence is the very first sequence that this vdisk will receive.
 // blocks with sequence < firstSequence are going to be ignored.
-func newVdisk(ctx context.Context, aggMq *aggmq.MQ, vdiskID, configPath string, f *flusher, firstSequence uint64,
-	flusherConf *flusherConfig, segmentBufLen int) (*vdisk, error) {
+func newVdisk(parentCtx context.Context, aggMq *aggmq.MQ, vdiskID, configPath string, f *flusher,
+	firstSequence uint64, flusherConf *flusherConfig, segmentBufLen int, cleanup vdiskCleanupFunc) (*vdisk, error) {
 
 	var aggComm *aggmq.AggComm
 	var withSlaveSyncer bool
@@ -142,13 +144,26 @@ func newVdisk(ctx context.Context, aggMq *aggmq.MQ, vdiskID, configPath string, 
 	if err := vd.manageSlaveSync(); err != nil {
 		return nil, err
 	}
+	ctx, cancelFunc := context.WithCancel(context.Background())
 
 	// run vdisk goroutines
-	go vd.runFlusher(ctx)
-	go vd.runBlockReceiver(ctx)
-	go vd.handleSighup(ctx)
+	go vd.runFlusher(parentCtx, ctx, cancelFunc)
+	go vd.runBlockReceiver(parentCtx, ctx)
+	go vd.handleSighup(parentCtx, ctx)
+	go vd.cleanup(parentCtx, ctx, cleanup)
 
 	return vd, nil
+}
+
+// do all necessary cleanup for this vdisk
+func (vd *vdisk) cleanup(parentCtx, ctx context.Context, cleanup vdiskCleanupFunc) {
+	defer cleanup(vd.vdiskID)
+	select {
+	case <-parentCtx.Done():
+		return
+	case <-ctx.Done():
+		return
+	}
 }
 
 // reset first sequence, what we need to do:
@@ -226,11 +241,13 @@ func (vd *vdisk) doWaitSlaveSync(respCh chan error, lastSeqFlushed uint64) {
 }
 
 // this is the flusher routine that receive the blocks and order it.
-func (vd *vdisk) runBlockReceiver(ctx context.Context) {
+func (vd *vdisk) runBlockReceiver(parentCtx, ctx context.Context) {
 	buffer := treeset.NewWith(tlogBlockComparator)
 
 	for {
 		select {
+		case <-parentCtx.Done():
+			return
 		case <-ctx.Done():
 			return
 		case cmd := <-vd.blockRecvCmdChan:
@@ -292,7 +309,9 @@ func (vd *vdisk) runBlockReceiver(ctx context.Context) {
 }
 
 // this is the flusher routine that does the flush asynchronously
-func (vd *vdisk) runFlusher(ctx context.Context) {
+func (vd *vdisk) runFlusher(parentCtx, ctx context.Context, cancelFunc context.CancelFunc) {
+	defer cancelFunc()
+
 	// buffer of all ordered tlog blocks
 	tlogs := []*schema.TlogBlock{}
 
@@ -318,6 +337,8 @@ func (vd *vdisk) runFlusher(ctx context.Context) {
 	for {
 		cmdType = -1
 		select {
+		case <-parentCtx.Done():
+			return
 		case <-ctx.Done():
 			return
 		case tlb := <-vd.orderedBlockChan:
@@ -412,11 +433,6 @@ func (vd *vdisk) runFlusher(ctx context.Context) {
 			status = tlog.BlockStatusFlushFailed
 		}
 
-		// update last sequence flushed
-		if len(seqs) > 0 {
-			lastSeqFlushed = seqs[len(seqs)-1]
-		}
-
 		if cmdType == vdiskCmdForceFlushBlocking {
 			// if it is blocking cmd, something else is waiting, notify him!
 			vd.flusherCmdRespChan <- struct{}{}
@@ -428,6 +444,15 @@ func (vd *vdisk) runFlusher(ctx context.Context) {
 			Sequences: seqs,
 		}
 
+		if status != tlog.BlockStatusFlushOK {
+			// we are failing to flush
+			// it is better to kill ourself
+			return
+		}
+		// update last sequence flushed
+		if len(seqs) > 0 {
+			lastSeqFlushed = seqs[len(seqs)-1]
+		}
 		// send aggregation to slave syncer
 		vd.sendAggToSlaveSync(rawAgg)
 	}
@@ -497,12 +522,14 @@ func tlogBlockComparator(a, b interface{}) int {
 }
 
 // handle SIGHUP
-func (vd *vdisk) handleSighup(ctx context.Context) {
+func (vd *vdisk) handleSighup(parentCtx, ctx context.Context) {
 	sigs := make(chan os.Signal)
 	signal.Notify(sigs, syscall.SIGHUP)
 
 	for {
 		select {
+		case <-parentCtx.Done():
+			return
 		case <-ctx.Done():
 			return
 		case <-sigs:
