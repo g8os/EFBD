@@ -34,41 +34,6 @@ See the [README](tlogclient/readme.md) there for more details.
 
 ## TLOG Server
 
-- TLOG Server store received log entries and store it in memmory
-- After storing log entry it replies to the client on successfull transaction.
-- after timeout or size of the aggregation is reached, we `Flush` it:
-	- aggregate the entries
-	- compress the aggregate
-	- encrypt the compressed aggregate
-	- erasure encode the encrypted aggregate
-	- store each pieces of erasure encoded pieces to ardb in parallel way
-
-- Ideal setup would be to spread erasure coded pieces on different ardb instances.
-- Each instance is used to keep erasure coded part according to its index (erasure coded part index == ardb instance index)
-- We keep only backward links in our blockchain of history. We will add separate forward lining structure later in case it will be needed for the speed of recovery
-
-
-### Flush Settings
-
-settings directly related to flush:
-- flush-size: minimum number of blocks to be flushed
-- flush-time: maximum time we can wait entries before flushing it.
-- k : number of erasure encoded data pieces
-- m : number of erasure encoded coding/parity pieces
-- nonce: hex nonce used for encryption 
-- priv-key: encryption private key
-
-### Tlog Aggregation structure:
-Tlog aggregation per vdisk
-```
-name (Text)          # unused now
-size (uint64)        # number of blocks in this aggregation
-timestamp (uint64)
-vdiskID (uint32)     # vdisk ID
-Blocks: List(Block)  
-prev: Data           # hash of previous aggregation
-```
-
 The server code is in the [`tlogserver`](tlogserver/) directory, see the [README](tlogserver/README.md) there for more details.
 
 ## Code Generation

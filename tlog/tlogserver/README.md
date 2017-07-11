@@ -1,5 +1,67 @@
 # Go Tlog Server
 
+
+- TLOG Server store received log entries and store it in memmory
+- After storing log entry it replies to the client on successfull transaction.
+- after timeout or size of the aggregation is reached, we `Flush` it:
+	- aggregate the entries
+	- compress the aggregate
+	- encrypt the compressed aggregate
+	- erasure encode the encrypted aggregate
+	- store each pieces of erasure encoded pieces to ardb in parallel way
+
+- Ideal setup would be to spread erasure coded pieces on different ardb instances.
+- Each instance is used to keep erasure coded part according to its index (erasure coded part index == ardb instance index)
+- We keep only backward links in our blockchain of history. We will add separate forward lining structure later in case it will be needed for the speed of recovery
+
+
+## Flush Settings
+
+settings directly related to flush:
+- flush-size: minimum number of blocks to be flushed (default = 25)
+- flush-time: maximum time we can wait entries before flushing it (default = 25 seconds)
+- k : number of erasure encoded data pieces
+- m : number of erasure encoded coding/parity pieces
+- nonce: hex nonce used for encryption 
+- priv-key: encryption private key
+
+## Tlog Data structure
+
+Tlog data structure in capnp format
+
+Tlog aggregation per vdisk
+```
+name (Text)          # unused now
+size (uint64)        # number of blocks in this aggregation
+timestamp (uint64)
+vdiskID (uint32)     # vdisk ID
+Blocks: List(Block)  
+prev: Data           # hash of previous aggregation
+```
+
+Tlog block
+```
+sequence(uint64) 	# sequence number
+offset(uint64)
+size(uint64)
+hash(Data)			# hash of this block's data
+data(Data)
+timestamp(uint64)
+operation			# disk operation
+```
+
+## Metadata
+
+Tlog has very simple metadata, it only need to store hash of the last aggregation.
+
+Because the way we store the data (erasure coded part index == ardb instance index) we don't need
+to store which instance we use to store a data.
+
+Tlog server do these to increases reliability:
+
+- store 5 last hashes. In case of the very last hash is corrupted, we can use previous hash
+- store the metadata on all ardb instances
+
 ## Tlog Server Configuration
 
 The Tlog server is configured using a YAML configuration file:
@@ -63,7 +125,7 @@ send a `SIGHUP` signal to the tlogserver to make it pick up the changes.
 whichare still in use by active (connected) clients,
 and content might get lost if you do this anyway.
 
-### Nbdserver slave sync feature
+## Nbdserver slave sync feature
 
 Tlog server has feature to sync all nbdserver operation to the ardb slave.
 In case nbdserver's master failed, nbdserver can switch to this slave.

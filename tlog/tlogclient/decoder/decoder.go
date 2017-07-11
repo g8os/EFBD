@@ -62,6 +62,7 @@ func New(pool tlog.RedisPool, k, m int, vdiskID, privKey, hexNonce string) (*Dec
 	}, nil
 }
 
+// Close releases all of it's acquired resources.
 func (d *Decoder) Close() {
 	d.pool.Close()
 }

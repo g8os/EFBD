@@ -150,7 +150,7 @@ func (ss *slaveSyncer) Close() {
 
 func (ss *slaveSyncer) restart() {
 	if err := ss.init(); err != nil {
-		log.Errorf("restarting slave syncer for `%v` failed: %v", err)
+		log.Errorf("restarting slave syncer for `%v` failed: %v", ss.vdiskID, err)
 		return
 	}
 }

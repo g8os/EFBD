@@ -7,8 +7,15 @@ import (
 
 const (
 	_ = iota
+
+	// CmdWaitSlaveSync is command given to slave syncer.
+	// It indicates to the syncer that we want to wait for slave syncer to finish it's work
 	CmdWaitSlaveSync
+
+	// CmdRestartSlaveSyncer is command to restart the slave syncer
 	CmdRestartSlaveSyncer
+
+	// CmdKillMe is command to kill the slave syncer
 	CmdKillMe
 )
 
