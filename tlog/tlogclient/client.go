@@ -153,7 +153,7 @@ func (c *Client) curServerAddr() string {
 
 // reconnect to server
 // it must be called under wLock
-func (c *Client) reconnect(closedTime time.Time, switchOther bool) error {
+func (c *Client) reconnect(closedTime time.Time) error {
 	var err error
 
 	if c.stopped {
@@ -164,11 +164,12 @@ func (c *Client) reconnect(closedTime time.Time, switchOther bool) error {
 		return nil
 	}
 
-	if switchOther {
-		c.shiftServerAddr()
-	}
+	log.Info("tlogclient reconnect")
 
 	for {
+		// try other server
+		c.shiftServerAddr()
+
 		if err = c.connect(c.blockBuffer.MinSequence(), false); err == nil {
 			c.lastConnected = time.Now()
 
@@ -179,8 +180,6 @@ func (c *Client) reconnect(closedTime time.Time, switchOther bool) error {
 			return nil
 		}
 
-		// try other server
-		c.shiftServerAddr()
 	}
 }
 
@@ -297,7 +296,7 @@ func (c *Client) Recv() <-chan *Result {
 
 				// EOF and other network error triggers reconnection
 				if isNetErr || err == io.EOF {
-					c.reconnectFromRead(err, false)
+					c.reconnectFromRead(err)
 					continue
 				}
 
@@ -312,7 +311,7 @@ func (c *Client) Recv() <-chan *Result {
 					case tlog.BlockStatusWaitNbdSlaveSyncReceived:
 						c.signalCond(c.waitSlaveSyncCond)
 					case tlog.BlockStatusFlushFailed:
-						if err := c.reconnectFromRead(ErrFlushFailed, true); err != nil {
+						if err := c.reconnectFromRead(ErrFlushFailed); err != nil {
 							reChan <- &Result{
 								Err: ErrFlushFailed,
 							}
@@ -331,14 +330,14 @@ func (c *Client) Recv() <-chan *Result {
 }
 
 // reconnect from read do re-connect from reading goroutine
-func (c *Client) reconnectFromRead(errCause error, switchOther bool) error {
+func (c *Client) reconnectFromRead(errCause error) error {
 	closedTime := time.Now()
 	log.Infof("tlogclient : reconnect from read because of : %v", errCause)
 
 	c.wLock.Lock()
 	defer c.wLock.Unlock()
 
-	if err := c.reconnect(closedTime, switchOther); err != nil {
+	if err := c.reconnect(closedTime); err != nil {
 		log.Infof("tlogclient: reconnect because `%v` failed: %v", errCause, err)
 		return err
 	}
@@ -530,7 +529,7 @@ func (c *Client) sendReconnect(sender func() (interface{}, error)) (interface{},
 			// the network connection or the tlog server that need time to be recovered.
 			time.Sleep(time.Duration(i-1) * sendSleepTime)
 
-			if err = c.reconnect(closedTime, false); err != nil {
+			if err = c.reconnect(closedTime); err != nil {
 				log.Infof("tlog client : reconnect from send attemp(%v) failed:%v", i, err)
 				continue
 			}

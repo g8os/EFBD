@@ -59,18 +59,24 @@ type testTwoServerConf struct {
 // Start tlog decoder
 // - make sure all sequence successfully decoded
 func TestMultipleServerBasic(t *testing.T) {
+	log.Info("TestMultipleServerBasic")
+
 	conf := testMultipleServerBasicConf()
 	conf.masterStopped = true
 	testTwoServers(t, conf)
 }
 
 func TestMultipleServerBasicMasterFailToFlush(t *testing.T) {
+	log.Info("TestMultipleServerBasicMasterFailToFlush")
+
 	conf := testMultipleServerBasicConf()
 	conf.masterFailedToFlush = true
 	testTwoServers(t, conf)
 }
 
 func TestMultipleServerBasicHotReload(t *testing.T) {
+	log.Info("TestMultipleServerBasicHotReload")
+
 	conf := testMultipleServerBasicConf()
 	conf.hotReload = true
 	testTwoServers(t, conf)
@@ -90,12 +96,16 @@ func testMultipleServerBasicConf() testTwoServerConf {
 // TestMultipleServerResendUnflushed test multiple servers
 // in case the 1st tlog server has some unflushed blocks
 func TestMultipleServerResendUnflushed(t *testing.T) {
+	log.Info("TestMultipleServerResendUnflushed")
+
 	conf := testMultipleServerResendUnflushedConf()
 	conf.masterStopped = true
 	testTwoServers(t, conf)
 }
 
 func TestMultipleServerResendUnflushedMasterFailFlush(t *testing.T) {
+	log.Info("TestMultipleServerResendUnflushedMasterFailFlush")
+
 	conf := testMultipleServerResendUnflushedConf()
 	conf.masterFailedToFlush = true
 	testTwoServers(t, conf)
@@ -103,6 +113,8 @@ func TestMultipleServerResendUnflushedMasterFailFlush(t *testing.T) {
 }
 
 func TestMultipleServerResendHotReload(t *testing.T) {
+	log.Info("TestMultipleServerResendHotReload")
+
 	conf := testMultipleServerResendUnflushedConf()
 	conf.hotReload = true
 	testTwoServers(t, conf)
@@ -162,7 +174,7 @@ func testTwoServers(t *testing.T, ttConf testTwoServerConf) {
 
 	respChan := client.Recv()
 
-	t.Log("write data to server #1")
+	log.Info("write data to server #1")
 
 	seqs := make(map[uint64]struct{})
 	for i := ttConf.firstSendStartSeq; i <= ttConf.firstSendEndSeq; i++ {
@@ -176,6 +188,7 @@ func testTwoServers(t *testing.T, ttConf testTwoServerConf) {
 	// wait for it to be flushed
 	testClientWaitSeqFlushed(ctx1, t, respChan, cancelFunc1, ttConf.firstWaitEndSeq)
 
+	log.Info("simulate failover scenario")
 	switch {
 	case ttConf.masterStopped:
 		// simulate stopping server 1
@@ -191,7 +204,7 @@ func testTwoServers(t *testing.T, ttConf testTwoServerConf) {
 		client.ChangeServerAddrs([]string{t2.ListenAddr()})
 	}
 
-	t.Log("write data to server #2")
+	log.Info("write data again, should be handled by server #2")
 	for i := ttConf.secondSendStartSeq; i <= ttConf.secondSendEndSeq; i++ {
 		seqs[i] = struct{}{}
 	}

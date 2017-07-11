@@ -55,7 +55,8 @@ func (vt *vdiskManager) Get(ctx context.Context, vdiskID string, firstSequence u
 	}
 
 	// create vdisk
-	vd, err = newVdisk(ctx, vt.aggMq, vdiskID, vt.configPath, f, firstSequence, flusherConf, vt.maxSegmentBufLen)
+	vd, err = newVdisk(ctx, vt.aggMq, vdiskID, vt.configPath, f, firstSequence, flusherConf, vt.maxSegmentBufLen,
+		vt.remove)
 	if err != nil {
 		return
 	}
@@ -65,4 +66,10 @@ func (vt *vdiskManager) Get(ctx context.Context, vdiskID string, firstSequence u
 	log.Debugf("create vdisk with expectedSequence:%v", vd.expectedSequence)
 
 	return
+}
+
+func (vt *vdiskManager) remove(vdiskID string) {
+	vt.lock.Lock()
+	defer vt.lock.Unlock()
+	delete(vt.vdisks, vdiskID)
 }
