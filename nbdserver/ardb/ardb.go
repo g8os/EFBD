@@ -234,11 +234,21 @@ func newRedisProvider(pool *RedisPool, cfg *config.VdiskClusterConfig) (*redisPr
 	return provider, nil
 }
 
-// redisConnectionProvider defines the interface to get a redis connection,
+// redisDataConnProvider defines the interface to get a redis connection,
 // based on a given index, used by the arbd storage backends
-type redisConnectionProvider interface {
+type redisDataConnProvider interface {
 	RedisConnection(index int64) (conn redis.Conn, err error)
 	FallbackRedisConnection(index int64) (conn redis.Conn, err error)
+}
+
+// redisMetaConnProvider defines the interface to get a redis meta connection.
+type redisMetaConnProvider interface {
+	MetaRedisConnection() (conn redis.Conn, err error)
+}
+
+type redisConnProvider interface {
+	redisDataConnProvider
+	redisMetaConnProvider
 }
 
 // redisProvider allows you to get a redis connection from a pool
@@ -298,7 +308,7 @@ func (rp *redisProvider) FallbackRedisConnection(index int64) (conn redis.Conn, 
 	return
 }
 
-// MetaRedisConnection implements lba.MetaRedisProvider.MetaRedisConnection
+// MetaRedisConnection implements redisMetaConnectionProvider.MetaRedisConnection
 func (rp *redisProvider) MetaRedisConnection() (conn redis.Conn, err error) {
 	rp.mux.RLock()
 	defer rp.mux.RUnlock()

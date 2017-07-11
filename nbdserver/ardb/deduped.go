@@ -12,7 +12,7 @@ import (
 )
 
 // newDedupedStorage returns the deduped backendStorage implementation
-func newDedupedStorage(vdiskID string, blockSize int64, provider redisConnectionProvider, templateSupport bool, vlba *lba.LBA) backendStorage {
+func newDedupedStorage(vdiskID string, blockSize int64, provider redisDataConnProvider, templateSupport bool, vlba *lba.LBA) backendStorage {
 	dedupedStorage := &dedupedStorage{
 		blockSize:       blockSize,
 		vdiskID:         vdiskID,
@@ -39,12 +39,12 @@ func newDedupedStorage(vdiskID string, blockSize int64, provider redisConnection
 // The metadata and data are stored on seperate servers.
 // Accessing data is only ever possible by checking the metadata first.
 type dedupedStorage struct {
-	blockSize       int64                   // block size in bytes
-	vdiskID         string                  // ID of the vdisk
-	zeroContentHash zerodisk.Hash           // a hash of a nil-block of blockSize
-	provider        redisConnectionProvider // used to get a connection to a storage server
-	lba             *lba.LBA                // the LBA used to get/set/modify the metadata (content hashes)
-	getContent      dedupedContentGetter    // getContent function used to get content, is always defined
+	blockSize       int64                 // block size in bytes
+	vdiskID         string                // ID of the vdisk
+	zeroContentHash zerodisk.Hash         // a hash of a nil-block of blockSize
+	provider        redisDataConnProvider // used to get a connection to a storage server
+	lba             *lba.LBA              // the LBA used to get/set/modify the metadata (content hashes)
+	getContent      dedupedContentGetter  // getContent function used to get content, is always defined
 }
 
 // used to provide different content getters based on the vdisk properties

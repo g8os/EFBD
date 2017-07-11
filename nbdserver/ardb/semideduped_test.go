@@ -101,7 +101,7 @@ func TestSemiDedupedContentBasic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("getting userIndexA failed: %v", err)
 	}
-	if bytes.Compare(userContentA, content[:2]) != 0 {
+	if len(content) < 2 || bytes.Compare(userContentA, content[:2]) != 0 {
 		t.Fatalf("unexpected content found: %v", content)
 	}
 
@@ -133,7 +133,7 @@ func TestSemiDedupedContentBasic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("getting templateIndexB failed: %v", err)
 	}
-	if bytes.Compare(userContentA, content[:2]) != 0 {
+	if len(content) < 2 || bytes.Compare(userContentA, content[:2]) != 0 {
 		t.Fatalf("unexpected content found: %v", content)
 	}
 

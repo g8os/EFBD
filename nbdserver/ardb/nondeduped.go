@@ -7,7 +7,7 @@ import (
 )
 
 // newNonDedupedStorage returns the non deduped backendStorage implementation
-func newNonDedupedStorage(vdiskID, rootVdiskID string, blockSize int64, templateSupport bool, provider redisConnectionProvider) backendStorage {
+func newNonDedupedStorage(vdiskID, rootVdiskID string, blockSize int64, templateSupport bool, provider redisDataConnProvider) backendStorage {
 	nondeduped := &nonDedupedStorage{
 		blockSize:      blockSize,
 		storageKey:     NonDedupedStorageKey(vdiskID),
@@ -38,7 +38,7 @@ type nonDedupedStorage struct {
 	rootStorageKey string                  // Storage Key based on rootVdiskID
 	vdiskID        string                  // ID for the vdisk
 	rootVdiskID    string                  // used in case template is supposed (same value as vdiskID if not defined)
-	provider       redisConnectionProvider // used to get the connection info to storage servers
+	provider       redisDataConnProvider   // used to get the connection info to storage servers
 	getContent     nondedupedContentGetter // getter depends on whether there is template support or not
 }
 

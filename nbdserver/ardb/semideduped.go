@@ -5,16 +5,26 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/siddontang/go/log"
+	"github.com/garyburd/redigo/redis"
+	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbdserver/lba"
 )
 
-func newSemiDedupedStorage(vdiskID string, blockSize int64, provider redisConnectionProvider, vlba *lba.LBA) backendStorage {
-	return &semiDedupedStorage{
+func newSemiDedupedStorage(vdiskID string, blockSize int64, provider redisConnProvider, vlba *lba.LBA) backendStorage {
+	storage := &semiDedupedStorage{
 		templateStorage: newDedupedStorage(vdiskID, blockSize, provider, true, vlba),
 		userStorage:     newNonDedupedStorage(vdiskID, "", blockSize, false, provider),
+		vdiskID:         vdiskID,
 		blockSize:       blockSize,
+		provider:        provider,
 	}
+
+	err := storage.readBitMap()
+	if err != nil {
+		log.Debugf("couldn't read semi deduped storage %s's bitmap: %v", vdiskID, err)
+	}
+
+	return storage
 }
 
 // semiDedupedStorage is a backendStorage implementation,
@@ -29,12 +39,49 @@ type semiDedupedStorage struct {
 	// e.g. Modified Registers, Applications, ...
 	userStorage backendStorage
 
+	// used to store the semi deduped metadata
+	provider redisMetaConnProvider
+
+	// bitmap used to indicate if the data is available as userdata or not
+	userStorageBitMap bitMap
+
+	// ID of this storage's vdisk
+	vdiskID string
+
+	// used when merging content
 	blockSize int64
 }
 
 // Set implements backendStorage.Set
 func (sds *semiDedupedStorage) Set(blockIndex int64, content []byte) error {
-	return sds.userStorage.Set(blockIndex, content)
+	err := sds.userStorage.Set(blockIndex, content)
+	if err != nil {
+		return err
+	}
+
+	// mark the bit in the bitmap,
+	// such that the next time we retreive this block,
+	// we know it has to be retreived from the user storage
+	//
+	// NOTE: for now this bit is never unset,
+	// as it is assumed that once data is overwritten (if it's overwritten at all),
+	// it is custom forever. It would be weird if suddenly out of the blue (after a delete operation for example),
+	// the template (original) data would be used once again,
+	// I don't think that's something a user would expect at all.
+	sds.userStorageBitMap.Set(int(blockIndex))
+
+	// delete content from dedup storage, as it's no longer needed there
+	err = sds.templateStorage.Delete(blockIndex)
+	if err != nil {
+		// This won't be returned as an error,
+		// as it's nothing critical,
+		// it only means that deprecated data is not deleted.
+		// It's not a critical error because the toggled bit in the bitmask,
+		// will only make it look in the userstorage for this block anyhow.
+		log.Error("semiDedupedStorage couldn't delete deprecated template data: ", err)
+	}
+
+	return nil
 }
 
 // Merge implements backendStorage.Merge
@@ -53,33 +100,30 @@ func (sds *semiDedupedStorage) Merge(blockIndex, offset int64, content []byte) e
 	copy(mergedContent[offset:], content)
 
 	// store new content
-	return sds.userStorage.Set(blockIndex, mergedContent)
+	return sds.Set(blockIndex, mergedContent)
 }
 
 // Get implements backendStorage.Get
-func (sds *semiDedupedStorage) Get(blockIndex int64) (content []byte, err error) {
-	// try to get the content as user-specific content,
-	// which has priority, as it is assumed to be newer content
-	content, err = sds.userStorage.Get(blockIndex)
-	if err == nil && content != nil {
-		return
-	}
-	if err != nil {
-		log.Errorf(
-			"semiDedupedStorage received error while gettng user-specific content: %s",
-			err.Error())
+func (sds *semiDedupedStorage) Get(blockIndex int64) ([]byte, error) {
+	// if a bit is enabled in the bitmap,
+	// it means the data is stored in the user storage
+	if sds.userStorageBitMap.Test(int(blockIndex)) {
+		return sds.userStorage.Get(blockIndex)
 	}
 
-	// otherwise it has to be template-specific content,
-	// if the block index is to be valid at all
-	content, err = sds.templateStorage.Get(blockIndex)
-	return
+	return sds.templateStorage.Get(blockIndex)
 }
 
 // Delete implements backendStorage.Delete
 func (sds *semiDedupedStorage) Delete(blockIndex int64) error {
 	tErr := sds.templateStorage.Delete(blockIndex)
+
+	// note that we don't unset the storage bit from the bitmask,
+	// as that would basically flip it back to use dedup storage for this index,
+	// which is not something we want,
+	// as from a user perspective that already has been overwritten
 	uErr := sds.userStorage.Delete(blockIndex)
+
 	return combineErrorPair(tErr, uErr)
 }
 
@@ -87,7 +131,12 @@ func (sds *semiDedupedStorage) Delete(blockIndex int64) error {
 func (sds *semiDedupedStorage) Flush() error {
 	tErr := sds.templateStorage.Flush()
 	uErr := sds.userStorage.Flush()
-	return combineErrorPair(tErr, uErr)
+
+	// serialize bitmap
+	storageErr := combineErrorPair(tErr, uErr)
+	bitmapErr := sds.writeBitMap()
+
+	return combineErrorPair(storageErr, bitmapErr)
 }
 
 // Close implements backendStorage.Close
@@ -131,6 +180,39 @@ func (sds *semiDedupedStorage) GoBackground(ctx context.Context) {
 	}
 }
 
+// readBitMap reads and decompresses (gzip) the bitmap from the ardb
+func (sds *semiDedupedStorage) readBitMap() error {
+	conn, err := sds.provider.MetaRedisConnection()
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	bytes, err := redis.Bytes(conn.Do("GET", SemiDedupBitMapKey(sds.vdiskID)))
+	if err != nil {
+		return err
+	}
+
+	return sds.userStorageBitMap.SetBytes(bytes)
+}
+
+// writeBitMap compresses and writes (gzip) the bitmap to the ardb
+func (sds *semiDedupedStorage) writeBitMap() error {
+	bytes, err := sds.userStorageBitMap.Bytes()
+	if err != nil {
+		return err
+	}
+
+	conn, err := sds.provider.MetaRedisConnection()
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	_, err = conn.Do("SET", SemiDedupBitMapKey(sds.vdiskID), bytes)
+	return err
+}
+
 func combineErrorPair(e1, e2 error) error {
 	if e1 == nil {
 		return e2
@@ -141,4 +223,10 @@ func combineErrorPair(e1, e2 error) error {
 	}
 
 	return fmt.Errorf("%v; %v", e1, e2)
+}
+
+// SemiDedupBitMapKey returns the storage key which is used
+// to store the BitMap for the semideduped storage of a given vdisk
+func SemiDedupBitMapKey(vdiskID string) string {
+	return "semidedup:bitmap:" + vdiskID
 }
