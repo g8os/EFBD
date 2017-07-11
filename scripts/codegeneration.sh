@@ -12,6 +12,8 @@ generate_and_check() {
         exit 0
     fi
 
+    # turns out that that there are uncomitted changes possible
+    # in the generated code, exit with an error
     echo -e "changes detected, run 'go generate \"$DIR\"' and commit generated code in these files:\n"
     echo "$GITSTATUS"
     exit 1

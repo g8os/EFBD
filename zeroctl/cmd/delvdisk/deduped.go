@@ -11,7 +11,7 @@ import (
 // delete the metadata of deduped vdisks
 func deleleDedupedVdisksMetadata(force bool, cfg config.StorageServerConfig, vdiskids ...string) error {
 	if len(vdiskids) == 0 {
-		return nil
+		return nil // no vdisks to delete, returning early
 	}
 
 	// open redis connection
@@ -22,7 +22,7 @@ func deleleDedupedVdisksMetadata(force bool, cfg config.StorageServerConfig, vdi
 	}
 	defer conn.Close()
 
-	// cache delete request of each vdisk
+	// add each delete request to the pipeline
 	var delVdisks []string
 	for _, vdiskID := range vdiskids {
 		log.Infof("deleting metadata of vdisk %s...", vdiskID)

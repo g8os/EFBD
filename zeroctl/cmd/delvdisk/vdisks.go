@@ -102,13 +102,15 @@ func getVdisks(cfg *config.Config, args []string) (map[string]config.VdiskConfig
 		return cfg.Vdisks, nil
 	}
 
-	vdiskids := make(map[string]struct{})
+	// create a vdisk map, so we only have each id once
+	vdiskids := make(map[string]struct{}, len(args))
 	for _, vdiskid := range args {
 		vdiskids[vdiskid] = struct{}{}
 	}
 
 	log.Info("retreiving given vdisks from config file...")
 
+	// collect all vdisk configurations (once)
 	vdisks := make(map[string]config.VdiskConfig)
 	for candidateID := range vdiskids {
 		for vdiskID := range cfg.Vdisks {
@@ -119,23 +121,29 @@ func getVdisks(cfg *config.Config, args []string) (map[string]config.VdiskConfig
 				break
 			}
 		}
+
+		if len(cfg.Vdisks) == 0 {
+			break
+		}
 	}
 
 	if len(vdisks) == 0 {
 		return nil, errors.New("no vdisks could be found for the given vdiskids")
 	}
 
-	for vdiskID := range vdiskids {
+	if !vdisksCfg.Force && len(vdiskids) > 0 {
 		// abort non-forced command,
 		// in case least one given vdisk could not be found
-		if !vdisksCfg.Force {
-			message := "following vdisk(s) could not be found in the config file:"
-			for vdiskID := range vdiskids {
-				message += " " + vdiskID + ","
-			}
-			return nil, errors.New(message[:len(message)-1])
-		}
 
+		message := "following vdisk(s) could not be found in the config file:"
+		for vdiskID := range vdiskids {
+			message += " " + vdiskID + ","
+		}
+		return nil, errors.New(message[:len(message)-1])
+	}
+
+	// log an error for each invalid vdisk id
+	for vdiskID := range vdiskids {
 		log.Errorf("vdisk %s could not be found and will thus not be deleted", vdiskID)
 	}
 

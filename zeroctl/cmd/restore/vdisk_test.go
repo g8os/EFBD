@@ -3,6 +3,7 @@ package restore
 import (
 	"context"
 	crand "crypto/rand"
+	"fmt"
 	"io/ioutil"
 	mrand "math/rand"
 	"os"
@@ -12,6 +13,7 @@ import (
 	zerodiskcfg "github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/gonbdserver/nbd"
 	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/nbdserver/ardb"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/player"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
@@ -221,6 +223,35 @@ func testEndToEndReplay(t *testing.T, vdiskType zerodiskcfg.VdiskType) {
 			return
 		}
 	}
+}
+
+// create a new backend, used for writing
+func newBackend(ctx context.Context, dial ardb.DialFunc, tlogrpc, vdiskID, configPath string) (nbd.Backend, error) {
+	hotreloader, err := zerodiskcfg.NopHotReloader(configPath, zerodiskcfg.NBDServer)
+	if err != nil {
+		return nil, err
+	}
+
+	config := ardb.BackendFactoryConfig{
+		PoolFactory:       ardb.NewRedisPoolFactory(dial),
+		ConfigHotReloader: hotreloader,
+		LBACacheLimit:     ardb.DefaultLBACacheLimit,
+		TLogRPCAddress:    tlogrpc,
+	}
+	fact, err := ardb.NewBackendFactory(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create factory:%v", err)
+	}
+
+	ec := &nbd.ExportConfig{
+		Name:        vdiskID,
+		Description: "zero-os/zerodisk",
+		Driver:      "ardb",
+		ReadOnly:    false,
+		TLSOnly:     false,
+	}
+
+	return fact.NewBackend(ctx, ec)
 }
 
 // create a test backend

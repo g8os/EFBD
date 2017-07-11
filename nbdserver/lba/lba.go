@@ -17,12 +17,13 @@ type MetaRedisProvider interface {
 	MetaRedisConnection() (redis.Conn, error)
 }
 
-//NewLBA creates a new LBA
+// NewLBA creates a new LBA
 func NewLBA(vdiskID string, blockCount, cacheLimitInBytes int64, provider MetaRedisProvider) (lba *LBA, err error) {
 	if provider == nil {
 		return nil, errors.New("NewLBA requires a non-nil MetaRedisProvider")
 	}
 
+	// create as much mutexes as we need shards
 	muxCount := blockCount / NumberOfRecordsPerLBAShard
 	if blockCount%NumberOfRecordsPerLBAShard > 0 {
 		muxCount++
@@ -56,12 +57,13 @@ type LBA struct {
 	vdiskID  string
 }
 
-//Set the content hash for a specific block.
+// Set the content hash for a specific block.
 // When a key is updated, the shard containing this blockindex is marked as dirty and will be
-// stored in the external metadataserver when Flush is called.
+// stored in the external metadataserver when Flush is called,
+// or when the its getting evicted from the cache due to space limitations.
 func (lba *LBA) Set(blockIndex int64, h zerodisk.Hash) (err error) {
 	shardIndex := blockIndex / NumberOfRecordsPerLBAShard
-	//Fetch the appropriate shard
+	// Fetch the appropriate shard
 	shard, err := func(shardIndex int64) (shard *shard, err error) {
 		lba.shardMux[shardIndex].Lock()
 		defer lba.shardMux[shardIndex].Unlock()
@@ -91,20 +93,20 @@ func (lba *LBA) Set(blockIndex int64, h zerodisk.Hash) (err error) {
 	defer lba.shardMux[shardIndex].Unlock()
 
 	shard.Set(hashIndex, h)
-
 	return
 }
 
-//Delete the content hash for a specific block.
+// Delete the content hash for a specific block.
 // When a key is updated, the shard containing this blockindex is marked as dirty and will be
-// stored in the external metadaserver when Flush is called
+// stored in the external metadaserver when Flush is called,
+// or when the its getting evicted from the cache due to space limitations.
 // Deleting means actually that the nilhash will be set for this blockindex.
 func (lba *LBA) Delete(blockIndex int64) (err error) {
 	err = lba.Set(blockIndex, nil)
 	return
 }
 
-//Get returns the hash for a block, nil if no hash registered
+// Get returns the hash for a block, nil if no hash is registered.
 // If the shard containing this blockindex is not present, it is fetched from the external metadaserver
 func (lba *LBA) Get(blockIndex int64) (h zerodisk.Hash, err error) {
 	shardIndex := blockIndex / NumberOfRecordsPerLBAShard
@@ -134,12 +136,15 @@ func (lba *LBA) Get(blockIndex int64) (h zerodisk.Hash, err error) {
 	return
 }
 
-//Flush stores all dirty shards to the external metadaserver
+// Flush stores all dirty shards to the external metadaserver
 func (lba *LBA) Flush() (err error) {
 	err = lba.storeCacheInExternalStorage()
 	return
 }
 
+// Get a shard from cache given a block index,
+// or retreiving it from the external storage instead,
+// in case the shard isn't available in the cache.
 func (lba *LBA) getShard(index int64) (shard *shard, err error) {
 	shard, ok := lba.cache.Get(index)
 	if !ok {
@@ -200,6 +205,8 @@ func (lba *LBA) getShardFromExternalStorage(index int64) (shard *shard, err erro
 	return
 }
 
+// Store all shards available in the cache,
+// into the external storage.
 func (lba *LBA) storeCacheInExternalStorage() (err error) {
 	conn, err := lba.provider.MetaRedisConnection()
 	if err != nil {
@@ -247,6 +254,7 @@ func (lba *LBA) storeCacheInExternalStorage() (err error) {
 	return
 }
 
+// Store a single shard into the external storage.
 func (lba *LBA) storeShardInExternalStorage(index int64, shard *shard) (err error) {
 	if !shard.Dirty() {
 		log.Debugf(
@@ -275,6 +283,7 @@ func (lba *LBA) storeShardInExternalStorage(index int64, shard *shard) (err erro
 	return
 }
 
+// Delete a single shard from the external storage.
 func (lba *LBA) deleteShardFromExternalStorage(index int64) (err error) {
 	conn, err := lba.provider.MetaRedisConnection()
 	if err != nil {

@@ -4,7 +4,8 @@ package nbd
 
 // this section is in essence a transcription of the protocol from
 // NBD's proto.md. For details of
-// what the options mean, see proto.md
+// what the options mean, see proto.md at
+// https://github.com/NetworkBlockDevice/nbd/blob/master/doc/proto.md
 
 // NBD commands
 const (

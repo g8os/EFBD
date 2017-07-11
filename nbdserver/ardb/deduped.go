@@ -21,6 +21,9 @@ func newDedupedStorage(vdiskID string, blockSize int64, provider redisConnection
 		lba:             vlba,
 	}
 
+	// getContent is ALWAYS defined,
+	// but the actual function used depends on
+	// whether or not this storage has template support.
 	if templateSupport {
 		dedupedStorage.getContent = dedupedStorage.getLocalOrRemoteContent
 	} else {
@@ -31,15 +34,17 @@ func newDedupedStorage(vdiskID string, blockSize int64, provider redisConnection
 }
 
 // dedupedStorage is a backendStorage implementation,
-// that stores the content based on a hash unique to that content,
-// all hashes are linked to the vdisk using lba.LBA
+// that stores the content (the data) based on a hash unique to that content,
+// all hashes are linked to the vdisk using lba.LBA (the metadata).
+// The metadata and data are stored on seperate servers.
+// Accessing data is only ever possible by checking the metadata first.
 type dedupedStorage struct {
-	blockSize       int64
-	vdiskID         string
-	zeroContentHash zerodisk.Hash
-	provider        redisConnectionProvider
-	lba             *lba.LBA
-	getContent      dedupedContentGetter
+	blockSize       int64                   // block size in bytes
+	vdiskID         string                  // ID of the vdisk
+	zeroContentHash zerodisk.Hash           // a hash of a nil-block of blockSize
+	provider        redisConnectionProvider // used to get a connection to a storage server
+	lba             *lba.LBA                // the LBA used to get/set/modify the metadata (content hashes)
+	getContent      dedupedContentGetter    // getContent function used to get content, is always defined
 }
 
 // used to provide different content getters based on the vdisk properties
@@ -134,7 +139,8 @@ func (ds *dedupedStorage) getFallbackRedisConnection(hash zerodisk.Hash) (redis.
 	return ds.provider.FallbackRedisConnection(int64(hash[0]))
 }
 
-// getLocalContent gets content from the local storage
+// getLocalContent gets content from the local storage.
+// Assigned to (*dedupedStorage).getContent in case this storage has no template support.
 func (ds *dedupedStorage) getLocalContent(hash zerodisk.Hash) (content []byte, err error) {
 	conn, err := ds.getRedisConnection(hash)
 	if err != nil {
@@ -149,7 +155,8 @@ func (ds *dedupedStorage) getLocalContent(hash zerodisk.Hash) (content []byte, e
 // getLocalOrRemoteContent gets content from the local storage,
 // or if the content can't be found locally, we'll try to fetch it from the root (remote) storage.
 // if the content is available in the remote storage,
-// we'll also try to store it in the local storage before returning that content
+// we'll also try to store it in the local storage before returning that content.
+// Assigned to (*dedupedStorage).getContent in case this storage has template support.
 func (ds *dedupedStorage) getLocalOrRemoteContent(hash zerodisk.Hash) (content []byte, err error) {
 	// try to fetch it from the local storage
 	content, err = ds.getLocalContent(hash)

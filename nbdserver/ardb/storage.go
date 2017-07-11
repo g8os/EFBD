@@ -7,7 +7,7 @@ import (
 )
 
 // backendStorage defines the interface for the actual storage implementation,
-// used by ArbdBackend for a particular vdisk
+// used by the ArbdBackend for a particular vdisk
 type backendStorage interface {
 	Set(blockIndex int64, content []byte) (err error)
 	Merge(blockIndex, offset int64, content []byte) (err error)
@@ -24,8 +24,8 @@ type backendStorage interface {
 func redisBytes(reply interface{}, replyErr error) (content []byte, err error) {
 	content, err = redis.Bytes(reply, replyErr)
 	// This could happen in case the block doesn't exist,
-	// or in case the block is a nullblock.
-	// in both cases we want to simply return it as a null block.
+	// or in case the block is a nil block.
+	// in both cases we want to simply return it as a nil block.
 	if err == redis.ErrNil {
 		err = nil
 	}

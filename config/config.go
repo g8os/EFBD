@@ -12,7 +12,9 @@ import (
 	"github.com/zero-os/0-Disk/log"
 )
 
-// ReadConfig reads the config from a given file
+// ReadConfig reads the config from a given file,
+// for a given user. The user helps define which validation to apply,
+// which will return an error in case the validation fails.
 func ReadConfig(path string, user User) (*Config, error) {
 	bytes, err := ioutil.ReadFile(path)
 	if err != nil {
@@ -22,7 +24,9 @@ func ReadConfig(path string, user User) (*Config, error) {
 	return FromBytes(bytes, user)
 }
 
-// FromBytes creates a config based on given YAML 1.2 content
+// FromBytes creates a config based on given YAML 1.2 content,
+// for a given user. The user helps define which validation to apply,
+// which will return an error in case the validation fails.
 func FromBytes(bytes []byte, user User) (*Config, error) {
 	cfg := new(Config)
 
@@ -37,7 +41,7 @@ func FromBytes(bytes []byte, user User) (*Config, error) {
 	cfg.user = user
 
 	// validate the config,
-	// specific for the specified user
+	// semi-specific for the specified user
 	err = cfg.Validate()
 	if err != nil {
 		return nil, fmt.Errorf("couldn't create the config: %s", err.Error())
@@ -51,8 +55,11 @@ type User uint8
 
 // Supported Config Users
 const (
-	Global    User = NBDServer | TlogServer
+	// Global contains all other specified User types
+	Global User = NBDServer | TlogServer
+	// NBDServer requests config validation based on the nbdserver's needs
 	NBDServer User = 1 << iota
+	// NBDServer requests config validation based on the tlogserver's needs
 	TlogServer
 )
 
@@ -60,7 +67,8 @@ const (
 type Config struct {
 	StorageClusters map[string]StorageClusterConfig `yaml:"storageClusters" valid:"required"`
 	Vdisks          map[string]VdiskConfig          `yaml:"vdisks" valid:"required"`
-	TlogRPC         string                          `yaml:"tlogrpc" valid:"optional"`
+	// defines the address of the tlogserver
+	TlogRPC string `yaml:"tlogrpc" valid:"optional"`
 
 	// information used to specialize validation of the config
 	user User
@@ -225,7 +233,9 @@ func (cfg *Config) validationError(err error) error {
 
 // VdiskClusterConfig returns a VdiskClusterConfig
 // for a given VdiskID if possible
-// WARNING: make sure the config is valid before calling this method
+//
+// WARNING: make sure the config is valid before calling this method,
+// this should be the case if you created the config using a provided function.
 func (cfg *Config) VdiskClusterConfig(vdiskID string) (*VdiskClusterConfig, error) {
 	vdiskCfg, ok := cfg.Vdisks[vdiskID]
 	if !ok {
@@ -233,6 +243,9 @@ func (cfg *Config) VdiskClusterConfig(vdiskID string) (*VdiskClusterConfig, erro
 	}
 
 	config := &VdiskClusterConfig{Vdisk: vdiskCfg}
+
+	// we deep-clone each storage cluster,
+	// such that the slices they contain can be modified without fear
 
 	if vdiskCfg.StorageCluster != "" {
 		cluster := cfg.StorageClusters[vdiskCfg.StorageCluster].Clone()
@@ -252,6 +265,9 @@ func (cfg *Config) VdiskClusterConfig(vdiskID string) (*VdiskClusterConfig, erro
 	return config, nil
 }
 
+// validateMetadataStorage validates a metadata storage is defined
+// for a given cluster, if this is required for a functionality.
+// Used for nbdserver purposes only.
 func (cfg *Config) validateMetadataStorage(clusterID string, vdisk *VdiskConfig) error {
 	metadataStorageIsUndefined := cfg.StorageClusters[clusterID].MetadataStorage == nil
 	if metadataStorageIsUndefined && vdisk.StorageType() == StorageDeduped {
@@ -267,7 +283,13 @@ func (cfg *Config) String() string {
 	return string(bytes)
 }
 
-// StorageClusterConfig defines the config for a storageCluster
+// StorageClusterConfig defines the config for a storageCluster.
+// A storage cluster is composed out of multiple data storage servers,
+// and a single (optional) metadata storage.
+//
+// NOTE: the meta data storage is planned to be removed,
+// as having the metadata stored in a single servers,
+// makes it a critical point of failure, for some of its use cases.
 type StorageClusterConfig struct {
 	DataStorage     []StorageServerConfig `yaml:"dataStorage" valid:"required"`
 	MetadataStorage *StorageServerConfig  `yaml:"metadataStorage" valid:"optional"`
@@ -290,6 +312,8 @@ func (cfg StorageClusterConfig) Clone() (clone StorageClusterConfig) {
 // The format is as follows: `<ip>:<port>[@<db_index>][,<ip>:<port>[@<db_index>]]`,
 // where the db_index is optional, and you can give multiple configs by
 // seperating them with a comma.
+// The parsing algorithm of this function is very forgiving,
+// and returns an error only in case an invalid address is given.
 func ParseCSStorageServerConfigStrings(dialCSConfigString string) (configs []StorageServerConfig, err error) {
 	if dialCSConfigString == "" {
 		return nil, nil
@@ -316,6 +340,8 @@ func ParseCSStorageServerConfigStrings(dialCSConfigString string) (configs []Sto
 				err = nil // ignore actual error
 				n++       // not a valid database, thus probably part of address
 			}
+			// join any other parts back together,
+			// if for some reason an @ sign makes part of the address
 			cfg.Address = strings.Join(parts[:n-1], "@")
 		}
 		if !valid.IsDialString(cfg.Address) {
@@ -330,22 +356,31 @@ func ParseCSStorageServerConfigStrings(dialCSConfigString string) (configs []Sto
 
 // StorageServerConfig defines the config for a storage server
 type StorageServerConfig struct {
-	Address  string `yaml:"address" valid:"dialstring,required"`
-	Database int    `yaml:"db" valid:"optional"`
+	Address string `yaml:"address" valid:"dialstring,required"`
+	// Database '0' is assumed, in case no value is given.
+	Database int `yaml:"db" valid:"optional"`
 }
 
 // VdiskConfig defines the config for a vdisk
 type VdiskConfig struct {
-	BlockSize           uint64    `yaml:"blockSize" valid:"optional"`
-	ReadOnly            bool      `yaml:"readOnly" valid:"optional"`
-	Size                uint64    `yaml:"size" valid:"optional"`
-	StorageCluster      string    `yaml:"storageCluster" valid:"optional"`
-	SlaveStorageCluster string    `yaml:"slaveStorageCluster" valid:"optional"`
-	RootStorageCluster  string    `yaml:"rootStorageCluster" valid:"optional"`
-	RootVdiskID         string    `yaml:"rootVdiskID" valid:"optional"`
-	TlogStorageCluster  string    `yaml:"tlogStorageCluster" valid:"optional"`
-	TlogSlaveSync       bool      `yaml:"tlogSlaveSync" valid:"optional"` // true if tlog need to sync ardb slave
-	Type                VdiskType `yaml:"type" valid:"optional"`
+	// used by the nbdserver only
+	BlockSize      uint64 `yaml:"blockSize" valid:"optional"`
+	ReadOnly       bool   `yaml:"readOnly" valid:"optional"`
+	Size           uint64 `yaml:"size" valid:"optional"`
+	StorageCluster string `yaml:"storageCluster" valid:"optional"`
+	// only used by vdisks which have template support
+	RootStorageCluster string `yaml:"rootStorageCluster" valid:"optional"`
+	// only used by nondeduped vdisks which have template support
+	RootVdiskID string `yaml:"rootVdiskID" valid:"optional"`
+
+	// used by the tlogserver only
+	SlaveStorageCluster string `yaml:"slaveStorageCluster" valid:"optional"`
+	TlogStorageCluster  string `yaml:"tlogStorageCluster" valid:"optional"`
+	// true if tlog need to sync ardb slave
+	TlogSlaveSync bool `yaml:"tlogSlaveSync" valid:"optional"`
+
+	// defines the properties of the vdisk
+	Type VdiskType `yaml:"type" valid:"optional"`
 }
 
 // StorageType returns the type of storage this vdisk uses
@@ -354,10 +389,13 @@ func (cfg *VdiskConfig) StorageType() StorageType {
 		return StorageDeduped
 	}
 
-	// TODO: handle propPersistent flag
+	// TODO: Handle propPersistent flag
 	// ignore the propPersistent flag for now,
 	// and treat non-persistent and persistent memory,
-	// both as persistent nondeduped storage
+	// both as persistent nondeduped storage.
+	// see open issue for more information:
+	// https://github.com/zero-os/0-Disk/issues/222
+
 	return StorageNondeduped
 }
 
@@ -371,14 +409,14 @@ func (cfg *VdiskConfig) TlogSupport() bool {
 // this vdisk supports a template (root) server,
 // to get the data in case the data isn't available on
 // the normal (local) storage cluster.
-// TODO: use this to add the option of template support,
-//       both in the deduped as well as the nondeduped storage
-//       see: https://github.com/zero-os/0-Disk/issues/223
 func (cfg *VdiskConfig) TemplateSupport() bool {
 	return cfg.Type&propTemplateSupport != 0
 }
 
-// VdiskType represents the type of a vdisk
+// VdiskType represents the type of a vdisk,
+// and each valid bit defines a property of the vdisk,
+// and its the different collections of valid bits that defines
+// each valid and unique type.
 type VdiskType uint8
 
 // Validate this vdisk type
@@ -428,7 +466,7 @@ func (t *VdiskType) SetString(s string) error {
 
 // MarshalYAML implements yaml.Marshaler.MarshalYAML
 func (t VdiskType) MarshalYAML() (interface{}, error) {
-	if s := t.String(); s != "" {
+	if s := t.String(); s != vdiskTypeNilStr {
 		return s, nil
 	}
 
@@ -494,13 +532,26 @@ const (
 
 // Vdisk Properties
 const (
+	// All content is deduped,
+	// meaning that only unique content (blocks) are stored.
 	propDeduped VdiskType = 1 << iota
+	// Content is stored in external storage servers.
 	propPersistent
+	// Content is only available during the session of creation,
+	// and is released from RAM when shutting down the vdisk.
 	propTemporary
+	// Each write data transaction (write/delete/merge),
+	// is also logged to a tlogserver (if one is given),
+	// allowing for rollbacks and replays of the data.
 	propTlogSupport
+	// Allows data to be read from a root storage cluster,
+	// in case it isn't available in the (local) storage cluster yet,
+	// storing it as well (async) in the (local) storage cluster when read.
 	propTemplateSupport
 )
 
 func init() {
+	// Ensures that all YAML tags require a 'required/optional' tag,
+	// to ensure explicit documentation about this.
 	valid.SetFieldsRequiredByDefault(true)
 }

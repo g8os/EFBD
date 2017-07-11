@@ -23,9 +23,12 @@ type Player struct {
 	ctx     context.Context
 }
 
+// OnReplayCb defines func signature which can be used as callback
+// for the Replay* functions.
+// This callback is going to be executed on each block replay.
 type OnReplayCb func(seq uint64) error
 
-func OnReplayCbNone(seq uint64) error {
+func onReplayCbNone(seq uint64) error {
 	return nil
 }
 
@@ -46,16 +49,13 @@ func NewPlayer(ctx context.Context, configPath string, serverConfigs []zerodiskc
 		return nil, err
 	}
 
-	// create ardb backend
-	redisPool := ardb.NewRedisPool(nil)
-
 	hotreloader, err := zerodiskcfg.NopHotReloader(configPath, zerodiskcfg.NBDServer)
 	if err != nil {
 		return nil, err
 	}
 
 	config := ardb.BackendFactoryConfig{
-		Pool:              redisPool,
+		PoolFactory:       ardb.NewRedisPoolFactory(nil),
 		ConfigHotReloader: hotreloader,
 		LBACacheLimit:     ardb.DefaultLBACacheLimit,
 	}
@@ -99,17 +99,22 @@ func NewPlayerWithPoolAndBackend(ctx context.Context, pool tlog.RedisPool, backe
 
 }
 
+// Close releases all its resources
 func (p *Player) Close() {
 	p.dec.Close()
 	p.backend.Close(p.ctx)
 }
 
-// Replay replays the tlog by decoding data from a tlog RedisPool.
-// The replay start from `startTs` timestamp.
+// Replay replays the tlog by decoding data from the tlog blockchains.
+// lmt implements the decoder.Limiter interface which specify start and end of the
+// data we want to replay. It returns last sequence number it replayed.
 func (p *Player) Replay(lmt decoder.Limiter) (uint64, error) {
-	return p.ReplayWithCallback(lmt, OnReplayCbNone)
+	return p.ReplayWithCallback(lmt, onReplayCbNone)
 }
 
+// ReplayWithCallback replays
+// lmt implements the decoder.Limiter interface which specify start and end of the
+// It returns last sequence number it replayed.
 func (p *Player) ReplayWithCallback(lmt decoder.Limiter, onReplayCb OnReplayCb) (uint64, error) {
 	var lastSeq uint64
 	var err error
@@ -132,11 +137,15 @@ func (p *Player) ReplayWithCallback(lmt decoder.Limiter, onReplayCb OnReplayCb) 
 	return lastSeq, p.backend.Flush(p.ctx)
 }
 
+// ReplayAggregation replays an aggregation.
+// It returns last sequence number it replayed.
 func (p *Player) ReplayAggregation(agg *schema.TlogAggregation, lmt decoder.Limiter) (uint64, error) {
-	return p.ReplayAggregationWithCallback(agg, lmt, OnReplayCbNone)
+	return p.ReplayAggregationWithCallback(agg, lmt, onReplayCbNone)
 }
 
-// ReplayAggregation replays an aggregation
+// ReplayAggregationWithCallback replays an aggregation with a callback.
+// The callback is executed after it replay a block.
+// It returns last sequence number it replayed.
 func (p *Player) ReplayAggregationWithCallback(agg *schema.TlogAggregation, lmt decoder.Limiter,
 	onReplayCb OnReplayCb) (uint64, error) {
 

@@ -452,10 +452,6 @@ func newTestNbdBackend(ctx context.Context, t *testing.T, vdiskID, tlogrpc strin
 
 func newTestNbdBackendWithConfigPath(ctx context.Context, t *testing.T, vdiskID, tlogrpc string,
 	blockSize, size uint64, configPath string) (nbd.Backend, error) {
-
-	// redis pool
-	redisPool := ardb.NewRedisPool(nil)
-
 	hotreloader, err := config.NewHotReloader(configPath, config.NBDServer)
 	if err != nil {
 		return nil, err
@@ -463,7 +459,7 @@ func newTestNbdBackendWithConfigPath(ctx context.Context, t *testing.T, vdiskID,
 	go hotreloader.Listen(ctx)
 
 	config := ardb.BackendFactoryConfig{
-		Pool:              redisPool,
+		PoolFactory:       ardb.NewRedisPoolFactory(nil),
 		ConfigHotReloader: hotreloader,
 		LBACacheLimit:     1024 * 1024,
 		TLogRPCAddress:    tlogrpc,

@@ -21,11 +21,14 @@ import (
 )
 
 const (
-	tlogFlushWaitSecondRetry = 5 * time.Second  // retry(1st) force flush after this timeout
-	tlogFlushWaitFirstRetry  = 10 * time.Second // retry(2nd) force flush after this timeout
+	tlogFlushWaitFirstRetry  = 5 * time.Second  // retry(1st) force flush after this timeout
+	tlogFlushWaitSecondRetry = 10 * time.Second // retry(2nd) force flush after this timeout
 	tlogFlushWait            = 15 * time.Second // maximum duration we wait for flush to finish
 )
 
+// newTlogStorage creates a tlog storage backendStorage,
+// wrapping around a given backend storage,
+// piggy backing on the newTlogStorageWithClient function for the actual logic.
 func newTlogStorage(vdiskID, tlogrpc, configPath string, blockSize int64, storage backendStorage) (backendStorage, error) {
 	client, err := tlogclient.New(strings.Split(tlogrpc, ","), vdiskID, 0, true)
 	if err != nil {
@@ -35,9 +38,15 @@ func newTlogStorage(vdiskID, tlogrpc, configPath string, blockSize int64, storag
 	return newTlogStorageWithClient(vdiskID, configPath, blockSize, client, storage)
 }
 
+// newTlogStorage creates a tlog storage backendStorage,
+// wrapping around a given backend storage,
+// using the given tlog client to send its write transactions to the tlog server.
 func newTlogStorageWithClient(vdiskID, configPath string, blockSize int64, client tlogClient, storage backendStorage) (backendStorage, error) {
 	if storage == nil {
-		return nil, errors.New("tlogStorage requires a non-nil storage")
+		return nil, errors.New("tlogStorage requires a non-nil backendStorage")
+	}
+	if client == nil {
+		return nil, errors.New("tlogStorage requires a non-nil tlogClient")
 	}
 
 	return &tlogStorage{
@@ -54,6 +63,14 @@ func newTlogStorageWithClient(vdiskID, configPath string, blockSize int64, clien
 	}, nil
 }
 
+// tlogStorage is a backendStorage implementation,
+// which is a special storage type in the series of storage implementations.
+// It doesn't store the actual data itself,
+// and instead wraps around another storage (e.g. nondeduped/deduped storage),
+// to do the actual data storage.
+// Thus this wrapping storage isn't used to store data,
+// and is instead used to send the tlogserver all write transactions,
+// such that these are logged (e.g. for data recovery), using an embedded tlogclient.
 type tlogStorage struct {
 	vdiskID       string
 	mux           sync.RWMutex

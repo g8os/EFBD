@@ -11,13 +11,13 @@ Components:
   - A network block device server to expose the vdisks to virtual machines
 * [TLOG Server](tlog/)
   - A transaction log server to record block changes
-* [Command Line Tool](g8stor/)
+* [zeroctl](zeroctl/)
   - A command line tool to control vdisks
 
 Make sure to have [Golang](https://golang.org/) version 1.8 or above installed.
 
 ## More
 
-All documentation is in the [`/docs`](./docs) directory, including a [table of contents](/docs/SUMMARY.md).
+All documentation is in the [`/docs`](docs/) directory, including a [table of contents](/docs/SUMMARY.md).
 
 In [Getting Started with NBD Server](/docs/gettingstarted/gettingstarted.md) you find the recommended path to quickly get up and running.

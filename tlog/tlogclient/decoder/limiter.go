@@ -8,15 +8,19 @@ import (
 // in order for the decoder to know which aggregations
 // it needs to decode
 type Limiter interface {
-	// EndAgg returns true if it is the end  of the
-	// aggregation we want to decode
-	EndAgg(*schema.TlogAggregation, schema.TlogBlock_List) bool
 
 	// StartAgg returns true if it is the start of the
 	// aggregation we want to decode
 	StartAgg(*schema.TlogAggregation, schema.TlogBlock_List) bool
 
+	// EndAgg returns true if it is the end  of the
+	// aggregation we want to decode
+	EndAgg(*schema.TlogAggregation, schema.TlogBlock_List) bool
+
+	// StartBlock returns true if it is the start of block we want to decode
 	StartBlock(schema.TlogBlock) bool
+
+	// EndBlock returns true if it is the end of block we want to decode
 	EndBlock(schema.TlogBlock) bool
 }
 
@@ -69,11 +73,14 @@ func (lbt LimitByTimestamp) StartBlock(block schema.TlogBlock) bool {
 	return block.Timestamp() >= lbt.startTs
 }
 
+// LimitBySequence implement Limiter interface which is limited by
+// start and end sequence
 type LimitBySequence struct {
 	startSeq uint64
 	endSeq   uint64
 }
 
+// NewLimitBySequence creates new LimitBySequence object
 func NewLimitBySequence(startSeq, endSeq uint64) LimitBySequence {
 	return LimitBySequence{
 		startSeq: startSeq,

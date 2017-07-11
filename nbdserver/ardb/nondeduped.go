@@ -17,6 +17,9 @@ func newNonDedupedStorage(vdiskID, rootVdiskID string, blockSize int64, template
 
 	if templateSupport {
 		nondeduped.getContent = nondeduped.getLocalOrRemoteContent
+		if rootVdiskID == "" {
+			nondeduped.rootVdiskID = vdiskID
+		}
 	} else {
 		nondeduped.getContent = nondeduped.getLocalContent
 	}
@@ -25,14 +28,14 @@ func newNonDedupedStorage(vdiskID, rootVdiskID string, blockSize int64, template
 }
 
 // nonDedupedStorage is a backendStorage implementation,
-// that simply stores each block in redis using
-// a unique key based on the vdiskID and blockIndex
+// which simply stores each block in redis using
+// a unique key based on the vdiskID and blockIndex.
 type nonDedupedStorage struct {
-	blockSize   int64
-	vdiskID     string
-	rootVdiskID string
-	provider    redisConnectionProvider
-	getContent  nondedupedContentGetter
+	blockSize   int64                   // blocksize in bytes
+	vdiskID     string                  // ID for the vdisk
+	rootVdiskID string                  // used in case template is supposed (same value as vdiskID if not defined)
+	provider    redisConnectionProvider // used to get the connection info to storage servers
+	getContent  nondedupedContentGetter // getter depends on whether there is template support or not
 }
 
 // used to provide different content getters based on the vdisk properties
@@ -41,6 +44,7 @@ type nondedupedContentGetter func(blockIndex int64) (content []byte, err error)
 
 // Set implements backendStorage.Set
 func (ss *nonDedupedStorage) Set(blockIndex int64, content []byte) (err error) {
+	// get a connection to a data storage server, based on the modulo blockIndex
 	conn, err := ss.provider.RedisConnection(blockIndex)
 	if err != nil {
 		return
@@ -66,6 +70,8 @@ func (ss *nonDedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 func (ss *nonDedupedStorage) Merge(blockIndex, offset int64, content []byte) (err error) {
 	mergedContent, _ := ss.getContent(blockIndex)
 
+	// create old content from scratch or expand it to the blocksize,
+	// in case no old content was defined or it was defined but too small
 	if ocl := int64(len(mergedContent)); ocl == 0 {
 		mergedContent = make([]byte, ss.blockSize)
 	} else if ocl < ss.blockSize {
@@ -77,6 +83,7 @@ func (ss *nonDedupedStorage) Merge(blockIndex, offset int64, content []byte) (er
 	// copy in new content
 	copy(mergedContent[offset:], content)
 
+	// get a connection to a data storage server, based on the modulo blockIndex
 	conn, err := ss.provider.RedisConnection(blockIndex)
 	if err != nil {
 		return
@@ -96,12 +103,14 @@ func (ss *nonDedupedStorage) Get(blockIndex int64) (content []byte, err error) {
 
 // Delete implements backendStorage.Delete
 func (ss *nonDedupedStorage) Delete(blockIndex int64) (err error) {
+	// get a connection to a data storage server, based on the modulo blockIndex
 	conn, err := ss.provider.RedisConnection(blockIndex)
 	if err != nil {
 		return
 	}
 	defer conn.Close()
 
+	// delete the block defined for the block index (if it previously existed at all)
 	_, err = conn.Do("HDEL", ss.vdiskID, blockIndex)
 	return
 }
@@ -118,17 +127,22 @@ func (ss *nonDedupedStorage) Close() error { return nil }
 // GoBackground implements backendStorage.GoBackground
 func (ss *nonDedupedStorage) GoBackground(context.Context) {}
 
+// (*nonDedupedStorage).getContent in case storage has no template support
 func (ss *nonDedupedStorage) getLocalContent(blockIndex int64) (content []byte, err error) {
+	// get a connection to a data storage server, based on the modulo blockIndex
 	conn, err := ss.provider.RedisConnection(blockIndex)
 	if err != nil {
 		return
 	}
 	defer conn.Close()
 
+	// get block from local data storage server, if it exists at all,
+	// a nil block is returned in case it didn't exist
 	content, err = redisBytes(conn.Do("HGET", ss.vdiskID, blockIndex))
 	return
 }
 
+// (*nonDedupedStorage).getContent in case storage has template support
 func (ss *nonDedupedStorage) getLocalOrRemoteContent(blockIndex int64) (content []byte, err error) {
 	content, err = ss.getLocalContent(blockIndex)
 	if err != nil || content != nil {
@@ -136,6 +150,7 @@ func (ss *nonDedupedStorage) getLocalOrRemoteContent(blockIndex int64) (content 
 	}
 
 	content = func() (content []byte) {
+		// get a connection to a root data storage server, based on the modulo blockIndex
 		conn, err := ss.provider.FallbackRedisConnection(blockIndex)
 		if err != nil {
 			log.Debugf(
@@ -145,6 +160,8 @@ func (ss *nonDedupedStorage) getLocalOrRemoteContent(blockIndex int64) (content 
 		}
 		defer conn.Close()
 
+		// get block from local data storage server, if it exists at all,
+		// a nil block is returned in case it didn't exist
 		content, err = redisBytes(conn.Do("HGET", ss.rootVdiskID, blockIndex))
 		if err != nil {
 			log.Debugf(
@@ -156,6 +173,7 @@ func (ss *nonDedupedStorage) getLocalOrRemoteContent(blockIndex int64) (content 
 		return
 	}()
 
+	// check if we found the content in the remote server
 	if content != nil {
 		// store remote content in local storage asynchronously
 		go func() {

@@ -7,11 +7,23 @@ import (
 	"github.com/garyburd/redigo/redis"
 )
 
+// NewRedisPoolFactory creates a new redis pool factory,
+// using the given dial func
+func NewRedisPoolFactory(dial DialFunc) RedisPoolFactory {
+	return func() *RedisPool {
+		return NewRedisPool(dial)
+	}
+}
+
+// RedisPoolFactory defines a factory,
+// to be used to create a new redis pool
+type RedisPoolFactory func() *RedisPool
+
 // DialFunc creates a redis.Conn (if possible),
 // based on a given connectionString and database.
 type DialFunc func(connectionString string, database int) (redis.Conn, error)
 
-//RedisPool maintains a collection of redis.Pool's per connection's database.
+// RedisPool maintains a collection of redis.Pool's per connection's database.
 // The application calls the Get method
 // to get a database connection from the pool and the connection's Close method to
 // return the connection's resources to the pool.
@@ -26,18 +38,18 @@ type RedisPool struct {
 
 type databaseSpecificPools map[int]*redis.Pool
 
-//NewRedisPool creates a new pool for multiple redis servers
+// NewRedisPool creates a new pool for multiple redis servers,
+// if no dialFunc is given, a default one will be used instead,
+// which established a tcp connection for the given connection info.
 func NewRedisPool(dial DialFunc) (p *RedisPool) {
-	p = &RedisPool{connectionSpecificPools: make(map[string]databaseSpecificPools)}
 	if dial == nil {
-		p.Dial = func(connectionString string, database int) (redis.Conn, error) {
-			return redis.Dial("tcp", connectionString, redis.DialDatabase(database))
-		}
-	} else {
-		p.Dial = dial
+		dial = defaultRedisDialFunc
 	}
 
-	return
+	return &RedisPool{
+		connectionSpecificPools: make(map[string]databaseSpecificPools),
+		Dial: dial,
+	}
 }
 
 // Get gets a connection. The application must close the returned connection.
@@ -88,10 +100,19 @@ func (p *RedisPool) Close() {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
+	// close all storage server pools
 	for _, connection := range p.connectionSpecificPools {
 		for _, c := range connection {
 			c.Close()
 		}
 	}
+
+	// create a new connection specific pool
 	p.connectionSpecificPools = make(map[string]databaseSpecificPools)
+}
+
+// defaultRedisDialFunc is used when creating a RedisPool,
+// without a custom-defined DialFunc (and given nil instead).
+func defaultRedisDialFunc(connectionString string, database int) (redis.Conn, error) {
+	return redis.Dial("tcp", connectionString, redis.DialDatabase(database))
 }

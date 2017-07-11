@@ -84,6 +84,7 @@ func listVdisks(cmd *cobra.Command, args []string) error {
 	var ok bool
 	var vdiskID string
 
+	// only log each vdisk once
 	uniqueVdisks := make(map[string]struct{})
 	for _, vdisk := range vdisks {
 		vdiskID = string(vdisk)
