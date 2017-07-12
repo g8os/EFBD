@@ -25,7 +25,6 @@ func testClientWaitSeqFlushed(ctx context.Context, t *testing.T, respChan <-chan
 		select {
 		case <-time.After(20 * time.Second):
 			t.Fatal("testClientWaitSeqFlushed timeout")
-			return
 		case re := <-respChan:
 			if re.Err != nil {
 				t.Logf("recv err = %v", re.Err)
