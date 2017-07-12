@@ -9,7 +9,6 @@ import (
 	"net"
 
 	"github.com/zero-os/0-Disk"
-	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
@@ -25,7 +24,6 @@ type Server struct {
 	listener             net.Listener
 	flusherConf          *flusherConfig
 	vdiskMgr             *vdiskManager
-	fileConf             *config.Config
 	ctx                  context.Context
 }
 
@@ -68,21 +66,12 @@ func NewServer(conf *Config, poolFactory tlog.RedisPoolFactory) (*Server, error)
 		HexNonce:  conf.HexNonce,
 	}
 
-	var fileConfig *config.Config
-	if conf.ConfigPath != "" {
-		fileConfig, err = config.ReadConfig(conf.ConfigPath, config.TlogServer)
-		if err != nil {
-			log.Fatalf("failed to read file config: %v", err)
-		}
-	}
-
 	return &Server{
 		poolFactory:          poolFactory,
 		listener:             listener,
 		flusherConf:          flusherConf,
 		maxRespSegmentBufLen: schema.RawTlogRespLen(conf.FlushSize),
 		vdiskMgr:             newVdiskManager(conf.AggMq, conf.BlockSize, conf.FlushSize, conf.ConfigPath),
-		fileConf:             fileConfig,
 	}, nil
 }
 
