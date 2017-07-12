@@ -4,66 +4,46 @@ import (
 	"fmt"
 
 	"github.com/garyburd/redigo/redis"
-	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbdserver/ardb"
 )
 
-// delete the data of nondeduped vdisks
-func deleleNondedupedVdisks(force bool, cfg config.StorageServerConfig, vdiskids ...string) error {
-	if len(vdiskids) == 0 {
-		return nil // no vdisks to delete, early return
-	}
+func newNonDedupDelController(vdiskID string) delController {
+	return &nonDedupDelController{vdiskID}
+}
 
-	// open redis connection
-	log.Infof("dialing redis TCP connection at: %s (%d)", cfg.Address, cfg.Database)
-	conn, err := redis.Dial("tcp", cfg.Address, redis.DialDatabase(cfg.Database))
+// nonDdedupDelController defines a delController implementation
+// which can be used to delete the data for nondeduped content
+type nonDedupDelController struct {
+	vdiskID string
+}
+
+// BatchRequest implements delController.BatchRequest
+func (c nonDedupDelController) BatchRequest(conn redis.Conn) error {
+	log.Infof("deleting nondeduped data of vdisk %s...", c.vdiskID)
+	err := conn.Send("DEL", ardb.NonDedupedStorageKey(c.vdiskID))
 	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	// add each delete request to the pipeline
-	var delVdisks []string
-	for _, vdiskID := range vdiskids {
-		log.Infof("deleting data of nondeduped vdisk %s...", vdiskID)
-		err := conn.Send("DEL", ardb.NonDedupedStorageKey(vdiskID))
-		if err != nil {
-			if !force {
-				return err
-			}
-			log.Error("could not add delete request for vdisk: ", vdiskID)
-			continue
-		}
-
-		delVdisks = append(delVdisks, vdiskID)
-	}
-
-	// flush all delete requests
-	err = conn.Flush()
-	if err != nil {
-		return fmt.Errorf("could not delete nondeduped vdisks %v: %s", delVdisks, err.Error())
-	}
-
-	// check if all vdisks have actually been deleted
-	for _, vdiskID := range delVdisks {
-		deleted, err := redis.Bool(conn.Receive())
-		if err != nil {
-			if !force {
-				return err
-			}
-
-			log.Errorf("could not delete nondeduped vdisk %s: %s", vdiskID, err.Error())
-			continue
-		}
-
-		// it's not an error if it did not exist yet,
-		// as this is possible due to the multiple ardbs in use
-		if !deleted {
-			log.Infof("could not delete nondeduped vdisk %s: did not exist at %s (%d)",
-				vdiskID, cfg.Address, cfg.Database)
-		}
+		return c.error(err)
 	}
 
 	return nil
+}
+
+// CheckRequest implements delController.CheckRequest
+func (c nonDedupDelController) CheckRequest(conn redis.Conn) error {
+	deleted, err := redis.Bool(conn.Receive())
+	if err != nil {
+		return c.error(err)
+	}
+	if deleted {
+		return nil
+	}
+
+	return noDeleteError(fmt.Errorf(
+		"no nondeduped data existed for vdisk %s", c.vdiskID))
+}
+
+func (c nonDedupDelController) error(err error) error {
+	return fmt.Errorf("could not delete data of nondeduped content for vdisk %s: %s",
+		c.vdiskID, err.Error())
 }

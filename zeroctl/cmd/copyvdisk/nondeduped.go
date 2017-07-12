@@ -9,9 +9,7 @@ import (
 	"github.com/zero-os/0-Disk/nbdserver/ardb"
 )
 
-func copyNondedupedSameConnection(sourceID, targetID string, conn redis.Conn) (err error) {
-	defer conn.Close()
-
+func copyNonDedupedSameConnection(sourceID, targetID string, conn redis.Conn) (err error) {
 	script := redis.NewScript(0, `
 local source = ARGV[1]
 local destination = ARGV[2]
@@ -44,12 +42,7 @@ return redis.call("HLEN", destination)
 	return
 }
 
-func copyNondedupedDifferentConnections(sourceID, targetID string, connA, connB redis.Conn) (err error) {
-	defer func() {
-		connA.Close()
-		connB.Close()
-	}()
-
+func copyNonDedupedDifferentConnections(sourceID, targetID string, connA, connB redis.Conn) (err error) {
 	sourceKey := ardb.NonDedupedStorageKey(sourceID)
 	targetKey := ardb.NonDedupedStorageKey(targetID)
 

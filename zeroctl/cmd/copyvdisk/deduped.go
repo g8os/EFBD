@@ -10,8 +10,6 @@ import (
 )
 
 func copyDedupedSameConnection(sourceID, targetID string, conn redis.Conn) (err error) {
-	defer conn.Close()
-
 	script := redis.NewScript(0, `
 local source = ARGV[1]
 local destination = ARGV[2]
@@ -42,11 +40,6 @@ return redis.call("HLEN", destination)
 }
 
 func copyDedupedDifferentConnections(sourceID, targetID string, connA, connB redis.Conn) (err error) {
-	defer func() {
-		connA.Close()
-		connB.Close()
-	}()
-
 	sourceKey, targetKey := lba.StorageKey(sourceID), lba.StorageKey(targetID)
 
 	// get data from source connection
