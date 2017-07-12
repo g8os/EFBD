@@ -212,5 +212,10 @@ func (ss *nonDedupedStorage) isZeroContent(content []byte) bool {
 // NonDedupedStorageKey returns the storage key that can/will be
 // used to store the nondeduped data for the given vdiskID
 func NonDedupedStorageKey(vdiskID string) string {
-	return "nondedup:" + vdiskID
+	return NonDedupedStorageKeyPrefix + vdiskID
 }
+
+const (
+	// NonDedupedStorageKeyPrefix is the prefix used in NonDedupedStorageKey
+	NonDedupedStorageKeyPrefix = "nondedup:"
+)

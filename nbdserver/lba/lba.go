@@ -315,5 +315,10 @@ func (e flushError) Error() (s string) {
 // StorageKey returns the storage key that can/will be
 // used to store the LBA data for the given vdiskID
 func StorageKey(vdiskID string) string {
-	return "lba:" + vdiskID
+	return StorageKeyPrefix + vdiskID
 }
+
+const (
+	// StorageKeyPrefix is the prefix used in StorageKey
+	StorageKeyPrefix = "lba:"
+)

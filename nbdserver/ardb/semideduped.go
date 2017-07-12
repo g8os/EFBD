@@ -228,5 +228,10 @@ func combineErrorPair(e1, e2 error) error {
 // SemiDedupBitMapKey returns the storage key which is used
 // to store the BitMap for the semideduped storage of a given vdisk
 func SemiDedupBitMapKey(vdiskID string) string {
-	return "semidedup:bitmap:" + vdiskID
+	return SemiDedupBitMapKeyPrefix + vdiskID
 }
+
+const (
+	// SemiDedupBitMapKeyPrefix is the prefix used in SemiDedupBitMapKey
+	SemiDedupBitMapKeyPrefix = "semidedup:bitmap:"
+)
