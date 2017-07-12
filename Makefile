@@ -35,8 +35,13 @@ else
 endif
 
 tlogserver: $(OUTPUT)
+ifeq ($(GOOS), darwin)
+	GOOS=$(GOOS) GOARCH=$(GOARCH) \
+		go build -o $(OUTPUT)/$@ ./tlog/tlogserver
+else
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) \
 		go build -ldflags '$(ldflags)' -o $(OUTPUT)/$@ ./tlog/tlogserver
+endif
 
 test: testgo testrace testcgo testcodegen
 
