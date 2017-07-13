@@ -386,10 +386,6 @@ type VdiskConfig struct {
 // StorageType returns the type of storage this vdisk uses
 func (cfg *VdiskConfig) StorageType() StorageType {
 	if cfg.Type&propDeduped != 0 {
-		if cfg.Type == VdiskTypeBoot && cfg.RootStorageCluster != "" {
-			return StorageSemiDeduped
-		}
-
 		return StorageDeduped
 	}
 
@@ -535,6 +531,7 @@ const (
 	StorageNil     StorageType = 0
 	StorageDeduped StorageType = 1 << iota
 	StorageNonDeduped
+	// StorageSemiDeduped is not used for now
 	StorageSemiDeduped
 )
 

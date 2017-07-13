@@ -809,13 +809,9 @@ func TestVdiskProperties(t *testing.T) {
 	v := func(t VdiskType) *VdiskConfig {
 		return &VdiskConfig{Type: t}
 	}
-	ve := func(t VdiskType, rootStorageCluster string) *VdiskConfig {
-		return &VdiskConfig{Type: t, RootStorageCluster: rootStorageCluster}
-	}
 
 	// validate storage type property
 	assert.Equal(t, StorageDeduped, v(VdiskTypeBoot).StorageType())
-	assert.Equal(t, StorageSemiDeduped, ve(VdiskTypeBoot, "foo").StorageType())
 	assert.Equal(t, StorageNonDeduped, v(VdiskTypeDB).StorageType())
 	assert.Equal(t, StorageNonDeduped, v(VdiskTypeCache).StorageType())
 	assert.Equal(t, StorageNonDeduped, v(VdiskTypeTmp).StorageType())
