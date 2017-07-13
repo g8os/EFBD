@@ -163,15 +163,7 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	// One tlog client can define multiple tlog server connections,
 	// but only one will be used at a time, the others merely serve as backup servers.
 	if vdisk.TlogSupport() {
-		var tlogRPCAddrs string
-
-		tlogRPCAddrs, err = f.tlogRPCAddrs()
-		if err != nil {
-			log.Errorf("couldn't create tlog storage. invalid TLogRPCAddress: %s", err.Error())
-			return
-		}
-
-		if tlogRPCAddrs != "" {
+		if tlogRPCAddrs := f.tlogRPCAddrs(); tlogRPCAddrs != "" {
 			log.Debugf("creating tlogStorage for backend %v (%v)", vdiskID, vdisk.Type)
 			storage, err = newTlogStorage(vdiskID, tlogRPCAddrs, f.configPath, blockSize, storage)
 			if err != nil {
@@ -195,15 +187,15 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 // Get the tlog server(s) address(es),
 // if tlog rpc addresses are defined via a CLI flag we use those,
 // otherwise we try to get it from the latest config.
-func (f BackendFactory) tlogRPCAddrs() (string, error) {
+func (f BackendFactory) tlogRPCAddrs() string {
 	// return the addresses defined as a CLI flag
 	if f.cmdTlogRPCAddress != "" {
-		return f.cmdTlogRPCAddress, nil
+		return f.cmdTlogRPCAddress
 	}
 
 	// no addresses defined
 	if f.configPath == "" {
-		return "", nil
+		return ""
 	}
 
 	// return the addresses defined in the TlogServer config,
@@ -211,9 +203,9 @@ func (f BackendFactory) tlogRPCAddrs() (string, error) {
 	// in which case the returned string will be empty.
 	cfg, err := config.ReadConfig(f.configPath, config.TlogServer)
 	if err != nil {
-		return "", err
+		return ""
 	}
-	return cfg.TlogRPC, nil
+	return cfg.TlogRPC
 }
 
 // newRedisProvider creates a new redis provider
