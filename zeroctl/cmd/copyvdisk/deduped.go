@@ -6,11 +6,10 @@ import (
 
 	"github.com/garyburd/redigo/redis"
 	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/nbdserver/lba"
 )
 
 func copyDedupedSameConnection(sourceID, targetID string, conn redis.Conn) (err error) {
-	defer conn.Close()
-
 	script := redis.NewScript(0, `
 local source = ARGV[1]
 local destination = ARGV[2]
@@ -31,7 +30,8 @@ return redis.call("HLEN", destination)
 	log.Infof("dumping vdisk %q and restoring it as vdisk %q",
 		sourceID, targetID)
 
-	indexCount, err := redis.Int64(script.Do(conn, sourceID, targetID))
+	sourceKey, targetKey := lba.StorageKey(sourceID), lba.StorageKey(targetID)
+	indexCount, err := redis.Int64(script.Do(conn, sourceKey, targetKey))
 	if err == nil {
 		log.Infof("copied %d meta indices to vdisk %q", indexCount, targetID)
 	}
@@ -40,14 +40,11 @@ return redis.call("HLEN", destination)
 }
 
 func copyDedupedDifferentConnections(sourceID, targetID string, connA, connB redis.Conn) (err error) {
-	defer func() {
-		connA.Close()
-		connB.Close()
-	}()
+	sourceKey, targetKey := lba.StorageKey(sourceID), lba.StorageKey(targetID)
 
 	// get data from source connection
 	log.Infof("collecting all metadata from source vdisk %q...", sourceID)
-	data, err := redis.StringMap(connA.Do("HGETALL", sourceID))
+	data, err := redis.StringMap(connA.Do("HGETALL", sourceKey))
 	if err != nil {
 		return
 	}
@@ -66,7 +63,7 @@ func copyDedupedDifferentConnections(sourceID, targetID string, connA, connB red
 	}
 
 	// delete any existing vdisk
-	if err = connB.Send("DEL", targetID); err != nil {
+	if err = connB.Send("DEL", targetKey); err != nil {
 		return
 	}
 
@@ -80,7 +77,7 @@ func copyDedupedDifferentConnections(sourceID, targetID string, connA, connB red
 			return
 		}
 
-		connB.Send("HSET", targetID, index, []byte(hash))
+		connB.Send("HSET", targetKey, index, []byte(hash))
 	}
 
 	// send all data to target connection (execute the transaction)

@@ -30,13 +30,13 @@ func copyTestMetaData(t *testing.T, vdiskIDA, vdiskIDB string, providerA, provid
 	}
 	defer connB.Close()
 
-	data, err := redis.StringMap(connA.Do("HGETALL", vdiskIDA))
+	data, err := redis.StringMap(connA.Do("HGETALL", lba.StorageKey(vdiskIDA)))
 	if err != nil {
 		debug.PrintStack()
 		t.Fatal(err)
 	}
 
-	_, err = connB.Do("DEL", vdiskIDB)
+	_, err = connB.Do("DEL", lba.StorageKey(vdiskIDB))
 	if err != nil {
 		debug.PrintStack()
 		t.Fatal(err)
@@ -49,7 +49,7 @@ func copyTestMetaData(t *testing.T, vdiskIDA, vdiskIDB string, providerA, provid
 			return
 		}
 
-		_, err = connB.Do("HSET", vdiskIDB, index, []byte(hash))
+		_, err = connB.Do("HSET", lba.StorageKey(vdiskIDB), index, []byte(hash))
 		if err != nil {
 			debug.PrintStack()
 			t.Fatal(err)

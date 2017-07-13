@@ -74,8 +74,13 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 			sourceVdiskID, targetVdiskID,
 			cfg.StorageClusters[sourceVdisk.StorageCluster],
 			cfg.StorageClusters[targetStorageCluster])
-	case config.StorageNondeduped:
-		return copyNondedupedVdisk(
+	case config.StorageNonDeduped:
+		return copyNonDedupedVdisk(
+			sourceVdiskID, targetVdiskID,
+			cfg.StorageClusters[sourceVdisk.StorageCluster],
+			cfg.StorageClusters[targetStorageCluster])
+	case config.StorageSemiDeduped:
+		return copySemiDedupedVdisk(
 			sourceVdiskID, targetVdiskID,
 			cfg.StorageClusters[sourceVdisk.StorageCluster],
 			cfg.StorageClusters[targetStorageCluster])
@@ -100,6 +105,7 @@ func copyDedupedVdisk(sourceID, targetID string, sourceCluster, targetCluster co
 		if err != nil {
 			return fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
 		}
+		defer conn.Close()
 
 		return copyDedupedSameConnection(sourceID, targetID, conn)
 	}
@@ -110,12 +116,16 @@ func copyDedupedVdisk(sourceID, targetID string, sourceCluster, targetCluster co
 	if err != nil {
 		return fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
 	}
+	defer func() {
+		connA.Close()
+		connB.Close()
+	}()
 
 	return copyDedupedDifferentConnections(sourceID, targetID, connA, connB)
 }
 
 // NOTE: copies data only (as there is no metadata for nondeduped vdisks)
-func copyNondedupedVdisk(sourceID, targetID string, sourceCluster, targetCluster config.StorageClusterConfig) error {
+func copyNonDedupedVdisk(sourceID, targetID string, sourceCluster, targetCluster config.StorageClusterConfig) error {
 	sourceDataServerCount := len(sourceCluster.DataStorage)
 	targetDataServerCount := len(targetCluster.DataStorage)
 
@@ -140,11 +150,9 @@ func copyNondedupedVdisk(sourceID, targetID string, sourceCluster, targetCluster
 			if err != nil {
 				return fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
 			}
+			defer conn.Close()
 
-			err = copyNondedupedSameConnection(sourceID, targetID, conn)
-			if err != nil {
-				return err
-			}
+			return copyNonDedupedSameConnection(sourceID, targetID, conn)
 		}
 
 		// between different storage servers
@@ -152,13 +160,96 @@ func copyNondedupedVdisk(sourceID, targetID string, sourceCluster, targetCluster
 		if err != nil {
 			return fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
 		}
+		defer func() {
+			connA.Close()
+			connB.Close()
+		}()
 
-		err = copyNondedupedDifferentConnections(sourceID, targetID, connA, connB)
+		err = copyNonDedupedDifferentConnections(sourceID, targetID, connA, connB)
 		if err != nil {
 			return err
 		}
 	}
 
+	return nil
+}
+
+func copySemiDedupedVdisk(sourceID, targetID string, sourceCluster, targetCluster config.StorageClusterConfig) error {
+	if sourceCluster.MetadataStorage == nil {
+		return errors.New("no metaDataServer given for source")
+	}
+	if targetCluster.MetadataStorage == nil {
+		return errors.New("no metaDataServer given for target")
+	}
+
+	var hasBitMask bool
+	var err error
+
+	// within same meta storage server
+	if *sourceCluster.MetadataStorage == *targetCluster.MetadataStorage {
+		// copy metadata from the same storage server
+		hasBitMask, err = func() (hasBitMask bool, err error) {
+			conn, err := getConnection(*sourceCluster.MetadataStorage)
+			if err != nil {
+				err = fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
+				return
+			}
+			defer conn.Close()
+
+			// copy metadata of deduped metadata
+			err = copyDedupedSameConnection(sourceID, targetID, conn)
+			if err != nil {
+				err = fmt.Errorf("couldn't copy deduped metadata: %s", err.Error())
+				return
+			}
+
+			// copy bitmask
+			hasBitMask, err = copySemiDedupedSameConnection(sourceID, targetID, conn)
+			return
+		}()
+	} else {
+		// copy metadata from different storage servers
+		hasBitMask, err = func() (hasBitMask bool, err error) {
+			connA, connB, err := getConnections(*sourceCluster.MetadataStorage, *targetCluster.MetadataStorage)
+			if err != nil {
+				err = fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
+				return
+			}
+			defer func() {
+				connA.Close()
+				connB.Close()
+			}()
+
+			// copy metadata of deduped metadata
+			err = copyDedupedDifferentConnections(sourceID, targetID, connA, connB)
+			if err != nil {
+				err = fmt.Errorf("couldn't copy deduped metadata: %s", err.Error())
+				return
+			}
+
+			// copy bitmask
+			hasBitMask, err = copySemiDedupedDifferentConnections(sourceID, targetID, connA, connB)
+			return
+		}()
+	}
+
+	if err != nil {
+		return fmt.Errorf("couldn't copy bitmask: %v", err)
+	}
+	if !hasBitMask {
+		// no bitmask == no nondeduped content,
+		// which means this is an untouched semideduped storage
+		return nil // nothing to do, early return
+	}
+
+	// dispatch the rest of the work to the copyNonDedupedVdisk func,
+	// to copy all the user (nondeduped) data
+	err = copyNonDedupedVdisk(sourceID, targetID, sourceCluster, targetCluster)
+	if err != nil {
+		return fmt.Errorf("couldn't copy nondeduped content: %v", err)
+	}
+
+	// copy went ALL-OK!
 	return nil
 }
 
@@ -188,6 +279,9 @@ func init() {
 If no target storage cluster is given,
 the storage cluster configured for the source vdisk
 will also be used for the target vdisk.
+
+If an error occured, the target vdisk should be considered as non-existent,
+even though data which is already copied is not rolled back.
 
 NOTE: by design,
   only the metadata of a deduped vdisk is copied,

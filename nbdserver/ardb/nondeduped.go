@@ -7,12 +7,14 @@ import (
 )
 
 // newNonDedupedStorage returns the non deduped backendStorage implementation
-func newNonDedupedStorage(vdiskID, rootVdiskID string, blockSize int64, templateSupport bool, provider redisConnectionProvider) backendStorage {
+func newNonDedupedStorage(vdiskID, rootVdiskID string, blockSize int64, templateSupport bool, provider redisDataConnProvider) backendStorage {
 	nondeduped := &nonDedupedStorage{
-		blockSize:   blockSize,
-		vdiskID:     vdiskID,
-		rootVdiskID: rootVdiskID,
-		provider:    provider,
+		blockSize:      blockSize,
+		storageKey:     NonDedupedStorageKey(vdiskID),
+		rootStorageKey: NonDedupedStorageKey(rootVdiskID),
+		vdiskID:        vdiskID,
+		rootVdiskID:    rootVdiskID,
+		provider:       provider,
 	}
 
 	if templateSupport {
@@ -31,11 +33,13 @@ func newNonDedupedStorage(vdiskID, rootVdiskID string, blockSize int64, template
 // which simply stores each block in redis using
 // a unique key based on the vdiskID and blockIndex.
 type nonDedupedStorage struct {
-	blockSize   int64                   // blocksize in bytes
-	vdiskID     string                  // ID for the vdisk
-	rootVdiskID string                  // used in case template is supposed (same value as vdiskID if not defined)
-	provider    redisConnectionProvider // used to get the connection info to storage servers
-	getContent  nondedupedContentGetter // getter depends on whether there is template support or not
+	blockSize      int64                   // blocksize in bytes
+	storageKey     string                  // Storage Key based on vdiskID
+	rootStorageKey string                  // Storage Key based on rootVdiskID
+	vdiskID        string                  // ID for the vdisk
+	rootVdiskID    string                  // used in case template is supposed (same value as vdiskID if not defined)
+	provider       redisDataConnProvider   // used to get the connection info to storage servers
+	getContent     nondedupedContentGetter // getter depends on whether there is template support or not
 }
 
 // used to provide different content getters based on the vdisk properties
@@ -57,12 +61,12 @@ func (ss *nonDedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 		log.Debugf(
 			"deleting content @ %d for vdisk %s as it's an all zeroes block",
 			blockIndex, ss.vdiskID)
-		_, err = conn.Do("HDEL", ss.vdiskID, blockIndex)
+		_, err = conn.Do("HDEL", ss.storageKey, blockIndex)
 		return
 	}
 
 	// content is not zero, so let's (over)write it
-	_, err = conn.Do("HSET", ss.vdiskID, blockIndex, content)
+	_, err = conn.Do("HSET", ss.storageKey, blockIndex, content)
 	return
 }
 
@@ -91,7 +95,7 @@ func (ss *nonDedupedStorage) Merge(blockIndex, offset int64, content []byte) (er
 	defer conn.Close()
 
 	// store new content, as the merged version is non-zero
-	_, err = conn.Do("HSET", ss.vdiskID, blockIndex, mergedContent)
+	_, err = conn.Do("HSET", ss.storageKey, blockIndex, mergedContent)
 	return
 }
 
@@ -111,7 +115,7 @@ func (ss *nonDedupedStorage) Delete(blockIndex int64) (err error) {
 	defer conn.Close()
 
 	// delete the block defined for the block index (if it previously existed at all)
-	_, err = conn.Do("HDEL", ss.vdiskID, blockIndex)
+	_, err = conn.Do("HDEL", ss.storageKey, blockIndex)
 	return
 }
 
@@ -138,7 +142,7 @@ func (ss *nonDedupedStorage) getLocalContent(blockIndex int64) (content []byte, 
 
 	// get block from local data storage server, if it exists at all,
 	// a nil block is returned in case it didn't exist
-	content, err = redisBytes(conn.Do("HGET", ss.vdiskID, blockIndex))
+	content, err = redisBytes(conn.Do("HGET", ss.storageKey, blockIndex))
 	return
 }
 
@@ -162,7 +166,7 @@ func (ss *nonDedupedStorage) getLocalOrRemoteContent(blockIndex int64) (content 
 
 		// get block from local data storage server, if it exists at all,
 		// a nil block is returned in case it didn't exist
-		content, err = redisBytes(conn.Do("HGET", ss.rootVdiskID, blockIndex))
+		content, err = redisBytes(conn.Do("HGET", ss.rootStorageKey, blockIndex))
 		if err != nil {
 			log.Debugf(
 				"content for block %d (vdisk %s) not available in local-, nor in remote storage: %s",
@@ -204,3 +208,14 @@ func (ss *nonDedupedStorage) isZeroContent(content []byte) bool {
 
 	return true
 }
+
+// NonDedupedStorageKey returns the storage key that can/will be
+// used to store the nondeduped data for the given vdiskID
+func NonDedupedStorageKey(vdiskID string) string {
+	return NonDedupedStorageKeyPrefix + vdiskID
+}
+
+const (
+	// NonDedupedStorageKeyPrefix is the prefix used in NonDedupedStorageKey
+	NonDedupedStorageKeyPrefix = "nondedup:"
+)

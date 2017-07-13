@@ -183,7 +183,7 @@ func (cfg *Config) validateNBD(validRef func(string) error) error {
 
 			// nonDeduped vdisks that support templates,
 			// also require a vdiskID as used on the template storage
-			if vdisk.StorageType() == StorageNondeduped {
+			if vdisk.StorageType() == StorageNonDeduped {
 				if vdisk.RootVdiskID == "" {
 					log.Debugf("defaulting rootVdiskID of vdisk %s to %s", vdiskID, vdiskID)
 					vdisk.RootVdiskID = vdiskID
@@ -396,7 +396,7 @@ func (cfg *VdiskConfig) StorageType() StorageType {
 	// see open issue for more information:
 	// https://github.com/zero-os/0-Disk/issues/222
 
-	return StorageNondeduped
+	return StorageNonDeduped
 }
 
 // TlogSupport returns whether or not the data of this vdisk
@@ -410,7 +410,8 @@ func (cfg *VdiskConfig) TlogSupport() bool {
 // to get the data in case the data isn't available on
 // the normal (local) storage cluster.
 func (cfg *VdiskConfig) TemplateSupport() bool {
-	return cfg.Type&propTemplateSupport != 0
+	return cfg.Type&propTemplateSupport != 0 ||
+		(cfg.Type == VdiskTypeBoot && cfg.RootStorageCluster != "")
 }
 
 // VdiskType represents the type of a vdisk,
@@ -516,10 +517,12 @@ func (st StorageType) String() string {
 	switch st {
 	case StorageDeduped:
 		return "deduped"
-	case StorageNondeduped:
+	case StorageNonDeduped:
 		return "nondeduped"
+	case StorageSemiDeduped:
+		return "semideduped"
 	default:
-		return "Unknown"
+		return "unknown"
 	}
 }
 
@@ -527,7 +530,9 @@ func (st StorageType) String() string {
 const (
 	StorageNil     StorageType = 0
 	StorageDeduped StorageType = 1 << iota
-	StorageNondeduped
+	StorageNonDeduped
+	// StorageSemiDeduped is not used for now
+	StorageSemiDeduped
 )
 
 // Vdisk Properties

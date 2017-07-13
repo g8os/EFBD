@@ -115,12 +115,12 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	// which is in function of the vdisk's properties.
 	switch storageType := vdisk.StorageType(); storageType {
 	// non deduped storage
-	case config.StorageNondeduped:
+	case config.StorageNonDeduped:
 		storage = newNonDedupedStorage(
 			vdiskID, vdisk.RootVdiskID, blockSize, templateSupport, redisProvider)
 
-	// deduped storage
-	case config.StorageDeduped:
+	// (semi) deduped sotrage
+	case config.StorageDeduped, config.StorageSemiDeduped:
 		// define the LBA cache limit
 		cacheLimit := f.lbaCacheLimit
 		if cacheLimit < lba.BytesPerShard {
@@ -149,9 +149,14 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 			return
 		}
 
-		// create the actual deduped storage
-		storage = newDedupedStorage(
-			vdiskID, blockSize, redisProvider, templateSupport, vlba)
+		// create the actual (semi-)deduped storage
+		if storageType == config.StorageSemiDeduped {
+			storage = newSemiDedupedStorage(
+				vdiskID, blockSize, redisProvider, vlba)
+		} else { // config.StorageDeduped
+			storage = newDedupedStorage(
+				vdiskID, blockSize, redisProvider, templateSupport, vlba)
+		}
 
 	default:
 		err = fmt.Errorf("unsupported vdisk storage type %q", storageType)
@@ -229,11 +234,21 @@ func newRedisProvider(pool *RedisPool, cfg *config.VdiskClusterConfig) (*redisPr
 	return provider, nil
 }
 
-// redisConnectionProvider defines the interface to get a redis connection,
+// redisDataConnProvider defines the interface to get a redis connection,
 // based on a given index, used by the arbd storage backends
-type redisConnectionProvider interface {
+type redisDataConnProvider interface {
 	RedisConnection(index int64) (conn redis.Conn, err error)
 	FallbackRedisConnection(index int64) (conn redis.Conn, err error)
+}
+
+// redisMetaConnProvider defines the interface to get a redis meta connection.
+type redisMetaConnProvider interface {
+	MetaRedisConnection() (conn redis.Conn, err error)
+}
+
+type redisConnProvider interface {
+	redisDataConnProvider
+	redisMetaConnProvider
 }
 
 // redisProvider allows you to get a redis connection from a pool
@@ -293,7 +308,7 @@ func (rp *redisProvider) FallbackRedisConnection(index int64) (conn redis.Conn, 
 	return
 }
 
-// MetaRedisConnection implements lba.MetaRedisProvider.MetaRedisConnection
+// MetaRedisConnection implements redisMetaConnectionProvider.MetaRedisConnection
 func (rp *redisProvider) MetaRedisConnection() (conn redis.Conn, err error) {
 	rp.mux.RLock()
 	defer rp.mux.RUnlock()

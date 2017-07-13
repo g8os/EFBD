@@ -26,7 +26,8 @@ func testNondedupContentExists(t *testing.T, memRedis *redisstub.MemoryRedis, vd
 	}
 	defer conn.Close()
 
-	contentReceived, err := redis.Bytes(conn.Do("HGET", vdiskID, blockIndex))
+	storageKey := NonDedupedStorageKey(vdiskID)
+	contentReceived, err := redis.Bytes(conn.Do("HGET", storageKey, blockIndex))
 	if err != nil {
 		debug.PrintStack()
 		t.Fatal(err)
@@ -49,7 +50,8 @@ func testNondedupContentDoesNotExist(t *testing.T, memRedis *redisstub.MemoryRed
 	}
 	defer conn.Close()
 
-	contentReceived, err := redis.Bytes(conn.Do("HGET", vdiskID, blockIndex))
+	storageKey := NonDedupedStorageKey(vdiskID)
+	contentReceived, err := redis.Bytes(conn.Do("HGET", storageKey, blockIndex))
 
 	if err != nil || bytes.Compare(content, contentReceived) != 0 {
 		return

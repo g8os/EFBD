@@ -4,21 +4,25 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/garyburd/redigo/redis"
 	"github.com/spf13/cobra"
 	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/nbdserver/ardb"
+	"github.com/zero-os/0-Disk/nbdserver/lba"
 	"github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
 
 var vdiskCfg struct {
-	MetaDatabase int
+	DatabaseIndex int
 }
 
 // VdiskCmd represents the list vdisk subcommand
 var VdiskCmd = &cobra.Command{
-	Use:   "vdisks meta_url",
-	Short: "List all vdisks available on the meta_url's ardb",
+	Use:   "vdisks storage_url",
+	Short: "List all vdisks available on the url's ardb",
 	RunE:  listVdisks,
 }
 
@@ -32,7 +36,7 @@ func listVdisks(cmd *cobra.Command, args []string) error {
 		return errors.New("too many arguments")
 	}
 
-	metaURL := args[0]
+	storageURL := args[0]
 
 	logLevel := log.ErrorLevel
 	if config.Verbose {
@@ -40,12 +44,12 @@ func listVdisks(cmd *cobra.Command, args []string) error {
 	}
 	log.SetLevel(logLevel)
 
-	log.Infof("connection to meta ardb at %s (db: %d)",
-		metaURL, vdiskCfg.MetaDatabase)
+	log.Infof("connection to ardb at %s (db: %d)",
+		storageURL, vdiskCfg.DatabaseIndex)
 
 	// open redis connection
-	redisDatabase := redis.DialDatabase(vdiskCfg.MetaDatabase)
-	conn, err := redis.Dial("tcp", metaURL, redisDatabase)
+	redisDatabase := redis.DialDatabase(vdiskCfg.DatabaseIndex)
+	conn, err := redis.Dial("tcp", storageURL, redisDatabase)
 	if err != nil {
 		return fmt.Errorf("couldn't connect to the ardb: %s", err.Error())
 	}
@@ -70,7 +74,7 @@ func listVdisks(cmd *cobra.Command, args []string) error {
 
 		vdisksLength = len(output) - 1
 		if vdisksLength > 0 {
-			vdisks = append(vdisks, output[:vdisksLength-1]...)
+			vdisks = append(vdisks, output[:vdisksLength]...)
 		}
 
 		cursor = output[vdisksLength]
@@ -87,7 +91,11 @@ func listVdisks(cmd *cobra.Command, args []string) error {
 	// only log each vdisk once
 	uniqueVdisks := make(map[string]struct{})
 	for _, vdisk := range vdisks {
-		vdiskID = string(vdisk)
+		vdiskID = filterVdiskID(string(vdisk))
+		if vdiskID == "" {
+			continue // skip, not a vdiskID
+		}
+
 		if _, ok = uniqueVdisks[vdiskID]; ok {
 			continue // skip, already printed
 		}
@@ -96,6 +104,28 @@ func listVdisks(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// filterVdiskID only accepts keys with a known prefix,
+// if no known prefix is found an empty string is returned,
+// otherwise the prefix is removed and the vdiskID is returned.
+func filterVdiskID(key string) string {
+	parts := prefixRe.FindStringSubmatch(key)
+	if len(parts) == 3 {
+		return parts[2]
+	}
+
+	return ""
+}
+
+var prefixRe = regexp.MustCompile("^(" +
+	strings.Join(knownKeyPrefixes, "|") +
+	")(.+)$")
+
+var knownKeyPrefixes = []string{
+	lba.StorageKeyPrefix,
+	ardb.NonDedupedStorageKeyPrefix,
+	ardb.SemiDedupBitMapKeyPrefix,
 }
 
 func init() {
@@ -107,9 +137,9 @@ WARNING: This command is very slow, and might take a while to finish!
 `
 
 	VdiskCmd.Flags().IntVar(
-		&vdiskCfg.MetaDatabase,
+		&vdiskCfg.DatabaseIndex,
 		"db", 0,
-		"database to use for the ardb connection (0 by default)")
+		"database index to use for the ardb connection (0 by default)")
 }
 
 var startListCursor = []byte("0")

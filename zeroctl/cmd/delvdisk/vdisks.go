@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/garyburd/redigo/redis"
 	"github.com/spf13/cobra"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
@@ -41,13 +42,11 @@ func deleteVdisks(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// store all deduped and nondeduped vdisks
-	// in a map, where the map-key is the ardb's connection if
-	// and the values are the ids of the vdisks stored on that connection string
-	dedupedVdisksMetadata := make(map[config.StorageServerConfig][]string)
-	nondedupedVdisks := make(map[config.StorageServerConfig][]string)
+	// store all requests in a map, sorted per storage server,
+	// such that we only require 1 delete pipeline per storage server.
+	delControllerMap := make(map[config.StorageServerConfig][]delController)
 
-	var vdiskids []string
+	var storage config.StorageServerConfig
 	var storageType config.StorageType
 
 	log.Info("sorting all target vdisks by storage type and connection")
@@ -56,15 +55,29 @@ func deleteVdisks(cmd *cobra.Command, args []string) error {
 		cluster := cfg.StorageClusters[vdisk.StorageCluster]
 
 		switch storageType = vdisk.StorageType(); storageType {
+		// add deduped delete controllers
 		case config.StorageDeduped:
-			// metadataStorage is guaranteed to exist for deduped storage
-			vdiskids = dedupedVdisksMetadata[*cluster.MetadataStorage]
-			dedupedVdisksMetadata[*cluster.MetadataStorage] = append(vdiskids, vdiskID)
+			storage = *cluster.MetadataStorage
+			delControllerMap[storage] = append(
+				delControllerMap[storage], newDedupDelController(vdiskID))
 
-		case config.StorageNondeduped:
-			for _, storage := range cluster.DataStorage {
-				vdiskids = nondedupedVdisks[storage]
-				nondedupedVdisks[storage] = append(vdiskids, vdiskID)
+		// add non deduped delete controllers
+		case config.StorageNonDeduped:
+			for _, storage = range cluster.DataStorage {
+				delControllerMap[storage] = append(
+					delControllerMap[storage], newNonDedupDelController(vdiskID))
+			}
+
+		// add semi deduped delete controllers
+		case config.StorageSemiDeduped:
+			storage = *cluster.MetadataStorage
+			delControllerMap[storage] = append(
+				delControllerMap[storage],
+				newDedupDelController(vdiskID), newSemiDedupDelController(vdiskID))
+
+			for _, storage = range cluster.DataStorage {
+				delControllerMap[storage] = append(
+					delControllerMap[storage], newNonDedupDelController(vdiskID))
 			}
 
 		default: // shouldn't happen
@@ -73,23 +86,14 @@ func deleteVdisks(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if len(dedupedVdisksMetadata) > 0 {
-		log.Info("deleting metadata of selected deduped vdisks...")
-		for cfg, vdiskids := range dedupedVdisksMetadata {
-			err = deleleDedupedVdisksMetadata(vdisksCfg.Force, cfg, vdiskids...)
-			if err != nil {
+	for cfg, controllers := range delControllerMap {
+		err = deleleFromStorageServer(vdisksCfg.Force, cfg, controllers...)
+		if err != nil {
+			if !vdisksCfg.Force {
 				return err
 			}
-		}
-	}
 
-	if len(nondedupedVdisks) > 0 {
-		log.Info("deleting data of selected nondeduped vdisks...")
-		for cfg, vdiskids := range nondedupedVdisks {
-			err = deleleNondedupedVdisks(vdisksCfg.Force, cfg, vdiskids...)
-			if err != nil {
-				return err
-			}
+			log.Error(err)
 		}
 	}
 
@@ -149,6 +153,83 @@ func getVdisks(cfg *config.Config, args []string) (map[string]config.VdiskConfig
 
 	return vdisks, nil
 }
+
+// delete the semideduped vdisks
+func deleleFromStorageServer(force bool, cfg config.StorageServerConfig, controllers ...delController) error {
+	if len(controllers) == 0 {
+		return nil // no controllers defined, returning early
+	}
+
+	// open redis connection
+	log.Infof("dialing redis TCP connection at: %s (%d)", cfg.Address, cfg.Database)
+	conn, err := redis.Dial("tcp", cfg.Address, redis.DialDatabase(cfg.Database))
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	// add each delete request to the pipeline
+	var batchedControllers []delController
+	for _, controller := range controllers {
+		err = controller.BatchRequest(conn)
+		if err != nil {
+			if !force {
+				return err
+			}
+
+			log.Error(err)
+			continue
+		}
+		batchedControllers = append(batchedControllers, controller)
+	}
+
+	// flush all delete requests
+	err = conn.Flush()
+	if err != nil {
+		return fmt.Errorf("could not flush request for conn %s (%d): %v",
+			cfg.Address, cfg.Database, err)
+	}
+
+	// check if all delete operations were successfull
+	for _, controller := range batchedControllers {
+		err = controller.CheckRequest(conn)
+		// content was deleted, no error, Yay!
+		if err == nil {
+			continue
+		}
+
+		// no critical error, content simply didn't exist, so couldn't be deleted
+		if err, ok := err.(noDeleteError); ok {
+			log.Infof("%v: did not exist at %s (%d)", err, cfg.Address, cfg.Database)
+			continue
+		}
+
+		// critical error while deleting content
+
+		if !force {
+			return err
+		}
+
+		log.Error(err)
+	}
+
+	return nil
+}
+
+// delController is a generic interface, which allows us to batch & check
+// a deletion request, pipelined in a series of deletion processes
+// for a single storage server.
+type delController interface {
+	// BatchRequest adds the request to the conn's pipeline
+	BatchRequest(conn redis.Conn) error
+	// CheckRequest checks if the earlier batch request has been processed fine
+	CheckRequest(conn redis.Conn) error
+}
+
+// noDeleteError can be returned by delController.CheckRequest,
+// in case there was no real error, but nothing got deleted either,
+// probably because it didn't exist
+type noDeleteError error
 
 func init() {
 	VdisksCmd.Long = VdisksCmd.Short + `
