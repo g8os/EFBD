@@ -70,7 +70,7 @@ func listVdisks(cmd *cobra.Command, args []string) error {
 
 		vdisksLength = len(output) - 1
 		if vdisksLength > 0 {
-			vdisks = append(vdisks, output[:vdisksLength-1]...)
+			vdisks = append(vdisks, output[:vdisksLength]...)
 		}
 
 		cursor = output[vdisksLength]
