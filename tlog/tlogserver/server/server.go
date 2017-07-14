@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
+	"os/signal"
 
 	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/log"
@@ -119,6 +121,19 @@ func (s *Server) Listen(ctx context.Context) {
 // ListenAddr returns the address the (tcp) server is listening on
 func (s *Server) ListenAddr() string {
 	return s.listener.Addr().String()
+}
+
+// IgnoreSignalOnce ignore incoming signal once
+// It only being executed during test
+func (s *Server) IgnoreSignalOnce(sig os.Signal) {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, sig)
+
+	go func() {
+		<-sigs
+		log.Infof("tlogserver ignored `%v` signal", sig)
+		signal.Reset(sig)
+	}()
 }
 
 // handshake stage, required prior to receiving blocks

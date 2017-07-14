@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"sync"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -231,7 +232,8 @@ func testTlogStorage(ctx context.Context, t *testing.T, vdiskID string, blockSiz
 		return
 	}
 
-	storage, err := newTlogStorage(vdiskID, tlogrpc, "", blockSize, storage)
+	vComp := &vdiskCompletion{}
+	storage, err := newTlogStorage(vdiskID, tlogrpc, "", blockSize, storage, vComp)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}
@@ -245,7 +247,8 @@ func testTlogStorageForceFlush(ctx context.Context, t *testing.T, vdiskID string
 		return
 	}
 
-	storage, err := newTlogStorage(vdiskID, tlogrpc, "", blockSize, storage)
+	vComp := &vdiskCompletion{}
+	storage, err := newTlogStorage(vdiskID, tlogrpc, "", blockSize, storage, vComp)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}
@@ -259,7 +262,8 @@ func testTlogStorageDeadlock(ctx context.Context, t *testing.T, vdiskID string, 
 		return
 	}
 
-	storage, err := newTlogStorage(vdiskID, tlogrpc, "", blockSize, storage)
+	vComp := &vdiskCompletion{}
+	storage, err := newTlogStorage(vdiskID, tlogrpc, "", blockSize, storage, vComp)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}
@@ -290,6 +294,7 @@ func newTlogTestServer(ctx context.Context, t *testing.T) string {
 		return ""
 	}
 	go s.Listen(ctx)
+	s.IgnoreSignalOnce(syscall.SIGTERM)
 
 	return s.ListenAddr()
 }

@@ -63,7 +63,35 @@ func NewBackendFactory(cfg BackendFactoryConfig) (*BackendFactory, error) {
 		cmdTlogRPCAddress: cfg.TLogRPCAddress,
 		lbaCacheLimit:     cfg.LBACacheLimit,
 		configPath:        cfg.ConfigPath,
+		vdiskComp:         &vdiskCompletion{},
 	}, nil
+}
+
+// vdiskCompletion used to wait
+// for vdisk completion
+type vdiskCompletion struct {
+	wg     sync.WaitGroup
+	mux    sync.Mutex
+	errors []error
+}
+
+func (vc *vdiskCompletion) Wait() []error {
+	vc.wg.Wait()
+	return vc.errors
+}
+
+func (vc *vdiskCompletion) Done() {
+	vc.wg.Done()
+}
+
+func (vc *vdiskCompletion) AddError(err error) {
+	vc.mux.Lock()
+	defer vc.mux.Unlock()
+	vc.errors = append(vc.errors, err)
+}
+
+func (vc *vdiskCompletion) Add() {
+	vc.wg.Add(1)
 }
 
 // BackendFactory holds some variables
@@ -75,6 +103,7 @@ type BackendFactory struct {
 	cmdTlogRPCAddress string
 	lbaCacheLimit     int64
 	configPath        string
+	vdiskComp         *vdiskCompletion
 }
 
 // NewBackend generates a new ardb backend
@@ -170,7 +199,7 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	if vdisk.TlogSupport() {
 		if tlogRPCAddrs := f.tlogRPCAddrs(); tlogRPCAddrs != "" {
 			log.Debugf("creating tlogStorage for backend %v (%v)", vdiskID, vdisk.Type)
-			storage, err = newTlogStorage(vdiskID, tlogRPCAddrs, f.configPath, blockSize, storage)
+			storage, err = newTlogStorage(vdiskID, tlogRPCAddrs, f.configPath, blockSize, storage, f.vdiskComp)
 			if err != nil {
 				log.Infof("couldn't create tlog storage: %s", err.Error())
 				return
@@ -187,6 +216,15 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	)
 
 	return
+}
+
+// Wait waits for vdisks completion.
+// It only wait for vdisk which has vdiskCompletion
+// attached.
+// It returns errors from vdisk that exited
+// because of context cancellation.
+func (f BackendFactory) Wait() []error {
+	return f.vdiskComp.Wait()
 }
 
 // Get the tlog server(s) address(es),

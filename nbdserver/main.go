@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 
 	_ "net/http/pprof"
 
@@ -168,6 +170,8 @@ func main() {
 		LBACacheLimit:     lbacachelimit,
 		ConfigPath:        configPath,
 	})
+	handleSigterm(backendFactory, cancelFunc)
+
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -195,6 +199,33 @@ func main() {
 
 	// listen to requests
 	l.Listen(configCtx, ctx, &sessionWaitGroup)
+}
+
+// handle sigterm
+// - wait for all vdisks (that need to be waited) completion
+// - log vdisk completion error to stderr
+func handleSigterm(bf *ardb.BackendFactory, cancelFunc context.CancelFunc) {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGTERM)
+
+	go func() {
+		<-sigs
+
+		errs := bf.Wait()
+		for _, err := range errs {
+			// TODO : log to stderr properly
+			// depends on : https://github.com/zero-os/0-Disk/issues/300
+			if err != nil {
+				fmt.Print(os.Stderr, err)
+			}
+		}
+
+		// stop other vdisks
+		cancelFunc()
+
+		os.Exit(1)
+	}()
+
 }
 
 func init() {
