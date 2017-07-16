@@ -3,6 +3,9 @@ package capnp
 import (
 	"errors"
 	"math"
+	"strconv"
+
+	"zombiezen.com/go/capnproto2/internal/strquote"
 )
 
 // A List is a reference to an array of values.
@@ -124,6 +127,22 @@ func (p List) readSize() Size {
 	return sz
 }
 
+// allocSize returns the list's size for the purpose of copying the list
+// to a different message.
+func (p List) allocSize() Size {
+	if p.seg == nil {
+		return 0
+	}
+	if p.flags&isBitList != 0 {
+		return Size((p.length + 7) / 8)
+	}
+	sz, _ := p.size.totalSize().times(p.length) // size has already been validated
+	if p.flags&isCompositeList == 0 {
+		return sz
+	}
+	return sz + wordSize
+}
+
 // value returns the equivalent raw list pointer.
 func (p List) value(paddr Address) rawPointer {
 	if p.seg == nil {
@@ -220,7 +239,7 @@ func (p List) SetStruct(i int, s Struct) error {
 	if p.flags&isBitList != 0 {
 		return errBitListStruct
 	}
-	return copyStruct(copyContext{}, p.Struct(i), s)
+	return copyStruct(p.Struct(i), s)
 }
 
 // A BitList is a reference to a list of booleans.
@@ -275,6 +294,24 @@ func (p BitList) Set(i int, v bool) {
 	}
 }
 
+// String returns the list in Cap'n Proto schema format (e.g. "[true, false]").
+func (p BitList) String() string {
+	var buf []byte
+	buf = append(buf, '[')
+	for i := 0; i < p.Len(); i++ {
+		if i > 0 {
+			buf = append(buf, ", "...)
+		}
+		if p.At(i) {
+			buf = append(buf, "true"...)
+		} else {
+			buf = append(buf, "false"...)
+		}
+	}
+	buf = append(buf, ']')
+	return string(buf)
+}
+
 // A PointerList is a reference to an array of pointers.
 type PointerList struct{ List }
 
@@ -327,7 +364,7 @@ func (p PointerList) SetPtr(i int, v Ptr) error {
 	if err != nil {
 		return err
 	}
-	return p.seg.writePtr(copyContext{}, addr, v)
+	return p.seg.writePtr(addr, v, false)
 }
 
 // TextList is an array of pointers to strings.
@@ -376,13 +413,32 @@ func (l TextList) Set(i int, v string) error {
 		return err
 	}
 	if v == "" {
-		return l.seg.writePtr(copyContext{}, addr, Ptr{})
+		return l.seg.writePtr(addr, Ptr{}, false)
 	}
 	p, err := NewText(l.seg, v)
 	if err != nil {
 		return err
 	}
-	return l.seg.writePtr(copyContext{}, addr, p.List.ToPtr())
+	return l.seg.writePtr(addr, p.List.ToPtr(), false)
+}
+
+// String returns the list in Cap'n Proto schema format (e.g. `["foo", "bar"]`).
+func (l TextList) String() string {
+	var buf []byte
+	buf = append(buf, '[')
+	for i := 0; i < l.Len(); i++ {
+		if i > 0 {
+			buf = append(buf, ", "...)
+		}
+		s, err := l.BytesAt(i)
+		if err != nil {
+			buf = append(buf, "<error>"...)
+			continue
+		}
+		buf = strquote.Append(buf, s)
+	}
+	buf = append(buf, ']')
+	return string(buf)
 }
 
 // DataList is an array of pointers to data.
@@ -417,13 +473,32 @@ func (l DataList) Set(i int, v []byte) error {
 		return err
 	}
 	if len(v) == 0 {
-		return l.seg.writePtr(copyContext{}, addr, Ptr{})
+		return l.seg.writePtr(addr, Ptr{}, false)
 	}
 	p, err := NewData(l.seg, v)
 	if err != nil {
 		return err
 	}
-	return l.seg.writePtr(copyContext{}, addr, p.List.ToPtr())
+	return l.seg.writePtr(addr, p.List.ToPtr(), false)
+}
+
+// String returns the list in Cap'n Proto schema format (e.g. `["foo", "bar"]`).
+func (l DataList) String() string {
+	var buf []byte
+	buf = append(buf, '[')
+	for i := 0; i < l.Len(); i++ {
+		if i > 0 {
+			buf = append(buf, ", "...)
+		}
+		s, err := l.At(i)
+		if err != nil {
+			buf = append(buf, "<error>"...)
+			continue
+		}
+		buf = strquote.Append(buf, s)
+	}
+	buf = append(buf, ']')
+	return string(buf)
 }
 
 // A VoidList is a list of zero-sized elements.
@@ -437,6 +512,20 @@ func NewVoidList(s *Segment, n int32) VoidList {
 		length:     n,
 		depthLimit: maxDepth,
 	}}
+}
+
+// String returns the list in Cap'n Proto schema format (e.g. "[void, void, void]").
+func (l VoidList) String() string {
+	var buf []byte
+	buf = append(buf, '[')
+	for i := 0; i < l.Len(); i++ {
+		if i > 0 {
+			buf = append(buf, ", "...)
+		}
+		buf = append(buf, "void"...)
+	}
+	buf = append(buf, ']')
+	return string(buf)
 }
 
 // A UInt8List is an array of UInt8 values.
@@ -534,6 +623,20 @@ func (l UInt8List) Set(i int, v uint8) {
 	l.seg.writeUint8(addr, v)
 }
 
+// String returns the list in Cap'n Proto schema format (e.g. "[1, 2, 3]").
+func (l UInt8List) String() string {
+	var buf []byte
+	buf = append(buf, '[')
+	for i := 0; i < l.Len(); i++ {
+		if i > 0 {
+			buf = append(buf, ", "...)
+		}
+		buf = strconv.AppendUint(buf, uint64(l.At(i)), 10)
+	}
+	buf = append(buf, ']')
+	return string(buf)
+}
+
 // Int8List is an array of Int8 values.
 type Int8List struct{ List }
 
@@ -562,6 +665,20 @@ func (l Int8List) Set(i int, v int8) {
 		panic(err)
 	}
 	l.seg.writeUint8(addr, uint8(v))
+}
+
+// String returns the list in Cap'n Proto schema format (e.g. "[1, 2, 3]").
+func (l Int8List) String() string {
+	var buf []byte
+	buf = append(buf, '[')
+	for i := 0; i < l.Len(); i++ {
+		if i > 0 {
+			buf = append(buf, ", "...)
+		}
+		buf = strconv.AppendInt(buf, int64(l.At(i)), 10)
+	}
+	buf = append(buf, ']')
+	return string(buf)
 }
 
 // A UInt16List is an array of UInt16 values.
@@ -594,6 +711,20 @@ func (l UInt16List) Set(i int, v uint16) {
 	l.seg.writeUint16(addr, v)
 }
 
+// String returns the list in Cap'n Proto schema format (e.g. "[1, 2, 3]").
+func (l UInt16List) String() string {
+	var buf []byte
+	buf = append(buf, '[')
+	for i := 0; i < l.Len(); i++ {
+		if i > 0 {
+			buf = append(buf, ", "...)
+		}
+		buf = strconv.AppendUint(buf, uint64(l.At(i)), 10)
+	}
+	buf = append(buf, ']')
+	return string(buf)
+}
+
 // Int16List is an array of Int16 values.
 type Int16List struct{ List }
 
@@ -622,6 +753,20 @@ func (l Int16List) Set(i int, v int16) {
 		panic(err)
 	}
 	l.seg.writeUint16(addr, uint16(v))
+}
+
+// String returns the list in Cap'n Proto schema format (e.g. "[1, 2, 3]").
+func (l Int16List) String() string {
+	var buf []byte
+	buf = append(buf, '[')
+	for i := 0; i < l.Len(); i++ {
+		if i > 0 {
+			buf = append(buf, ", "...)
+		}
+		buf = strconv.AppendInt(buf, int64(l.At(i)), 10)
+	}
+	buf = append(buf, ']')
+	return string(buf)
 }
 
 // UInt32List is an array of UInt32 values.
@@ -654,6 +799,20 @@ func (l UInt32List) Set(i int, v uint32) {
 	l.seg.writeUint32(addr, v)
 }
 
+// String returns the list in Cap'n Proto schema format (e.g. "[1, 2, 3]").
+func (l UInt32List) String() string {
+	var buf []byte
+	buf = append(buf, '[')
+	for i := 0; i < l.Len(); i++ {
+		if i > 0 {
+			buf = append(buf, ", "...)
+		}
+		buf = strconv.AppendUint(buf, uint64(l.At(i)), 10)
+	}
+	buf = append(buf, ']')
+	return string(buf)
+}
+
 // Int32List is an array of Int32 values.
 type Int32List struct{ List }
 
@@ -682,6 +841,20 @@ func (l Int32List) Set(i int, v int32) {
 		panic(err)
 	}
 	l.seg.writeUint32(addr, uint32(v))
+}
+
+// String returns the list in Cap'n Proto schema format (e.g. "[1, 2, 3]").
+func (l Int32List) String() string {
+	var buf []byte
+	buf = append(buf, '[')
+	for i := 0; i < l.Len(); i++ {
+		if i > 0 {
+			buf = append(buf, ", "...)
+		}
+		buf = strconv.AppendInt(buf, int64(l.At(i)), 10)
+	}
+	buf = append(buf, ']')
+	return string(buf)
 }
 
 // UInt64List is an array of UInt64 values.
@@ -714,6 +887,20 @@ func (l UInt64List) Set(i int, v uint64) {
 	l.seg.writeUint64(addr, v)
 }
 
+// String returns the list in Cap'n Proto schema format (e.g. "[1, 2, 3]").
+func (l UInt64List) String() string {
+	var buf []byte
+	buf = append(buf, '[')
+	for i := 0; i < l.Len(); i++ {
+		if i > 0 {
+			buf = append(buf, ", "...)
+		}
+		buf = strconv.AppendUint(buf, l.At(i), 10)
+	}
+	buf = append(buf, ']')
+	return string(buf)
+}
+
 // Int64List is an array of Int64 values.
 type Int64List struct{ List }
 
@@ -742,6 +929,20 @@ func (l Int64List) Set(i int, v int64) {
 		panic(err)
 	}
 	l.seg.writeUint64(addr, uint64(v))
+}
+
+// String returns the list in Cap'n Proto schema format (e.g. "[1, 2, 3]").
+func (l Int64List) String() string {
+	var buf []byte
+	buf = append(buf, '[')
+	for i := 0; i < l.Len(); i++ {
+		if i > 0 {
+			buf = append(buf, ", "...)
+		}
+		buf = strconv.AppendInt(buf, l.At(i), 10)
+	}
+	buf = append(buf, ']')
+	return string(buf)
 }
 
 // Float32List is an array of Float32 values.
@@ -774,6 +975,20 @@ func (l Float32List) Set(i int, v float32) {
 	l.seg.writeUint32(addr, math.Float32bits(v))
 }
 
+// String returns the list in Cap'n Proto schema format (e.g. "[1, 2, 3]").
+func (l Float32List) String() string {
+	var buf []byte
+	buf = append(buf, '[')
+	for i := 0; i < l.Len(); i++ {
+		if i > 0 {
+			buf = append(buf, ", "...)
+		}
+		buf = strconv.AppendFloat(buf, float64(l.At(i)), 'g', -1, 32)
+	}
+	buf = append(buf, ']')
+	return string(buf)
+}
+
 // Float64List is an array of Float64 values.
 type Float64List struct{ List }
 
@@ -802,6 +1017,20 @@ func (l Float64List) Set(i int, v float64) {
 		panic(err)
 	}
 	l.seg.writeUint64(addr, math.Float64bits(v))
+}
+
+// String returns the list in Cap'n Proto schema format (e.g. "[1, 2, 3]").
+func (l Float64List) String() string {
+	var buf []byte
+	buf = append(buf, '[')
+	for i := 0; i < l.Len(); i++ {
+		if i > 0 {
+			buf = append(buf, ", "...)
+		}
+		buf = strconv.AppendFloat(buf, l.At(i), 'g', -1, 64)
+	}
+	buf = append(buf, ']')
+	return string(buf)
 }
 
 type listFlags uint8
