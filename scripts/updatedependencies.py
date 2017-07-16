@@ -2,6 +2,7 @@
 
 import os
 import json
+import shutil
 
 from subprocess import call
 
@@ -25,5 +26,18 @@ call(["godep", "update", "-v", "./..."])
 # make sure all needed deps are also added
 # and clean up any old stuff
 call(["godep", "save", "-v", "./..."])
+
+# copy non-go-dependencies manually
+# yes, it's a hack, just like this entire file is one
+NON_GO_DEPS = [
+    "zombiezen.com/go/capnproto2/std/go.capnp",
+]
+VENDOR_DIR = os.path.join(ROOT_DIR, "vendor")
+
+for rel_dep in NON_GO_DEPS:
+    print "manually copying {}...".format(rel_dep)
+    src = os.path.join(GO_SRC_DIR, rel_dep)
+    dst = os.path.join(VENDOR_DIR, rel_dep)
+    shutil.copy2(src, dst)
 
 print "Done!"
