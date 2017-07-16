@@ -19,7 +19,8 @@ jobs:
       script: TIMEOUT=5m make testcgo
     - stage: test
       go: 1.8
+      os: osx
       install:
         - go get -u github.com/Jumpscale/go-raml
-        - ./tlog/install_capnp_0.6.0.sh
+        - brew install capnp
       script: make testcodegen
