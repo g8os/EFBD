@@ -1,0 +1,29 @@
+digraph {
+    rankdir = "LR"
+
+    read [
+        label = "read block X"
+        shape = "oval"
+    ]
+
+    write [
+        label = "write block Y"
+        shape = "oval"
+    ]
+
+    storage [
+        label = "{ { <r> read | <w> write } | internal\nstorage type }"
+        shape = "record"
+    ]
+
+    storage:r -> read [ constraint = "false" ]
+
+    writeAction [ shape = "point" ]
+
+    write -> writeAction [ dir = "none" ]
+
+    writeAction -> tlogclient [
+        label = "send transaction async"
+    ]
+    writeAction -> storage:w
+}

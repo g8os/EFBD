@@ -1,5 +1,21 @@
 # NBD Server for blocks stored in ARDB
 
+## Installing the NBD Server
+
+Requires `Go 1.8` or above.
+
+Using [`github.com/zero-os/0-Disk/Makefile`](../../Makefile):
+
+```
+OUTPUT=$GOPATH/bin make nbdserver
+```
+
+or by simply using the Go toolchain:
+
+```
+go install github.com/zero-os/0-Disk/nbdserver
+```
+
 ## NBD Server Configuration
 
 The NBD server and its backend is configured using a YAML configuration file:

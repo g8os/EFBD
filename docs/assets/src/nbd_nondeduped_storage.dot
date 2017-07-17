@@ -1,0 +1,59 @@
+digraph {
+    rankdir = "LR"
+
+    subgraph clusterPrimaryStorage {
+        label = "primary storage"
+        style = "dashed"
+        
+        subgraph clusterData {
+            label = "data: redis hashmaps"
+            style = "dotted"
+
+            dataFields [
+                label = "{ prefix:[VDiskID] | { <b0> block 0 | <b1> ... | <b2> block N } }"
+                shape = "record"
+            ]
+        }
+    }
+
+    subgraph clusterActions {
+        style = "invis"
+
+        read [
+            label = "read block N"
+            shape = "oval"
+        ]
+
+        write [
+            label = "write block 0"
+            shape = "oval"
+        ]
+
+        write -> dataFields:b0
+    }
+
+    subgraph clusterTemplateStorage {
+        label = "template storage"
+        style = "dashed"
+        
+        subgraph clusterData {
+            label = "template data: redis hashmaps"
+            style = "dotted"
+
+            templateDataFields [
+                label = "{ prefix:[TemplateVDiskID] | { <b0> block 0 | <b1> ... | <b2> block N } }"
+                shape = "record"
+            ]
+        }
+    }
+
+    readAny [ shape = "point" ]
+
+    dataFields:b2 -> readAny [ dir = "none" ]
+    templateDataFields:b2 -> readAny [
+        label = "if not available\nin primary storage"
+        dir = "none"
+    ]
+
+    readAny -> read
+}

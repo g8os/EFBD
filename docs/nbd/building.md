@@ -1,6 +1,6 @@
 # Building your NBD Server
 
-This documentation supplements the building instructions in the [README](/nbdserver/readme.md) of the [`nbdserver`](/nbdserver) source directory.  
+This documentation supplements the installing instructions in the [README](/nbdserver/readme.md) of the [`nbdserver`](/nbdserver) source directory.  
 
 The below documentation uses a Docker container with JumpScale 8.2 installed, as documented in the [Jumpscale/developer](https://github.com/Jumpscale/developer) GitHub repository.
 

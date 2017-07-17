@@ -1,0 +1,48 @@
+digraph {
+    label = "TLog Player overview"
+    rankdir = "LR"
+
+    subgraph clusterZeroDisk {
+        label = "0-Disk"
+        style = "dashed"
+
+        player [
+            label = "TLog Player"
+            shape = "oval"
+            style = "filled"
+            color = "lightblue"
+        ]
+        backend [
+            label = "NBD Backend"
+            shape = "rectangle"
+        ]
+        more [
+            label = "..."
+            shape = "rectangle"
+        ]
+
+        player -> backend [ label = "write" ]
+        backend -> more [ label = "store" ]
+
+        zeroctl [
+            label = "zeroctl"
+            shape = "egg"
+        ]
+
+        zeroctl -> player [ label = "restore vdisk" ]
+    }
+
+    zerostor [
+        label = "0-stor"
+        shape = "cylinder"
+    ]
+
+    zerostor -> zerostorlib [ label = "load + decode" ]
+
+    zerostorlib [
+        label = "0-stor-lib"
+        shape = "rectangle"
+    ]
+
+    zerostorlib -> player [ label = "read" ]
+}
