@@ -1,36 +1,34 @@
 package configV2
 
-const validConfigStr = `
-vdisks:
-  myvdisk:
-    baseConfig: 
-      blockSize: 4096
-      readOnly: false
-      size: 10
-      type: db
-    ndbConfig:
-      templateVdiskID: mytemplate
-      storageCluster:
-        dataStorage: 
-          - address: 192.168.58.146:2000
-            db: 0
-          - address: 192.123.123.123:2001
-            db: 0
-        metadataStorage:
-          address: 192.168.58.146:2001
-          db: 1
-      templateStorageCluster:
-        dataStorage:
-          - address: 192.168.58.147:2000
-            db: 0
-    tlogConfig:
-      tlogStorageCluster:
-        dataStorage: 
-          - address: 192.168.58.149:2000
-            db: 4
-        metadataStorage:
-          address: 192.168.58.146:2001
-          db: 8
+const validYAMLSourceStr = `
+baseConfig: 
+  blockSize: 4096
+  readOnly: false
+  size: 10
+  type: db
+ndbConfig:
+  templateVdiskID: mytemplate
+  storageCluster:
+    dataStorage: 
+      - address: 192.168.58.146:2000
+        db: 0
+      - address: 192.123.123.123:2001
+        db: 0
+    metadataStorage:
+      address: 192.168.58.146:2001
+      db: 1
+  templateStorageCluster:
+    dataStorage:
+      - address: 192.168.58.147:2000
+        db: 0
+tlogConfig:
+  tlogStorageCluster:
+    dataStorage: 
+      - address: 192.168.58.149:2000
+        db: 4
+    metadataStorage:
+      address: 192.168.58.146:2001
+      db: 8
   `
 const validBaseStr = `
 blockSize: 4096
@@ -57,12 +55,21 @@ templateStorageCluster:
 
 const validTlogStr = `
 tlogStorageCluster:
-dataStorage: 
-  - address: 192.168.58.149:2000
-    db: 4
-metadataStorage:
-  address: 192.168.58.146:2001
-  db: 8
+  dataStorage: 
+    - address: 192.168.58.149:2000
+      db: 4
+  metadataStorage:
+    address: 192.168.58.146:2001
+    db: 8
+`
+const validSlaveStr = `
+slaveStorageCluster:
+  dataStorage: 
+    - address: 192.168.58.149:2000
+      db: 4
+  metadataStorage:
+    address: 192.168.58.146:2001
+    db: 8
 `
 
 var validBaseConfig = BaseConfig{
@@ -70,6 +77,16 @@ var validBaseConfig = BaseConfig{
 	ReadOnly:  false,
 	Size:      15,
 	Type:      VdiskTypeBoot,
+}
+
+var validVDiskTypeCases = []struct {
+	String string
+	Type   VdiskType
+}{
+	{vdiskTypeBootStr, VdiskTypeBoot},
+	{vdiskTypeCacheStr, VdiskTypeCache},
+	{vdiskTypeDBStr, VdiskTypeDB},
+	{vdiskTypeTmpStr, VdiskTypeTmp},
 }
 
 var invalidNBDServerConfigs = []string{

@@ -2,55 +2,23 @@ package configV2
 
 import (
 	"fmt"
-	"strconv"
 
 	valid "github.com/asaskevich/govalidator"
 	"github.com/go-yaml/yaml"
-	"github.com/siddontang/go/log"
+	"github.com/zero-os/0-Disk/log"
 )
 
-// Config for the zerodisk backends
-type Config struct {
-	Vdisks map[string]VdiskConfig `yaml:"vdisks" valid:"required"`
-}
-
-func (cfg *Config) validate() error {
-	for id, vdisk := range cfg.Vdisks {
-
-		// check base config
-		err := vdisk.Base.validate()
-		if err != nil {
-			return fmt.Errorf("could not validate vdisk %s base config: %s", id, err)
-		}
-
-		// check ndb config
-		err = vdisk.NDB.validate(id, vdisk.Base.Type)
-		if err != nil {
-			return fmt.Errorf("could not validate vdisk %s ndb config: %s", id, err)
-		}
-
-		// check tlog
-		err = vdisk.Tlog.validate()
-		if err != nil {
-			return fmt.Errorf("could not validate vdisk %s tlog config: %s", id, err)
-		}
-
-		// check slave
-		err = vdisk.Slave.validate()
-		if err != nil {
-			return fmt.Errorf("could not validate vdisk %s slave config: %s", id, err)
-		}
-	}
-
-	return nil
-}
-
-// VdiskConfig represents a vdisk config
-type VdiskConfig struct {
-	Base  BaseConfig  `yaml:"baseConfig" valid:"required"`
-	NDB   NDBConfig   `yaml:"ndbConfig" valid:"required"`
-	Tlog  TlogConfig  `yaml:"tlogConfig" valid:"required"`
-	Slave SlaveConfig `yaml:"slaveConfig" valid:"optional"`
+// ConfigSource specifies a config source interface
+type ConfigSource interface {
+	Close() error               // closes source connection and goroutines if present
+	Base() BaseConfig           // Returns the current base config
+	NDB() NDBConfig             // Returns the current ndb config
+	Tlog() TlogConfig           // Returns the current tlo
+	Slave() SlaveConfig         // Returns the current Slave config
+	SetBase(BaseConfig) error   // sets a new base config and writes it to the source
+	SetNDB(NDBConfig) error     // sets a new NDB config and writes it to the source
+	SetTlog(TlogConfig) error   // sets a tlog base config and writes it to the source
+	SetSlave(SlaveConfig) error // sets a slave base config and writes it to
 }
 
 // BaseConfig represents the basic vdisk info
@@ -62,7 +30,7 @@ type BaseConfig struct {
 }
 
 // NewBaseConfig creates a new Baseconfig from byte slice in YAML 1.2 format
-func NewBaseConfig(data []byte) (*BaseConfig, error) {
+func newBaseConfig(data []byte) (*BaseConfig, error) {
 	base := new(BaseConfig)
 	err := base.deserialize(data)
 	if err != nil {
@@ -98,9 +66,10 @@ func (base BaseConfig) validate() error {
 	// check valid tags
 	_, err := valid.ValidateStruct(base)
 	if err != nil {
-		return err
+		return fmt.Errorf("invalid base config: %v", err)
 	}
 
+	// check base properties
 	if base.BlockSize == 0 || base.BlockSize%2 != 0 {
 		return fmt.Errorf("%d is an invalid blockSize", base.BlockSize)
 	}
@@ -122,7 +91,7 @@ type NDBConfig struct {
 }
 
 // NewNDBConfig creates a new NDBConfig from byte slice in YAML 1.2 format
-func NewNDBConfig(data []byte, vID string, vtype VdiskType) (*NDBConfig, error) {
+func newNDBConfig(data []byte, vID string, vtype VdiskType) (*NDBConfig, error) {
 	ndb := new(NDBConfig)
 	err := ndb.deserialize(data)
 	if err != nil {
@@ -156,19 +125,18 @@ func (ndb *NDBConfig) deserialize(data []byte) error {
 // validate Validates NDBConfig
 // Needs vdisk id and vdisk type
 func (ndb NDBConfig) validate(vID string, vtype VdiskType) error {
-	// check valid tags
 	_, err := valid.ValidateStruct(ndb)
 	if err != nil {
-		return err
+		return fmt.Errorf("invalid NDB config: %v", err)
 	}
 
-	if ndb.StorageCluster.DataStorage == nil {
+	if len(ndb.StorageCluster.DataStorage) <= 0 {
 		return fmt.Errorf("no ndb datastorage was found")
 	}
 
 	// Check if templatestorage is present when required
-	if vtype.TemplateSupport() {
-		if ndb.TemplateStorageCluster.DataStorage == nil {
+	if vtype.TemplateSupport(ndb) {
+		if len(ndb.TemplateStorageCluster.DataStorage) <= 0 {
 			return fmt.Errorf("template storage not found while required")
 		}
 
@@ -197,7 +165,7 @@ type TlogConfig struct {
 }
 
 // NewTlogConfig creates a new Tlogconfig from byte slice in YAML 1.2 format
-func NewTlogConfig(data []byte) (*TlogConfig, error) {
+func newTlogConfig(data []byte) (*TlogConfig, error) {
 	tlog := new(TlogConfig)
 	err := tlog.deserialize(data)
 	if err != nil {
@@ -230,13 +198,12 @@ func (tlog *TlogConfig) deserialize(data []byte) error {
 
 // validate Validates TlogConfig
 func (tlog TlogConfig) validate() error {
-	// check valid tags
 	_, err := valid.ValidateStruct(tlog)
 	if err != nil {
-		return err
+		return fmt.Errorf("invalid tlog config: %v", err)
 	}
 
-	if tlog.TlogStorageCluster.DataStorage == nil {
+	if len(tlog.TlogStorageCluster.DataStorage) <= 0 {
 		return fmt.Errorf("no tlog datastorage was found")
 	}
 	return nil
@@ -248,7 +215,7 @@ type SlaveConfig struct {
 }
 
 // NewSlaveConfig creates a new Slaveconfig from byte slice in YAML 1.2 format
-func NewSlaveConfig(data []byte) (*SlaveConfig, error) {
+func newSlaveConfig(data []byte) (*SlaveConfig, error) {
 	slave := new(SlaveConfig)
 	err := slave.deserialize(data)
 	if err != nil {
@@ -272,7 +239,7 @@ func (slave *SlaveConfig) serialize() ([]byte, error) {
 
 // deserialize tries to convert provided data into an SlaveConfig
 func (slave *SlaveConfig) deserialize(data []byte) error {
-	err := yaml.Unmarshal(data, *slave)
+	err := yaml.Unmarshal(data, slave)
 	if err != nil {
 		return err
 	}
@@ -282,15 +249,14 @@ func (slave *SlaveConfig) deserialize(data []byte) error {
 // validate Validates SlaveConfig
 func (slave *SlaveConfig) validate() error {
 	// slave is optional, if nil, skip
-	if slave.SlaveStorageCluster.DataStorage == nil && slave.SlaveStorageCluster.MetadataStorage == nil {
+	if len(slave.SlaveStorageCluster.DataStorage) <= 0 && slave.SlaveStorageCluster.MetadataStorage == nil {
 		return nil
 	}
-	// check valid tags
+
 	_, err := valid.ValidateStruct(slave)
 	if err != nil {
-		return err
+		return fmt.Errorf("invalid slave config: %v", err)
 	}
-
 	return nil
 }
 
@@ -304,8 +270,9 @@ func (vtype VdiskType) TlogSupport() bool {
 // this vdisk supports a template server,
 // to get the data in case the data isn't available on
 // the normal (local) storage cluster.
-func (vtype VdiskType) TemplateSupport() bool {
-	return vtype&propTemplateSupport != 0 // || (cfg.Type == VdiskTypeBoot && cfg.TemplateStorageCluster != "")
+func (vtype VdiskType) TemplateSupport(ndb NDBConfig) bool {
+	return vtype&propTemplateSupport != 0 ||
+		(vtype == VdiskTypeBoot && len(ndb.TemplateStorageCluster.DataStorage) > 0)
 }
 
 // VdiskType represents the type of a vdisk,
@@ -353,8 +320,8 @@ const (
 )
 
 // StorageType returns the type of storage this vdisk uses
-func (t VdiskType) StorageType() StorageType {
-	if t&propDeduped != 0 {
+func (vtype VdiskType) StorageType() StorageType {
+	if vtype&propDeduped != 0 {
 		return StorageDeduped
 	}
 
@@ -369,18 +336,18 @@ func (t VdiskType) StorageType() StorageType {
 }
 
 // Validate this vdisk type
-func (t VdiskType) Validate() error {
-	switch t {
+func (vtype VdiskType) Validate() error {
+	switch vtype {
 	case VdiskTypeBoot, VdiskTypeDB, VdiskTypeCache, VdiskTypeTmp:
 		return nil
 	default:
-		return fmt.Errorf("%v is an invalid vdisk type", t)
+		return fmt.Errorf("%v is an invalid vdisk type", vtype)
 	}
 }
 
 // String returns the storage type as a string value
-func (t VdiskType) String() string {
-	switch t {
+func (vtype VdiskType) String() string {
+	switch vtype {
 	case VdiskTypeBoot:
 		return vdiskTypeBootStr
 	case VdiskTypeDB:
@@ -396,16 +363,16 @@ func (t VdiskType) String() string {
 
 // SetString allows you to set this VdiskType using
 // the correct string representation
-func (t *VdiskType) SetString(s string) error {
+func (vtype *VdiskType) SetString(s string) error {
 	switch s {
 	case vdiskTypeBootStr:
-		*t = VdiskTypeBoot
+		*vtype = VdiskTypeBoot
 	case vdiskTypeDBStr:
-		*t = VdiskTypeDB
+		*vtype = VdiskTypeDB
 	case vdiskTypeCacheStr:
-		*t = VdiskTypeCache
+		*vtype = VdiskTypeCache
 	case vdiskTypeTmpStr:
-		*t = VdiskTypeTmp
+		*vtype = VdiskTypeTmp
 	default:
 		return fmt.Errorf("%q is not a valid VdiskType", s)
 	}
@@ -413,36 +380,23 @@ func (t *VdiskType) SetString(s string) error {
 }
 
 // MarshalYAML implements yaml.Marshaler.MarshalYAML
-func (t *VdiskType) MarshalYAML() (interface{}, error) {
-	if s := t.String(); s != vdiskTypeNilStr {
+func (vtype VdiskType) MarshalYAML() (interface{}, error) {
+	if s := vtype.String(); s != vdiskTypeNilStr {
 		return s, nil
 	}
-	return nil, fmt.Errorf("%v is not a valid VdiskType", t)
+
+	return nil, fmt.Errorf("%v is not a valid VdiskType", vtype)
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.UnmarshalYAML
-func (t *VdiskType) UnmarshalYAML(unmarshal func(interface{}) error) (err error) {
+func (vtype *VdiskType) UnmarshalYAML(unmarshal func(interface{}) error) (err error) {
 	var rawType string
 	err = unmarshal(&rawType)
 	if err != nil {
-		return fmt.Errorf("%q is not a valid VdiskType: %s", t, err)
+		return fmt.Errorf("%q is not a valid VdiskType: %s", vtype, err)
 	}
 
-	// if bug in go-yaml that won't marchal VdiskType properly
-	// rawtype should then be a uint8
-	// bug is known: https://github.com/go-yaml/yaml/issues/134
-	if uintType, err := strconv.ParseUint(rawType, 10, 8); err == nil {
-		tBuf := VdiskType(uint8(uintType))
-		err = tBuf.Validate()
-		if err != nil {
-			return err
-		}
-		t.SetString(tBuf.String())
-
-		return nil
-	}
-
-	err = t.SetString(rawType)
+	err = vtype.SetString(rawType)
 	return err
 }
 
