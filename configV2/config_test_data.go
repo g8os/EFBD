@@ -1,7 +1,5 @@
 package configV2
 
-// YAML
-
 const validConfigStr = `
 vdisks:
   myvdisk:
@@ -11,7 +9,7 @@ vdisks:
       size: 10
       type: db
     ndbConfig:
-      rootVdiskID: mytemplate
+      templateVdiskID: mytemplate
       storageCluster:
         dataStorage: 
           - address: 192.168.58.146:2000
@@ -21,7 +19,7 @@ vdisks:
         metadataStorage:
           address: 192.168.58.146:2001
           db: 1
-      rootStorageCluster:
+      templateStorageCluster:
         dataStorage:
           - address: 192.168.58.147:2000
             db: 0
@@ -41,7 +39,7 @@ size: 10
 type: db
 `
 const validNBDStr = `
-rootVdiskID: mytemplate
+templateVdiskID: mytemplate
 storageCluster:
   dataStorage: 
     - address: 192.168.58.146:2000
@@ -51,7 +49,7 @@ storageCluster:
   metadataStorage:
     address: 192.168.58.146:2001
     db: 1
-rootStorageCluster:
+templateStorageCluster:
   dataStorage:
     - address: 192.168.58.147:2000
       db: 0
@@ -84,7 +82,7 @@ vdisks:
       size: 1
       type: boot
 `,
-	// missing root storage cluster
+	// missing template storage cluster
 	`
 vdisks:
   myvdisk:
@@ -94,7 +92,7 @@ vdisks:
       size: 2
       type: db
     ndbConfig:
-      rootVdiskID: mytemplate
+      templateVdiskID: mytemplate
       storageCluster:
         dataStorage: 
           - address: 192.168.58.146:2000
@@ -114,7 +112,7 @@ vdisks:
           db: 8
   `,
 
-	// bad root storage
+	// bad template storage
 	`
 vdisks:
   myvdisk:
@@ -133,7 +131,7 @@ vdisks:
         metadataStorage:
           address: 192.168.58.146:2001
           db: 1
-      rootStorageCluster:
+      templateStorageCluster:
         dataStorage:
           - address: 192.168.58.147:2000
             db: foo
@@ -146,7 +144,7 @@ vdisks:
           address: 192.168.58.146:2001
           db: 8
   `,
-	// bad root storage dail address
+	// bad template storage dial address
 	`
 vdisks:
   myvdisk:
@@ -165,7 +163,7 @@ vdisks:
         metadataStorage:
           address: 192.168.58.146:2001
           db: 1
-      rootStorageCluster:
+      templateStorageCluster:
         dataStorage:
           - address: foo
             db: 1

@@ -40,7 +40,7 @@ func TestSerializing(t *testing.T) {
 
 	// create base config from a valid base config string
 	b := new(BaseConfig)
-	b, err = b.deserialize([]byte(validBaseStr))
+	err = b.deserialize([]byte(validBaseStr))
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -50,7 +50,7 @@ func TestSerializing(t *testing.T) {
 	if !assert.NoError(t, err) {
 		return
 	}
-	b2, err = b2.deserialize(b2Str)
+	err = b2.deserialize(b2Str)
 	if !assert.NoError(t, err) {
 		return
 	}

@@ -61,6 +61,20 @@ type BaseConfig struct {
 	Type      VdiskType `yaml:"type" valid:"optional"`
 }
 
+// NewBaseConfig creates a new Baseconfig from byte slice in YAML 1.2 format
+func NewBaseConfig(data []byte) (*BaseConfig, error) {
+	base := new(BaseConfig)
+	err := base.deserialize(data)
+	if err != nil {
+		return nil, err
+	}
+	base.validate()
+	if err != nil {
+		return nil, err
+	}
+	return base, nil
+}
+
 // serialize converts baseConfig in byte slice in YAML 1.2 format
 func (base *BaseConfig) serialize() ([]byte, error) {
 	res, err := yaml.Marshal(base)
@@ -71,13 +85,12 @@ func (base *BaseConfig) serialize() ([]byte, error) {
 }
 
 // deserialize tries to convert provided data into a baseConfig
-func (BaseConfig) deserialize(data []byte) (*BaseConfig, error) {
-	base := new(BaseConfig)
+func (base *BaseConfig) deserialize(data []byte) error {
 	err := yaml.Unmarshal(data, &base)
 	if err != nil {
-		return base, err
+		return err
 	}
-	return base, nil
+	return nil
 }
 
 // validate Validates baseConfig
@@ -98,15 +111,28 @@ func (base BaseConfig) validate() error {
 	if err != nil {
 		return fmt.Errorf("baseconfig has invalid type: %s", err.Error())
 	}
-
 	return nil
 }
 
 // NDBConfig represents an ndb storage configuration
 type NDBConfig struct {
-	StorageCluster     StorageClusterConfig `yaml:"storageCluster" valid:"optional"`
-	RootStorageCluster StorageClusterConfig `yaml:"rootStorageCluster" valid:"optional"`
-	RootVdiskID        string               `yaml:"rootVdiskID" valid:"optional"`
+	StorageCluster         StorageClusterConfig `yaml:"storageCluster" valid:"optional"`
+	TemplateStorageCluster StorageClusterConfig `yaml:"templateStorageCluster" valid:"optional"`
+	TemplateVdiskID        string               `yaml:"templateVdiskID" valid:"optional"`
+}
+
+// NewNDBConfig creates a new NDBConfig from byte slice in YAML 1.2 format
+func NewNDBConfig(data []byte, vID string, vtype VdiskType) (*NDBConfig, error) {
+	ndb := new(NDBConfig)
+	err := ndb.deserialize(data)
+	if err != nil {
+		return nil, err
+	}
+	ndb.validate(vID, vtype)
+	if err != nil {
+		return nil, err
+	}
+	return ndb, nil
 }
 
 // serialize converts NDBConfig in byte slice in YAML 1.2 format
@@ -119,17 +145,17 @@ func (ndb *NDBConfig) serialize() ([]byte, error) {
 }
 
 // deserialize tries to convert provided data into an NDBConfig
-func (NDBConfig) deserialize(data []byte) (*NDBConfig, error) {
-	newNDB := new(NDBConfig)
-	err := yaml.Unmarshal(data, &newNDB)
+func (ndb *NDBConfig) deserialize(data []byte) error {
+	err := yaml.Unmarshal(data, ndb)
 	if err != nil {
-		return newNDB, err
+		return err
 	}
-	return newNDB, nil
+	return nil
 }
 
 // validate Validates NDBConfig
-func (ndb NDBConfig) validate(vdiskID string, vdisktype VdiskType) error {
+// Needs vdisk id and vdisk type
+func (ndb NDBConfig) validate(vID string, vtype VdiskType) error {
 	// check valid tags
 	_, err := valid.ValidateStruct(ndb)
 	if err != nil {
@@ -140,28 +166,27 @@ func (ndb NDBConfig) validate(vdiskID string, vdisktype VdiskType) error {
 		return fmt.Errorf("no ndb datastorage was found")
 	}
 
-	// Check if rootstorage is present when required
-	if TemplateSupport(vdisktype) {
-		if ndb.RootStorageCluster.DataStorage == nil {
-			return fmt.Errorf("root storage not found while required")
+	// Check if templatestorage is present when required
+	if vtype.TemplateSupport() {
+		if ndb.TemplateStorageCluster.DataStorage == nil {
+			return fmt.Errorf("template storage not found while required")
 		}
 
 		// nonDeduped vdisks that support templates,
 		// also require a vdiskID as used on the template storage
-		if vdisktype.GetStorageType() == StorageNondeduped {
-			if ndb.RootVdiskID == "" {
-				log.Debugf("defaulting rootVdiskID of vdisk %s to %s", vdiskID, vdiskID)
-				ndb.RootVdiskID = vdiskID
+		if vtype.StorageType() == StorageNonDeduped {
+			if ndb.TemplateVdiskID == "" {
+				log.Debugf("defaulting templateVdiskID of vdisk %s to %s", vID, vID)
+				ndb.TemplateVdiskID = vID
 			}
 		}
 	}
 
 	// validate if metadata storage is defined when required
 	metadataUndefined := ndb.StorageCluster.MetadataStorage == nil
-	if metadataUndefined && vdisktype.GetStorageType() == StorageDeduped {
+	if metadataUndefined && vtype.StorageType() == StorageDeduped {
 		return fmt.Errorf("metadata storage not found while required")
 	}
-
 	return nil
 }
 
@@ -169,6 +194,20 @@ func (ndb NDBConfig) validate(vdiskID string, vdisktype VdiskType) error {
 type TlogConfig struct {
 	TlogStorageCluster StorageClusterConfig `yaml:"tlogStorageCluster" valid:"optional"`
 	SlaveSync          bool                 `yaml:"tlogSlaveSync" valid:"optional"`
+}
+
+// NewTlogConfig creates a new Tlogconfig from byte slice in YAML 1.2 format
+func NewTlogConfig(data []byte) (*TlogConfig, error) {
+	tlog := new(TlogConfig)
+	err := tlog.deserialize(data)
+	if err != nil {
+		return nil, err
+	}
+	tlog.validate()
+	if err != nil {
+		return nil, err
+	}
+	return tlog, nil
 }
 
 // serialize converts TlogConfig in byte slice in YAML 1.2 format
@@ -181,13 +220,12 @@ func (tlog *TlogConfig) serialize() ([]byte, error) {
 }
 
 // deserialize tries to convert provided data into an TlogConfig
-func (TlogConfig) deserialize(data []byte) (*TlogConfig, error) {
-	tlog := new(TlogConfig)
-	err := yaml.Unmarshal(data, &tlog)
+func (tlog *TlogConfig) deserialize(data []byte) error {
+	err := yaml.Unmarshal(data, tlog)
 	if err != nil {
-		return tlog, err
+		return err
 	}
-	return tlog, nil
+	return nil
 }
 
 // validate Validates TlogConfig
@@ -201,13 +239,26 @@ func (tlog TlogConfig) validate() error {
 	if tlog.TlogStorageCluster.DataStorage == nil {
 		return fmt.Errorf("no tlog datastorage was found")
 	}
-
 	return nil
 }
 
 // SlaveConfig represents a backup storage configuration
 type SlaveConfig struct {
 	SlaveStorageCluster StorageClusterConfig `yaml:"slaveStorageCluster" valid:"optional"`
+}
+
+// NewSlaveConfig creates a new Slaveconfig from byte slice in YAML 1.2 format
+func NewSlaveConfig(data []byte) (*SlaveConfig, error) {
+	slave := new(SlaveConfig)
+	err := slave.deserialize(data)
+	if err != nil {
+		return nil, err
+	}
+	slave.validate()
+	if err != nil {
+		return nil, err
+	}
+	return slave, nil
 }
 
 // serialize converts SlaveConfig in byte slice in YAML 1.2 format
@@ -220,13 +271,12 @@ func (slave *SlaveConfig) serialize() ([]byte, error) {
 }
 
 // deserialize tries to convert provided data into an SlaveConfig
-func (SlaveConfig) deserialize(data []byte) (*SlaveConfig, error) {
-	slave := new(SlaveConfig)
-	err := yaml.Unmarshal(data, &slave)
+func (slave *SlaveConfig) deserialize(data []byte) error {
+	err := yaml.Unmarshal(data, *slave)
 	if err != nil {
-		return slave, err
+		return err
 	}
-	return slave, nil
+	return nil
 }
 
 // validate Validates SlaveConfig
@@ -244,12 +294,18 @@ func (slave *SlaveConfig) validate() error {
 	return nil
 }
 
+// TlogSupport returns whether or not the data of this vdisk
+// has to send to the tlog server, to log its transactions.
+func (vtype VdiskType) TlogSupport() bool {
+	return vtype&propTlogSupport != 0
+}
+
 // TemplateSupport returns whether or not
-// this vdisk supports a template (root) server,
+// this vdisk supports a template server,
 // to get the data in case the data isn't available on
 // the normal (local) storage cluster.
-func TemplateSupport(vtype VdiskType) bool {
-	return vtype&propTemplateSupport != 0
+func (vtype VdiskType) TemplateSupport() bool {
+	return vtype&propTemplateSupport != 0 // || (cfg.Type == VdiskTypeBoot && cfg.TemplateStorageCluster != "")
 }
 
 // VdiskType represents the type of a vdisk,
@@ -296,8 +352,8 @@ const (
 	VdiskTypeTmp   = propTemporary
 )
 
-// GetStorageType returns the type of storage this vdisk uses
-func (t VdiskType) GetStorageType() StorageType {
+// StorageType returns the type of storage this vdisk uses
+func (t VdiskType) StorageType() StorageType {
 	if t&propDeduped != 0 {
 		return StorageDeduped
 	}
@@ -309,7 +365,7 @@ func (t VdiskType) GetStorageType() StorageType {
 	// see open issue for more information:
 	// https://github.com/zero-os/0-Disk/issues/222
 
-	return StorageNondeduped
+	return StorageNonDeduped
 }
 
 // Validate this vdisk type
@@ -353,7 +409,6 @@ func (t *VdiskType) SetString(s string) error {
 	default:
 		return fmt.Errorf("%q is not a valid VdiskType", s)
 	}
-
 	return nil
 }
 
@@ -362,7 +417,6 @@ func (t *VdiskType) MarshalYAML() (interface{}, error) {
 	if s := t.String(); s != vdiskTypeNilStr {
 		return s, nil
 	}
-
 	return nil, fmt.Errorf("%v is not a valid VdiskType", t)
 }
 
@@ -419,7 +473,7 @@ func (cfg StorageClusterConfig) Clone() (clone StorageClusterConfig) {
 		metadataStorage := *cfg.MetadataStorage
 		clone.MetadataStorage = &metadataStorage
 	}
-	return
+	return clone
 }
 
 // StorageType represents the type of storage of a vdisk
@@ -429,7 +483,9 @@ type StorageType uint8
 const (
 	StorageNil     StorageType = 0
 	StorageDeduped StorageType = 1 << iota
-	StorageNondeduped
+	StorageNonDeduped
+	// StorageSemiDeduped is not used for now
+	StorageSemiDeduped
 )
 
 // UInt8 returns the storage type as an uint8 value
@@ -442,9 +498,11 @@ func (st StorageType) String() string {
 	switch st {
 	case StorageDeduped:
 		return "deduped"
-	case StorageNondeduped:
+	case StorageNonDeduped:
 		return "nondeduped"
+	case StorageSemiDeduped:
+		return "semideduped"
 	default:
-		return "Unknown"
+		return "unknown"
 	}
 }
