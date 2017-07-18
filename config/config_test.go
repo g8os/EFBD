@@ -20,7 +20,7 @@ storageClusters:
     metadataStorage:
       address: 192.168.58.146:2001
       db: 1
-  rootcluster:
+  templatecluster:
     dataStorage:
       - address: 192.168.58.147:2000
         db: 0
@@ -40,8 +40,8 @@ vdisks:
     readOnly: false
     size: 10
     storageCluster: mycluster
-    rootStorageCluster: rootcluster
-    rootVdiskID: mytemplate
+    templateStorageCluster: templatecluster
+    templateVdiskID: mytemplate
     tlogStorageCluster: tlogcluster
     type: db`
 
@@ -63,7 +63,7 @@ func TestValidConfigFromBytes(t *testing.T) {
 			assert.Equal(t, 1, cluster.MetadataStorage.Database)
 		}
 
-		if cluster, ok := cfg.StorageClusters["rootcluster"]; assert.True(t, ok) {
+		if cluster, ok := cfg.StorageClusters["templatecluster"]; assert.True(t, ok) {
 			if assert.Len(t, cluster.DataStorage, 1) {
 				assert.Equal(t, "192.168.58.147:2000", cluster.DataStorage[0].Address)
 				assert.Equal(t, 0, cluster.DataStorage[0].Database)
@@ -88,8 +88,8 @@ func TestValidConfigFromBytes(t *testing.T) {
 			assert.False(t, vdisk.ReadOnly)
 			assert.Equal(t, uint64(10), vdisk.Size)
 			assert.Equal(t, "mycluster", vdisk.StorageCluster)
-			assert.Equal(t, "rootcluster", vdisk.RootStorageCluster)
-			assert.Equal(t, "mytemplate", vdisk.RootVdiskID)
+			assert.Equal(t, "templatecluster", vdisk.TemplateStorageCluster)
+			assert.Equal(t, "mytemplate", vdisk.TemplateVdiskID)
 			assert.Equal(t, "tlogcluster", vdisk.TlogStorageCluster)
 			assert.Equal(t, VdiskTypeDB, vdisk.Type)
 		}
@@ -112,8 +112,8 @@ func TestValidVdiskClusterConfigFromBytes(t *testing.T) {
 	assert.False(t, cfg.Vdisk.ReadOnly)
 	assert.Equal(t, uint64(10), cfg.Vdisk.Size)
 	assert.Equal(t, "mycluster", cfg.Vdisk.StorageCluster)
-	assert.Equal(t, "rootcluster", cfg.Vdisk.RootStorageCluster)
-	assert.Equal(t, "mytemplate", cfg.Vdisk.RootVdiskID)
+	assert.Equal(t, "templatecluster", cfg.Vdisk.TemplateStorageCluster)
+	assert.Equal(t, "mytemplate", cfg.Vdisk.TemplateVdiskID)
 	assert.Equal(t, "tlogcluster", cfg.Vdisk.TlogStorageCluster)
 	assert.Equal(t, VdiskTypeDB, cfg.Vdisk.Type)
 
@@ -127,13 +127,13 @@ func TestValidVdiskClusterConfigFromBytes(t *testing.T) {
 	assert.Equal(t, "192.168.58.146:2001", cfg.DataCluster.MetadataStorage.Address)
 	assert.Equal(t, 1, cfg.DataCluster.MetadataStorage.Database)
 
-	// test root cluster
-	if assert.Len(t, cfg.RootCluster.DataStorage, 1) {
-		assert.Equal(t, "192.168.58.147:2000", cfg.RootCluster.DataStorage[0].Address)
-		assert.Equal(t, 0, cfg.RootCluster.DataStorage[0].Database)
+	// test template cluster
+	if assert.Len(t, cfg.TemplateCluster.DataStorage, 1) {
+		assert.Equal(t, "192.168.58.147:2000", cfg.TemplateCluster.DataStorage[0].Address)
+		assert.Equal(t, 0, cfg.TemplateCluster.DataStorage[0].Database)
 	}
-	assert.Equal(t, "192.168.58.147:2001", cfg.RootCluster.MetadataStorage.Address)
-	assert.Equal(t, 2, cfg.RootCluster.MetadataStorage.Database)
+	assert.Equal(t, "192.168.58.147:2001", cfg.TemplateCluster.MetadataStorage.Address)
+	assert.Equal(t, 2, cfg.TemplateCluster.MetadataStorage.Database)
 
 	// test tlog cluster
 	if assert.Len(t, cfg.TlogCluster.DataStorage, 1) {
@@ -163,7 +163,7 @@ func TestValidUniqueVdiskClusterConfigsFromBytes(t *testing.T) {
 	if !assert.NotNil(t, cfgA.DataCluster.MetadataStorage) {
 		return
 	}
-	if !assert.NotNil(t, cfgA.RootCluster) {
+	if !assert.NotNil(t, cfgA.TemplateCluster) {
 		return
 	}
 	if !assert.NotNil(t, cfgA.TlogCluster) {
@@ -180,7 +180,7 @@ func TestValidUniqueVdiskClusterConfigsFromBytes(t *testing.T) {
 	if !assert.NotNil(t, cfgB.DataCluster.MetadataStorage) {
 		return
 	}
-	if !assert.NotNil(t, cfgB.RootCluster) {
+	if !assert.NotNil(t, cfgB.TemplateCluster) {
 		return
 	}
 	if !assert.NotNil(t, cfgB.TlogCluster) {
@@ -189,38 +189,38 @@ func TestValidUniqueVdiskClusterConfigsFromBytes(t *testing.T) {
 
 	dataStorageA := cfgA.DataCluster.DataStorage
 	metaStorageA := cfgA.DataCluster.MetadataStorage
-	rootDataStorageA := cfgA.RootCluster.DataStorage
-	rootMetaStorageA := cfgA.RootCluster.MetadataStorage
+	templateDataStorageA := cfgA.TemplateCluster.DataStorage
+	templateMetaStorageA := cfgA.TemplateCluster.MetadataStorage
 	tlogDataStorageA := cfgA.TlogCluster.DataStorage
 	tlogMetaStorageA := cfgA.TlogCluster.MetadataStorage
 
 	dataStorageB := cfgB.DataCluster.DataStorage
 	metaStorageB := cfgB.DataCluster.MetadataStorage
-	rootDataStorageB := cfgB.RootCluster.DataStorage
-	rootMetaStorageB := cfgB.RootCluster.MetadataStorage
+	templateDataStorageB := cfgB.TemplateCluster.DataStorage
+	templateMetaStorageB := cfgB.TemplateCluster.MetadataStorage
 	tlogDataStorageB := cfgB.TlogCluster.DataStorage
 	tlogMetaStorageB := cfgB.TlogCluster.MetadataStorage
 
 	assert.Equal(t, dataStorageA, dataStorageB)
 	assert.Equal(t, *metaStorageA, *metaStorageB)
-	assert.Equal(t, rootDataStorageA, rootDataStorageB)
-	assert.Equal(t, *rootMetaStorageA, *rootMetaStorageB)
+	assert.Equal(t, templateDataStorageA, templateDataStorageB)
+	assert.Equal(t, *templateMetaStorageA, *templateMetaStorageB)
 	assert.Equal(t, tlogDataStorageA, tlogDataStorageB)
 	assert.Equal(t, *tlogMetaStorageA, *tlogMetaStorageB)
 
 	// let's now change all A versions
 	dataStorageA[0].Database++
 	metaStorageA.Database++
-	rootDataStorageA[0].Database++
-	rootMetaStorageA.Database++
+	templateDataStorageA[0].Database++
+	templateMetaStorageA.Database++
 	tlogDataStorageA[0].Database++
 	tlogMetaStorageA.Database++
 
 	// now the versions shouldn't be equal
 	assert.NotEqual(t, dataStorageA, dataStorageB)
 	assert.NotEqual(t, *metaStorageA, *metaStorageB)
-	assert.NotEqual(t, rootDataStorageA, rootDataStorageB)
-	assert.NotEqual(t, *rootMetaStorageA, *rootMetaStorageB)
+	assert.NotEqual(t, templateDataStorageA, templateDataStorageB)
+	assert.NotEqual(t, *templateMetaStorageA, *templateMetaStorageB)
 	assert.NotEqual(t, tlogDataStorageA, tlogDataStorageB)
 	assert.NotEqual(t, *tlogMetaStorageA, *tlogMetaStorageB)
 }
@@ -262,20 +262,20 @@ func TestMinimalValidNBDServerConfigFromBytes(t *testing.T) {
 			assert.Equal(t, "mycluster", vdisk.StorageCluster)
 			assert.Equal(t, VdiskTypeCache, vdisk.Type)
 			// optional properties
-			assert.Equal(t, "", vdisk.RootStorageCluster)
-			assert.Equal(t, "", vdisk.RootVdiskID)
+			assert.Equal(t, "", vdisk.TemplateStorageCluster)
+			assert.Equal(t, "", vdisk.TemplateVdiskID)
 			// ignored properties
 			assert.Equal(t, "", vdisk.TlogStorageCluster)
 		}
 	}
 }
 
-const minimalValidNBDServerConfigWithRoot = `
+const minimalValidNBDServerConfigWithTemplate = `
 storageClusters:
   mycluster:
     dataStorage:
       - address: 192.168.58.146:2000
-  rootcluster:
+  templatecluster:
     dataStorage:
       - address: 192.168.58.146:2001
 vdisks:
@@ -283,11 +283,11 @@ vdisks:
     blockSize: 4096
     size: 10
     storageCluster: mycluster
-    rootStorageCluster: rootcluster
+    templateStorageCluster: templatecluster
     type: db`
 
-func TestMinimalValidNBDServerConfigWithRootFromBytes(t *testing.T) {
-	cfg, err := FromBytes([]byte(minimalValidNBDServerConfigWithRoot), NBDServer)
+func TestMinimalValidNBDServerConfigWithTemplateFromBytes(t *testing.T) {
+	cfg, err := FromBytes([]byte(minimalValidNBDServerConfigWithTemplate), NBDServer)
 	if !assert.NoError(t, err) || !assert.NotNil(t, cfg) {
 		return
 	}
@@ -301,7 +301,7 @@ func TestMinimalValidNBDServerConfigWithRootFromBytes(t *testing.T) {
 			assert.Nil(t, cluster.MetadataStorage)
 		}
 
-		if cluster, ok := cfg.StorageClusters["rootcluster"]; assert.True(t, ok) {
+		if cluster, ok := cfg.StorageClusters["templatecluster"]; assert.True(t, ok) {
 			if assert.Len(t, cluster.DataStorage, 1) {
 				assert.Equal(t, "192.168.58.146:2001", cluster.DataStorage[0].Address)
 				assert.Equal(t, 0, cluster.DataStorage[0].Database)
@@ -319,8 +319,8 @@ func TestMinimalValidNBDServerConfigWithRootFromBytes(t *testing.T) {
 			assert.Equal(t, "mycluster", vdisk.StorageCluster)
 			assert.Equal(t, VdiskTypeDB, vdisk.Type)
 			// optional properties
-			assert.Equal(t, "rootcluster", vdisk.RootStorageCluster)
-			assert.Equal(t, "myvdisk", vdisk.RootVdiskID)
+			assert.Equal(t, "templatecluster", vdisk.TemplateStorageCluster)
+			assert.Equal(t, "myvdisk", vdisk.TemplateVdiskID)
 			// ignored properties
 			assert.Equal(t, "", vdisk.TlogStorageCluster)
 		}
@@ -369,7 +369,7 @@ func TestMinimalValidTlogServerConfigFromBytes(t *testing.T) {
 			assert.Equal(t, uint64(0), vdisk.BlockSize)
 			assert.False(t, vdisk.ReadOnly)
 			assert.Equal(t, uint64(0), vdisk.Size)
-			assert.Equal(t, "", vdisk.RootStorageCluster)
+			assert.Equal(t, "", vdisk.TemplateStorageCluster)
 			assert.Equal(t, "", vdisk.StorageCluster)
 			assert.Equal(t, VdiskType(0), vdisk.Type)
 		}
@@ -395,7 +395,7 @@ func TestMinimalValidVdiskClusterNBDServerConfigFromBytes(t *testing.T) {
 	assert.Equal(t, "mycluster", cfg.Vdisk.StorageCluster)
 	assert.Equal(t, VdiskTypeCache, cfg.Vdisk.Type)
 	// ignored properties
-	assert.Equal(t, "", cfg.Vdisk.RootStorageCluster)
+	assert.Equal(t, "", cfg.Vdisk.TemplateStorageCluster)
 	assert.Equal(t, "", cfg.Vdisk.TlogStorageCluster)
 
 	// test data cluster
@@ -405,8 +405,8 @@ func TestMinimalValidVdiskClusterNBDServerConfigFromBytes(t *testing.T) {
 	}
 	assert.Nil(t, cfg.DataCluster.MetadataStorage)
 
-	// root and tlog clusters are not defined
-	assert.Nil(t, cfg.RootCluster)
+	// template and tlog clusters are not defined
+	assert.Nil(t, cfg.TemplateCluster)
 	assert.Nil(t, cfg.TlogCluster)
 }
 
@@ -426,7 +426,7 @@ func TestMinimalValidVdiskClusterTlogServerConfigFromBytes(t *testing.T) {
 	assert.Equal(t, "tlogcluster", cfg.Vdisk.TlogStorageCluster)
 	// ignored properties
 	assert.Equal(t, "", cfg.Vdisk.StorageCluster)
-	assert.Equal(t, "", cfg.Vdisk.RootStorageCluster)
+	assert.Equal(t, "", cfg.Vdisk.TemplateStorageCluster)
 	assert.Equal(t, uint64(0), cfg.Vdisk.BlockSize)
 	assert.False(t, cfg.Vdisk.ReadOnly)
 	assert.Equal(t, uint64(0), cfg.Vdisk.Size)
@@ -449,9 +449,9 @@ func TestMinimalValidVdiskClusterTlogServerConfigFromBytes(t *testing.T) {
 	}
 	assert.Nil(t, cfg.TlogCluster.MetadataStorage)
 
-	// root and tlog clusters are not defined
+	// template and tlog clusters are not defined
 	assert.Nil(t, cfg.DataCluster)
-	assert.Nil(t, cfg.RootCluster)
+	assert.Nil(t, cfg.TemplateCluster)
 }
 
 var invalidNBDServerConfigs = []string{
@@ -661,7 +661,7 @@ vdisks:
     storageCluster: foo
     type: boot
 `,
-	// unreferenced rootStorageCluster given
+	// unreferenced templateStorageCluster given
 	`
 storageClusters:
   mycluster:
@@ -674,7 +674,7 @@ vdisks:
     blockSize: 4096
     size: 10
     storageCluster: mycluster
-    rootStorageCluster: foo
+    templateStorageCluster: foo
     type: boot
 `,
 }
@@ -701,7 +701,7 @@ vdisks:
   myvdisk:
     tlogStorageCluster: foo
 `,
-	// bad rootStorageCluster given
+	// bad templateStorageCluster given
 	`
 storageClusters:
   tlogcluster:
@@ -710,7 +710,7 @@ vdisks:
   myvdisk:
     tlogStorageCluster: tlogcluster
 `,
-	// bad rootStorageCluster given
+	// bad templateStorageCluster given
 	`
 storageClusters:
   tlogcluster:
@@ -719,7 +719,7 @@ vdisks:
   myvdisk:
     tlogStorageCluster: tlogcluster
 `,
-	// bad (v2) rootStorageCluster given
+	// bad (v2) templateStorageCluster given
 	`
 storageClusters:
   tlogcluster:

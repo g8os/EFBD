@@ -71,7 +71,7 @@ func TestNondedupedContent(t *testing.T) {
 		vdiskID = "a"
 	)
 
-	redisProvider := newTestRedisProvider(memRedis, nil) // root = nil
+	redisProvider := newTestRedisProvider(memRedis, nil) // template = nil
 	storage := createTestNondedupedStorage(t, vdiskID, 8, false, redisProvider)
 	if storage == nil {
 		t.Fatal("storage is nil")
@@ -89,7 +89,7 @@ func TestNondedupedContentForceFlush(t *testing.T) {
 		vdiskID = "a"
 	)
 
-	redisProvider := newTestRedisProvider(memRedis, nil) // root = nil
+	redisProvider := newTestRedisProvider(memRedis, nil) // template = nil
 	storage := createTestNondedupedStorage(t, vdiskID, 8, false, redisProvider)
 	if storage == nil {
 		t.Fatal("storage is nil")
@@ -110,7 +110,7 @@ func TestNonDedupedDeadlock(t *testing.T) {
 		blockCount = 512
 	)
 
-	redisProvider := newTestRedisProvider(memRedis, nil) // root = nil
+	redisProvider := newTestRedisProvider(memRedis, nil) // template = nil
 	storage := createTestNondedupedStorage(t, vdiskID, blockSize, false, redisProvider)
 	if storage == nil {
 		t.Fatal("storage is nil")
@@ -119,11 +119,11 @@ func TestNonDedupedDeadlock(t *testing.T) {
 	testBackendStorageDeadlock(t, blockSize, blockCount, storage)
 }
 
-// test if content linked to local (copied) data,
-// is available only on the remote (root) storage,
-// while not yet on the local storage
+// test if content linked to (copied) data,
+// is available only on the template storage,
+// while not yet on the primary storage
 // supported since: https://github.com/zero-os/0-Disk/issues/223
-func TestGetNondedupedRootContent(t *testing.T) {
+func TestGetNondedupedTemplateContent(t *testing.T) {
 	// create storageA
 	memRedisA := redisstub.NewMemoryRedis()
 	go memRedisA.Listen()
@@ -133,18 +133,18 @@ func TestGetNondedupedRootContent(t *testing.T) {
 		vdiskID = "a"
 	)
 
-	redisProviderA := newTestRedisProvider(memRedisA, nil) // root = nil, later will be non-nil
+	redisProviderA := newTestRedisProvider(memRedisA, nil) // template = nil, later will be non-nil
 	storageA := createTestNondedupedStorage(t, vdiskID, 8, true, redisProviderA)
 	if storageA == nil {
 		t.Fatal("storageA is nil")
 	}
 
-	// create storageB, with storageA as its fallback/root
+	// create storageB, with storageA as its template storage
 	memRedisB := redisstub.NewMemoryRedis()
 	go memRedisB.Listen()
 	defer memRedisB.Close()
 
-	redisProviderB := newTestRedisProvider(memRedisB, memRedisA) // root = memRedisA
+	redisProviderB := newTestRedisProvider(memRedisB, memRedisA) // template = memRedisA
 	storageB := createTestNondedupedStorage(t, vdiskID, 8, true, redisProviderB)
 	if storageB == nil {
 		t.Fatal("storageB is nil")
@@ -186,7 +186,7 @@ func TestGetNondedupedRootContent(t *testing.T) {
 	}
 
 	// content should now be in both storages
-	// as the remote get should have also stored the content locally
+	// as the template content should also have been stored in primary storage
 	testNondedupContentExists(t, memRedisA, vdiskID, testBlockIndex, testContent)
 
 	// wait until the Get method saves the content async
@@ -206,8 +206,8 @@ func TestGetNondedupedRootContent(t *testing.T) {
 	testNondedupContentDoesNotExist(t, memRedisA, vdiskID, testBlockIndex, testContent)
 
 	// let's now try to get it from storageA
-	// this should fail (manifested as nil-content), as storageA has no root,
-	// and the content isn't available locally
+	// this should fail (manifested as nil-content), as storageA has no template,
+	// and the content isn't available in primary storage
 	content, err = storageA.Get(testBlockIndex)
 	if err != nil {
 		t.Fatal(err)
@@ -230,9 +230,9 @@ func TestGetNondedupedRootContent(t *testing.T) {
 	testNondedupContentExists(t, memRedisB, vdiskID, testBlockIndex, testContent)
 	testNondedupContentDoesNotExist(t, memRedisA, vdiskID, testBlockIndex, testContent)
 
-	// if we now make sure storageA, has storageB as its root,
+	// if we now make sure storageA, has storageB as its template,
 	// our previous Get attempt /will/ work
-	redisProviderA.rootMemRedis = memRedisB
+	redisProviderA.templateMemRedis = memRedisB
 
 	content, err = storageA.Get(testBlockIndex)
 	if err != nil {
@@ -251,7 +251,7 @@ func TestGetNondedupedRootContent(t *testing.T) {
 	testNondedupContentExists(t, memRedisA, vdiskID, testBlockIndex, testContent)
 }
 
-func TestGetNondedupedRootContentDeadlock(t *testing.T) {
+func TestGetNondedupedTemplateContentDeadlock(t *testing.T) {
 	// create storageA
 	memRedisA := redisstub.NewMemoryRedis()
 	go memRedisA.Listen()
@@ -267,18 +267,18 @@ func TestGetNondedupedRootContentDeadlock(t *testing.T) {
 		err error
 	)
 
-	redisProviderA := newTestRedisProvider(memRedisA, nil) // root = nil, later will be non-nil
+	redisProviderA := newTestRedisProvider(memRedisA, nil) // template = nil, later will be non-nil
 	storageA := createTestNondedupedStorage(t, vdiskID, blockSize, false, redisProviderA)
 	if storageA == nil {
 		t.Fatal("storageA is nil")
 	}
 
-	// create storageB, with storageA as its fallback/root
+	// create storageB, with storageA as its ftemplate storage
 	memRedisB := redisstub.NewMemoryRedis()
 	go memRedisB.Listen()
 	defer memRedisB.Close()
 
-	redisProviderB := newTestRedisProvider(memRedisB, memRedisA) // root = memRedisA
+	redisProviderB := newTestRedisProvider(memRedisB, memRedisA) // template = memRedisA
 	storageB := createTestNondedupedStorage(t, vdiskID, blockSize, true, redisProviderB)
 	if storageB == nil {
 		t.Fatal("storageB is nil")

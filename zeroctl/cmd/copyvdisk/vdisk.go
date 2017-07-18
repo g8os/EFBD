@@ -286,7 +286,7 @@ even though data which is already copied is not rolled back.
 NOTE: by design,
   only the metadata of a deduped vdisk is copied,
   the data will be copied the first time the vdisk spins up,
-  on the condition that the rootStorageCluster has been configured.
+  on the condition that the templateStorageCluster has been configured.
 
 WARNING: when copying nondeduped vdisks,
   it is currently not supported that the target vdisk's data cluster

@@ -41,7 +41,7 @@ func TestSemiDedupedContentBasic(t *testing.T) {
 			memRedis.Listen()
 		}()
 
-		redisProvider := newTestRedisProvider(memRedis, nil) // root = nil
+		redisProvider := newTestRedisProvider(memRedis, nil) // template = nil
 		template := createTestDedupedStorage(t, "template", blockSize, blockCount, false, redisProvider)
 		if template == nil {
 			t.Fatal("template is nil")

@@ -27,44 +27,44 @@ func newTestRedisPool(dial func() (redis.Conn, error)) *redis.Pool {
 	}
 }
 
-func newTestRedisProvider(main, root *redisstub.MemoryRedis) *testRedisProvider {
+func newTestRedisProvider(primary, template *redisstub.MemoryRedis) *testRedisProvider {
 	provider := &testRedisProvider{
-		memRedis:     main,
-		rootMemRedis: root,
+		memRedis:         primary,
+		templateMemRedis: template,
 	}
-	provider.mainPool = newTestRedisPool(func() (redis.Conn, error) {
+	provider.primaryPool = newTestRedisPool(func() (redis.Conn, error) {
 		if provider.memRedis == nil {
 			return nil, errors.New("no memory redis available")
 		}
 
 		return provider.memRedis.Dial("", 0)
 	})
-	provider.rootPool = newTestRedisPool(func() (redis.Conn, error) {
-		if provider.rootMemRedis == nil {
-			return nil, errors.New("no root memory redis available")
+	provider.templatePool = newTestRedisPool(func() (redis.Conn, error) {
+		if provider.templateMemRedis == nil {
+			return nil, errors.New("no template memory redis available")
 		}
 
-		return provider.rootMemRedis.Dial("", 0)
+		return provider.templateMemRedis.Dial("", 0)
 	})
 	return provider
 }
 
 type testRedisProvider struct {
-	memRedis           *redisstub.MemoryRedis
-	rootMemRedis       *redisstub.MemoryRedis
-	mainPool, rootPool *redis.Pool
+	memRedis                  *redisstub.MemoryRedis
+	templateMemRedis          *redisstub.MemoryRedis
+	primaryPool, templatePool *redis.Pool
 }
 
 func (trp *testRedisProvider) RedisConnection(index int64) (redis.Conn, error) {
-	return trp.mainPool.Get(), nil
+	return trp.primaryPool.Get(), nil
 }
 
 func (trp *testRedisProvider) MetaRedisConnection() (redis.Conn, error) {
-	return trp.mainPool.Get(), nil
+	return trp.primaryPool.Get(), nil
 }
 
-func (trp *testRedisProvider) FallbackRedisConnection(index int64) (redis.Conn, error) {
-	return trp.rootPool.Get(), nil
+func (trp *testRedisProvider) TemplateRedisConnection(index int64) (redis.Conn, error) {
+	return trp.templatePool.Get(), nil
 }
 
 // shared test function to test all types of backendStorage equally,

@@ -77,10 +77,10 @@ type Config struct {
 // VdiskClusterConfig combines the vdisk config
 // and its cluster configs
 type VdiskClusterConfig struct {
-	Vdisk       VdiskConfig
-	DataCluster *StorageClusterConfig
-	RootCluster *StorageClusterConfig
-	TlogCluster *StorageClusterConfig
+	Vdisk           VdiskConfig
+	DataCluster     *StorageClusterConfig
+	TemplateCluster *StorageClusterConfig
+	TlogCluster     *StorageClusterConfig
 }
 
 // SetUser sets the user,
@@ -169,24 +169,24 @@ func (cfg *Config) validateNBD(validRef func(string) error) error {
 			return fmt.Errorf("invalid storageCluster for vdisk %s: %s", vdiskID, err)
 		}
 
-		// when the vdisk doesn't support root storage cluster
-		// we do not need to validate the root storage cluster
+		// when the vdisk doesn't support templates
+		// we do not need to validate the template storage cluster
 		if !vdisk.TemplateSupport() {
 			continue
 		}
 
-		// validate (optional) root storage cluster
-		if vdisk.RootStorageCluster != "" {
-			if err = validRef(vdisk.RootStorageCluster); err != nil {
-				return fmt.Errorf("invalid rootStorageCluster for vdisk %s: %s", vdiskID, err)
+		// validate (optional) template storage cluster
+		if vdisk.TemplateStorageCluster != "" {
+			if err = validRef(vdisk.TemplateStorageCluster); err != nil {
+				return fmt.Errorf("invalid templateStorageCluster for vdisk %s: %s", vdiskID, err)
 			}
 
 			// nonDeduped vdisks that support templates,
 			// also require a vdiskID as used on the template storage
 			if vdisk.StorageType() == StorageNonDeduped {
-				if vdisk.RootVdiskID == "" {
-					log.Debugf("defaulting rootVdiskID of vdisk %s to %s", vdiskID, vdiskID)
-					vdisk.RootVdiskID = vdiskID
+				if vdisk.TemplateVdiskID == "" {
+					log.Debugf("defaulting templateVdiskID of vdisk %s to %s", vdiskID, vdiskID)
+					vdisk.TemplateVdiskID = vdiskID
 					cfg.Vdisks[vdiskID] = vdisk
 				}
 			}
@@ -252,9 +252,9 @@ func (cfg *Config) VdiskClusterConfig(vdiskID string) (*VdiskClusterConfig, erro
 		config.DataCluster = &cluster
 	}
 
-	if vdiskCfg.RootStorageCluster != "" {
-		cluster := cfg.StorageClusters[vdiskCfg.RootStorageCluster].Clone()
-		config.RootCluster = &cluster
+	if vdiskCfg.TemplateStorageCluster != "" {
+		cluster := cfg.StorageClusters[vdiskCfg.TemplateStorageCluster].Clone()
+		config.TemplateCluster = &cluster
 	}
 
 	if vdiskCfg.TlogStorageCluster != "" {
@@ -369,9 +369,9 @@ type VdiskConfig struct {
 	Size           uint64 `yaml:"size" valid:"optional"`
 	StorageCluster string `yaml:"storageCluster" valid:"optional"`
 	// only used by vdisks which have template support
-	RootStorageCluster string `yaml:"rootStorageCluster" valid:"optional"`
+	TemplateStorageCluster string `yaml:"templateStorageCluster" valid:"optional"`
 	// only used by nondeduped vdisks which have template support
-	RootVdiskID string `yaml:"rootVdiskID" valid:"optional"`
+	TemplateVdiskID string `yaml:"templateVdiskID" valid:"optional"`
 
 	// used by the tlogserver only
 	SlaveStorageCluster string `yaml:"slaveStorageCluster" valid:"optional"`
@@ -406,12 +406,11 @@ func (cfg *VdiskConfig) TlogSupport() bool {
 }
 
 // TemplateSupport returns whether or not
-// this vdisk supports a template (root) server,
+// this vdisk supports a template storage cluster,
 // to get the data in case the data isn't available on
-// the normal (local) storage cluster.
+// the primary storage cluster.
 func (cfg *VdiskConfig) TemplateSupport() bool {
-	return cfg.Type&propTemplateSupport != 0 ||
-		(cfg.Type == VdiskTypeBoot && cfg.RootStorageCluster != "")
+	return cfg.Type&propTemplateSupport != 0
 }
 
 // VdiskType represents the type of a vdisk,
@@ -549,9 +548,9 @@ const (
 	// is also logged to a tlogserver (if one is given),
 	// allowing for rollbacks and replays of the data.
 	propTlogSupport
-	// Allows data to be read from a root storage cluster,
-	// in case it isn't available in the (local) storage cluster yet,
-	// storing it as well (async) in the (local) storage cluster when read.
+	// Allows data to be read from a template storage cluster,
+	// in case it isn't available in the primary storage cluster yet,
+	// storing it as well (async) in the primary storage cluster when read.
 	propTemplateSupport
 )
 

@@ -44,7 +44,7 @@ func main() {
 	flag.StringVar(&tlogrpcaddress, "tlogrpc", "", "Addresses of the tlog server, set to 'auto' to use the inmemory version (test/dev only)")
 	flag.StringVar(&configPath, "config", "config.yml", "NBDServer Config YAML File")
 	flag.Int64Var(&lbacachelimit, "lbacachelimit", ardb.DefaultLBACacheLimit,
-		fmt.Sprintf("Cache limit of LBA in bytes, needs to be higher then %d (bytes in 1 shard)", lba.BytesPerShard))
+		fmt.Sprintf("Cache limit of LBA in bytes, needs to be higher then %d (bytes in 1 sector)", lba.BytesPerSector))
 	flag.Parse()
 
 	logLevel := log.InfoLevel
