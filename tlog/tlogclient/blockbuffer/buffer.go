@@ -3,7 +3,6 @@ package blockbuffer
 import (
 	"context"
 	"errors"
-	"math"
 	"sort"
 	"sync"
 	"time"
@@ -22,7 +21,10 @@ var (
 type Buffer struct {
 	lock sync.RWMutex
 
-	// map of sent block
+	// map of sent blocks.
+	// blocks in this map is going to moved to
+	// waitToFlush map after it receive sent confirmation
+	// from the tlog server
 	entries map[uint64]*entry
 
 	// Array of ordered sent sequence.
@@ -41,6 +43,9 @@ type Buffer struct {
 
 	// the highest sequence we received
 	highestSequence uint64
+
+	// last flushed sequence
+	lastFlush uint64
 }
 
 // NewBuffer creates a new tlog blocks buffer
@@ -53,7 +58,7 @@ func NewBuffer(timeout time.Duration) *Buffer {
 	}
 }
 
-// implement sort interface for buffer.seqToTimeout
+// Uint64Slice implements sort interface for buffer.seqToTimeout
 type Uint64Slice []uint64
 
 func (us Uint64Slice) Len() int           { return len(us) }
@@ -66,6 +71,7 @@ func (b *Buffer) SetResendAll() {
 	b.lock.RLock()
 	defer b.lock.RUnlock()
 
+	// empty the seqToTimeout slice
 	b.seqToTimeout = make([]uint64, 0, len(b.entries)+len(b.waitToFlush))
 
 	for seq, ent := range b.entries {
@@ -92,6 +98,10 @@ func (b *Buffer) Add(block *schema.TlogBlock) {
 
 	seq := block.Sequence()
 
+	if seq < b.lastFlush {
+		return
+	}
+
 	// add to array of ordered timeout
 	b.seqToTimeout = append(b.seqToTimeout, seq)
 
@@ -112,18 +122,32 @@ func (b *Buffer) Add(block *schema.TlogBlock) {
 	b.entries[seq] = ent
 }
 
-func (b *Buffer) LenWaitFlush() {
-}
-
 // SetFlushed set this sequence as succesfully flushed
 func (b *Buffer) SetFlushed(seqs []uint64) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
+	if len(seqs) == 0 {
+		return
+	}
+
 	for _, seq := range seqs {
 		delete(b.waitToFlush, seq)
-		delete(b.entries, seq) // we normally don't need to do this
+		delete(b.entries, seq)
 	}
+
+	// update lastFlush
+	lastSeq := seqs[len(seqs)-1]
+	if b.lastFlush < lastSeq {
+		b.lastFlush = lastSeq
+	}
+}
+
+// LastFlushed returns last sequence flushed
+func (b *Buffer) LastFlushed() uint64 {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+	return b.lastFlush
 }
 
 // SetSent set this sequence as succesfully sent
@@ -140,7 +164,7 @@ func (b *Buffer) SetSent(seq uint64) {
 	delete(b.entries, seq)
 }
 
-// Returns true this seq need to be re-send
+// NeedResend returns true if this sequence need to be re-send
 func (b *Buffer) NeedResend(seq uint64) bool {
 	b.lock.RLock()
 	defer b.lock.RUnlock()
@@ -209,34 +233,4 @@ func (b *Buffer) TimedOut(ctx context.Context) <-chan *schema.TlogBlock {
 	}()
 
 	return b.readyChan
-}
-
-// MinSequence returns min sequence that this
-// buffer will/currently has.
-func (b *Buffer) MinSequence() uint64 {
-	b.lock.RLock()
-	defer b.lock.RUnlock()
-
-	minUnflushed := b.minSeq(b.waitToFlush)
-	minNotDelivered := b.minSeq(b.entries)
-
-	if minUnflushed < minNotDelivered {
-		return minUnflushed
-	}
-	return minNotDelivered
-}
-
-func (b *Buffer) minSeq(m map[uint64]*entry) uint64 {
-	if len(m) == 0 {
-		return b.highestSequence + 1
-	}
-
-	var min uint64 = math.MaxUint64
-	for seq := range m {
-		if seq < min {
-			min = seq
-		}
-	}
-	return min
-
 }

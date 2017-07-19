@@ -170,7 +170,7 @@ func (c *Client) reconnect(closedTime time.Time) error {
 		// try other server
 		c.shiftServerAddr()
 
-		if err = c.connect(c.blockBuffer.MinSequence(), false); err == nil {
+		if err = c.connect(c.blockBuffer.LastFlushed()+1, false); err == nil {
 			c.lastConnected = time.Now()
 
 			// if reconnect success, sent all unflushed blocks
