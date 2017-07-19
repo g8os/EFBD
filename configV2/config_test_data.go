@@ -6,7 +6,7 @@ baseConfig:
   readOnly: false
   size: 10
   type: db
-ndbConfig:
+nbdConfig:
   templateVdiskID: mytemplate
   storageCluster:
     dataStorage: 
@@ -31,36 +31,37 @@ tlogConfig:
       db: 8
   `
 const validBaseStr = `
-blockSize: 4096
-readOnly: false
-size: 10
-type: db
+blockSize: 2048
+readOnly: true
+size: 110
+type: cache
 `
 const validNBDStr = `
 templateVdiskID: mytemplate
 storageCluster:
   dataStorage: 
-    - address: 192.168.58.146:2000
-      db: 0
-    - address: 192.123.123.123:2001
-      db: 0
+    - address: 192.168.1.146:2000
+      db: 10
+    - address: 192.123.123.1:2001
+      db: 10
   metadataStorage:
-    address: 192.168.58.146:2001
-    db: 1
+    address: 192.168.1.146:2001
+    db: 11
 templateStorageCluster:
   dataStorage:
-    - address: 192.168.58.147:2000
-      db: 0
+    - address: 192.168.1.147:2000
+      db: 10
 `
 
 const validTlogStr = `
 tlogStorageCluster:
   dataStorage: 
-    - address: 192.168.58.149:2000
-      db: 4
+    - address: 192.168.1.1:1000
+      db: 14
   metadataStorage:
-    address: 192.168.58.146:2001
-    db: 8
+    address: 192.168.1.1:1001
+    db: 18
+tlogSlaveSync: true
 `
 const validSlaveStr = `
 slaveStorageCluster:

@@ -8,11 +8,54 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestValidYAMLConfig(t *testing.T) {
-	_, err := fromYAMLBytes([]byte(validYAMLSourceStr))
-	if !assert.NoError(t, err) {
+func TestSubConfigCloning(t *testing.T) {
+	// setup original tlog
+	tlog0, err := newTlogConfig([]byte(validTlogStr))
+	if !assert.NoError(t, err) || !assert.NotNil(t, tlog0) {
 		return
 	}
+
+	// clone
+	tlog1 := tlog0.Clone()
+
+	// change field in original
+	tlog0.SlaveSync = false
+	newDataAddress := "192.168.1.1:1234"
+	oldDataAddress := tlog0.TlogStorageCluster.DataStorage[0].Address
+	tlog0.TlogStorageCluster.DataStorage[0].Address = newDataAddress
+
+	// check if change did not appear in clone
+	assert.False(t, tlog0.SlaveSync)
+	assert.True(t, tlog1.SlaveSync)
+	assert.Equal(t, tlog0.TlogStorageCluster.DataStorage[0].Address, newDataAddress)
+	if !assert.Equal(t, tlog1.TlogStorageCluster.DataStorage[0].Address, oldDataAddress) {
+		return
+	}
+
+	// setup original nbd
+	vdiskID := "test"
+	vdiskType := VdiskTypeBoot
+	nbd0, err := newNBDConfig([]byte(validNBDStr), vdiskID, vdiskType)
+	if !assert.NoError(t, err) || !assert.NotNil(t, nbd0) {
+		return
+	}
+
+	// clone
+	nbd1 := nbd0.Clone()
+
+	// change fields
+	oldTemplateID := nbd0.TemplateVdiskID
+	newTemplateID := "anotherTemplate"
+	nbd0.TemplateVdiskID = newTemplateID
+	newDataDB := 123
+	oldDataDB := nbd0.TemplateStorageCluster.DataStorage[0].Database
+	nbd0.TemplateStorageCluster.DataStorage[0].Database = newDataDB
+
+	// check if changes did not appear in clone
+	assert.Equal(t, nbd0.TemplateVdiskID, newTemplateID)
+	assert.Equal(t, nbd1.TemplateVdiskID, oldTemplateID)
+	assert.Equal(t, nbd0.TemplateStorageCluster.DataStorage[0].Database, newDataDB)
+	assert.Equal(t, nbd1.TemplateStorageCluster.DataStorage[0].Database, oldDataDB)
 }
 
 func TestInvalidConfigs(t *testing.T) {
@@ -23,30 +66,19 @@ func TestInvalidConfigs(t *testing.T) {
 		}
 	}
 }
+
 func TestSerializing(t *testing.T) {
-	// get config from a valid full config string
-	_, err := fromYAMLBytes([]byte(validYAMLSourceStr))
-	if !assert.NoError(t, err) {
-		return
-	}
-
-	if !assert.NoError(t, err) {
-		return
-	}
-
 	// create base config from a valid base config string
-	b := new(BaseConfig)
-	err = b.deserialize([]byte(validBaseStr))
+	b, err := newBaseConfig([]byte(validBaseStr))
 	if !assert.NoError(t, err) {
 		return
 	}
 	// serialise and deserialise
-	b2 := new(BaseConfig)
-	b2Str, err := b.serialize()
+	b2Str, err := b.ToBytes()
 	if !assert.NoError(t, err) {
 		return
 	}
-	err = b2.deserialize(b2Str)
+	b2, err := newBaseConfig(b2Str)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -74,67 +106,5 @@ func TestValidVdiskTypeSerialization(t *testing.T) {
 
 		str := strings.Trim(string(bytes), "\n")
 		assert.Equal(t, validCase.String, str)
-	}
-}
-
-func TestYAMLSource(t *testing.T) {
-	cfg, err := fromYAMLBytes([]byte(validYAMLSourceStr))
-	if !assert.NoError(t, err) || !assert.NotNil(t, cfg) {
-		return
-	}
-	defer func() {
-		err = cfg.Close()
-		assert.NoError(t, err)
-	}()
-
-	base := BaseConfig{
-		BlockSize: 1234,
-		ReadOnly:  true,
-		Size:      2,
-		Type:      VdiskTypeBoot,
-	}
-
-	ndb := cfg.ndb
-	ndb.TemplateVdiskID = "test"
-
-	tlog := cfg.tlog
-	tlog.TlogStorageCluster.DataStorage[0].Address = "A new address"
-
-	slave, err := newSlaveConfig([]byte(validSlaveStr))
-	if !assert.NoError(t, err) {
-		return
-	}
-
-	// test if new base is set
-	err = cfg.SetBase(base)
-	if !assert.Equal(t, base.BlockSize, cfg.base.BlockSize) {
-		return
-	}
-	if !assert.Equal(t, base.ReadOnly, cfg.base.ReadOnly) {
-		return
-	}
-	if !assert.Equal(t, base.Size, cfg.base.Size) {
-		return
-	}
-	if !assert.Equal(t, base.Type, cfg.base.Type) {
-		return
-	}
-
-	// test if new ndb is set
-	cfg.SetNDB(ndb)
-	if !assert.Equal(t, ndb.TemplateVdiskID, cfg.ndb.TemplateVdiskID) {
-		return
-	}
-
-	// test if new tlog is set
-	cfg.SetTlog(tlog)
-	if !assert.Equal(t, tlog.TlogStorageCluster.DataStorage[0].Address, cfg.tlog.TlogStorageCluster.DataStorage[0].Address) {
-		return
-	}
-
-	// test if new slave is set
-	cfg.SetSlave(*slave)
-	if !assert.Equal(t, slave.SlaveStorageCluster.DataStorage[0].Address, cfg.slave.SlaveStorageCluster.DataStorage[0].Address) {
-		return
 	}
 }

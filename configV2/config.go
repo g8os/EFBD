@@ -1,7 +1,10 @@
 package configV2
 
 import (
+	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 
 	valid "github.com/asaskevich/govalidator"
 	"github.com/go-yaml/yaml"
@@ -10,16 +13,21 @@ import (
 
 // ConfigSource specifies a config source interface
 type ConfigSource interface {
-	Close() error               // closes source connection and goroutines if present
-	Base() BaseConfig           // Returns the current base config
-	NDB() NDBConfig             // Returns the current ndb config
-	Tlog() TlogConfig           // Returns the current tlo
-	Slave() SlaveConfig         // Returns the current Slave config
+	Base() BaseConfig             // Returns the current base config
+	NBD() (*NBDConfig, error)     // Returns the current nbd config
+	Tlog() (*TlogConfig, error)   // Returns the current tlog
+	Slave() (*SlaveConfig, error) // Returns the current Slave config
+
 	SetBase(BaseConfig) error   // sets a new base config and writes it to the source
-	SetNDB(NDBConfig) error     // sets a new NDB config and writes it to the source
+	SetNBD(NBDConfig) error     // sets a new NBD config and writes it to the source
 	SetTlog(TlogConfig) error   // sets a tlog base config and writes it to the source
 	SetSlave(SlaveConfig) error // sets a slave base config and writes it to
+
+	Close() error // closes source connection and goroutines if present
 }
+
+// ErrConfigNotAvailable represents an error where the asked for sub config was not available
+var ErrConfigNotAvailable = errors.New("config is not available")
 
 // BaseConfig represents the basic vdisk info
 type BaseConfig struct {
@@ -32,7 +40,7 @@ type BaseConfig struct {
 // NewBaseConfig creates a new Baseconfig from byte slice in YAML 1.2 format
 func newBaseConfig(data []byte) (*BaseConfig, error) {
 	base := new(BaseConfig)
-	err := base.deserialize(data)
+	err := yaml.Unmarshal(data, &base)
 	if err != nil {
 		return nil, err
 	}
@@ -43,22 +51,13 @@ func newBaseConfig(data []byte) (*BaseConfig, error) {
 	return base, nil
 }
 
-// serialize converts baseConfig in byte slice in YAML 1.2 format
-func (base *BaseConfig) serialize() ([]byte, error) {
+// ToBytes converts baseConfig in byte slice in YAML 1.2 format
+func (base *BaseConfig) ToBytes() ([]byte, error) {
 	res, err := yaml.Marshal(base)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to turn base config into bytes: %v", err)
 	}
 	return res, nil
-}
-
-// deserialize tries to convert provided data into a baseConfig
-func (base *BaseConfig) deserialize(data []byte) error {
-	err := yaml.Unmarshal(data, &base)
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 // validate Validates baseConfig
@@ -83,76 +82,76 @@ func (base BaseConfig) validate() error {
 	return nil
 }
 
-// NDBConfig represents an ndb storage configuration
-type NDBConfig struct {
+// NBDConfig represents an nbd storage configuration
+type NBDConfig struct {
 	StorageCluster         StorageClusterConfig `yaml:"storageCluster" valid:"optional"`
 	TemplateStorageCluster StorageClusterConfig `yaml:"templateStorageCluster" valid:"optional"`
 	TemplateVdiskID        string               `yaml:"templateVdiskID" valid:"optional"`
 }
 
-// NewNDBConfig creates a new NDBConfig from byte slice in YAML 1.2 format
-func newNDBConfig(data []byte, vID string, vtype VdiskType) (*NDBConfig, error) {
-	ndb := new(NDBConfig)
-	err := ndb.deserialize(data)
+// NewNBDConfig creates a new NBDConfig from byte slice in YAML 1.2 format
+func newNBDConfig(data []byte, vdiskID string, vdiskType VdiskType) (*NBDConfig, error) {
+	nbd := new(NBDConfig)
+	err := yaml.Unmarshal(data, nbd)
 	if err != nil {
 		return nil, err
 	}
-	ndb.validate(vID, vtype)
+	nbd.validate(vdiskID, vdiskType)
 	if err != nil {
 		return nil, err
 	}
-	return ndb, nil
+	return nbd, nil
 }
 
-// serialize converts NDBConfig in byte slice in YAML 1.2 format
-func (ndb *NDBConfig) serialize() ([]byte, error) {
-	res, err := yaml.Marshal(ndb)
+// Clone returns a deep copy of NDBConfig
+func (nbd *NBDConfig) Clone() *NBDConfig {
+	return &NBDConfig{
+		StorageCluster:         nbd.StorageCluster.Clone(),
+		TemplateStorageCluster: nbd.TemplateStorageCluster.Clone(),
+		TemplateVdiskID:        nbd.TemplateVdiskID,
+	}
+}
+
+// ToBytes converts NBDConfig in byte slice in YAML 1.2 format
+func (nbd *NBDConfig) ToBytes() ([]byte, error) {
+	res, err := yaml.Marshal(nbd)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to turn nbd config into bytes: %v", err)
 	}
 	return res, nil
 }
 
-// deserialize tries to convert provided data into an NDBConfig
-func (ndb *NDBConfig) deserialize(data []byte) error {
-	err := yaml.Unmarshal(data, ndb)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-// validate Validates NDBConfig
+// validate Validates NBDConfig
 // Needs vdisk id and vdisk type
-func (ndb NDBConfig) validate(vID string, vtype VdiskType) error {
-	_, err := valid.ValidateStruct(ndb)
+func (nbd NBDConfig) validate(vdiskID string, vdiskType VdiskType) error {
+	_, err := valid.ValidateStruct(nbd)
 	if err != nil {
-		return fmt.Errorf("invalid NDB config: %v", err)
+		return fmt.Errorf("invalid NBD config: %v", err)
 	}
 
-	if len(ndb.StorageCluster.DataStorage) <= 0 {
-		return fmt.Errorf("no ndb datastorage was found")
+	if len(nbd.StorageCluster.DataStorage) <= 0 {
+		return fmt.Errorf("no nbd datastorage was found")
 	}
 
 	// Check if templatestorage is present when required
-	if vtype.TemplateSupport(ndb) {
-		if len(ndb.TemplateStorageCluster.DataStorage) <= 0 {
+	if vdiskType.TemplateSupport(nbd) {
+		if len(nbd.TemplateStorageCluster.DataStorage) <= 0 {
 			return fmt.Errorf("template storage not found while required")
 		}
 
 		// nonDeduped vdisks that support templates,
 		// also require a vdiskID as used on the template storage
-		if vtype.StorageType() == StorageNonDeduped {
-			if ndb.TemplateVdiskID == "" {
-				log.Debugf("defaulting templateVdiskID of vdisk %s to %s", vID, vID)
-				ndb.TemplateVdiskID = vID
+		if vdiskType.StorageType() == StorageNonDeduped {
+			if nbd.TemplateVdiskID == "" {
+				log.Debugf("defaulting templateVdiskID of vdisk %s to %s", vdiskID, vdiskID)
+				nbd.TemplateVdiskID = vdiskID
 			}
 		}
 	}
 
 	// validate if metadata storage is defined when required
-	metadataUndefined := ndb.StorageCluster.MetadataStorage == nil
-	if metadataUndefined && vtype.StorageType() == StorageDeduped {
+	metadataUndefined := nbd.StorageCluster.MetadataStorage == nil
+	if metadataUndefined && vdiskType.StorageType() == StorageDeduped {
 		return fmt.Errorf("metadata storage not found while required")
 	}
 	return nil
@@ -167,7 +166,7 @@ type TlogConfig struct {
 // NewTlogConfig creates a new Tlogconfig from byte slice in YAML 1.2 format
 func newTlogConfig(data []byte) (*TlogConfig, error) {
 	tlog := new(TlogConfig)
-	err := tlog.deserialize(data)
+	err := yaml.Unmarshal(data, tlog)
 	if err != nil {
 		return nil, err
 	}
@@ -178,22 +177,21 @@ func newTlogConfig(data []byte) (*TlogConfig, error) {
 	return tlog, nil
 }
 
-// serialize converts TlogConfig in byte slice in YAML 1.2 format
-func (tlog *TlogConfig) serialize() ([]byte, error) {
-	res, err := yaml.Marshal(tlog)
-	if err != nil {
-		return nil, err
+// Clone returns a deep copy of TlogConfig
+func (tlog TlogConfig) Clone() *TlogConfig {
+	return &TlogConfig{
+		SlaveSync:          tlog.SlaveSync,
+		TlogStorageCluster: tlog.TlogStorageCluster.Clone(),
 	}
-	return res, nil
 }
 
-// deserialize tries to convert provided data into an TlogConfig
-func (tlog *TlogConfig) deserialize(data []byte) error {
-	err := yaml.Unmarshal(data, tlog)
+// ToBytes converts TlogConfig in byte slice in YAML 1.2 format
+func (tlog *TlogConfig) ToBytes() ([]byte, error) {
+	res, err := yaml.Marshal(tlog)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("failed to turn tlog config into bytes: %v", err)
 	}
-	return nil
+	return res, nil
 }
 
 // validate Validates TlogConfig
@@ -217,7 +215,7 @@ type SlaveConfig struct {
 // NewSlaveConfig creates a new Slaveconfig from byte slice in YAML 1.2 format
 func newSlaveConfig(data []byte) (*SlaveConfig, error) {
 	slave := new(SlaveConfig)
-	err := slave.deserialize(data)
+	err := yaml.Unmarshal(data, slave)
 	if err != nil {
 		return nil, err
 	}
@@ -228,31 +226,24 @@ func newSlaveConfig(data []byte) (*SlaveConfig, error) {
 	return slave, nil
 }
 
-// serialize converts SlaveConfig in byte slice in YAML 1.2 format
-func (slave *SlaveConfig) serialize() ([]byte, error) {
+// Clone returns a deep copy of SlaveConfig
+func (slave *SlaveConfig) Clone() *SlaveConfig {
+	return &SlaveConfig{
+		SlaveStorageCluster: slave.SlaveStorageCluster.Clone(),
+	}
+}
+
+// ToBytes converts SlaveConfig in byte slice in YAML 1.2 format
+func (slave *SlaveConfig) ToBytes() ([]byte, error) {
 	res, err := yaml.Marshal(slave)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to turn slave config into bytes: %v", err)
 	}
 	return res, nil
 }
 
-// deserialize tries to convert provided data into an SlaveConfig
-func (slave *SlaveConfig) deserialize(data []byte) error {
-	err := yaml.Unmarshal(data, slave)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 // validate Validates SlaveConfig
 func (slave *SlaveConfig) validate() error {
-	// slave is optional, if nil, skip
-	if len(slave.SlaveStorageCluster.DataStorage) <= 0 && slave.SlaveStorageCluster.MetadataStorage == nil {
-		return nil
-	}
-
 	_, err := valid.ValidateStruct(slave)
 	if err != nil {
 		return fmt.Errorf("invalid slave config: %v", err)
@@ -262,17 +253,16 @@ func (slave *SlaveConfig) validate() error {
 
 // TlogSupport returns whether or not the data of this vdisk
 // has to send to the tlog server, to log its transactions.
-func (vtype VdiskType) TlogSupport() bool {
-	return vtype&propTlogSupport != 0
+func (vdiskType VdiskType) TlogSupport() bool {
+	return vdiskType&propTlogSupport != 0
 }
 
 // TemplateSupport returns whether or not
 // this vdisk supports a template server,
 // to get the data in case the data isn't available on
 // the normal (local) storage cluster.
-func (vtype VdiskType) TemplateSupport(ndb NDBConfig) bool {
-	return vtype&propTemplateSupport != 0 ||
-		(vtype == VdiskTypeBoot && len(ndb.TemplateStorageCluster.DataStorage) > 0)
+func (vdiskType VdiskType) TemplateSupport(nbd NBDConfig) bool {
+	return vdiskType&propTemplateSupport != 0
 }
 
 // VdiskType represents the type of a vdisk,
@@ -320,8 +310,8 @@ const (
 )
 
 // StorageType returns the type of storage this vdisk uses
-func (vtype VdiskType) StorageType() StorageType {
-	if vtype&propDeduped != 0 {
+func (vdiskType VdiskType) StorageType() StorageType {
+	if vdiskType&propDeduped != 0 {
 		return StorageDeduped
 	}
 
@@ -336,18 +326,18 @@ func (vtype VdiskType) StorageType() StorageType {
 }
 
 // Validate this vdisk type
-func (vtype VdiskType) Validate() error {
-	switch vtype {
+func (vdiskType VdiskType) Validate() error {
+	switch vdiskType {
 	case VdiskTypeBoot, VdiskTypeDB, VdiskTypeCache, VdiskTypeTmp:
 		return nil
 	default:
-		return fmt.Errorf("%v is an invalid vdisk type", vtype)
+		return fmt.Errorf("%v is an invalid vdisk type", vdiskType)
 	}
 }
 
 // String returns the storage type as a string value
-func (vtype VdiskType) String() string {
-	switch vtype {
+func (vdiskType VdiskType) String() string {
+	switch vdiskType {
 	case VdiskTypeBoot:
 		return vdiskTypeBootStr
 	case VdiskTypeDB:
@@ -363,16 +353,16 @@ func (vtype VdiskType) String() string {
 
 // SetString allows you to set this VdiskType using
 // the correct string representation
-func (vtype *VdiskType) SetString(s string) error {
+func (vdiskType *VdiskType) SetString(s string) error {
 	switch s {
 	case vdiskTypeBootStr:
-		*vtype = VdiskTypeBoot
+		*vdiskType = VdiskTypeBoot
 	case vdiskTypeDBStr:
-		*vtype = VdiskTypeDB
+		*vdiskType = VdiskTypeDB
 	case vdiskTypeCacheStr:
-		*vtype = VdiskTypeCache
+		*vdiskType = VdiskTypeCache
 	case vdiskTypeTmpStr:
-		*vtype = VdiskTypeTmp
+		*vdiskType = VdiskTypeTmp
 	default:
 		return fmt.Errorf("%q is not a valid VdiskType", s)
 	}
@@ -380,23 +370,23 @@ func (vtype *VdiskType) SetString(s string) error {
 }
 
 // MarshalYAML implements yaml.Marshaler.MarshalYAML
-func (vtype VdiskType) MarshalYAML() (interface{}, error) {
-	if s := vtype.String(); s != vdiskTypeNilStr {
+func (vdiskType VdiskType) MarshalYAML() (interface{}, error) {
+	if s := vdiskType.String(); s != vdiskTypeNilStr {
 		return s, nil
 	}
 
-	return nil, fmt.Errorf("%v is not a valid VdiskType", vtype)
+	return nil, fmt.Errorf("%v is not a valid VdiskType", vdiskType)
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.UnmarshalYAML
-func (vtype *VdiskType) UnmarshalYAML(unmarshal func(interface{}) error) (err error) {
+func (vdiskType *VdiskType) UnmarshalYAML(unmarshal func(interface{}) error) (err error) {
 	var rawType string
 	err = unmarshal(&rawType)
 	if err != nil {
-		return fmt.Errorf("%q is not a valid VdiskType: %s", vtype, err)
+		return fmt.Errorf("%q is not a valid VdiskType: %s", vdiskType, err)
 	}
 
-	err = vtype.SetString(rawType)
+	err = vdiskType.SetString(rawType)
 	return err
 }
 
@@ -459,4 +449,52 @@ func (st StorageType) String() string {
 	default:
 		return "unknown"
 	}
+}
+
+// ParseCSStorageServerConfigStrings allows you to parse a slice of raw dial config strings.
+// Dial Config Strings are a simple format used to specify ardb connection configs
+// easily as a command line argument.
+// The format is as follows: `<ip>:<port>[@<db_index>][,<ip>:<port>[@<db_index>]]`,
+// where the db_index is optional, and you can give multiple configs by
+// seperating them with a comma.
+// The parsing algorithm of this function is very forgiving,
+// and returns an error only in case an invalid address is given.
+func ParseCSStorageServerConfigStrings(dialCSConfigString string) (configs []StorageServerConfig, err error) {
+	if dialCSConfigString == "" {
+		return nil, nil
+	}
+	dialConfigStrings := strings.Split(dialCSConfigString, ",")
+
+	// convert all connection strings into ConnectionConfigs
+	for _, dialConfigString := range dialConfigStrings {
+		// remove whitespace around
+		dialConfigString = strings.TrimSpace(dialConfigString)
+
+		// trailing commas are allowed
+		if dialConfigString == "" {
+			continue
+		}
+
+		var cfg StorageServerConfig
+		parts := strings.Split(dialConfigString, "@")
+		if n := len(parts); n < 2 {
+			cfg.Address = dialConfigString
+		} else {
+			cfg.Database, err = strconv.Atoi(parts[n-1])
+			if err != nil {
+				err = nil // ignore actual error
+				n++       // not a valid database, thus probably part of address
+			}
+			// join any other parts back together,
+			// if for some reason an @ sign makes part of the address
+			cfg.Address = strings.Join(parts[:n-1], "@")
+		}
+		if !valid.IsDialString(cfg.Address) {
+			err = fmt.Errorf("%s is not a valid storage address", cfg.Address)
+			return
+		}
+		configs = append(configs, cfg)
+	}
+
+	return
 }
