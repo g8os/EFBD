@@ -29,29 +29,26 @@ const (
 // newTlogStorage creates a tlog storage backendStorage,
 // wrapping around a given backend storage,
 // piggy backing on the newTlogStorageWithClient function for the actual logic.
-func newTlogStorage(vdiskID, tlogrpc, configPath string, blockSize int64, storage backendStorage,
-	vComp *vdiskCompletion) (backendStorage, error) {
+func newTlogStorage(vdiskID, tlogrpc, configPath string, blockSize int64, storage backendStorage) (backendStorage, error) {
 	client, err := tlogclient.New(strings.Split(tlogrpc, ","), vdiskID, 0, true)
 	if err != nil {
 		return nil, fmt.Errorf("tlogStorage requires a valid tlogclient: %s", err.Error())
 	}
 
-	return newTlogStorageWithClient(vdiskID, configPath, blockSize, client, storage, vComp)
+	return newTlogStorageWithClient(vdiskID, configPath, blockSize, client, storage)
 }
 
 // newTlogStorage creates a tlog storage backendStorage,
 // wrapping around a given backend storage,
 // using the given tlog client to send its write transactions to the tlog server.
 func newTlogStorageWithClient(vdiskID, configPath string, blockSize int64, client tlogClient,
-	storage backendStorage, vComp *vdiskCompletion) (backendStorage, error) {
+	storage backendStorage) (backendStorage, error) {
 	if storage == nil {
 		return nil, errors.New("tlogStorage requires a non-nil backendStorage")
 	}
 	if client == nil {
 		return nil, errors.New("tlogStorage requires a non-nil tlogClient")
 	}
-
-	vComp.Add()
 
 	return &tlogStorage{
 		vdiskID:        vdiskID,
@@ -64,7 +61,6 @@ func newTlogStorageWithClient(vdiskID, configPath string, blockSize int64, clien
 		toFlushCh:      make(chan []uint64, toFlushChCapacity),
 		cacheEmptyCond: sync.NewCond(&sync.Mutex{}),
 		configPath:     configPath,
-		vComp:          vComp,
 	}, nil
 }
 
@@ -95,8 +91,6 @@ type tlogStorage struct {
 	cacheEmptyCond *sync.Cond
 
 	configPath string
-
-	vComp *vdiskCompletion
 }
 
 type transaction struct {
@@ -309,14 +303,9 @@ func (tls *tlogStorage) GoBackground(ctx context.Context) {
 		if err != nil {
 			log.Info("error while closing tlog client: ", err)
 		}
-		tls.vComp.Done()
 	}()
 	sigHup := make(chan os.Signal, 1)
 	signal.Notify(sigHup, syscall.SIGHUP)
-
-	sigTerm := make(chan os.Signal, 1)
-	signal.Notify(sigTerm, syscall.SIGTERM)
-	sigTermCompletion := make(chan error, 2)
 
 	recvCh := tls.tlog.Recv()
 
@@ -362,37 +351,6 @@ func (tls *tlogStorage) GoBackground(ctx context.Context) {
 
 		case <-ctx.Done():
 			log.Debugf("background context for tlogStorage %s aborting", tls.vdiskID)
-			return
-
-		case <-sigTerm:
-			log.Infof("vdisk %v received SIGTERM", tls.vdiskID)
-
-			// execute flush
-			done := make(chan error, 1)
-			go func() {
-				done <- tls.Flush()
-			}()
-
-			// wait for Flush completion or timed out
-			go func() {
-				select {
-				case err := <-done:
-					log.Infof("vdisk `%v` finished the flush under SIGTERM handler", tls.vdiskID)
-					sigTermCompletion <- err
-
-				case <-time.After(2 * time.Minute):
-					// TODO :
-					// - how long is the reasonable waiting time?
-					// - put this value in the config?
-					log.Infof("vdisk `%v` failed flush under SIGTERM handler: timed out", tls.vdiskID)
-
-					sigTermCompletion <- fmt.Errorf("vdisk `%v` flush timed out", tls.vdiskID)
-				}
-			}()
-			log.Info("exit from SIGTERM handler")
-
-		case err := <-sigTermCompletion:
-			tls.vComp.AddError(err)
 			return
 		}
 	}

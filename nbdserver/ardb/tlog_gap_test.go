@@ -20,8 +20,6 @@ func TestTlogStorageSlow(t *testing.T) {
 		blockCount = 512
 	)
 
-	vComp := &vdiskCompletion{}
-
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
@@ -40,7 +38,7 @@ func TestTlogStorageSlow(t *testing.T) {
 		return
 	}
 
-	storage, err := newTlogStorage(vdiskID, tlogrpc, "", blockSize, slowStorage, vComp)
+	storage, err := newTlogStorage(vdiskID, tlogrpc, "", blockSize, slowStorage)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}

@@ -199,7 +199,7 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	if vdisk.TlogSupport() {
 		if tlogRPCAddrs := f.tlogRPCAddrs(); tlogRPCAddrs != "" {
 			log.Debugf("creating tlogStorage for backend %v (%v)", vdiskID, vdisk.Type)
-			storage, err = newTlogStorage(vdiskID, tlogRPCAddrs, f.configPath, blockSize, storage, f.vdiskComp)
+			storage, err = newTlogStorage(vdiskID, tlogRPCAddrs, f.configPath, blockSize, storage)
 			if err != nil {
 				log.Infof("couldn't create tlog storage: %s", err.Error())
 				return
@@ -213,6 +213,7 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 		blockSize, uint64(vdiskSize),
 		storage,
 		redisProvider,
+		f.vdiskComp,
 	)
 
 	return

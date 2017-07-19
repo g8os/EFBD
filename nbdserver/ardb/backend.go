@@ -2,30 +2,36 @@ package ardb
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/zero-os/0-Disk/log"
 
 	"github.com/zero-os/0-Disk/gonbdserver/nbd"
 )
 
-func newBackend(vdiskID string, blockSize int64, size uint64, storage backendStorage, redisProvider *redisProvider) *Backend {
+func newBackend(vdiskID string, blockSize int64, size uint64, storage backendStorage, redisProvider *redisProvider, vComp *vdiskCompletion) *Backend {
 	return &Backend{
 		vdiskID:       vdiskID,
 		blockSize:     blockSize,
 		size:          size,
 		storage:       storage,
 		redisProvider: redisProvider,
+		vComp:         vComp,
 	}
 }
 
 //Backend is a nbd.Backend implementation on top of ARDB
 type Backend struct {
-	vdiskID            string
-	blockSize          int64
-	size               uint64
-	storage            backendStorage
-	redisProvider      *redisProvider
-	backgroundCancelFn context.CancelFunc
+	vdiskID       string
+	blockSize     int64
+	size          uint64
+	storage       backendStorage
+	redisProvider *redisProvider
+	vComp         *vdiskCompletion
 }
 
 //WriteAt implements nbd.Backend.WriteAt
@@ -156,7 +162,9 @@ func (ab *Backend) Flush(ctx context.Context) (err error) {
 
 //Close implements nbd.Backend.Close
 func (ab *Backend) Close(ctx context.Context) (err error) {
-	ab.redisProvider.Close()
+	if ab.redisProvider != nil {
+		ab.redisProvider.Close()
+	}
 
 	err = ab.storage.Close()
 	return
@@ -187,5 +195,63 @@ func (ab *Backend) HasFlush(ctx context.Context) bool {
 // GoBackground implements Backend.GoBackground
 // and the actual work is delegated to the underlying storage
 func (ab *Backend) GoBackground(ctx context.Context) {
-	ab.storage.GoBackground(ctx)
+	log.Debugf("starting background thread for vdisk %s's backend", ab.vdiskID)
+
+	ab.vComp.Add()
+	defer ab.vComp.Done()
+
+	storageCtx, cancelFunc := context.WithCancel(ctx)
+	defer cancelFunc()
+
+	// start the storage (optional) background goroutine,
+	go ab.storage.GoBackground(storageCtx)
+
+	log.Debugf("vdisk '%s' is listening for SIGTERM signal", ab.vdiskID)
+	sigTerm := make(chan os.Signal, 1)
+	signal.Notify(sigTerm, syscall.SIGTERM)
+
+	// wait until some event frees up this goroutine,
+	// either because the context is Done,
+	// or because we received a SIGTERM handler,
+	// whatever comes first.
+	select {
+	case <-ctx.Done():
+		log.Debugf("aborting background thread for vdisk %s's backend", ab.vdiskID)
+
+	case <-sigTerm:
+		log.Infof("vdisk '%s' received SIGTERM", ab.vdiskID)
+
+		// execute flush
+		done := make(chan error, 1)
+		go func() {
+			done <- ab.storage.Flush()
+		}()
+
+		var err error
+
+		// wait for Flush completion or timed out
+		select {
+		case err = <-done:
+			log.Infof("vdisk '%s' finished the flush under SIGTERM handler", ab.vdiskID)
+
+		case <-time.After(2 * time.Minute):
+			// TODO :
+			// - how long is the reasonable waiting time?
+			// - put this value in the config?
+			err = fmt.Errorf("vdisk '%s' SIGTERM flush timed out", ab.vdiskID)
+		}
+
+		// did flushing fail?
+		if err != nil {
+			ab.vComp.AddError(err)
+		}
+
+		// make sure to also close storage
+		err = ab.storage.Close()
+		if err != nil {
+			ab.vComp.AddError(err)
+		}
+
+		log.Debugf("exit from SIGTERM handler for vdisk %s", ab.vdiskID)
+	}
 }
