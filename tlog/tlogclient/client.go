@@ -443,14 +443,18 @@ func (c *Client) WaitNbdSlaveSync() error {
 // wait for a condition to happens
 // it happens when the channel is closed
 func (c *Client) waitCond(cond *sync.Cond) chan struct{} {
-	// create goroutine to listen to it's completeness
-	doneCh := make(chan struct{})
+	doneCh := make(chan struct{})        // channel to wait for waiter completion
+	waiterStarted := make(chan struct{}) // channel to wait for waiter start
+
 	go func() {
 		cond.L.Lock()
+		waiterStarted <- struct{}{}
 		cond.Wait()
 		cond.L.Unlock()
 		close(doneCh)
 	}()
+
+	<-waiterStarted
 	return doneCh
 }
 
