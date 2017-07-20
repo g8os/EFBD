@@ -25,9 +25,9 @@ func newDedupedStorage(vdiskID string, blockSize int64, provider redisDataConnPr
 	// but the actual function used depends on
 	// whether or not this storage has template support.
 	if templateSupport {
-		dedupedStorage.getContent = dedupedStorage.getLocalOrRemoteContent
+		dedupedStorage.getContent = dedupedStorage.getPrimaryOrTemplateContent
 	} else {
-		dedupedStorage.getContent = dedupedStorage.getLocalContent
+		dedupedStorage.getContent = dedupedStorage.getPrimaryContent
 	}
 
 	return dedupedStorage
@@ -135,13 +135,13 @@ func (ds *dedupedStorage) getRedisConnection(hash zerodisk.Hash) (redis.Conn, er
 	return ds.provider.RedisConnection(int64(hash[0]))
 }
 
-func (ds *dedupedStorage) getFallbackRedisConnection(hash zerodisk.Hash) (redis.Conn, error) {
-	return ds.provider.FallbackRedisConnection(int64(hash[0]))
+func (ds *dedupedStorage) getTemplateRedisConnection(hash zerodisk.Hash) (redis.Conn, error) {
+	return ds.provider.TemplateRedisConnection(int64(hash[0]))
 }
 
-// getLocalContent gets content from the local storage.
+// getPrimaryContent gets content from the primary storage.
 // Assigned to (*dedupedStorage).getContent in case this storage has no template support.
-func (ds *dedupedStorage) getLocalContent(hash zerodisk.Hash) (content []byte, err error) {
+func (ds *dedupedStorage) getPrimaryContent(hash zerodisk.Hash) (content []byte, err error) {
 	conn, err := ds.getRedisConnection(hash)
 	if err != nil {
 		return
@@ -152,24 +152,25 @@ func (ds *dedupedStorage) getLocalContent(hash zerodisk.Hash) (content []byte, e
 	return
 }
 
-// getLocalOrRemoteContent gets content from the local storage,
-// or if the content can't be found locally, we'll try to fetch it from the root (remote) storage.
-// if the content is available in the remote storage,
-// we'll also try to store it in the local storage before returning that content.
+// getPrimaryOrTemplateContent gets content from the primary storage,
+// or if the content can't be found in primary storage,
+// we'll try to fetch it from the template storage.
+// if the content is available in the template storage,
+// we'll also try to store it in the primary storage before returning that content.
 // Assigned to (*dedupedStorage).getContent in case this storage has template support.
-func (ds *dedupedStorage) getLocalOrRemoteContent(hash zerodisk.Hash) (content []byte, err error) {
-	// try to fetch it from the local storage
-	content, err = ds.getLocalContent(hash)
+func (ds *dedupedStorage) getPrimaryOrTemplateContent(hash zerodisk.Hash) (content []byte, err error) {
+	// try to fetch it from the primary storage
+	content, err = ds.getPrimaryContent(hash)
 	if err != nil || content != nil {
 		return // critical err, or content is found
 	}
 
-	// try to fetch it from the remote storage if available
+	// try to fetch it from the template storage if available
 	content = func() (content []byte) {
-		conn, err := ds.getFallbackRedisConnection(hash)
+		conn, err := ds.getTemplateRedisConnection(hash)
 		if err != nil {
 			log.Debugf(
-				"no local content available for %v and no remote storage available: %s",
+				"content not available in primary storage for %v and no template storage available: %s",
 				hash, err.Error())
 			return
 		}
@@ -179,7 +180,7 @@ func (ds *dedupedStorage) getLocalOrRemoteContent(hash zerodisk.Hash) (content [
 		if err != nil {
 			content = nil
 			log.Debugf(
-				"content for %v not available in local-, nor in remote storage: %s",
+				"content for %v not available in primary-, nor in template storage: %s",
 				hash, err.Error())
 		}
 
@@ -187,21 +188,21 @@ func (ds *dedupedStorage) getLocalOrRemoteContent(hash zerodisk.Hash) (content [
 	}()
 
 	if content != nil {
-		// store remote content in local storage asynchronously
+		// store template content in primary storage asynchronously
 		go func() {
 			success, err := ds.setContent(hash, content)
 			if err != nil {
 				// we won't return error however, but just log it
-				log.Infof("couldn't store remote content in local storage: %s", err.Error())
+				log.Infof("couldn't store template content in primary storage: %s", err.Error())
 			} else if success {
 				log.Debugf(
-					"stored remote content for %v in local storage (asynchronously)",
+					"stored template content for %v in primary storage (asynchronously)",
 					hash)
 			}
 		}()
 
 		log.Debugf(
-			"no local content available for %v, but did find it as remote content",
+			"content not available in primary storage for %v, but did find it in template storage",
 			hash)
 	}
 

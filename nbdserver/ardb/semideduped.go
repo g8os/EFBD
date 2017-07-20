@@ -28,7 +28,7 @@ func newSemiDedupedStorage(vdiskID string, blockSize int64, provider redisConnPr
 }
 
 // semiDedupedStorage is a backendStorage implementation,
-// that stores the template content in a local deduped storage,
+// that stores the template content in the primary deduped storage,
 // while it stores all user-written (and thus specific) data
 // in the a nondeduped storage, both storages using the same storage servers.
 type semiDedupedStorage struct {

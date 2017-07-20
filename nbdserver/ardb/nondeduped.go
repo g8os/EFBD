@@ -7,23 +7,23 @@ import (
 )
 
 // newNonDedupedStorage returns the non deduped backendStorage implementation
-func newNonDedupedStorage(vdiskID, rootVdiskID string, blockSize int64, templateSupport bool, provider redisDataConnProvider) backendStorage {
+func newNonDedupedStorage(vdiskID, templateVdiskID string, blockSize int64, templateSupport bool, provider redisDataConnProvider) backendStorage {
 	nondeduped := &nonDedupedStorage{
-		blockSize:      blockSize,
-		storageKey:     NonDedupedStorageKey(vdiskID),
-		rootStorageKey: NonDedupedStorageKey(rootVdiskID),
-		vdiskID:        vdiskID,
-		rootVdiskID:    rootVdiskID,
-		provider:       provider,
+		blockSize:          blockSize,
+		storageKey:         NonDedupedStorageKey(vdiskID),
+		templateStorageKey: NonDedupedStorageKey(templateVdiskID),
+		vdiskID:            vdiskID,
+		templateVdiskID:    templateVdiskID,
+		provider:           provider,
 	}
 
 	if templateSupport {
-		nondeduped.getContent = nondeduped.getLocalOrRemoteContent
-		if rootVdiskID == "" {
-			nondeduped.rootVdiskID = vdiskID
+		nondeduped.getContent = nondeduped.getPrimaryOrTemplateContent
+		if templateVdiskID == "" {
+			nondeduped.templateVdiskID = vdiskID
 		}
 	} else {
-		nondeduped.getContent = nondeduped.getLocalContent
+		nondeduped.getContent = nondeduped.getPrimaryContent
 	}
 
 	return nondeduped
@@ -33,13 +33,13 @@ func newNonDedupedStorage(vdiskID, rootVdiskID string, blockSize int64, template
 // which simply stores each block in redis using
 // a unique key based on the vdiskID and blockIndex.
 type nonDedupedStorage struct {
-	blockSize      int64                   // blocksize in bytes
-	storageKey     string                  // Storage Key based on vdiskID
-	rootStorageKey string                  // Storage Key based on rootVdiskID
-	vdiskID        string                  // ID for the vdisk
-	rootVdiskID    string                  // used in case template is supposed (same value as vdiskID if not defined)
-	provider       redisDataConnProvider   // used to get the connection info to storage servers
-	getContent     nondedupedContentGetter // getter depends on whether there is template support or not
+	blockSize          int64                   // blocksize in bytes
+	storageKey         string                  // Storage Key based on vdiskID
+	templateStorageKey string                  // Storage Key based on templateVdiskID
+	vdiskID            string                  // ID for the vdisk
+	templateVdiskID    string                  // used in case template is supposed (same value as vdiskID if not defined)
+	provider           redisDataConnProvider   // used to get the connection info to storage servers
+	getContent         nondedupedContentGetter // getter depends on whether there is template support or not
 }
 
 // used to provide different content getters based on the vdisk properties
@@ -132,7 +132,7 @@ func (ss *nonDedupedStorage) Close() error { return nil }
 func (ss *nonDedupedStorage) GoBackground(context.Context) {}
 
 // (*nonDedupedStorage).getContent in case storage has no template support
-func (ss *nonDedupedStorage) getLocalContent(blockIndex int64) (content []byte, err error) {
+func (ss *nonDedupedStorage) getPrimaryContent(blockIndex int64) (content []byte, err error) {
 	// get a connection to a data storage server, based on the modulo blockIndex
 	conn, err := ss.provider.RedisConnection(blockIndex)
 	if err != nil {
@@ -140,58 +140,58 @@ func (ss *nonDedupedStorage) getLocalContent(blockIndex int64) (content []byte, 
 	}
 	defer conn.Close()
 
-	// get block from local data storage server, if it exists at all,
+	// get block from primary data storage server, if it exists at all,
 	// a nil block is returned in case it didn't exist
 	content, err = redisBytes(conn.Do("HGET", ss.storageKey, blockIndex))
 	return
 }
 
 // (*nonDedupedStorage).getContent in case storage has template support
-func (ss *nonDedupedStorage) getLocalOrRemoteContent(blockIndex int64) (content []byte, err error) {
-	content, err = ss.getLocalContent(blockIndex)
+func (ss *nonDedupedStorage) getPrimaryOrTemplateContent(blockIndex int64) (content []byte, err error) {
+	content, err = ss.getPrimaryContent(blockIndex)
 	if err != nil || content != nil {
 		return // critical err, or content is found
 	}
 
 	content = func() (content []byte) {
-		// get a connection to a root data storage server, based on the modulo blockIndex
-		conn, err := ss.provider.FallbackRedisConnection(blockIndex)
+		// get a connection to a template data storage server, based on the modulo blockIndex
+		conn, err := ss.provider.TemplateRedisConnection(blockIndex)
 		if err != nil {
 			log.Debugf(
-				"no local content available for block %d and no remote storage available: %s",
+				"block %d not available in primary storage and no template storage available: %s",
 				blockIndex, err.Error())
 			return
 		}
 		defer conn.Close()
 
-		// get block from local data storage server, if it exists at all,
+		// get block from template data storage server, if it exists at all,
 		// a nil block is returned in case it didn't exist
-		content, err = redisBytes(conn.Do("HGET", ss.rootStorageKey, blockIndex))
+		content, err = redisBytes(conn.Do("HGET", ss.templateStorageKey, blockIndex))
 		if err != nil {
 			log.Debugf(
-				"content for block %d (vdisk %s) not available in local-, nor in remote storage: %s",
-				blockIndex, ss.rootVdiskID, err.Error())
+				"content for block %d (vdisk %s) not available in primary-, nor in template storage: %s",
+				blockIndex, ss.templateVdiskID, err.Error())
 			content = nil
 		}
 
 		return
 	}()
 
-	// check if we found the content in the remote server
+	// check if we found the content in the template server
 	if content != nil {
-		// store remote content in local storage asynchronously
+		// store template content in primary storage asynchronously
 		go func() {
 			err := ss.Set(blockIndex, content)
 			if err != nil {
 				// we won't return error however, but just log it
 				log.Infof(
-					"couldn't store remote content block %d in local storage: %s",
+					"couldn't store template content block %d in primary storage: %s",
 					blockIndex, err.Error())
 			}
 		}()
 
 		log.Debugf(
-			"no local content block %d available, but did find remotely",
+			"block %d not available in primary storage, but did find it in template storage",
 			blockIndex)
 	}
 

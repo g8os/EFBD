@@ -1,0 +1,16 @@
+graph {
+    rankdir=LR
+
+    dotted [label="..." shape=rectangle]
+    nbdbackend [label="nbd.Backend"]
+    storage [label="storage\n..." shape=rectangle style=filled color=lightblue]
+
+    dotted -- nbdbackend
+    nbdbackend -- storage
+
+    ardb [label="ARDB cluster" shape=cylinder]
+    other [label="optional services..." shape=rectangle]
+
+    storage -- ardb
+    storage -- other [style="dashed"]
+}

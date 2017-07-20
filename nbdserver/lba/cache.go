@@ -9,31 +9,31 @@ import (
 )
 
 // called when an item gets evicted,
-// shard can be nil, in case the shard was evicted explicitely by the user
-type evictCallback func(shardIndex int64, shard *shard)
+// sector can be nil, in case the sector was evicted explicitely by the user
+type evictCallback func(sectorIndex int64, sector *sector)
 
-// called for each shard that gets serialized during cache.Serialize
-// bytes can be nil in case the shard only contains nil hashes
-type serializeCallback func(shardIndex int64, bytes []byte) error
+// called for each sector that gets serialized during cache.Serialize
+// bytes can be nil in case the sector only contains nil hashes
+type serializeCallback func(sectorIndex int64, bytes []byte) error
 
 // cacheEntry defines the entry for a cache
 type cacheEntry struct {
-	shardIndex int64
-	shard      *shard
+	sectorIndex int64
+	sector      *sector
 }
 
-// create a new shard cache
-func newShardCache(sizeLimitInBytes int64, cb evictCallback) (cache *shardCache, err error) {
-	if sizeLimitInBytes < BytesPerShard {
-		err = fmt.Errorf("shardCache requires at least %d bytes, the size of 1 shard", BytesPerShard)
+// create a new sector cache
+func newSectorCache(sizeLimitInBytes int64, cb evictCallback) (cache *sectorCache, err error) {
+	if sizeLimitInBytes < BytesPerSector {
+		err = fmt.Errorf("sectorCache requires at least %d bytes, the size of 1 sector", BytesPerSector)
 		return
 	}
 
-	// the amount of most recent shards we keep in memory
-	size := sizeLimitInBytes / BytesPerShard
+	// the amount of most recent sectors we keep in memory
+	size := sizeLimitInBytes / BytesPerSector
 
-	cache = &shardCache{
-		shards:    make(map[int64]*list.Element, size),
+	cache = &sectorCache{
+		sectors:   make(map[int64]*list.Element, size),
 		evictList: list.New(),
 		size:      int(size),
 		onEvict:   cb,
@@ -41,37 +41,37 @@ func newShardCache(sizeLimitInBytes int64, cb evictCallback) (cache *shardCache,
 	return
 }
 
-// shardCache contains all cached shards,
-// only the most recent shards are kept.
-type shardCache struct {
-	shards    map[int64]*list.Element
+// sectorCache contains all cached sectors,
+// only the most recent sectors are kept.
+type sectorCache struct {
+	sectors   map[int64]*list.Element
 	onEvict   evictCallback
 	evictList *list.List
 	size      int
 	mux       sync.Mutex
 }
 
-// Add a shard linked to an index,
+// Add a sector linked to an index,
 // creating either a new entry, or updating an existing one.
 // Returns true if an old entry has been evicted.
-func (c *shardCache) Add(shardIndex int64, shard *shard) bool {
+func (c *sectorCache) Add(sectorIndex int64, sector *sector) bool {
 	c.mux.Lock()
 	defer c.mux.Unlock()
 
 	// Check for existing item
-	if entry, ok := c.shards[shardIndex]; ok {
+	if entry, ok := c.sectors[sectorIndex]; ok {
 		// update an existing item
 		c.evictList.MoveToFront(entry)
-		entry.Value.(*cacheEntry).shard = shard
+		entry.Value.(*cacheEntry).sector = sector
 		return false
 	}
 
 	// Add new item
 	entry := c.evictList.PushFront(&cacheEntry{
-		shardIndex: shardIndex,
-		shard:      shard,
+		sectorIndex: sectorIndex,
+		sector:      sector,
 	})
-	c.shards[shardIndex] = entry
+	c.sectors[sectorIndex] = entry
 
 	evict := c.evictList.Len() > c.size
 	// Verify size not exceeded
@@ -82,31 +82,31 @@ func (c *shardCache) Add(shardIndex int64, shard *shard) bool {
 	return evict
 }
 
-// Get a cached shard, if possible,
+// Get a cached sector, if possible,
 // return false otherwise.
-func (c *shardCache) Get(shardIndex int64) (shard *shard, ok bool) {
+func (c *sectorCache) Get(sectorIndex int64) (sector *sector, ok bool) {
 	c.mux.Lock()
 	defer c.mux.Unlock()
 
 	var elem *list.Element
-	if elem, ok = c.shards[shardIndex]; ok {
+	if elem, ok = c.sectors[sectorIndex]; ok {
 		c.evictList.MoveToFront(elem)
-		shard = elem.Value.(*cacheEntry).shard
+		sector = elem.Value.(*cacheEntry).sector
 	}
 
 	return
 }
 
-// Delete (AKA explicitly evict) a shard from the cache
-func (c *shardCache) Delete(shardIndex int64) (deleted bool) {
+// Delete (AKA explicitly evict) a sector from the cache
+func (c *sectorCache) Delete(sectorIndex int64) (deleted bool) {
 	c.mux.Lock()
 	defer c.mux.Unlock()
 
 	var elem *list.Element
-	if elem, deleted = c.shards[shardIndex]; deleted {
-		// set shard to nil,
+	if elem, deleted = c.sectors[sectorIndex]; deleted {
+		// set sector to nil,
 		// such that the onEvict cb will receive a nil element
-		elem.Value.(*cacheEntry).shard = nil
+		elem.Value.(*cacheEntry).sector = nil
 		c.removeElement(elem)
 	}
 
@@ -114,7 +114,7 @@ func (c *shardCache) Delete(shardIndex int64) (deleted bool) {
 }
 
 // Serialize the entire cache
-func (c *shardCache) Serialize(onSerialize serializeCallback) (err error) {
+func (c *sectorCache) Serialize(onSerialize serializeCallback) (err error) {
 	if onSerialize == nil {
 		err = errors.New("no serialization callback given")
 		return
@@ -129,21 +129,21 @@ func (c *shardCache) Serialize(onSerialize serializeCallback) (err error) {
 	for elem := c.evictList.Front(); elem != nil; elem = elem.Next() {
 		entry = elem.Value.(*cacheEntry)
 
-		if !entry.shard.Dirty() {
-			continue // only write dirty shards
+		if !entry.sector.Dirty() {
+			continue // only write dirty sectors
 		}
 
-		if err = entry.shard.Write(&buffer); err != nil {
-			if err != errNilShardWrite {
+		if err = entry.sector.Write(&buffer); err != nil {
+			if err != errNilSectorWrite {
 				return
 			}
 
-			// indicate that shard can be deleted,
-			// as the `errNilShardWrite` indicates
-			// that all hashes in this shard were nil
-			err = onSerialize(entry.shardIndex, nil)
+			// indicate that sector can be deleted,
+			// as the `errNilSectorWrite` indicates
+			// that all hashes in this sector were nil
+			err = onSerialize(entry.sectorIndex, nil)
 		} else {
-			err = onSerialize(entry.shardIndex, buffer.Bytes())
+			err = onSerialize(entry.sectorIndex, buffer.Bytes())
 		}
 
 		if err != nil {
@@ -157,24 +157,24 @@ func (c *shardCache) Serialize(onSerialize serializeCallback) (err error) {
 }
 
 // Clear the entire cache, optionally evicing the items first
-func (c *shardCache) Clear(evict bool) {
+func (c *sectorCache) Clear(evict bool) {
 	c.mux.Lock()
 	defer c.mux.Unlock()
 
 	if evict && c.onEvict != nil {
-		var shard *shard
-		for index, elem := range c.shards {
-			shard = elem.Value.(*cacheEntry).shard
-			c.onEvict(index, shard)
+		var sector *sector
+		for index, elem := range c.sectors {
+			sector = elem.Value.(*cacheEntry).sector
+			c.onEvict(index, sector)
 		}
 	}
 
-	c.shards = make(map[int64]*list.Element, c.size)
+	c.sectors = make(map[int64]*list.Element, c.size)
 	c.evictList.Init()
 }
 
 // removeOldest removes the oldest item from the cache.
-func (c *shardCache) removeOldest() {
+func (c *sectorCache) removeOldest() {
 	ent := c.evictList.Back()
 	if ent != nil {
 		c.removeElement(ent)
@@ -182,11 +182,11 @@ func (c *shardCache) removeOldest() {
 }
 
 // removeElement is used to remove a given list element from the cache
-func (c *shardCache) removeElement(e *list.Element) {
+func (c *sectorCache) removeElement(e *list.Element) {
 	c.evictList.Remove(e)
 	entry := e.Value.(*cacheEntry)
-	delete(c.shards, entry.shardIndex)
+	delete(c.sectors, entry.sectorIndex)
 	if c.onEvict != nil {
-		c.onEvict(entry.shardIndex, entry.shard)
+		c.onEvict(entry.sectorIndex, entry.sector)
 	}
 }

@@ -31,7 +31,7 @@ type BackendFactoryConfig struct {
 	PoolFactory       RedisPoolFactory
 	ConfigHotReloader config.HotReloader // NBDServer Config Hotreloader
 	TLogRPCAddress    string             // address of tlog server
-	LBACacheLimit     int64              // min-capped to LBA.BytesPerShard
+	LBACacheLimit     int64              // min-capped to LBA.BytesPerSector
 	ConfigPath        string             // path to the NBDServer's YAML Config
 }
 
@@ -146,16 +146,16 @@ func (f *BackendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	// non deduped storage
 	case config.StorageNonDeduped:
 		storage = newNonDedupedStorage(
-			vdiskID, vdisk.RootVdiskID, blockSize, templateSupport, redisProvider)
+			vdiskID, vdisk.TemplateVdiskID, blockSize, templateSupport, redisProvider)
 
 	// (semi) deduped sotrage
 	case config.StorageDeduped, config.StorageSemiDeduped:
 		// define the LBA cache limit
 		cacheLimit := f.lbaCacheLimit
-		if cacheLimit < lba.BytesPerShard {
+		if cacheLimit < lba.BytesPerSector {
 			log.Infof(
 				"NewBackend: LBACacheLimit (%d) will be defaulted to %d (min-capped)",
-				cacheLimit, lba.BytesPerShard)
+				cacheLimit, lba.BytesPerSector)
 			cacheLimit = DefaultLBACacheLimit
 		}
 
@@ -277,7 +277,7 @@ func newRedisProvider(pool *RedisPool, cfg *config.VdiskClusterConfig) (*redisPr
 // based on a given index, used by the arbd storage backends
 type redisDataConnProvider interface {
 	RedisConnection(index int64) (conn redis.Conn, err error)
-	FallbackRedisConnection(index int64) (conn redis.Conn, err error)
+	TemplateRedisConnection(index int64) (conn redis.Conn, err error)
 }
 
 // redisMetaConnProvider defines the interface to get a redis meta connection.
@@ -301,10 +301,9 @@ type redisProvider struct {
 	dataConnectionConfigs []config.StorageServerConfig
 	numberOfServers       int64 //Keep it as a seperate variable since this is constantly needed
 
-	// used as a fallback for getting data
-	// from a remote (root/template) server
-	rootDataConnectionConfigs []config.StorageServerConfig
-	numberOfRootServers       int64 //Keep it as a seperate variable since this is constantly needed
+	// used for getting template data from a template server
+	templateDataConnectionConfigs []config.StorageServerConfig
+	numberOfTemplateServers       int64 //Keep it as a seperate variable since this is constantly needed
 
 	// used to store meta data
 	metaConnectionConfig *config.StorageServerConfig
@@ -326,22 +325,22 @@ func (rp *redisProvider) RedisConnection(index int64) (conn redis.Conn, err erro
 	return
 }
 
-// FallbackRedisConnection gets a redis connection from the underlying fallback pool,
+// TemplateRedisConnection gets a redis connection from the underlying template pool,
 // using a modulo index
-func (rp *redisProvider) FallbackRedisConnection(index int64) (conn redis.Conn, err error) {
+func (rp *redisProvider) TemplateRedisConnection(index int64) (conn redis.Conn, err error) {
 	rp.mux.RLock()
 	defer rp.mux.RUnlock()
 
-	// not all vdisks have a rootStoragecluster defined,
+	// not all vdisks have a templateStoragecluster defined,
 	// it is therefore not a guarantee that at least one server is available,
 	// a given we do have in the ConnectionString method
-	if rp.numberOfRootServers < 1 {
-		err = errNoRootAvailable
+	if rp.numberOfTemplateServers < 1 {
+		err = errNoTemplateAvailable
 		return
 	}
 
-	bcIndex := index % rp.numberOfRootServers
-	connConfig := &rp.rootDataConnectionConfigs[bcIndex]
+	bcIndex := index % rp.numberOfTemplateServers
+	connConfig := &rp.templateDataConnectionConfigs[bcIndex]
 
 	conn = rp.redisPool.Get(connConfig.Address, connConfig.Database)
 	return
@@ -410,19 +409,19 @@ func (rp *redisProvider) reloadConfig(cfg *config.VdiskClusterConfig) error {
 
 	rp.metaConnectionConfig = cfg.DataCluster.MetadataStorage
 
-	if cfg.RootCluster == nil {
-		rp.rootDataConnectionConfigs = nil
-		rp.numberOfRootServers = 0
+	if cfg.TemplateCluster == nil {
+		rp.templateDataConnectionConfigs = nil
+		rp.numberOfTemplateServers = 0
 	} else {
-		rp.rootDataConnectionConfigs = cfg.RootCluster.DataStorage
-		rp.numberOfRootServers = int64(len(rp.rootDataConnectionConfigs))
+		rp.templateDataConnectionConfigs = cfg.TemplateCluster.DataStorage
+		rp.numberOfTemplateServers = int64(len(rp.templateDataConnectionConfigs))
 	}
 
 	return nil
 }
 
 var (
-	// error returned when no root storage cluster has been defined,
+	// error returned when no template storage cluster has been defined,
 	// while a connection to it was requested.
-	errNoRootAvailable = errors.New("no root ardb connection available")
+	errNoTemplateAvailable = errors.New("no template ardb connection available")
 )

@@ -1,6 +1,6 @@
 # Tlog Server Configuration
 
-The Tlog server is configured using a YAML configuration file:
+The [Tlog server][tlogserver] is configured using a YAML configuration file:
 
 ```yaml
 storageClusters: # A required map of storage clusters
@@ -38,3 +38,20 @@ vdisks: # A required map of vdisks,
 By default the `tlogserver` executable assumes the `config.yml` file
 exists within the working directory of its process. This location can be defined
 using the `--config path` optional CLI flag.
+
+## Live reloading of the configuration
+
+A running [tlogserver][tlogserver] in a production environment can not simply be restarted
+since this will break the connection to any connected [client][tlogclient].
+When the configuration file is modified,
+send a `SIGHUP` signal to the [tlogserver][tlogserver] to make it pick up the changes.
+
+> NOTE: It is not recommended to change the configs of [storage (1)][storage] clusters,
+which are still in use by active (connected) [clients][tlogclient],
+and content might get lost if you do this against all advice in.
+
+
+[tlogserver]: server.md
+[tlogclient]: client.md
+
+[storage]: /docs/glossary.md#storage

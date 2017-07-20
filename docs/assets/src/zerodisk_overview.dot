@@ -1,0 +1,56 @@
+graph zerodisk_overview {
+  label="0-Disk Overview"
+  colorscheme=accent4
+
+  ardb [label="ardb cluster" shape=cylinder]
+
+  user
+    [shape=egg colorscheme=accent3]
+  zeroctl
+    [shape=rectangle colorscheme=accent4 
+    color=1 style=filled]
+
+  user -- zeroctl [label="CLI"]
+  zeroctl -- ardb [label="r/w"]
+  ardb -- nbdBackend [label="r/w"]
+
+  zerostor [label="0-stor" shape=cylinder]
+  zerostor -- tlogserver [label="write"]
+
+  subgraph clusterTlog {
+    color=3
+    style=filled
+    label="tlog module"
+
+    tlogserver [shape=rectangle]
+
+    subgraph clusterTlogClient {
+      style=dotted
+      color=transparent
+      label="tlogclient module"
+
+      tlogclient
+      tlogplayer
+    }
+
+    tlogclient -- tlogserver
+  }
+
+  subgraph clusterNBD {
+    color=2
+    style=filled
+    label="nbdserver"
+
+    nbdBackend [label="nbd backend"]
+  
+    gonbdserver -- nbdBackend
+    nbdBackend -- tlogplayer [label="write"]
+    nbdBackend -- tlogclient
+      [label="boot/db" style="dashed"]
+  }
+
+  tlogplayer -- zerostor [label="read"]
+  zeroctl -- tlogplayer
+
+  user -- gonbdserver [label="NBD Protocol"]
+}

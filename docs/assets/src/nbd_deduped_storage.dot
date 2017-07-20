@@ -1,0 +1,93 @@
+graph {
+    rankdir = "LR"
+
+    subgraph clusterPrimaryMetadataStorage {
+        label = "primary storage"
+        style = "dashed"
+
+        subgraph clusterMetadata {
+            label = "metadata: redis hashmap"
+            style = "dotted"
+
+            metadata [
+                label = "{ prefix:[vdiskID] |
+                    { <b0> block 0 |  ... | <bn> block N } }"
+                shape = "record"
+            ]
+        }
+    }
+
+    rw [ label = "read/write" ]
+
+    lba [
+        label = "LBA"
+        shape = "oval"
+    ]
+
+    cache [
+        label = "<s> LRU\nCache |
+            { <t0> block index 0 |
+                { <h00> hash? | ... | <h0n> hash? } }
+            | ... |
+            { <tn> block index N |
+                { <h10> hash? | ... | <h1n> hash? } }
+            "
+        shape = "record"
+    ]
+
+    subgraph clusterPrimaryDataStorage {
+        label = "primary storage"
+        style = "dashed"
+        
+        subgraph clusterData {
+            label = "data: redis key-values"
+            style = "dotted"
+
+            block0 [
+                label = "<h> hash(block 0) | block 0"
+                shape = "record"
+            ]
+
+            block1 [
+                label = "<h> hash(block N) | block N"
+                shape = "record"
+            ]
+        }
+    }
+
+    rw -- lba
+    lba -- cache:s
+
+    metadata:b0 -- cache:t0
+    metadata:bn -- cache:tn
+
+    cache:h00 -- block0:h
+    cache:h1n -- block1:h
+
+    subgraph clusterTemplateStorage {
+        label = "template storage"
+        style = "dashed"
+        
+        subgraph clusterTemplateData {
+            label = "template data:\nredis key-values"
+            style = "dotted"
+
+            templateBlock0 [
+                label = "<h> hash(block 0) | block 0"
+                shape = "record"
+            ]
+
+            templateBlock1 [
+                label = "<h> hash(block N) | block N"
+                shape = "record"
+            ]
+        }
+    }
+
+    block0:h -- templateBlock0:h [
+        label = "if not available\nin primary storage"
+    ]
+    block1:h -- templateBlock1:h [
+        label = "if not available\nin primary storage"
+    ]
+}

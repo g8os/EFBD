@@ -1,7 +1,5 @@
 # NBD Server Configuration
 
-This documentation supplements the configuration instructions in the [README](/nbdserver/readme.md) of the [`nbdserver`](/nbdserver) source directory.
-
 The NBD server and its backend is configured using a YAML configuration file.
 
 The [`ClusterClientFactory`][clusterclientfactory], [`BackendFactory`][backendfactory] and so on, all take a file path to this YAML configuration file.
@@ -19,15 +17,15 @@ storageClusters: # A required map of storage clusters,
       - address: 192.168.58.146:2000 # At least 1 connection (dial)string is required
         db: 0                        # database is optional, 0 by default
       - address: 192.123.123.123:2001 # more connections are optional
-    metadataStorage: # Required ONLY when used as the (Root)StorageCluster of a `boot` vdisk
+    metadataStorage: # Required ONLY when used as the (Template)StorageCluster of a `boot` vdisk
       address: 192.168.58.146:2001 # Required connection (dial)string,
                                    # used to store meta data (LBA indices)
-  rootcluster: # Required (string) ID of this (optional) storage cluster,
+  templatecluster: # Required (string) ID of this (optional) storage cluster,
                # you are free to name the cluster however you want
     dataStorage: # A required array of connection (dial)strings, used to store data
       - address: 192.168.58.147:2000 # only 1 connection (dial)string is required
         db: 1                        # database is optional, 0 by default
-    metadataStorage: # Required ONLY when used as the (Root)StorageCluster of a `boot` vdisk
+    metadataStorage: # Required ONLY when used as the (Template)StorageCluster of a `boot` vdisk
       address: 192.168.58.147:2001 # Required connection (dial)string
   # ... more (optional) storage clusters
 vdisks: # A required map of vdisks,
@@ -42,12 +40,12 @@ vdisks: # A required map of vdisks,
     storageCluster: mycluster # Required (string) ID of the storage cluster to use
                               # for this vdisk's storage, has to be a storage cluster
                               # defined in the `storageClusters` section of THIS config file
-    rootStorageCluster: rootcluster # Optional (string) ID of the (root) storage cluster to use
-                                    # for this vdisk's fallback/root/template storage, has to be
+    templateStorageCluster: template # Optional (string) ID of the template storage cluster to use
+                                    # for this vdisk's template storage, has to be
                                     # a storage cluster defined in the `storageClusters` section
                                     # of THIS config file
-    rootVdiskID: mytemplate # Optional (string) ID of the template vdisk,
-                            # only used for `db` vdisks
+    templateVdiskID: mytemplate # Optional (string) ID of the template vdisk,
+                                # only used for `db` vdisks
     type: boot # Required (VdiskType) type of this vdisk
                # which also defines if its deduped or nondeduped,
                # valid types are: `boot`, `db`, `cache` and `tmp`

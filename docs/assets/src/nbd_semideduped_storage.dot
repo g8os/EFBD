@@ -1,0 +1,63 @@
+digraph {
+    rankdir = "LR"
+
+    subgraph clusterPrimaryStorage {
+        label = "primary storage"
+        style = "dashed"
+        
+        subgraph clusterMetadata {
+            label = "metadata: redis key value"
+
+            rawbm [
+                label = "{ prefix:[vdiskID] | <bm> bitmap }"
+                shape = "record"
+            ]
+        }
+    }
+
+    bitmap [
+        label = "<im> in memory: bitmap | { <b0> bit 0 | <b1> bit 1 | ... | bit N }"
+        shape = "record"
+    ]
+
+    rawbm -> bitmap:im [
+        label = "new/flush\nsemidedup storage"
+        dir = "none"
+    ]
+
+    dedup [
+        label = "{ <r> read | dedup\nstorage }"
+        shape = "record"
+    ]
+
+    nondedup [
+        label = "{ { <r> read | <w> write } | non dedup\nstorage }"
+        shape = "record"
+    ]
+
+    read [
+        label = "read block 0"
+        shape = "oval"
+    ]
+
+    ifread [
+        label = "bit\nis set"
+        shape = "diamond"
+    ]
+
+    bitmap:b0 -> ifread
+    read -> ifread
+    ifread -> dedup:r [ label = "yes" ]
+    ifread -> nondedup:r [ label = "no" ]
+
+    write [
+        label = "write block 1"
+        shape = "oval"
+    ]
+
+    writeAction [ shape = "point" ]
+
+    write -> writeAction [ dir = "none" ]
+    writeAction -> bitmap:b1 [ label = "set bit" ]
+    writeAction -> nondedup:w
+}

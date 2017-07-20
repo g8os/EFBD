@@ -12,11 +12,11 @@ Let's visualise the simplest operation that can be applied onto a block, getting
 
 ![(*ardb.dedupedStorage).Get](/docs/assets/deduped_get.png)
 
-In the flow graph above we can see the deduped [vdisk][vdisk]'s main logic theme in action. When retrieving a block we'll always first need to retrieve the hash (identifying the content) from the metadata server, before fetching the actual content (data blocks) from the (local or remote) data server.
+In the flow graph above we can see the deduped [vdisk][vdisk]'s main logic theme in action. When retrieving a block we'll always first need to retrieve the hash (identifying the content) from the metadata server, before fetching the actual content (data blocks) from the (primary or template) data server.
 
 When setting (`Set`), modifying (`Merge`) or deleting (`Delete`) the content, we'll access the [LBA][lba] first, in order to get the current Hash. With this hash in hand, we'll delete the content itself. And only then we set, replace or delete the hash itself. This order helps to guarantee that the deduped [vdisk][vdisk]'s [LBA][lba] points to existing content.
 
-Note that the (read-only) root storage is only accessed when content is fetched (which is not available in the local storage). The NBDServer never sets, merges or deletes content stored in the root storage, hence read-only. Note that there at present no mechanism in place to ensure this read-only option for storage clusters, from the persective of the nbdserver.
+Note that the (read-only) template storage is only accessed when content is fetched (which is not available in the primary storage). The NBDServer never sets, merges or deletes content stored in the template storage, hence read-only. Note that there at present no mechanism in place to ensure this read-only option for storage clusters, from the persective of the nbdserver.
 
 This storage is called deduped, because no duplicated content is stored. [Hash][blake2b.hash] collisions would overwrite existing content, and could lead to data corruption. Undesired as this is however, it is not likely to happen, due to the fact that not all content is stored in the same ardb, and instead spread over an entire cluster.
 
@@ -30,7 +30,7 @@ See [the deduped code](/nbdserver/ardb/deduped.go) for more information.
 
 Not all [vdisks][vdisk] managed by the NBDServer are deduped. Caches are stored as nondeduped [vdisks][vdisk] for example.
 
-Nondeduped [vdisks][vdisk] store, modify, access and delete their content directly in/from the local storage. All content of a single [vdisk][vdisk] is stored within the same hash map. Each content (block) is identified by the block index itself (field), within the namespace of the [vdisk][vdisk] (vdiskID, the key of the hashmap):
+Nondeduped [vdisks][vdisk] store, modify, access and delete their content directly in/from the primary storage. All content of a single [vdisk][vdisk] is stored within the same hash map. Each content (block) is identified by the block index itself (field), within the namespace of the [vdisk][vdisk] (vdiskID, the key of the hashmap):
 
 ```
 key = <vdiskid>      # Eg.: `myvdisk`
@@ -45,7 +45,7 @@ See [the nondeduped code](/nbdserver/ardb/nondeduped.go) for more information.
 
 ## SemiDeduped Storage
 
-Boot vdisks are special, as in that they usually have a template (see: root storage) defined.
+Boot vdisks are special, as in that they usually have a template storage defined.
 In such cases we have a vdisk which is mostly deduped, but partly nondeduped.
 Effecitvaly it will have a storage type which composes both a [deduped][ardb.deduped] and [nondeduped][ardb.nondeduped] storage,
 and both internal storages use the same data storage servers.
@@ -59,7 +59,7 @@ is expected to change often, resulting in many unique content hashes,
 whilst mostly referenced once.
 
 From a user-perspecitive (e.g. when mounting a boot vdisk via qemu),
-the (local) [deduped][ardb.deduped] storage is read-only, and is only ever written to by the template (root) storage.
+the [deduped][ardb.deduped] storage is read-only, and is only ever written to by the template  storage.
 When the user writes (or merges) content, it will always be stored as [nondeduped][ardb.nondeduped] content.
 
 When retreiving content, the [nondeduped][ardb.nondeduped] storage has priority over the [deduped][ardb.deduped] storage,

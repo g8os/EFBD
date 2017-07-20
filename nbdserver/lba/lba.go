@@ -23,9 +23,9 @@ func NewLBA(vdiskID string, blockCount, cacheLimitInBytes int64, provider MetaRe
 		return nil, errors.New("NewLBA requires a non-nil MetaRedisProvider")
 	}
 
-	// create as much mutexes as we need shards
-	muxCount := blockCount / NumberOfRecordsPerLBAShard
-	if blockCount%NumberOfRecordsPerLBAShard > 0 {
+	// create as much mutexes as we need sectors
+	muxCount := blockCount / NumberOfRecordsPerLBASector
+	if blockCount%NumberOfRecordsPerLBASector > 0 {
 		muxCount++
 	}
 
@@ -33,26 +33,26 @@ func NewLBA(vdiskID string, blockCount, cacheLimitInBytes int64, provider MetaRe
 		provider:   provider,
 		vdiskID:    vdiskID,
 		storageKey: StorageKey(vdiskID),
-		shardMux:   make([]sync.RWMutex, muxCount),
+		sectorMux:  make([]sync.RWMutex, muxCount),
 	}
 
-	lba.cache, err = newShardCache(cacheLimitInBytes, lba.onCacheEviction)
+	lba.cache, err = newSectorCache(cacheLimitInBytes, lba.onCacheEviction)
 
 	return
 }
 
 // LBA implements the functionality to lookup block keys through the logical block index.
-// The data is persisted to an external metadataserver in shards of n keys,
-// where n = NumberOfRecordsPerLBAShard.
+// The data is persisted to an external metadataserver in sectors of n keys,
+// where n = NumberOfRecordsPerLBASector.
 type LBA struct {
-	cache *shardCache
+	cache *sectorCache
 
-	// One mutex per shard, allows us to only lock
-	// on a per-shard basis. Even with 65k block, that's still only a ~500 element mutex array.
-	// We stil need to lock on a per-shard basis,
+	// One mutex per sector, allows us to only lock
+	// on a per-sector basis. Even with 65k block, that's still only a ~500 element mutex array.
+	// We stil need to lock on a per-sector basis,
 	// as otherwise we might have a race condition where for example
-	// 2 operations might create a new shard, and thus we would miss an operation.
-	shardMux []sync.RWMutex
+	// 2 operations might create a new sector, and thus we would miss an operation.
+	sectorMux []sync.RWMutex
 
 	provider MetaRedisProvider
 
@@ -61,46 +61,46 @@ type LBA struct {
 }
 
 // Set the content hash for a specific block.
-// When a key is updated, the shard containing this blockindex is marked as dirty and will be
+// When a key is updated, the sector containing this blockindex is marked as dirty and will be
 // stored in the external metadataserver when Flush is called,
 // or when the its getting evicted from the cache due to space limitations.
 func (lba *LBA) Set(blockIndex int64, h zerodisk.Hash) (err error) {
-	shardIndex := blockIndex / NumberOfRecordsPerLBAShard
-	// Fetch the appropriate shard
-	shard, err := func(shardIndex int64) (shard *shard, err error) {
-		lba.shardMux[shardIndex].Lock()
-		defer lba.shardMux[shardIndex].Unlock()
+	sectorIndex := blockIndex / NumberOfRecordsPerLBASector
+	// Fetch the appropriate sector
+	sector, err := func(sectorIndex int64) (sector *sector, err error) {
+		lba.sectorMux[sectorIndex].Lock()
+		defer lba.sectorMux[sectorIndex].Unlock()
 
-		shard, err = lba.getShard(shardIndex)
+		sector, err = lba.getSector(sectorIndex)
 		if err != nil {
 			return
 		}
-		if shard == nil {
-			shard = newShard()
-			// store the new shard in the cache,
+		if sector == nil {
+			sector = newSector()
+			// store the new sector in the cache,
 			// otherwise it will be forgotten...
-			lba.cache.Add(shardIndex, shard)
+			lba.cache.Add(sectorIndex, sector)
 		}
 
 		return
-	}(shardIndex)
+	}(sectorIndex)
 
 	if err != nil {
 		return
 	}
 
 	//Update the hash
-	hashIndex := blockIndex % NumberOfRecordsPerLBAShard
+	hashIndex := blockIndex % NumberOfRecordsPerLBASector
 
-	lba.shardMux[shardIndex].Lock()
-	defer lba.shardMux[shardIndex].Unlock()
+	lba.sectorMux[sectorIndex].Lock()
+	defer lba.sectorMux[sectorIndex].Unlock()
 
-	shard.Set(hashIndex, h)
+	sector.Set(hashIndex, h)
 	return
 }
 
 // Delete the content hash for a specific block.
-// When a key is updated, the shard containing this blockindex is marked as dirty and will be
+// When a key is updated, the sector containing this blockindex is marked as dirty and will be
 // stored in the external metadaserver when Flush is called,
 // or when the its getting evicted from the cache due to space limitations.
 // Deleting means actually that the nilhash will be set for this blockindex.
@@ -110,28 +110,28 @@ func (lba *LBA) Delete(blockIndex int64) (err error) {
 }
 
 // Get returns the hash for a block, nil if no hash is registered.
-// If the shard containing this blockindex is not present, it is fetched from the external metadaserver
+// If the sector containing this blockindex is not present, it is fetched from the external metadaserver
 func (lba *LBA) Get(blockIndex int64) (h zerodisk.Hash, err error) {
-	shardIndex := blockIndex / NumberOfRecordsPerLBAShard
+	sectorIndex := blockIndex / NumberOfRecordsPerLBASector
 
-	shard, err := func(shardIndex int64) (*shard, error) {
-		lba.shardMux[shardIndex].RLock()
-		defer lba.shardMux[shardIndex].RUnlock()
+	sector, err := func(sectorIndex int64) (*sector, error) {
+		lba.sectorMux[sectorIndex].RLock()
+		defer lba.sectorMux[sectorIndex].RUnlock()
 
-		return lba.getShard(shardIndex)
-	}(shardIndex)
+		return lba.getSector(sectorIndex)
+	}(sectorIndex)
 
-	if err != nil || shard == nil {
+	if err != nil || sector == nil {
 		return
 	}
 
 	// get the hash
-	hashIndex := blockIndex % NumberOfRecordsPerLBAShard
+	hashIndex := blockIndex % NumberOfRecordsPerLBASector
 
-	lba.shardMux[shardIndex].RLock()
-	defer lba.shardMux[shardIndex].RUnlock()
+	lba.sectorMux[sectorIndex].RLock()
+	defer lba.sectorMux[sectorIndex].RUnlock()
 
-	h = shard.Get(hashIndex)
+	h = sector.Get(hashIndex)
 	if h.Equals(zerodisk.NilHash) {
 		h = nil
 	}
@@ -139,56 +139,56 @@ func (lba *LBA) Get(blockIndex int64) (h zerodisk.Hash, err error) {
 	return
 }
 
-// Flush stores all dirty shards to the external metadaserver
+// Flush stores all dirty sectors to the external metadaserver
 func (lba *LBA) Flush() (err error) {
 	err = lba.storeCacheInExternalStorage()
 	return
 }
 
-// Get a shard from cache given a block index,
+// Get a sector from cache given a block index,
 // or retreiving it from the external storage instead,
-// in case the shard isn't available in the cache.
-func (lba *LBA) getShard(index int64) (shard *shard, err error) {
-	shard, ok := lba.cache.Get(index)
+// in case the sector isn't available in the cache.
+func (lba *LBA) getSector(index int64) (sector *sector, err error) {
+	sector, ok := lba.cache.Get(index)
 	if !ok {
-		shard, err = lba.getShardFromExternalStorage(index)
+		sector, err = lba.getSectorFromExternalStorage(index)
 		if err != nil {
 			return
 		}
 
-		if shard != nil {
-			lba.cache.Add(index, shard)
+		if sector != nil {
+			lba.cache.Add(index, sector)
 		}
 	}
 
 	return
 }
 
-// in case a shard gets evicted from cache,
-// this method will be called, and we'll serialize the shard immediately,
+// in case a sector gets evicted from cache,
+// this method will be called, and we'll serialize the sector immediately,
 // unless it isn't dirty
-func (lba *LBA) onCacheEviction(index int64, shard *shard) {
-	if !shard.Dirty() {
+func (lba *LBA) onCacheEviction(index int64, sector *sector) {
+	if !sector.Dirty() {
 		return
 	}
 
 	var err error
 
-	// the given shard can be nil in case it was deleted by the user,
-	// in that case we will remove the shard from the external storage as well
-	// otherwise we serialize the shard before it gets thrown into the void
-	if shard != nil {
-		err = lba.storeShardInExternalStorage(index, shard)
+	// the given sector can be nil in case it was deleted by the user,
+	// in that case we will remove the sector from the external storage as well
+	// otherwise we serialize the sector before it gets thrown into the void
+	if sector != nil {
+		err = lba.storeSectorInExternalStorage(index, sector)
 	} else {
-		err = lba.deleteShardFromExternalStorage(index)
+		err = lba.deleteSectorFromExternalStorage(index)
 	}
 
 	if err != nil {
-		log.Infof("error during eviction of shard %d: %s", index, err)
+		log.Infof("error during eviction of sector %d: %s", index, err)
 	}
 }
 
-func (lba *LBA) getShardFromExternalStorage(index int64) (shard *shard, err error) {
+func (lba *LBA) getSectorFromExternalStorage(index int64) (sector *sector, err error) {
 	conn, err := lba.provider.MetaRedisConnection()
 	if err != nil {
 		return
@@ -199,16 +199,16 @@ func (lba *LBA) getShardFromExternalStorage(index int64) (shard *shard, err erro
 		return
 	}
 
-	shardBytes, err := redis.Bytes(reply, err)
+	sectorBytes, err := redis.Bytes(reply, err)
 	if err != nil {
 		return
 	}
 
-	shard, err = shardFromBytes(shardBytes)
+	sector, err = sectorFromBytes(sectorBytes)
 	return
 }
 
-// Store all shards available in the cache,
+// Store all sectors available in the cache,
 // into the external storage.
 func (lba *LBA) storeCacheInExternalStorage() (err error) {
 	conn, err := lba.provider.MetaRedisConnection()
@@ -257,18 +257,18 @@ func (lba *LBA) storeCacheInExternalStorage() (err error) {
 	return
 }
 
-// Store a single shard into the external storage.
-func (lba *LBA) storeShardInExternalStorage(index int64, shard *shard) (err error) {
-	if !shard.Dirty() {
+// Store a single sector into the external storage.
+func (lba *LBA) storeSectorInExternalStorage(index int64, sector *sector) (err error) {
+	if !sector.Dirty() {
 		log.Debugf(
-			"LBA shard %d for %s isn't dirty, so nothing to store in external (meta) storage",
+			"LBA sector %d for %s isn't dirty, so nothing to store in external (meta) storage",
 			index, lba.vdiskID)
-		return // only store a dirty shard
+		return // only store a dirty sector
 	}
 
 	var buffer bytes.Buffer
-	if err = shard.Write(&buffer); err != nil {
-		err = fmt.Errorf("couldn't serialize evicted shard %d: %s", index, err)
+	if err = sector.Write(&buffer); err != nil {
+		err = fmt.Errorf("couldn't serialize evicted sector %d: %s", index, err)
 		return
 	}
 
@@ -280,14 +280,14 @@ func (lba *LBA) storeShardInExternalStorage(index int64, shard *shard) (err erro
 
 	_, err = conn.Do("HSET", lba.storageKey, index, buffer.Bytes())
 	if err != nil {
-		shard.UnsetDirty()
+		sector.UnsetDirty()
 	}
 
 	return
 }
 
-// Delete a single shard from the external storage.
-func (lba *LBA) deleteShardFromExternalStorage(index int64) (err error) {
+// Delete a single sector from the external storage.
+func (lba *LBA) deleteSectorFromExternalStorage(index int64) (err error) {
 	conn, err := lba.provider.MetaRedisConnection()
 	if err != nil {
 		return
