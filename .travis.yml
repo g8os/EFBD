@@ -22,5 +22,5 @@ jobs:
       os: osx
       install:
         - go get -u github.com/Jumpscale/go-raml
-        - brew install capnp
+        - ./tlog/install_capnp_macos.sh
       script: make testcodegen
