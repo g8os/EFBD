@@ -8,7 +8,6 @@ import (
 
 	valid "github.com/asaskevich/govalidator"
 	"github.com/go-yaml/yaml"
-	"github.com/zero-os/0-Disk/log"
 )
 
 // ConfigSource specifies a config source interface
@@ -38,13 +37,13 @@ type BaseConfig struct {
 }
 
 // NewBaseConfig creates a new Baseconfig from byte slice in YAML 1.2 format
-func newBaseConfig(data []byte) (*BaseConfig, error) {
+func NewBaseConfig(data []byte) (*BaseConfig, error) {
 	base := new(BaseConfig)
 	err := yaml.Unmarshal(data, &base)
 	if err != nil {
 		return nil, err
 	}
-	base.validate()
+	base.Validate()
 	if err != nil {
 		return nil, err
 	}
@@ -60,8 +59,9 @@ func (base *BaseConfig) ToBytes() ([]byte, error) {
 	return res, nil
 }
 
-// validate Validates baseConfig
-func (base BaseConfig) validate() error {
+// Validate Validates baseConfig
+// Should only be used for ConfigSource implementation
+func (base BaseConfig) Validate() error {
 	// check valid tags
 	_, err := valid.ValidateStruct(base)
 	if err != nil {
@@ -90,13 +90,16 @@ type NBDConfig struct {
 }
 
 // NewNBDConfig creates a new NBDConfig from byte slice in YAML 1.2 format
-func newNBDConfig(data []byte, vdiskID string, vdiskType VdiskType) (*NBDConfig, error) {
+func NewNBDConfig(data []byte, vdiskType VdiskType) (*NBDConfig, error) {
+	if vdiskType.Validate() != nil {
+		return nil, errors.New("Invalid vdisk type was given to the NBD constructor")
+	}
 	nbd := new(NBDConfig)
 	err := yaml.Unmarshal(data, nbd)
 	if err != nil {
 		return nil, err
 	}
-	nbd.validate(vdiskID, vdiskType)
+	nbd.Validate(vdiskType)
 	if err != nil {
 		return nil, err
 	}
@@ -121,9 +124,10 @@ func (nbd *NBDConfig) ToBytes() ([]byte, error) {
 	return res, nil
 }
 
-// validate Validates NBDConfig
-// Needs vdisk id and vdisk type
-func (nbd NBDConfig) validate(vdiskID string, vdiskType VdiskType) error {
+// Validate Validates NBDConfig
+// needs a vdisk type
+// Should only be used for ConfigSource implementation
+func (nbd NBDConfig) Validate(vdiskType VdiskType) error {
 	_, err := valid.ValidateStruct(nbd)
 	if err != nil {
 		return fmt.Errorf("invalid NBD config: %v", err)
@@ -137,15 +141,6 @@ func (nbd NBDConfig) validate(vdiskID string, vdiskType VdiskType) error {
 	if vdiskType.TemplateSupport(nbd) {
 		if len(nbd.TemplateStorageCluster.DataStorage) <= 0 {
 			return fmt.Errorf("template storage not found while required")
-		}
-
-		// nonDeduped vdisks that support templates,
-		// also require a vdiskID as used on the template storage
-		if vdiskType.StorageType() == StorageNonDeduped {
-			if nbd.TemplateVdiskID == "" {
-				log.Debugf("defaulting templateVdiskID of vdisk %s to %s", vdiskID, vdiskID)
-				nbd.TemplateVdiskID = vdiskID
-			}
 		}
 	}
 
@@ -164,13 +159,13 @@ type TlogConfig struct {
 }
 
 // NewTlogConfig creates a new Tlogconfig from byte slice in YAML 1.2 format
-func newTlogConfig(data []byte) (*TlogConfig, error) {
+func NewTlogConfig(data []byte) (*TlogConfig, error) {
 	tlog := new(TlogConfig)
 	err := yaml.Unmarshal(data, tlog)
 	if err != nil {
 		return nil, err
 	}
-	tlog.validate()
+	tlog.Validate()
 	if err != nil {
 		return nil, err
 	}
@@ -194,8 +189,9 @@ func (tlog *TlogConfig) ToBytes() ([]byte, error) {
 	return res, nil
 }
 
-// validate Validates TlogConfig
-func (tlog TlogConfig) validate() error {
+// Validate Validates TlogConfig
+// Should only be used for ConfigSource implementation
+func (tlog TlogConfig) Validate() error {
 	_, err := valid.ValidateStruct(tlog)
 	if err != nil {
 		return fmt.Errorf("invalid tlog config: %v", err)
@@ -213,13 +209,13 @@ type SlaveConfig struct {
 }
 
 // NewSlaveConfig creates a new Slaveconfig from byte slice in YAML 1.2 format
-func newSlaveConfig(data []byte) (*SlaveConfig, error) {
+func NewSlaveConfig(data []byte) (*SlaveConfig, error) {
 	slave := new(SlaveConfig)
 	err := yaml.Unmarshal(data, slave)
 	if err != nil {
 		return nil, err
 	}
-	slave.validate()
+	slave.Validate()
 	if err != nil {
 		return nil, err
 	}
@@ -242,8 +238,9 @@ func (slave *SlaveConfig) ToBytes() ([]byte, error) {
 	return res, nil
 }
 
-// validate Validates SlaveConfig
-func (slave *SlaveConfig) validate() error {
+// Validate Validates SlaveConfig
+// Should only be used for ConfigSource implementation
+func (slave *SlaveConfig) Validate() error {
 	_, err := valid.ValidateStruct(slave)
 	if err != nil {
 		return fmt.Errorf("invalid slave config: %v", err)

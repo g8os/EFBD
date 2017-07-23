@@ -109,7 +109,7 @@ func (cfg *fileConfig) Slave() (*SlaveConfig, error) {
 // SetBase implements ConfigSource.SetBase
 // Sets a new base config and writes it to the source
 func (cfg *fileConfig) SetBase(base BaseConfig) error {
-	err := base.validate()
+	err := base.Validate()
 	if err != nil {
 		return fmt.Errorf("provided base config was not valid: %s", err)
 	}
@@ -126,7 +126,7 @@ func (cfg *fileConfig) SetBase(base BaseConfig) error {
 // SetNBD implements ConfigSource.SetNBD
 // Sets a new nbd config and writes it to the source
 func (cfg *fileConfig) SetNBD(nbd NBDConfig) error {
-	err := nbd.validate(cfg.vdiskID, cfg.base.Type)
+	err := nbd.Validate(cfg.base.Type)
 	if err != nil {
 		return fmt.Errorf("provided nbd config was not valid: %s", err)
 	}
@@ -143,7 +143,7 @@ func (cfg *fileConfig) SetNBD(nbd NBDConfig) error {
 // SetTlog implements ConfigSource.SetTlog
 // Sets a new tolog config and writes it to the source
 func (cfg *fileConfig) SetTlog(tlog TlogConfig) error {
-	err := tlog.validate()
+	err := tlog.Validate()
 	if err != nil {
 		return fmt.Errorf("provided tlog config was not valid: %s", err)
 	}
@@ -160,7 +160,7 @@ func (cfg *fileConfig) SetTlog(tlog TlogConfig) error {
 // SetSlave implements ConfigSource.SetSlave
 // Sets a new slave config and writes it to the source
 func (cfg *fileConfig) SetSlave(slave SlaveConfig) error {
-	err := slave.validate()
+	err := slave.Validate()
 	if err != nil {
 		return fmt.Errorf("provided slave config was not valid: %s", err)
 	}
@@ -240,24 +240,24 @@ func fromYAMLBytes(bytes []byte) (*fileConfig, error) {
 	cfg.tlog = buf.Tlog
 	cfg.slave = buf.Slave
 
-	err = cfg.base.validate()
+	err = cfg.base.Validate()
 	if err != nil {
 		return nil, fmt.Errorf("invalid base configuration: %s", err)
 	}
 	if cfg.nbd != nil {
-		err = cfg.nbd.validate(cfg.vdiskID, cfg.base.Type)
+		err = cfg.nbd.Validate(cfg.base.Type)
 		if err != nil {
 			return nil, fmt.Errorf("invalid nbd configuration: %s", err)
 		}
 	}
 	if cfg.tlog != nil {
-		err = cfg.tlog.validate()
+		err = cfg.tlog.Validate()
 		if err != nil {
 			return nil, fmt.Errorf("invalid tlog configuration: %s", err)
 		}
 	}
 	if cfg.slave != nil {
-		err = cfg.slave.validate()
+		err = cfg.slave.Validate()
 		if err != nil {
 			return nil, fmt.Errorf("invalid slave configuration: %s", err)
 		}

@@ -12,7 +12,7 @@ import (
 	"github.com/zero-os/0-Disk/log"
 )
 
-// etcdConfig represents a config using ETCD as source
+// etcdConfig represents a config using etcd as source
 type etcdConfig struct {
 	vdiskID     string
 	base        BaseConfig
@@ -62,7 +62,7 @@ func NewETCDConfig(vdiskID string, endpoints []string) (ConfigSource, error) {
 	if len(resp.Kvs) < 1 {
 		return nil, fmt.Errorf("base config was not found on the ETCD server")
 	}
-	base, err := newBaseConfig(resp.Kvs[0].Value)
+	base, err := NewBaseConfig(resp.Kvs[0].Value)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +77,7 @@ func NewETCDConfig(vdiskID string, endpoints []string) (ConfigSource, error) {
 	if len(resp.Kvs) > 0 {
 		cfg.nbdRWLock.Lock()
 		cfg.baseRWLock.RLock()
-		cfg.nbd, err = newNBDConfig(resp.Kvs[0].Value, cfg.vdiskID, cfg.base.Type)
+		cfg.nbd, err = NewNBDConfig(resp.Kvs[0].Value, cfg.base.Type)
 		cfg.baseRWLock.RUnlock()
 		cfg.nbdRWLock.Unlock()
 		if err != nil {
@@ -91,7 +91,7 @@ func NewETCDConfig(vdiskID string, endpoints []string) (ConfigSource, error) {
 	}
 	if len(resp.Kvs) > 0 {
 		cfg.tlogRWLock.Lock()
-		cfg.tlog, err = newTlogConfig(resp.Kvs[0].Value)
+		cfg.tlog, err = NewTlogConfig(resp.Kvs[0].Value)
 		cfg.tlogRWLock.Unlock()
 		if err != nil {
 			return nil, err
@@ -104,7 +104,7 @@ func NewETCDConfig(vdiskID string, endpoints []string) (ConfigSource, error) {
 	}
 	if len(resp.Kvs) > 0 {
 		cfg.slaveRWLock.Lock()
-		cfg.slave, err = newSlaveConfig(resp.Kvs[0].Value)
+		cfg.slave, err = NewSlaveConfig(resp.Kvs[0].Value)
 		cfg.slaveRWLock.Unlock()
 		if err != nil {
 			return nil, err
@@ -166,7 +166,7 @@ func (cfg *etcdConfig) Slave() (*SlaveConfig, error) {
 // SetBase implements ConfigSource.SetBase
 // Sets a new base config and writes it to the source
 func (cfg *etcdConfig) SetBase(base BaseConfig) error {
-	err := base.validate()
+	err := base.Validate()
 	if err != nil {
 		return fmt.Errorf("provided base config was not valid: %s", err)
 	}
@@ -188,7 +188,7 @@ func (cfg *etcdConfig) SetBase(base BaseConfig) error {
 // Sets a new nbd config and writes it to the source
 func (cfg *etcdConfig) SetNBD(nbd NBDConfig) error {
 	cfg.baseRWLock.RLock()
-	err := nbd.validate(cfg.vdiskID, cfg.base.Type)
+	err := nbd.Validate(cfg.base.Type)
 	cfg.baseRWLock.RUnlock()
 	if err != nil {
 		return fmt.Errorf("provided nbd config was not valid: %s", err)
@@ -215,7 +215,7 @@ func (cfg *etcdConfig) SetNBD(nbd NBDConfig) error {
 // SetTlog implements ConfigSource.SetTlog
 // Sets a new tolog config and writes it to the source
 func (cfg *etcdConfig) SetTlog(tlog TlogConfig) error {
-	err := tlog.validate()
+	err := tlog.Validate()
 	if err != nil {
 		return fmt.Errorf("provided tlog config was not valid: %s", err)
 	}
@@ -241,7 +241,7 @@ func (cfg *etcdConfig) SetTlog(tlog TlogConfig) error {
 // SetSlave implements ConfigSource.SetSlave
 // Sets a new slave config and writes it to the source
 func (cfg *etcdConfig) SetSlave(slave SlaveConfig) error {
-	err := slave.validate()
+	err := slave.Validate()
 	if err != nil {
 		return fmt.Errorf("provided slave config was not valid: %s", err)
 	}
@@ -291,7 +291,7 @@ func (cfg *etcdConfig) watch() {
 						continue
 					}
 
-					newBase, err := newBaseConfig(ev.Kv.Value)
+					newBase, err := NewBaseConfig(ev.Kv.Value)
 					if err != nil {
 						log.Errorf("Did not update %s: %s", cfg.baseKey, err)
 					}
@@ -310,7 +310,7 @@ func (cfg *etcdConfig) watch() {
 
 					// create subconfig and check validity
 					cfg.baseRWLock.RLock()
-					newNBD, err := newNBDConfig(ev.Kv.Value, cfg.vdiskID, cfg.base.Type)
+					newNBD, err := NewNBDConfig(ev.Kv.Value, cfg.base.Type)
 					if err != nil {
 						log.Errorf("Did not update %s: %s", cfg.nbdKey, err)
 						cfg.baseRWLock.RUnlock()
@@ -329,7 +329,7 @@ func (cfg *etcdConfig) watch() {
 						continue
 					}
 
-					newTlog, err := newTlogConfig(ev.Kv.Value)
+					newTlog, err := NewTlogConfig(ev.Kv.Value)
 					if err != nil {
 						log.Errorf("Did not update %s: %s", cfg.tlogKey, err)
 						continue
@@ -346,7 +346,7 @@ func (cfg *etcdConfig) watch() {
 						continue
 					}
 
-					newSlave, err := newSlaveConfig(ev.Kv.Value)
+					newSlave, err := NewSlaveConfig(ev.Kv.Value)
 					if err != nil {
 						log.Errorf("Did not update %s: %s", cfg.slaveKey, err)
 						continue

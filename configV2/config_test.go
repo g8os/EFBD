@@ -10,7 +10,7 @@ import (
 
 func TestSubConfigCloning(t *testing.T) {
 	// setup original tlog
-	tlog0, err := newTlogConfig([]byte(validTlogStr))
+	tlog0, err := NewTlogConfig([]byte(validTlogStr))
 	if !assert.NoError(t, err) || !assert.NotNil(t, tlog0) {
 		return
 	}
@@ -33,9 +33,8 @@ func TestSubConfigCloning(t *testing.T) {
 	}
 
 	// setup original nbd
-	vdiskID := "test"
 	vdiskType := VdiskTypeBoot
-	nbd0, err := newNBDConfig([]byte(validNBDStr), vdiskID, vdiskType)
+	nbd0, err := NewNBDConfig([]byte(validNBDStr), vdiskType)
 	if !assert.NoError(t, err) || !assert.NotNil(t, nbd0) {
 		return
 	}
@@ -69,7 +68,7 @@ func TestInvalidConfigs(t *testing.T) {
 
 func TestSerializing(t *testing.T) {
 	// create base config from a valid base config string
-	b, err := newBaseConfig([]byte(validBaseStr))
+	b, err := NewBaseConfig([]byte(validBaseStr))
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -78,7 +77,7 @@ func TestSerializing(t *testing.T) {
 	if !assert.NoError(t, err) {
 		return
 	}
-	b2, err := newBaseConfig(b2Str)
+	b2, err := NewBaseConfig(b2Str)
 	if !assert.NoError(t, err) {
 		return
 	}

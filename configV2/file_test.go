@@ -2,14 +2,12 @@ package configV2
 
 import (
 	"io/ioutil"
+	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
-
-	"os"
-
-	"sync"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/zero-os/0-Disk/log"
@@ -38,7 +36,7 @@ func TestFileSource(t *testing.T) {
 	tlog := cfg.tlog
 	tlog.TlogStorageCluster.DataStorage[0].Address = "1.2.3.4:1234"
 
-	slave, err := newSlaveConfig([]byte(validSlaveStr))
+	slave, err := NewSlaveConfig([]byte(validSlaveStr))
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -105,7 +103,7 @@ func testFileSourceWithWatcher(t *testing.T) {
 	defer close(sighup)
 
 	// create new tlog
-	tlog, err := newTlogConfig([]byte(validTlogStr))
+	tlog, err := NewTlogConfig([]byte(validTlogStr))
 	if !assert.NoError(t, err) {
 		return
 	}

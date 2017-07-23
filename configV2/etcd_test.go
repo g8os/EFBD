@@ -96,7 +96,7 @@ func testETCDConfig(t *testing.T) {
 	}
 
 	// test setting data
-	slave, err := newSlaveConfig([]byte(validSlaveStr))
+	slave, err := NewSlaveConfig([]byte(validSlaveStr))
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -108,7 +108,7 @@ func testETCDConfig(t *testing.T) {
 		return
 	}
 	if len(resp.Kvs) > 0 {
-		newSlave, err = newSlaveConfig(resp.Kvs[0].Value)
+		newSlave, err = NewSlaveConfig(resp.Kvs[0].Value)
 		if !assert.NoError(t, err) {
 			return
 		}
