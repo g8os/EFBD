@@ -2,6 +2,7 @@ package ardb
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"runtime/debug"
 	"strconv"
@@ -427,6 +428,26 @@ func TestGetDedupedTemplateContentDeadlock(t *testing.T) {
 			t.Fatal(i, "unexpected content")
 		}
 	}
+}
+
+func TestDedupedBackendReadWrite(t *testing.T) {
+	const (
+		vdiskID    = "a"
+		size       = 64
+		blockSize  = 8
+		blockCount = size / blockSize
+	)
+
+	memRedis := redisstub.NewMemoryRedis()
+	go memRedis.Listen()
+	defer memRedis.Close()
+
+	provider := newTestRedisProvider(memRedis, nil) // template = nil
+
+	ctx := context.Background()
+
+	testBackendReadWrite(ctx, t, vdiskID, blockSize, size,
+		createTestDedupedStorage(t, vdiskID, blockSize, blockCount, false, provider))
 }
 
 func init() {

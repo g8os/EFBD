@@ -78,7 +78,6 @@ func testBackendStorage(t *testing.T, storage backendStorage) {
 
 	var (
 		testContentA = []byte{4, 2}
-		testContentB = []byte{9, 2}
 	)
 	const (
 		testBlockIndexA = 0
@@ -133,34 +132,6 @@ func testBackendStorage(t *testing.T, storage backendStorage) {
 		t.Fatalf("found content %v, while expected nil-content", content)
 	}
 
-	// Merging new content with non existing content is fine
-	err = storage.Merge(testBlockIndexB, 0, testContentB)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// getting the content should be fine
-	content, err = storage.Get(testBlockIndexB)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(content) < 2 || bytes.Compare(testContentB, content[:2]) != 0 {
-		t.Fatalf("unexpected content found: %v", content)
-	}
-
-	// Merging existing content is fine as well
-	err = storage.Merge(testBlockIndexB, 1, testContentA)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// getting the content should be fine
-	content, err = storage.Get(testBlockIndexB)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Compare([]byte{9, 4, 2, 0, 0, 0, 0, 0}, content) != 0 {
-		t.Fatalf("unexpected content found: %v", content)
-	}
-
 	// Deleting content, should really delete it
 	err = storage.Delete(testBlockIndexA)
 	if err != nil {
@@ -174,19 +145,6 @@ func testBackendStorage(t *testing.T, storage backendStorage) {
 	}
 	if content != nil {
 		t.Fatalf("found content %v, while expected nil-content", content)
-	}
-	err = storage.Merge(testBlockIndexA, 0, testContentA)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// content should be merged
-	content, err = storage.Get(testBlockIndexA)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Compare([]byte{4, 2, 0, 0, 0, 0, 0, 0}, content) != 0 {
-		t.Fatalf("unexpected content found: %v", content)
 	}
 
 	// Deleting content, should really delete it
@@ -216,7 +174,6 @@ func testBackendStorageForceFlush(t *testing.T, storage backendStorage) {
 
 	var (
 		testContentA = []byte{4, 2}
-		testContentB = []byte{9, 2}
 	)
 	const (
 		testBlockIndexA = 0
@@ -294,58 +251,6 @@ func testBackendStorageForceFlush(t *testing.T, storage backendStorage) {
 		t.Fatalf("found content %v, while expected nil-content", content)
 	}
 
-	// Merging new content with non existing content is fine
-	err = storage.Merge(testBlockIndexB, 0, testContentB)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// getting the content should be fine
-	content, err = storage.Get(testBlockIndexB)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(content) < 2 || bytes.Compare(testContentB, content[:2]) != 0 {
-		t.Fatalf("unexpected content found: %v", content)
-	}
-	err = storage.Flush()
-	if err != nil {
-		t.Fatal(err)
-	}
-	// getting the content should still be fine
-	content, err = storage.Get(testBlockIndexB)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(content) < 2 || bytes.Compare(testContentB, content[:2]) != 0 {
-		t.Fatalf("unexpected content found: %v", content)
-	}
-
-	// Merging existing content is fine as well
-	err = storage.Merge(testBlockIndexB, 1, testContentA)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// getting the content should be fine
-	content, err = storage.Get(testBlockIndexB)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Compare([]byte{9, 4, 2, 0, 0, 0, 0, 0}, content) != 0 {
-		t.Fatalf("unexpected content found: %v", content)
-	}
-	err = storage.Flush()
-	if err != nil {
-		t.Fatal(err)
-	}
-	// getting the content should still be fine
-	content, err = storage.Get(testBlockIndexB)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Compare([]byte{9, 4, 2, 0, 0, 0, 0, 0}, content) != 0 {
-		t.Fatalf("unexpected content found: %v", content)
-	}
-
 	// Deleting content, should really delete it
 	err = storage.Delete(testBlockIndexA)
 	if err != nil {
@@ -363,33 +268,6 @@ func testBackendStorageForceFlush(t *testing.T, storage backendStorage) {
 	}
 	if content != nil {
 		t.Fatalf("found content %v, while expected nil-content", content)
-	}
-	err = storage.Merge(testBlockIndexA, 0, testContentA)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// content should be merged
-	content, err = storage.Get(testBlockIndexA)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Compare([]byte{4, 2, 0, 0, 0, 0, 0, 0}, content) != 0 {
-		t.Fatalf("unexpected content found: %v", content)
-	}
-
-	err = storage.Flush()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// content should still be merged
-	content, err = storage.Get(testBlockIndexA)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Compare([]byte{4, 2, 0, 0, 0, 0, 0, 0}, content) != 0 {
-		t.Fatalf("unexpected content found: %v", content)
 	}
 
 	// Deleting content, should really delete it
@@ -475,39 +353,6 @@ func testBackendStorageDeadlock(t *testing.T, blockSize, blockCount int64, stora
 	}
 
 	var wg sync.WaitGroup
-
-	// merge all content four times (async)
-	for time := int64(0); time < 4; time++ {
-		for i := int64(0); i < blockCount; i += 2 {
-			blockIndex := i
-			wg.Add(1)
-			go func(curTime int64) {
-				defer wg.Done()
-
-				// get preContent
-				preContent, err := storage.Get(blockIndex)
-				if err != nil {
-					t.Fatal(curTime, blockIndex, err)
-					return
-				}
-
-				// merge it
-				offset := 2 + curTime
-				blockIndex = (blockIndex + 1) % blockCount
-				err = storage.Merge(blockIndex, offset, preContent)
-				if err != nil {
-					t.Fatal(curTime, blockIndex, err)
-				}
-			}(time)
-		}
-	}
-
-	wg.Wait()
-
-	// let's flush the merged content
-	if err := storage.Flush(); err != nil {
-		t.Fatal(err)
-	}
 
 	// delete all content (async)
 	for i := int64(0); i < blockCount; i++ {

@@ -2,7 +2,6 @@ package ardb
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/garyburd/redigo/redis"
 
@@ -70,35 +69,6 @@ func (ds *dedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 	}
 
 	return ds.lba.Set(blockIndex, hash)
-}
-
-// Merge implements backendStorage.Merge
-func (ds *dedupedStorage) Merge(blockIndex, offset int64, content []byte) (err error) {
-	hash, _ := ds.lba.Get(blockIndex)
-
-	var mergedContent []byte
-	if hash != nil && !hash.Equals(zerodisk.NilHash) {
-		mergedContent, err = ds.getContent(hash)
-		if err != nil {
-			err = fmt.Errorf("LBA hash refered to non-existing content: %s", err)
-			return
-		}
-		if int64(len(mergedContent)) < ds.blockSize {
-			mc := make([]byte, ds.blockSize)
-			copy(mc, mergedContent)
-			mergedContent = mc
-		}
-	} else {
-		mergedContent = make([]byte, ds.blockSize)
-	}
-
-	// copy in new content
-	copy(mergedContent[offset:], content)
-
-	// store new content
-	// (dereferencing of previousHash happens in ds.Set logic)
-	err = ds.Set(blockIndex, mergedContent)
-	return
 }
 
 // Get implements backendStorage.Get

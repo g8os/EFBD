@@ -50,7 +50,7 @@ func (ab *Backend) WriteAt(ctx context.Context, b []byte, offset int64) (bytesWr
 		// Option 2.
 		// We need to merge both contents.
 		// the length can't be bigger, as that is guaranteed by gonbdserver
-		err = ab.storage.Merge(blockIndex, offsetInsideBlock, b)
+		err = ab.merge(blockIndex, offsetInsideBlock, b)
 	}
 
 	if err != nil {
@@ -79,7 +79,7 @@ func (ab *Backend) WriteZeroesAt(ctx context.Context, offset, length int64) (byt
 		// Option 2.
 		// We need to write zeroes at an offset,
 		// or the zeroes don't cover the entire block
-		_, err = ab.mergeZeroes(blockIndex, offsetInsideBlock, length)
+		err = ab.mergeZeroes(blockIndex, offsetInsideBlock, length)
 	}
 
 	if err != nil {
@@ -93,17 +93,18 @@ func (ab *Backend) WriteZeroesAt(ctx context.Context, offset, length int64) (byt
 	return
 }
 
-// MergeZeroes implements storage.MergeZeroes
-//  The length + offset should not exceed the blocksize
-func (ab *Backend) mergeZeroes(blockIndex, offset, length int64) (mergedContent []byte, err error) {
-	mergedContent, err = ab.storage.Get(blockIndex)
+// mergeZeroes merges zeroes into an existing block,
+// or does nothing in case the block does not exist yet.
+// The length + offset should not exceed the blocksize.
+func (ab *Backend) mergeZeroes(blockIndex, offset, length int64) error {
+	mergedContent, err := ab.storage.Get(blockIndex)
 	if err != nil {
-		return
+		return err
 	}
 
 	//If the original content does not exist, no need to fill it with 0's
 	if mergedContent == nil {
-		return
+		return nil
 	}
 	// Assume the length of the original content == blocksize
 	for i := offset; i < offset+length; i++ {
@@ -111,8 +112,28 @@ func (ab *Backend) mergeZeroes(blockIndex, offset, length int64) (mergedContent 
 	}
 
 	// store new content
-	err = ab.storage.Set(blockIndex, mergedContent)
-	return
+	return ab.storage.Set(blockIndex, mergedContent)
+}
+
+// merge a block into an existing block....
+func (ab *Backend) merge(blockIndex, offset int64, content []byte) error {
+	mergedContent, _ := ab.storage.Get(blockIndex)
+
+	// create old content from scratch or expand it to the blocksize,
+	// in case no old content was defined or it was defined but too small
+	if ocl := int64(len(mergedContent)); ocl == 0 {
+		mergedContent = make([]byte, ab.blockSize)
+	} else if ocl < ab.blockSize {
+		oc := make([]byte, ab.blockSize)
+		copy(oc, mergedContent)
+		mergedContent = oc
+	}
+
+	// copy in new content
+	copy(mergedContent[offset:], content)
+
+	// store new content
+	return ab.storage.Set(blockIndex, mergedContent)
 }
 
 //ReadAt implements nbd.Backend.ReadAt

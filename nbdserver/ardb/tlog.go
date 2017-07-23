@@ -167,42 +167,6 @@ func (tls *tlogStorage) set(blockIndex int64, content []byte) error {
 	return nil
 }
 
-// Merge implements backendStorage.Merge
-func (tls *tlogStorage) Merge(blockIndex, offset int64, content []byte) error {
-	tls.mux.Lock()
-	defer tls.mux.Unlock()
-
-	mergedContent, err := tls.merge(blockIndex, offset, content)
-	if err != nil {
-		return err
-	}
-
-	// store new content
-	return tls.set(blockIndex, mergedContent)
-}
-
-func (tls *tlogStorage) merge(blockIndex, offset int64, content []byte) ([]byte, error) {
-	mergedContent, err := tls.get(blockIndex)
-	if err != nil {
-		return nil, err
-	}
-
-	// ensure merge block is of the proper size,
-	// as to ensure a proper merge
-	if len(mergedContent) == 0 {
-		mergedContent = make([]byte, tls.blockSize)
-	} else if int64(len(mergedContent)) < tls.blockSize {
-		mc := make([]byte, tls.blockSize)
-		copy(mc, mergedContent)
-		mergedContent = mc
-	}
-
-	// merge new with old content
-	copy(mergedContent[offset:], content)
-
-	return mergedContent, nil
-}
-
 // Get implements backendStorage.Get
 func (tls *tlogStorage) Get(blockIndex int64) (content []byte, err error) {
 	tls.mux.Lock()
