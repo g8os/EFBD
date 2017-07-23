@@ -1,0 +1,393 @@
+package storage
+
+import (
+	"errors"
+	"fmt"
+	"strconv"
+
+	"github.com/garyburd/redigo/redis"
+
+	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/nbd/ardb"
+	"github.com/zero-os/0-Disk/nbd/ardb/storage/lba"
+)
+
+// Deduped returns a deduped BlockStorage
+func Deduped(vdiskID string, vdiskSize, blockSize, lbaCacheLimit int64, templateSupport bool, provider ardb.ConnProvider) (BlockStorage, error) {
+	// define the block count based on the vdisk size and block size
+	blockCount := vdiskSize / blockSize
+	if vdiskSize%blockSize > 0 {
+		blockCount++
+	}
+
+	// define the LBA cache limit
+	cacheLimit := lbaCacheLimit
+	if cacheLimit < lba.BytesPerSector {
+		log.Infof(
+			"LBACacheLimit (%d) will be defaulted to %d (min-capped)",
+			cacheLimit, lba.BytesPerSector)
+		cacheLimit = ardb.DefaultLBACacheLimit
+	}
+
+	// create the LBA (used to store deduped metadata)
+	vlba, err := lba.NewLBA(
+		vdiskID,
+		blockCount,
+		cacheLimit,
+		provider,
+	)
+	if err != nil {
+		log.Errorf("couldn't create the LBA: %s", err.Error())
+		return nil, err
+	}
+
+	dedupedStorage := &dedupedStorage{
+		blockSize:       blockSize,
+		vdiskID:         vdiskID,
+		zeroContentHash: zerodisk.HashBytes(make([]byte, blockSize)),
+		provider:        provider,
+		lba:             vlba,
+	}
+
+	// getContent is ALWAYS defined,
+	// but the actual function used depends on
+	// whether or not this storage has template support.
+	if templateSupport {
+		dedupedStorage.getContent = dedupedStorage.getPrimaryOrTemplateContent
+	} else {
+		dedupedStorage.getContent = dedupedStorage.getPrimaryContent
+	}
+
+	return dedupedStorage, nil
+}
+
+// dedupedStorage is a BlockStorage implementation,
+// that stores the content (the data) based on a hash unique to that content,
+// all hashes are linked to the vdisk using lba.LBA (the metadata).
+// The metadata and data are stored on seperate servers.
+// Accessing data is only ever possible by checking the metadata first.
+type dedupedStorage struct {
+	blockSize       int64                // block size in bytes
+	vdiskID         string               // ID of the vdisk
+	zeroContentHash zerodisk.Hash        // a hash of a nil-block of blockSize
+	provider        ardb.ConnProvider    // used to get a connection to a storage server
+	lba             *lba.LBA             // the LBA used to get/set/modify the metadata (content hashes)
+	getContent      dedupedContentGetter // getContent function used to get content, is always defined
+}
+
+// used to provide different content getters based on the vdisk properties
+// it boils down to the question: does it have template support?
+type dedupedContentGetter func(hash zerodisk.Hash) (content []byte, err error)
+
+// SetBlock implements BlockStorage.SetBlock
+func (ds *dedupedStorage) SetBlock(blockIndex int64, content []byte) (err error) {
+	hash := zerodisk.HashBytes(content)
+	if ds.zeroContentHash.Equals(hash) {
+		log.Debugf(
+			"deleting hash @ %d from LBA for deduped vdisk %s as it's an all zeroes block",
+			blockIndex, ds.vdiskID)
+		err = ds.lba.Delete(blockIndex)
+		return
+	}
+
+	// reference the content to this vdisk,
+	// and set the content itself, if it didn't exist yet
+	_, err = ds.setContent(hash, content)
+	if err != nil {
+		return
+	}
+
+	return ds.lba.Set(blockIndex, hash)
+}
+
+// GetBlock implements BlockStorage.GetBlock
+func (ds *dedupedStorage) GetBlock(blockIndex int64) (content []byte, err error) {
+	hash, err := ds.lba.Get(blockIndex)
+	if err == nil && hash != nil && !hash.Equals(zerodisk.NilHash) {
+		content, err = ds.getContent(hash)
+	}
+	return
+}
+
+// DeleteBlock implements BlockStorage.DeleteBlock
+func (ds *dedupedStorage) DeleteBlock(blockIndex int64) (err error) {
+	// first get hash
+	hash, _ := ds.lba.Get(blockIndex)
+	if hash == nil {
+		// content didn't exist yet,
+		// so we've nothing to do here
+		return
+	}
+
+	// delete the actual hash from the LBA
+	err = ds.lba.Delete(blockIndex)
+	return
+}
+
+// Flush implements BlockStorage.Flush
+func (ds *dedupedStorage) Flush() (err error) {
+	err = ds.lba.Flush()
+	return
+}
+
+func (ds *dedupedStorage) getDataConnection(hash zerodisk.Hash) (redis.Conn, error) {
+	return ds.provider.DataConnection(int64(hash[0]))
+}
+
+func (ds *dedupedStorage) getTemplateConnection(hash zerodisk.Hash) (redis.Conn, error) {
+	return ds.provider.TemplateConnection(int64(hash[0]))
+}
+
+// getPrimaryContent gets content from the primary storage.
+// Assigned to (*dedupedStorage).getContent in case this storage has no template support.
+func (ds *dedupedStorage) getPrimaryContent(hash zerodisk.Hash) (content []byte, err error) {
+	conn, err := ds.getDataConnection(hash)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+
+	content, err = ardb.RedisBytes(conn.Do("GET", hash.Bytes()))
+	return
+}
+
+// getPrimaryOrTemplateContent gets content from the primary storage,
+// or if the content can't be found in primary storage,
+// we'll try to fetch it from the template storage.
+// if the content is available in the template storage,
+// we'll also try to store it in the primary storage before returning that content.
+// Assigned to (*dedupedStorage).getContent in case this storage has template support.
+func (ds *dedupedStorage) getPrimaryOrTemplateContent(hash zerodisk.Hash) (content []byte, err error) {
+	// try to fetch it from the primary storage
+	content, err = ds.getPrimaryContent(hash)
+	if err != nil || content != nil {
+		return // critical err, or content is found
+	}
+
+	// try to fetch it from the template storage if available
+	content = func() (content []byte) {
+		conn, err := ds.getTemplateConnection(hash)
+		if err != nil {
+			log.Debugf(
+				"content not available in primary storage for %v and no template storage available: %s",
+				hash, err.Error())
+			return
+		}
+		defer conn.Close()
+
+		content, err = ardb.RedisBytes(conn.Do("GET", hash.Bytes()))
+		if err != nil {
+			content = nil
+			log.Debugf(
+				"content for %v not available in primary-, nor in template storage: %s",
+				hash, err.Error())
+		}
+
+		return
+	}()
+
+	if content != nil {
+		// store template content in primary storage asynchronously
+		go func() {
+			success, err := ds.setContent(hash, content)
+			if err != nil {
+				// we won't return error however, but just log it
+				log.Infof("couldn't store template content in primary storage: %s", err.Error())
+			} else if success {
+				log.Debugf(
+					"stored template content for %v in primary storage (asynchronously)",
+					hash)
+			}
+		}()
+
+		log.Debugf(
+			"content not available in primary storage for %v, but did find it in template storage",
+			hash)
+	}
+
+	// err = nil, content = ?
+	return
+}
+
+// setContent if it doesn't exist yet,
+// and increase the reference counter, by adding this vdiskID
+func (ds *dedupedStorage) setContent(hash zerodisk.Hash, content []byte) (success bool, err error) {
+	conn, err := ds.getDataConnection(hash)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+
+	exists, err := redis.Bool(conn.Do("EXISTS", hash.Bytes()))
+	if err == nil && !exists {
+		_, err = conn.Do("SET", hash.Bytes(), content)
+		success = err == nil
+	}
+
+	return
+}
+
+// Close implements BlockStorage.Close
+func (ds *dedupedStorage) Close() error { return nil }
+
+// CopyDeduped copies all metadata of a deduped storage
+// from a sourceID to a targetID, within the same cluster or between different clusters.
+func CopyDeduped(sourceID, targetID string, sourceCluster, targetCluster *config.StorageClusterConfig) error {
+	// validate source cluster
+	if sourceCluster == nil {
+		return errors.New("no source cluster given")
+	}
+	if sourceCluster.MetadataStorage == nil {
+		return errors.New("no metaDataServer given for source")
+	}
+
+	// define whether or not we're copying between different servers,
+	// and if the target cluster is given, make sure to validate it.
+	var sameServer bool
+	if targetCluster == nil {
+		sameServer = true
+		if sourceID == targetID {
+			return errors.New(
+				"sourceID and targetID can't be equal when copying within the same cluster")
+		}
+	} else {
+		if targetCluster.MetadataStorage == nil {
+			return errors.New("no metaDataServer given for target")
+		}
+
+		// even if targetCluster is given,
+		// we could still be dealing with a duplicated cluster
+		sameServer = *sourceCluster.MetadataStorage == *targetCluster.MetadataStorage
+	}
+
+	// within same storage server
+	if sameServer {
+		conn, err := ardb.GetConnection(*sourceCluster.MetadataStorage)
+		if err != nil {
+			return fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
+		}
+		defer conn.Close()
+
+		return copyDedupedSameConnection(sourceID, targetID, conn)
+	}
+
+	// between different storage servers
+	conns, err := ardb.GetConnections(
+		*sourceCluster.MetadataStorage, *targetCluster.MetadataStorage)
+	if err != nil {
+		return fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
+	}
+	defer func() {
+		conns[0].Close()
+		conns[1].Close()
+	}()
+
+	return copyDedupedDifferentConnections(sourceID, targetID, conns[0], conns[1])
+}
+
+func copyDedupedSameConnection(sourceID, targetID string, conn redis.Conn) (err error) {
+	script := redis.NewScript(0, `
+local source = ARGV[1]
+local destination = ARGV[2]
+
+if redis.call("EXISTS", source) == 0 then
+    return redis.error_reply('"' .. source .. '" does not exist')
+end
+
+if redis.call("EXISTS", destination) == 1 then
+    redis.call("DEL", destination)
+end
+
+redis.call("RESTORE", destination, 0, redis.call("DUMP", source))
+
+return redis.call("HLEN", destination)
+`)
+
+	log.Infof("dumping vdisk %q and restoring it as vdisk %q",
+		sourceID, targetID)
+
+	sourceKey, targetKey := lba.StorageKey(sourceID), lba.StorageKey(targetID)
+	indexCount, err := redis.Int64(script.Do(conn, sourceKey, targetKey))
+	if err == nil {
+		log.Infof("copied %d meta indices to vdisk %q", indexCount, targetID)
+	}
+
+	return
+}
+
+func copyDedupedDifferentConnections(sourceID, targetID string, connA, connB redis.Conn) (err error) {
+	sourceKey, targetKey := lba.StorageKey(sourceID), lba.StorageKey(targetID)
+
+	// get data from source connection
+	log.Infof("collecting all metadata from source vdisk %q...", sourceID)
+	data, err := redis.StringMap(connA.Do("HGETALL", sourceKey))
+	if err != nil {
+		return
+	}
+	dataLength := len(data)
+	if dataLength == 0 {
+		err = fmt.Errorf("%q does not exist", sourceID)
+		return
+	}
+
+	log.Infof("collected %d meta indices from source vdisk %q",
+		dataLength, sourceID)
+
+	// start the copy transaction
+	if err = connB.Send("MULTI"); err != nil {
+		return
+	}
+
+	// delete any existing vdisk
+	if err = connB.Send("DEL", targetKey); err != nil {
+		return
+	}
+
+	// buffer all data on target connection
+	log.Infof("buffering %d meta indices for target vdisk %q...",
+		len(data), targetID)
+	var index int64
+	for rawIndex, hash := range data {
+		index, err = strconv.ParseInt(rawIndex, 10, 64)
+		if err != nil {
+			return
+		}
+
+		connB.Send("HSET", targetKey, index, []byte(hash))
+	}
+
+	// send all data to target connection (execute the transaction)
+	log.Infof("flushing buffered metadata for target vdisk %q...", targetID)
+	response, err := connB.Do("EXEC")
+	if err == nil && response == nil {
+		// if response == <nil> the transaction has failed
+		// more info: https://redis.io/topics/transactions
+		err = fmt.Errorf("vdisk %q was busy and couldn't be modified", targetID)
+	}
+
+	return
+}
+
+func newDeleteDedupedMetadataOp(vdiskID string) storageOp {
+	return &deleteDedupedMetadataOp{vdiskID}
+}
+
+type deleteDedupedMetadataOp struct {
+	vdiskID string
+}
+
+func (op *deleteDedupedMetadataOp) Send(sender storageOpSender) error {
+	log.Debugf("batch deletion of deduped metadata for: %v", op.vdiskID)
+	return sender.Send("DEL", lba.StorageKey(op.vdiskID))
+}
+
+func (op *deleteDedupedMetadataOp) Receive(receiver storageOpReceiver) error {
+	_, err := receiver.Receive()
+	return err
+}
+
+func (op *deleteDedupedMetadataOp) Label() string {
+	return "delete deduped metadata of " + op.vdiskID
+}

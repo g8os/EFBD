@@ -28,10 +28,10 @@ endif
 nbdserver: $(OUTPUT)
 ifeq ($(GOOS), darwin)
 	GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -o $(OUTPUT)/$@ ./nbdserver
+		go build -o $(OUTPUT)/$@ ./nbd/nbdserver
 else
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -ldflags '$(ldflags)' -o $(OUTPUT)/$@ ./nbdserver
+		go build -ldflags '$(ldflags)' -o $(OUTPUT)/$@ ./nbd/nbdserver
 endif
 
 tlogserver: $(OUTPUT)

@@ -11,8 +11,6 @@ import (
 
 	"github.com/garyburd/redigo/redis"
 	"github.com/zero-os/0-Disk/config"
-	"github.com/zero-os/0-Disk/nbdserver/ardb"
-	"github.com/zero-os/0-Disk/nbdserver/lba"
 )
 
 func main() {
@@ -292,11 +290,11 @@ func parseFlagsAndArgs() error {
 	// set prefix
 	switch cfg.VdiskType.t.StorageType() {
 	case config.StorageDeduped:
-		cfg.VdiskPrefix = lba.StorageKeyPrefix
+		cfg.VdiskPrefix = dedupMetadataPrefix
 	case config.StorageNonDeduped:
-		cfg.VdiskPrefix = ardb.NonDedupedStorageKeyPrefix
+		cfg.VdiskPrefix = nonDedupDataPrefix
 	case config.StorageSemiDeduped:
-		cfg.VdiskPrefix = ardb.SemiDedupBitMapKeyPrefix
+		cfg.VdiskPrefix = semiDedupMetadataPrefix
 	default:
 		return fmt.Errorf(
 			"no migration needs to be done for vdisk %s", cfg.VdiskType.t)
@@ -381,10 +379,16 @@ var (
 		strings.Join(knownKeyPrefixList, "|") +
 		")")
 	knownKeyPrefixList = []string{
-		lba.StorageKeyPrefix,
-		ardb.NonDedupedStorageKeyPrefix,
-		ardb.SemiDedupBitMapKeyPrefix,
+		dedupMetadataPrefix,
+		nonDedupDataPrefix,
+		semiDedupMetadataPrefix,
 	}
+)
+
+const (
+	dedupMetadataPrefix     = "lba:"
+	nonDedupDataPrefix      = "nondedup:"
+	semiDedupMetadataPrefix = "semidedup:bitmap:"
 )
 
 // Redis Lua Scripts Used

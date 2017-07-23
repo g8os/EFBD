@@ -233,7 +233,7 @@ func (c *Client) resender() {
 				continue
 			}
 
-			err = c.Send(block.Operation(), seq, block.Offset(), block.Timestamp(), data, block.Size())
+			err = c.Send(block.Operation(), seq, block.Index(), block.Timestamp(), data)
 			if err != nil {
 				log.Errorf("client resender failed to send data:%v", err)
 			}
@@ -469,12 +469,11 @@ func (c *Client) signalCond(cond *sync.Cond) {
 // It returns error in these cases:
 // - failed to encode the capnp.
 // - failed to recover from broken network connection.
-func (c *Client) Send(op uint8, seq, offset, timestamp uint64,
-	data []byte, size uint64) error {
+func (c *Client) Send(op uint8, seq uint64, index int64, timestamp uint64, data []byte) error {
 	c.wLock.Lock()
 	defer c.wLock.Unlock()
 
-	block, err := c.send(op, seq, offset, timestamp, data, size)
+	block, err := c.send(op, seq, index, timestamp, data)
 	if err == nil && block != nil {
 		c.blockBuffer.Add(block)
 	}
@@ -482,8 +481,7 @@ func (c *Client) Send(op uint8, seq, offset, timestamp uint64,
 }
 
 // send tlog block to server
-func (c *Client) send(op uint8, seq, offset, timestamp uint64,
-	data []byte, size uint64) (*schema.TlogBlock, error) {
+func (c *Client) send(op uint8, seq uint64, index int64, timestamp uint64, data []byte) (*schema.TlogBlock, error) {
 	hash := zerodisk.HashBytes(data)
 
 	sender := func() (interface{}, error) {
@@ -491,7 +489,7 @@ func (c *Client) send(op uint8, seq, offset, timestamp uint64,
 			return nil, err
 		}
 
-		block, err := c.encodeBlockCapnp(c.bw, op, seq, hash[:], offset, timestamp, data, size)
+		block, err := c.encodeBlockCapnp(c.bw, op, seq, index, hash[:], timestamp, data)
 		if err != nil {
 			return block, err
 		}

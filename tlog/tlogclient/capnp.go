@@ -32,8 +32,7 @@ func (c *Client) encodeHandshakeCapnp(firstSequence uint64, resetFirstSeq bool) 
 	return capnp.NewEncoder(c.bw).Encode(msg)
 }
 
-func (c *Client) encodeBlockCapnp(w io.Writer, op uint8, seq uint64, hash []byte,
-	offset, timestamp uint64, data []byte, size uint64) (*schema.TlogBlock, error) {
+func (c *Client) encodeBlockCapnp(w io.Writer, op uint8, seq uint64, index int64, hash []byte, timestamp uint64, data []byte) (*schema.TlogBlock, error) {
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(c.capnpSegmentBuf))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build build (block) capnp: %s", err.Error())
@@ -55,9 +54,8 @@ func (c *Client) encodeBlockCapnp(w io.Writer, op uint8, seq uint64, hash []byte
 
 	block.SetOperation(op)
 	block.SetSequence(seq)
-	block.SetOffset(offset)
+	block.SetIndex(index)
 	block.SetTimestamp(timestamp)
-	block.SetSize(size)
 
 	return &block, capnp.NewEncoder(w).Encode(msg)
 }

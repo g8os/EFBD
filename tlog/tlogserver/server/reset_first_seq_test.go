@@ -119,7 +119,7 @@ func testClientSendLog(ctx context.Context, t *testing.T, c *tlogclient.Client, 
 			return
 		default:
 			x := uint64(i)
-			err := c.Send(schema.OpWrite, x, x, x, data, uint64(len(data)))
+			err := c.Send(schema.OpSet, x, int64(x), x, data)
 			if !assert.Nil(t, err) {
 				cancelFunc()
 				return

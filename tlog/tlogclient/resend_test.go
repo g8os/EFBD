@@ -168,7 +168,7 @@ func TestResendTimeout(t *testing.T) {
 		x := uint64(i)
 
 		// send
-		err := client.Send(schema.OpWrite, x, x, x, data, uint64(len(data)))
+		err := client.Send(schema.OpSet, x, int64(x), x, data)
 		assert.Nil(t, err)
 	}
 

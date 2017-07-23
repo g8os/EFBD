@@ -28,12 +28,11 @@ struct TlogResponse {
 # a tlog block
 struct TlogBlock {
 	sequence @0 :UInt64;
-	offset @1 :UInt64;
-	size @2 :UInt64;
-	hash  @3 :Data;
-	data @4 :Data;
-	timestamp @5 :UInt64;
-	operation @6 :UInt8; # disk operation  1=WriteAt,2=WriteZeroesAt
+	index @1 :Int64;
+	hash  @2 :Data;
+	data @3 :Data;
+	timestamp @4 :UInt64;
+	operation @5 :UInt8; # disk operation  1=OpSet,2=OpDelete
 }
 
 # tlog block aggregation

@@ -2,6 +2,6 @@ package schema
 
 // Block operation
 const (
-	OpWrite         = 1
-	OpWriteZeroesAt = 2
+	OpSet    = 1
+	OpDelete = 2
 )

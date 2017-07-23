@@ -1,17 +1,13 @@
 package list
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"regexp"
-	"strings"
 
-	"github.com/garyburd/redigo/redis"
 	"github.com/spf13/cobra"
+	zerodiskcfg "github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
-	"github.com/zero-os/0-Disk/nbdserver/ardb"
-	"github.com/zero-os/0-Disk/nbdserver/lba"
+	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
 
@@ -44,88 +40,22 @@ func listVdisks(cmd *cobra.Command, args []string) error {
 	}
 	log.SetLevel(logLevel)
 
-	log.Infof("connection to ardb at %s (db: %d)",
-		storageURL, vdiskCfg.DatabaseIndex)
-
-	// open redis connection
-	redisDatabase := redis.DialDatabase(vdiskCfg.DatabaseIndex)
-	conn, err := redis.Dial("tcp", storageURL, redisDatabase)
+	// scan the specified storage for available vdisks
+	vdiskIDs, err := storage.ScanForAvailableVdisks(zerodiskcfg.StorageServerConfig{
+		Address:  storageURL,
+		Database: vdiskCfg.DatabaseIndex,
+	})
 	if err != nil {
-		return fmt.Errorf("couldn't connect to the ardb: %s", err.Error())
-	}
-	defer conn.Close()
-
-	log.Infof("scanning for all available vdisks...")
-
-	script := redis.NewScript(0, vdiskListScriptSource)
-	cursor := startListCursor
-	var output [][]byte
-
-	var vdisks [][]byte
-	var vdisksLength int
-
-	// go through all available keys
-	for {
-		output, err = redis.ByteSlices(script.Do(conn, cursor))
-		if err != nil {
-			log.Error("aborting key scan due to an error: ", err)
-			break
-		}
-
-		vdisksLength = len(output) - 1
-		if vdisksLength > 0 {
-			vdisks = append(vdisks, output[:vdisksLength]...)
-		}
-
-		cursor = output[vdisksLength]
-		if bytes.Compare(startListCursor, cursor) == 0 {
-			break
-		}
+		return err
 	}
 
-	log.Infof("printing the available and unique vdisks...")
-
-	var ok bool
-	var vdiskID string
-
-	// only log each vdisk once
-	uniqueVdisks := make(map[string]struct{})
-	for _, vdisk := range vdisks {
-		vdiskID = filterVdiskID(string(vdisk))
-		if vdiskID == "" {
-			continue // skip, not a vdiskID
-		}
-
-		if _, ok = uniqueVdisks[vdiskID]; ok {
-			continue // skip, already printed
-		}
-		uniqueVdisks[vdiskID] = struct{}{}
+	// print at least 1 vdisk fond from the specified storage
+	for _, vdiskID := range vdiskIDs {
 		fmt.Println(vdiskID)
 	}
 
+	// all good
 	return nil
-}
-
-// filterVdiskID only accepts keys with a known prefix,
-// if no known prefix is found an empty string is returned,
-// otherwise the prefix is removed and the vdiskID is returned.
-func filterVdiskID(key string) string {
-	parts := prefixRe.FindStringSubmatch(key)
-	if len(parts) == 3 {
-		return parts[2]
-	}
-
-	return ""
-}
-
-var prefixRe = regexp.MustCompile("^(" +
-	strings.Join(knownKeyPrefixes, "|") +
-	")(.+)$")
-
-var knownKeyPrefixes = []string{
-	lba.StorageKeyPrefix,
-	ardb.NonDedupedStorageKeyPrefix,
-	ardb.SemiDedupBitMapKeyPrefix,
 }
 
 func init() {
@@ -141,33 +71,3 @@ WARNING: This command is very slow, and might take a while to finish!
 		"db", 0,
 		"database index to use for the ardb connection (0 by default)")
 }
-
-var startListCursor = []byte("0")
-
-const vdiskListScriptSource = `
-local cursor = ARGV[1]
-
-local result = redis.call("SCAN", cursor)
-local batch = result[2]
-
-local key
-local type
-
-local output = {}
-
-for i = 1, #batch do
-	key = batch[i]
-
-	-- only add hashmaps
-	type = redis.call("TYPE", key)
-	type = type.ok or type
-	if type == "hash" then
-		table.insert(output, key)
-	end
-end
-
-cursor = result[1]
-table.insert(output, cursor)
-
-return output
-`

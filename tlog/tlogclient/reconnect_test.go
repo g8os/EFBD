@@ -43,7 +43,7 @@ func TestReconnectFromSend(t *testing.T) {
 		}
 
 		// send
-		err := client.Send(schema.OpWrite, x, x, x, data, uint64(len(data)))
+		err := client.Send(schema.OpSet, x, int64(x), x, data)
 		assert.Nil(t, err)
 	}
 
