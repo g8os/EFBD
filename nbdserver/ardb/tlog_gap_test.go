@@ -95,12 +95,6 @@ func (ms *slowInMemoryStorage) Set(blockIndex int64, content []byte) error {
 	return ms.storage.Set(blockIndex, content)
 }
 
-// Merge implements backendStorage.Merge
-func (ms *slowInMemoryStorage) Merge(blockIndex, offset int64, content []byte) error {
-	time.Sleep(ms.modSleepTime)
-	return ms.storage.Merge(blockIndex, offset, content)
-}
-
 // Get implements backendStorage.Get
 func (ms *slowInMemoryStorage) Get(blockIndex int64) ([]byte, error) {
 	return ms.storage.Get(blockIndex)

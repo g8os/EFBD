@@ -84,25 +84,6 @@ func (sds *semiDedupedStorage) Set(blockIndex int64, content []byte) error {
 	return nil
 }
 
-// Merge implements backendStorage.Merge
-func (sds *semiDedupedStorage) Merge(blockIndex, offset int64, content []byte) error {
-	mergedContent, _ := sds.Get(blockIndex)
-
-	if ocl := int64(len(mergedContent)); ocl == 0 {
-		mergedContent = make([]byte, sds.blockSize)
-	} else if ocl < sds.blockSize {
-		oc := make([]byte, sds.blockSize)
-		copy(oc, mergedContent)
-		mergedContent = oc
-	}
-
-	// copy in new content
-	copy(mergedContent[offset:], content)
-
-	// store new content
-	return sds.Set(blockIndex, mergedContent)
-}
-
 // Get implements backendStorage.Get
 func (sds *semiDedupedStorage) Get(blockIndex int64) ([]byte, error) {
 	// if a bit is enabled in the bitmap,

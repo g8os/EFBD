@@ -70,35 +70,6 @@ func (ss *nonDedupedStorage) Set(blockIndex int64, content []byte) (err error) {
 	return
 }
 
-// Merge implements backendStorage.Merge
-func (ss *nonDedupedStorage) Merge(blockIndex, offset int64, content []byte) (err error) {
-	mergedContent, _ := ss.getContent(blockIndex)
-
-	// create old content from scratch or expand it to the blocksize,
-	// in case no old content was defined or it was defined but too small
-	if ocl := int64(len(mergedContent)); ocl == 0 {
-		mergedContent = make([]byte, ss.blockSize)
-	} else if ocl < ss.blockSize {
-		oc := make([]byte, ss.blockSize)
-		copy(oc, mergedContent)
-		mergedContent = oc
-	}
-
-	// copy in new content
-	copy(mergedContent[offset:], content)
-
-	// get a connection to a data storage server, based on the modulo blockIndex
-	conn, err := ss.provider.RedisConnection(blockIndex)
-	if err != nil {
-		return
-	}
-	defer conn.Close()
-
-	// store new content, as the merged version is non-zero
-	_, err = conn.Do("HSET", ss.storageKey, blockIndex, mergedContent)
-	return
-}
-
 // Get implements backendStorage.Get
 func (ss *nonDedupedStorage) Get(blockIndex int64) (content []byte, err error) {
 	content, err = ss.getContent(blockIndex)

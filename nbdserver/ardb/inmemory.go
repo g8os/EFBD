@@ -49,28 +49,6 @@ func (ms *inMemoryStorage) Set(blockIndex int64, content []byte) (err error) {
 	return
 }
 
-// Merge implements backendStorage.Merge
-func (ms *inMemoryStorage) Merge(blockIndex, offset int64, content []byte) (err error) {
-	ms.mux.Lock()
-	defer ms.mux.Unlock()
-
-	mergedContent, _ := ms.vdisk[blockIndex]
-	if ocl := int64(len(mergedContent)); ocl == 0 {
-		mergedContent = make([]byte, ms.blockSize)
-	} else if ocl < ms.blockSize {
-		oc := make([]byte, ms.blockSize)
-		copy(oc, mergedContent)
-		mergedContent = oc
-	}
-
-	// copy in new content
-	copy(mergedContent[offset:], content)
-
-	// store new content, as the merged version is non-zero
-	ms.vdisk[blockIndex] = mergedContent
-	return
-}
-
 // Get implements backendStorage.Get
 func (ms *inMemoryStorage) Get(blockIndex int64) (content []byte, err error) {
 	ms.mux.RLock()

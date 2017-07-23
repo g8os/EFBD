@@ -150,34 +150,6 @@ func TestSemiDedupedContentBasic(t *testing.T) {
 	if content != nil {
 		t.Fatalf("unexpected content found: %v", content)
 	}
-
-	// let's merge template with user content
-	err = storage.Merge(templateIndexA, 1, userContentA)
-	if err != nil {
-		t.Fatalf("merging templateIndexA failed: %v", err)
-	}
-	// let's check if the merging went fine
-	content, err = storage.Get(templateIndexA)
-	if err != nil {
-		t.Fatalf("getting templateIndexA failed: %v", err)
-	}
-	if bytes.Compare([]byte{1, 4, 2, 4, 5, 6, 7, 8}, content) != 0 {
-		t.Fatalf("unexpected content found: %v", content)
-	}
-
-	// let's merge nil content with user content
-	err = storage.Merge(templateIndexB, 2, userContentA)
-	if err != nil {
-		t.Fatalf("merging templateIndexB failed: %v", err)
-	}
-	// let's check if the merging went fine
-	content, err = storage.Get(templateIndexB)
-	if err != nil {
-		t.Fatalf("getting templateIndexB failed: %v", err)
-	}
-	if bytes.Compare([]byte{0, 0, 4, 2, 0, 0, 0, 0}, content) != 0 {
-		t.Fatalf("unexpected content found: %v", content)
-	}
 }
 
 func init() {
