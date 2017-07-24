@@ -75,10 +75,10 @@ func TestFileSource(t *testing.T) {
 	}
 }
 
-func testFileSourceWithWatcher(t *testing.T) {
+func TestFileSourceWithWatcher(t *testing.T) {
 	// setup yaml file
 	// write
-	testpath := "./test.yaml"
+	testpath := "/tmp/test.yaml"
 	fileperm, err := filePerm(testpath)
 	if err != nil {
 		fileperm = 0644
@@ -120,7 +120,7 @@ func testFileSourceWithWatcher(t *testing.T) {
 	timeout := make(chan bool, 1)
 	defer close(timeout)
 	go func() {
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(1 * time.Second)
 		recievedLock.Lock()
 		if !received {
 			timeout <- true
@@ -151,6 +151,7 @@ func testFileSourceWithWatcher(t *testing.T) {
 
 func sighupListener() chan bool {
 	received := make(chan bool)
+	log.Infof("Starting test SIGHUP listener goroutine")
 	go func() {
 		sighub := make(chan os.Signal)
 		signal.Notify(sighub, syscall.SIGHUP)
@@ -165,7 +166,7 @@ func sighupListener() chan bool {
 				received <- true
 			case _, ok := <-received:
 				if !ok {
-					log.Infof("closing listener goroutine")
+					log.Infof("Closing test SIGHUP listener goroutine")
 					return
 				}
 			}

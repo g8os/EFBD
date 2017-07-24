@@ -3,10 +3,9 @@ package configV2
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
-
-	"strings"
 
 	"github.com/coreos/etcd/clientv3"
 	"github.com/zero-os/0-Disk/log"

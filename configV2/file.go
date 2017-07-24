@@ -231,8 +231,11 @@ func fromYAMLBytes(bytes []byte) (*fileConfig, error) {
 	// unmarshal the yaml content
 	err := yaml.Unmarshal(bytes, buf)
 	if err != nil {
-		return cfg, err
+		return nil, fmt.Errorf("Could not unmarshal provided bytes: %v", err)
 	}
+
+	// debug
+	//log.Info("NBD Values: %v", buf.NBD)
 
 	// set up buffer to be able to set private fields
 	cfg.base = buf.Base

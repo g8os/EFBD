@@ -2,7 +2,6 @@ package configV2
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -179,10 +178,10 @@ func testETCDConfig(t *testing.T) {
 func testCleanETCD(t *testing.T) {
 	endpoints := []string{"127.0.0.1:2379"}
 	vdiskID := "test"
-	baseKey := fmt.Sprintf("%s:%s", vdiskID, "conf")
-	nbdKey := fmt.Sprintf("%s:%s:%s", vdiskID, "conf", "nbd")
-	tlogKey := fmt.Sprintf("%s:%s:%s", vdiskID, "conf", "tlog")
-	slaveKey := fmt.Sprintf("%s:%s:%s", vdiskID, "conf", "slave")
+	baseKey := etcdBaseKey(vdiskID)
+	nbdKey := etcdNBDKey(vdiskID)
+	tlogKey := etcdTlogKey(vdiskID)
+	slaveKey := etcdSlaveKey(vdiskID)
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   endpoints,
 		DialTimeout: 5 * time.Second,

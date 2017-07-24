@@ -62,12 +62,6 @@ func (base *BaseConfig) ToBytes() ([]byte, error) {
 // Validate Validates baseConfig
 // Should only be used for ConfigSource implementation
 func (base BaseConfig) Validate() error {
-	// check valid tags
-	_, err := valid.ValidateStruct(base)
-	if err != nil {
-		return fmt.Errorf("invalid base config: %v", err)
-	}
-
 	// check base properties
 	if base.BlockSize == 0 || base.BlockSize%2 != 0 {
 		return fmt.Errorf("%d is an invalid blockSize", base.BlockSize)
@@ -75,16 +69,23 @@ func (base BaseConfig) Validate() error {
 	if base.Size == 0 {
 		return fmt.Errorf("%d is an invalid size", base.Size)
 	}
-	err = base.Type.Validate()
+	err := base.Type.Validate()
 	if err != nil {
 		return fmt.Errorf("baseconfig has invalid type: %s", err.Error())
+
 	}
+	// check valid tags
+	_, err = valid.ValidateStruct(base)
+	if err != nil {
+		return fmt.Errorf("invalid base config: %v", err)
+	}
+
 	return nil
 }
 
 // NBDConfig represents an nbd storage configuration
 type NBDConfig struct {
-	StorageCluster         StorageClusterConfig `yaml:"storageCluster" valid:"optional"`
+	StorageCluster         StorageClusterConfig `yaml:"storageCluster" valid:"required"`
 	TemplateStorageCluster StorageClusterConfig `yaml:"templateStorageCluster" valid:"optional"`
 	TemplateVdiskID        string               `yaml:"templateVdiskID" valid:"optional"`
 }
@@ -128,19 +129,15 @@ func (nbd *NBDConfig) ToBytes() ([]byte, error) {
 // needs a vdisk type
 // Should only be used for ConfigSource implementation
 func (nbd NBDConfig) Validate(vdiskType VdiskType) error {
-	_, err := valid.ValidateStruct(nbd)
-	if err != nil {
-		return fmt.Errorf("invalid NBD config: %v", err)
-	}
 
 	if len(nbd.StorageCluster.DataStorage) <= 0 {
-		return fmt.Errorf("no nbd datastorage was found")
+		return fmt.Errorf("nbd datastorage was empty")
 	}
 
 	// Check if templatestorage is present when required
 	if vdiskType.TemplateSupport(nbd) {
 		if len(nbd.TemplateStorageCluster.DataStorage) <= 0 {
-			return fmt.Errorf("template storage not found while required")
+			return fmt.Errorf("template storage was empty while required")
 		}
 	}
 
@@ -149,6 +146,12 @@ func (nbd NBDConfig) Validate(vdiskType VdiskType) error {
 	if metadataUndefined && vdiskType.StorageType() == StorageDeduped {
 		return fmt.Errorf("metadata storage not found while required")
 	}
+
+	_, err := valid.ValidateStruct(nbd)
+	if err != nil {
+		return fmt.Errorf("invalid NBD config: %v", err)
+	}
+
 	return nil
 }
 
@@ -192,14 +195,15 @@ func (tlog *TlogConfig) ToBytes() ([]byte, error) {
 // Validate Validates TlogConfig
 // Should only be used for ConfigSource implementation
 func (tlog TlogConfig) Validate() error {
+	if len(tlog.TlogStorageCluster.DataStorage) <= 0 {
+		return fmt.Errorf("no tlog datastorage was found")
+	}
+
 	_, err := valid.ValidateStruct(tlog)
 	if err != nil {
 		return fmt.Errorf("invalid tlog config: %v", err)
 	}
 
-	if len(tlog.TlogStorageCluster.DataStorage) <= 0 {
-		return fmt.Errorf("no tlog datastorage was found")
-	}
 	return nil
 }
 
@@ -328,7 +332,7 @@ func (vdiskType VdiskType) Validate() error {
 	case VdiskTypeBoot, VdiskTypeDB, VdiskTypeCache, VdiskTypeTmp:
 		return nil
 	default:
-		return fmt.Errorf("%v is an invalid vdisk type", vdiskType)
+		return fmt.Errorf("%s is an invalid VdiskType", vdiskType)
 	}
 }
 
