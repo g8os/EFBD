@@ -46,6 +46,14 @@ tlogConfig:
     metadataStorage:
       address: 192.168.58.146:2001
       db: 8
+slaveConfig:
+  slaveStorageCluster:
+    dataStorage: 
+      - address: 192.168.58.145:2000
+        db: 4
+    metadataStorage:
+      address: 192.168.58.144:2000
+      db: 8
   `
 const validBaseStr = `
 blockSize: 2048

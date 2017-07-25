@@ -3,7 +3,6 @@ package configV2
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -11,37 +10,9 @@ import (
 	"github.com/zero-os/0-Disk/log"
 )
 
-// etcdConfig represents a config using etcd as source
-type etcdConfig struct {
-	vdiskID     string
-	base        BaseConfig
-	nbd         *NBDConfig
-	tlog        *TlogConfig
-	slave       *SlaveConfig
-	baseKey     string
-	nbdKey      string
-	tlogKey     string
-	slaveKey    string
-	baseRWLock  sync.RWMutex
-	nbdRWLock   sync.RWMutex
-	tlogRWLock  sync.RWMutex
-	slaveRWLock sync.RWMutex
-	endpoints   []string
-	cli         *clientv3.Client
-}
-
-// NewETCDConfig returns a new etcdConfig from provided endpoints
-func NewETCDConfig(vdiskID string, endpoints []string) (ConfigSource, error) {
-	cfg := new(etcdConfig)
-	cfg.vdiskID = vdiskID
-	cfg.endpoints = endpoints
-
-	// setup keys
-	cfg.baseKey = etcdBaseKey(vdiskID)
-	cfg.nbdKey = etcdNBDKey(vdiskID)
-	cfg.tlogKey = etcdTlogKey(vdiskID)
-	cfg.slaveKey = etcdSlaveKey(vdiskID)
-
+// BaseConfigFromETCD return BaseConfig from ETCD source
+func BaseConfigFromETCD(vdiskID string, endpoints []string) (*BaseConfig, error) {
+	baseKey := etcdBaseKey(vdiskID)
 	// Setup connection
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   endpoints,
@@ -50,11 +21,8 @@ func NewETCDConfig(vdiskID string, endpoints []string) (ConfigSource, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not connect to ETCD server: %v", err)
 	}
-	cfg.cli = cli
-
-	// fetch all subconfigs
-	//base
-	resp, err := cli.Get(context.TODO(), cfg.baseKey)
+	defer cli.Close()
+	resp, err := cli.Get(context.TODO(), baseKey)
 	if err != nil {
 		return nil, fmt.Errorf("could not get base from ETCD: %v", err)
 	}
@@ -65,295 +33,530 @@ func NewETCDConfig(vdiskID string, endpoints []string) (ConfigSource, error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg.baseRWLock.Lock()
-	cfg.base = *base
-	cfg.baseRWLock.Unlock()
-	//nbd
-	resp, err = cli.Get(context.TODO(), cfg.nbdKey)
+
+	return base, nil
+}
+
+//NBDConfigFromETCD gets an NBDConfig from etcd cluster
+func NBDConfigFromETCD(vdiskID string, endpoints []string, vdiskType VdiskType) (*NBDConfig, error) {
+	// Setup connection
+	nbdKey := etcdNBDKey(vdiskID)
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   endpoints,
+		DialTimeout: 5 * time.Second,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("could not connect to ETCD server: %v", err)
+	}
+	defer cli.Close()
+
+	// fetch nbd
+	resp, err := cli.Get(context.TODO(), nbdKey)
 	if err != nil {
 		return nil, fmt.Errorf("could not get nbd from ETCD: %v", err)
 	}
-	if len(resp.Kvs) > 0 {
-		cfg.nbdRWLock.Lock()
-		cfg.baseRWLock.RLock()
-		cfg.nbd, err = NewNBDConfig(resp.Kvs[0].Value, cfg.base.Type)
-		cfg.baseRWLock.RUnlock()
-		cfg.nbdRWLock.Unlock()
-		if err != nil {
-			return nil, err
-		}
+	if len(resp.Kvs) < 1 {
+		return nil, fmt.Errorf("nbd config was not found on the ETCD server")
 	}
-	//tlog
-	resp, err = cli.Get(context.TODO(), cfg.tlogKey)
+	nbd, err := NewNBDConfig(resp.Kvs[0].Value, vdiskType)
+	if err != nil {
+		return nil, err
+	}
+
+	return nbd, err
+}
+
+// TlogConfigFromETCD returns the TlogConfig from an etcd cluster
+func TlogConfigFromETCD(vdiskID string, endpoints []string) (*TlogConfig, error) {
+	// Setup connection
+	tlogKey := etcdTlogKey(vdiskID)
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   endpoints,
+		DialTimeout: 5 * time.Second,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("could not connect to ETCD server: %v", err)
+	}
+	defer cli.Close()
+
+	// fetch tlog
+	resp, err := cli.Get(context.TODO(), tlogKey)
 	if err != nil {
 		return nil, fmt.Errorf("could not get tlog from ETCD: %v", err)
 	}
-	if len(resp.Kvs) > 0 {
-		cfg.tlogRWLock.Lock()
-		cfg.tlog, err = NewTlogConfig(resp.Kvs[0].Value)
-		cfg.tlogRWLock.Unlock()
-		if err != nil {
-			return nil, err
-		}
+	if len(resp.Kvs) < 1 {
+		return nil, fmt.Errorf("tlog config was not found on the ETCD server")
 	}
-	//slave
-	resp, err = cli.Get(context.TODO(), cfg.slaveKey)
+	tlog, err := NewTlogConfig(resp.Kvs[0].Value)
+	if err != nil {
+		return nil, err
+	}
+
+	return tlog, err
+}
+
+// SlaveConfigFromETCD returns the SlaveConfig from an etcd cluster
+func SlaveConfigFromETCD(vdiskID string, endpoints []string) (*SlaveConfig, error) {
+	// Setup connection
+	slaveKey := etcdSlaveKey(vdiskID)
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   endpoints,
+		DialTimeout: 5 * time.Second,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("could not connect to ETCD server: %v", err)
+	}
+	defer cli.Close()
+
+	// fetch slave
+	resp, err := cli.Get(context.TODO(), slaveKey)
 	if err != nil {
 		return nil, fmt.Errorf("could not get slave from ETCD: %v", err)
 	}
-	if len(resp.Kvs) > 0 {
-		cfg.slaveRWLock.Lock()
-		cfg.slave, err = NewSlaveConfig(resp.Kvs[0].Value)
-		cfg.slaveRWLock.Unlock()
-		if err != nil {
-			return nil, err
-		}
+	if len(resp.Kvs) < 1 {
+		return nil, fmt.Errorf("slave config was not found on the ETCD server")
 	}
-
-	// start watcher
-	cfg.watch()
-
-	return cfg, nil
-}
-
-// Close implements ConfigSource.Close
-func (cfg *etcdConfig) Close() error {
-	// close client
-	return cfg.cli.Close()
-}
-
-// Base implements ConfigSource.Base
-func (cfg *etcdConfig) Base() BaseConfig {
-	cfg.baseRWLock.RLock()
-	defer cfg.baseRWLock.RUnlock()
-	return cfg.base
-}
-
-// NBD implements ConfigSource.NBD
-// returns ErrConfigNotAvailable when config was not found
-func (cfg *etcdConfig) NBD() (*NBDConfig, error) {
-	cfg.nbdRWLock.RLock()
-	defer cfg.nbdRWLock.RUnlock()
-	if cfg.nbd == nil {
-		return nil, ErrConfigNotAvailable
-	}
-	return cfg.nbd.Clone(), nil
-}
-
-// Tlog implements ConfigSource.Tlog
-// returns ErrConfigNotAvailable when config was not found
-func (cfg *etcdConfig) Tlog() (*TlogConfig, error) {
-	cfg.tlogRWLock.RLock()
-	defer cfg.tlogRWLock.RUnlock()
-	if cfg.tlog == nil {
-		return nil, ErrConfigNotAvailable
-	}
-	return cfg.tlog.Clone(), nil
-}
-
-// Slave implements ConfigSource.Slave
-// returns ErrConfigNotAvailable when config was not found
-func (cfg *etcdConfig) Slave() (*SlaveConfig, error) {
-	cfg.slaveRWLock.RLock()
-	defer cfg.slaveRWLock.RUnlock()
-	if cfg.slave == nil {
-		return nil, ErrConfigNotAvailable
-	}
-	return cfg.slave.Clone(), nil
-}
-
-// SetBase implements ConfigSource.SetBase
-// Sets a new base config and writes it to the source
-func (cfg *etcdConfig) SetBase(base BaseConfig) error {
-	err := base.Validate()
+	slave, err := NewSlaveConfig(resp.Kvs[0].Value)
 	if err != nil {
-		return fmt.Errorf("provided base config was not valid: %s", err)
+		return nil, err
 	}
 
-	// write to etcd
-	val, err := base.ToBytes()
-	if err != nil {
-		return err
-	}
-	_, err = cfg.cli.Put(context.TODO(), cfg.baseKey, string(val))
-	if err != nil {
-		return fmt.Errorf("could not send base config: %v", err)
-	}
-
-	return nil
+	return slave, err
 }
 
-// SetNBD implements ConfigSource.SetNBD
-// Sets a new nbd config and writes it to the source
-func (cfg *etcdConfig) SetNBD(nbd NBDConfig) error {
-	cfg.baseRWLock.RLock()
-	err := nbd.Validate(cfg.base.Type)
-	cfg.baseRWLock.RUnlock()
+type etcdNBDConfig struct {
+	vdiskType VdiskType
+	key       string
+	nbd       *NBDConfig
+	lock      sync.RWMutex
+	cli       *clientv3.Client
+	subs      map[chan<- NBDConfig]struct{}
+	subLock   sync.RWMutex
+}
+
+// NBDConfigETCDSource returns a NBDConfigSource implementation for etcd
+func NBDConfigETCDSource(vdiskID string, endpoints []string, vdiskType VdiskType) (NBDConfigSource, error) {
+	nbd, err := NBDConfigFromETCD(vdiskID, endpoints, vdiskType)
+	if err != nil {
+		return nil, fmt.Errorf(err.Error())
+	}
+
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   endpoints,
+		DialTimeout: 5 * time.Second,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("could not connect to ETCD server: %v", err)
+	}
+
+	// setup etcdNBDConfig
+	enbd := new(etcdNBDConfig)
+	enbd.lock.Lock()
+	enbd.nbd = nbd
+	enbd.lock.Unlock()
+	enbd.vdiskType = vdiskType
+	enbd.key = etcdNBDKey(vdiskID)
+	enbd.cli = cli
+	enbd.subs = make(map[chan<- NBDConfig]struct{})
+
+	enbd.watch()
+
+	return enbd, nil
+}
+
+// Close closes etcd connection
+func (enbd *etcdNBDConfig) Close() error {
+	return enbd.cli.Close()
+}
+
+func (enbd *etcdNBDConfig) SetNBDConfig(nbd NBDConfig) error {
+	// validate input
+	err := nbd.Validate(enbd.vdiskType)
 	if err != nil {
 		return fmt.Errorf("provided nbd config was not valid: %s", err)
 	}
 
 	// save locally
-	cfg.nbdRWLock.Lock()
-	cfg.nbd = &nbd
-	cfg.nbdRWLock.Unlock()
+	enbd.lock.Lock()
+	enbd.nbd = nbd.Clone()
+	enbd.lock.Unlock()
 
 	// write to etcd
 	val, err := nbd.ToBytes()
 	if err != nil {
 		return err
 	}
-	_, err = cfg.cli.Put(context.TODO(), cfg.nbdKey, string(val))
+	_, err = enbd.cli.Put(context.TODO(), enbd.key, string(val))
 	if err != nil {
 		return fmt.Errorf("could not send nbd config: %v", err)
 	}
+	return nil
+}
+
+// Returns the latest clone of NBD config version
+func (enbd *etcdNBDConfig) NBDConfig() (*NBDConfig, error) {
+	enbd.lock.RLock()
+	defer enbd.lock.RUnlock()
+	return enbd.nbd.Clone(), nil
+}
+
+// return the NBD's VdiskType
+func (enbd *etcdNBDConfig) VdiskType() VdiskType {
+	return enbd.vdiskType
+}
+
+func (enbd *etcdNBDConfig) Subscribe(c chan<- NBDConfig) error {
+	if c == nil {
+		return fmt.Errorf("can't subscribe to %s with nil channel", enbd.key)
+	}
+	enbd.subLock.Lock()
+	enbd.subs[c] = struct{}{}
+	enbd.subLock.Unlock()
 
 	return nil
 }
 
-// SetTlog implements ConfigSource.SetTlog
-// Sets a new tolog config and writes it to the source
-func (cfg *etcdConfig) SetTlog(tlog TlogConfig) error {
+func (enbd *etcdNBDConfig) Unsubscribe(c chan<- NBDConfig) error {
+	if c == nil {
+		return fmt.Errorf("can't unsubscribe to %s with nil channel", enbd.key)
+	}
+
+	enbd.subLock.Lock()
+	delete(enbd.subs, c)
+	enbd.subLock.Unlock()
+
+	return nil
+}
+
+func (enbd *etcdNBDConfig) watch() {
+	watch := enbd.cli.Watch(context.TODO(), enbd.key, clientv3.WithPrefix())
+	go func() {
+		for {
+			resp, ok := <-watch
+			if !ok || resp.Err() != nil {
+				if ok {
+					log.Errorf("Watch channel for %s encountered an error: %v", enbd.key, resp.Err())
+				}
+				log.Infof("Watch channel for %s closed", enbd.key)
+				return
+			}
+			for _, ev := range resp.Events {
+				log.Infof("Value for %s received an update", ev.Kv.Key)
+
+				// check if empty, if so make the subconfig nil
+				if len(ev.Kv.Value) < 1 {
+					enbd.lock.Lock()
+					enbd.nbd = nil
+					enbd.lock.Unlock()
+					log.Infof("%s was found empty on ETCD, setting nbd to nil", ev.Kv.Key)
+					continue
+				}
+
+				// create new NBDConfig
+				nbd, err := NewNBDConfig(ev.Kv.Value, enbd.vdiskType)
+				if err != nil {
+					log.Errorf("did not update nbd for %s: %s", enbd.key, err)
+					continue
+				}
+
+				// if valid save it and return to channel
+				enbd.lock.Lock()
+				enbd.nbd = nbd
+				enbd.lock.Unlock()
+				// send value to each subscriber
+				enbd.subLock.RLock()
+				for sub := range enbd.subs {
+					sub <- *nbd.Clone()
+				}
+				enbd.subLock.RUnlock()
+			}
+		}
+	}()
+}
+
+type etcdTlogConfig struct {
+	tlog    *TlogConfig
+	lock    sync.RWMutex
+	cli     *clientv3.Client
+	key     string
+	subs    map[chan<- TlogConfig]struct{}
+	subLock sync.RWMutex
+}
+
+// TlogConfigETCDSource returns a TlogConfigSource implementation for etcd
+func TlogConfigETCDSource(vdiskID string, endpoints []string) (TlogConfigSource, error) {
+	tlog, err := TlogConfigFromETCD(vdiskID, endpoints)
+	if err != nil {
+		return nil, fmt.Errorf(err.Error())
+	}
+
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   endpoints,
+		DialTimeout: 5 * time.Second,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("could not connect to ETCD server: %v", err)
+	}
+
+	// setup etcdtlogConfig
+	etlog := new(etcdTlogConfig)
+	etlog.lock.Lock()
+	etlog.tlog = tlog
+	etlog.lock.Unlock()
+	etlog.key = etcdTlogKey(vdiskID)
+	etlog.cli = cli
+	etlog.subs = make(map[chan<- TlogConfig]struct{})
+
+	// launch watch
+	etlog.watch()
+
+	return etlog, nil
+}
+
+// Close closes etcd connection
+func (etlog *etcdTlogConfig) Close() error {
+	return etlog.cli.Close()
+}
+
+func (etlog *etcdTlogConfig) SetTlogConfig(tlog TlogConfig) error {
+	// validate input
 	err := tlog.Validate()
 	if err != nil {
-		return fmt.Errorf("provided tlog config was not valid: %s", err)
+		return fmt.Errorf("provided nbd config was not valid: %s", err)
 	}
 
 	// save locally
-	cfg.nbdRWLock.Lock()
-	cfg.tlog = &tlog
-	cfg.nbdRWLock.Unlock()
+	etlog.lock.Lock()
+	etlog.tlog = tlog.Clone()
+	etlog.lock.Unlock()
 
 	// write to etcd
 	val, err := tlog.ToBytes()
 	if err != nil {
 		return err
 	}
-	_, err = cfg.cli.Put(context.TODO(), cfg.tlogKey, string(val))
+	_, err = etlog.cli.Put(context.TODO(), etlog.key, string(val))
 	if err != nil {
 		return fmt.Errorf("could not send tlog config: %v", err)
 	}
+	return nil
+}
+
+// Returns the latest Tlog config version
+func (etlog *etcdTlogConfig) TlogConfig() (*TlogConfig, error) {
+	etlog.lock.RLock()
+	defer etlog.lock.RUnlock()
+	return etlog.tlog.Clone(), nil
+}
+
+func (etlog *etcdTlogConfig) Subscribe(c chan<- TlogConfig) error {
+	if c == nil {
+		return fmt.Errorf("can't subscribe to %s with nil channel", etlog.key)
+	}
+	etlog.subLock.Lock()
+	etlog.subs[c] = struct{}{}
+	etlog.subLock.Unlock()
 
 	return nil
 }
 
-// SetSlave implements ConfigSource.SetSlave
-// Sets a new slave config and writes it to the source
-func (cfg *etcdConfig) SetSlave(slave SlaveConfig) error {
+func (etlog *etcdTlogConfig) Unsubscribe(c chan<- TlogConfig) error {
+	if c == nil {
+		return fmt.Errorf("can't unsubscribe to %s with nil channel", etlog.key)
+	}
+
+	etlog.subLock.Lock()
+	delete(etlog.subs, c)
+	etlog.subLock.Unlock()
+
+	return nil
+}
+
+func (etlog *etcdTlogConfig) watch() {
+	watch := etlog.cli.Watch(context.TODO(), etlog.key, clientv3.WithPrefix())
+	go func() {
+		for {
+			resp, ok := <-watch
+			if !ok || resp.Err() != nil {
+				if ok {
+					log.Errorf("Watch channel for %s encountered an error: %v", etlog.key, resp.Err())
+				}
+				log.Infof("Watch channel for %s closed", etlog.key)
+				return
+			}
+			for _, ev := range resp.Events {
+				log.Infof("Value for %s received an update", ev.Kv.Key)
+
+				// check if empty, if so make the subconfig nil
+				if len(ev.Kv.Value) < 1 {
+					etlog.lock.Lock()
+					etlog.tlog = nil
+					etlog.lock.Unlock()
+					log.Infof("%s was found empty on ETCD, setting tlog to nil", ev.Kv.Key)
+					continue
+				}
+
+				// create new TlogConfig
+				tlog, err := NewTlogConfig(ev.Kv.Value)
+				if err != nil {
+					log.Errorf("did not update tlog for %s: %s", etlog.key, err)
+					continue
+				}
+
+				// if valid save it and return to channel
+				etlog.lock.Lock()
+				etlog.tlog = tlog
+				etlog.lock.Unlock()
+				// send value to each subscriber
+				etlog.subLock.RLock()
+				for sub := range etlog.subs {
+					sub <- *tlog.Clone()
+				}
+				etlog.subLock.RUnlock()
+			}
+		}
+	}()
+}
+
+type etcdSlaveConfig struct {
+	slave   *SlaveConfig
+	lock    sync.RWMutex
+	cli     *clientv3.Client
+	key     string
+	subs    map[chan<- SlaveConfig]struct{}
+	subLock sync.RWMutex
+}
+
+// SlaveConfigETCDSource returns a SlaveConfigSource implementation for etcd
+func SlaveConfigETCDSource(vdiskID string, endpoints []string) (SlaveConfigSource, error) {
+	slave, err := SlaveConfigFromETCD(vdiskID, endpoints)
+	if err != nil {
+		return nil, fmt.Errorf(err.Error())
+	}
+
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   endpoints,
+		DialTimeout: 5 * time.Second,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("could not connect to ETCD server: %v", err)
+	}
+
+	// setup etcdslaveConfig
+	eslave := new(etcdSlaveConfig)
+	eslave.lock.Lock()
+	eslave.slave = slave
+	eslave.lock.Unlock()
+	eslave.key = etcdSlaveKey(vdiskID)
+	eslave.cli = cli
+	eslave.subs = make(map[chan<- SlaveConfig]struct{})
+
+	// launch watch
+	eslave.watch()
+
+	return eslave, nil
+}
+
+// Close closes etcd connection
+func (eslave *etcdSlaveConfig) Close() error {
+	return eslave.cli.Close()
+}
+
+func (eslave *etcdSlaveConfig) SetSlaveConfig(slave SlaveConfig) error {
+	// validate input
 	err := slave.Validate()
 	if err != nil {
 		return fmt.Errorf("provided slave config was not valid: %s", err)
 	}
 
 	// save locally
-	cfg.slaveRWLock.Lock()
-	cfg.slave = &slave
-	cfg.slaveRWLock.Unlock()
+	eslave.lock.Lock()
+	eslave.slave = slave.Clone()
+	eslave.lock.Unlock()
 
 	// write to etcd
 	val, err := slave.ToBytes()
 	if err != nil {
 		return err
 	}
-	_, err = cfg.cli.Put(context.TODO(), cfg.slaveKey, string(val))
+	_, err = eslave.cli.Put(context.TODO(), eslave.key, string(val))
 	if err != nil {
 		return fmt.Errorf("could not send slave config: %v", err)
 	}
+	return nil
+}
+
+// Returns the latest Slave config version
+func (eslave *etcdSlaveConfig) SlaveConfig() (*SlaveConfig, error) {
+	eslave.lock.RLock()
+	defer eslave.lock.RUnlock()
+	return eslave.slave.Clone(), nil
+}
+
+func (eslave *etcdSlaveConfig) Subscribe(c chan<- SlaveConfig) error {
+	if c == nil {
+		return fmt.Errorf("can't subscribe to %s with nil channel", eslave.key)
+	}
+	eslave.subLock.Lock()
+	eslave.subs[c] = struct{}{}
+	eslave.subLock.Unlock()
 
 	return nil
 }
 
-// Set a watcher for a field
-func (cfg *etcdConfig) watch() {
-	// watch for fields starting with the config's vdiskID
-	watchkey := cfg.vdiskID + ":conf:"
-	watch := cfg.cli.Watch(context.TODO(), watchkey, clientv3.WithPrefix())
+func (eslave *etcdSlaveConfig) Unsubscribe(c chan<- SlaveConfig) error {
+	if c == nil {
+		return fmt.Errorf("can't unsubscribe to %s with nil channel", eslave.key)
+	}
+
+	eslave.subLock.Lock()
+	delete(eslave.subs, c)
+	eslave.subLock.Unlock()
+
+	return nil
+}
+
+func (eslave *etcdSlaveConfig) watch() {
+	watch := eslave.cli.Watch(context.TODO(), eslave.key, clientv3.WithPrefix())
 	go func() {
 		for {
 			resp, ok := <-watch
 			if !ok || resp.Err() != nil {
 				if ok {
-					log.Errorf("Watch channel encountered an error: %v", resp.Err())
+					log.Errorf("Watch channel for %s encountered an error: %v", eslave.key, resp.Err())
 				}
-				log.Infof("Watch channel for %s closed", cfg.vdiskID)
+				log.Infof("Watch channel for %s closed", eslave.key)
 				return
 			}
-			// update value of key
 			for _, ev := range resp.Events {
 				log.Infof("Value for %s received an update", ev.Kv.Key)
-				// switch on key returned from watch without the watchkey prefix
-				switch string(strings.TrimPrefix(string(ev.Kv.Key), watchkey)) {
-				case "base":
-					// check if empty
-					if len(ev.Kv.Value) < 1 {
-						log.Errorf("base config for %s was empty on ETCD, keeping the old one", cfg.vdiskID)
-						continue
-					}
 
-					newBase, err := NewBaseConfig(ev.Kv.Value)
-					if err != nil {
-						log.Errorf("Did not update %s: %s", cfg.baseKey, err)
-					}
-					cfg.baseRWLock.Lock()
-					cfg.base = *newBase
-					cfg.baseRWLock.Unlock()
-				case "nbd":
-					// check if empty, if so make the subconfig nil
-					if len(ev.Kv.Value) < 1 {
-						cfg.nbdRWLock.Lock()
-						cfg.nbd = nil
-						cfg.nbdRWLock.Unlock()
-						log.Infof("%s was found empty on ETCD, setting to nbd nil", ev.Kv.Key)
-						continue
-					}
-
-					// create subconfig and check validity
-					cfg.baseRWLock.RLock()
-					newNBD, err := NewNBDConfig(ev.Kv.Value, cfg.base.Type)
-					if err != nil {
-						log.Errorf("Did not update %s: %s", cfg.nbdKey, err)
-						cfg.baseRWLock.RUnlock()
-						continue
-					}
-					cfg.baseRWLock.RUnlock()
-					cfg.nbdRWLock.Lock()
-					cfg.nbd = newNBD
-					cfg.nbdRWLock.Unlock()
-				case "tlog":
-					if len(ev.Kv.Value) < 1 {
-						cfg.tlogRWLock.Lock()
-						cfg.tlog = nil
-						cfg.tlogRWLock.Unlock()
-						log.Infof("%s was found empty on ETCD, setting to tlog nil", ev.Kv.Key)
-						continue
-					}
-
-					newTlog, err := NewTlogConfig(ev.Kv.Value)
-					if err != nil {
-						log.Errorf("Did not update %s: %s", cfg.tlogKey, err)
-						continue
-					}
-					cfg.tlogRWLock.Lock()
-					cfg.tlog = newTlog
-					cfg.tlogRWLock.Unlock()
-				case "slave":
-					if len(ev.Kv.Value) < 1 {
-						cfg.slaveRWLock.Lock()
-						cfg.slave = nil
-						cfg.slaveRWLock.Unlock()
-						log.Infof("%s was found empty on ETCD, setting to slave nil", ev.Kv.Key)
-						continue
-					}
-
-					newSlave, err := NewSlaveConfig(ev.Kv.Value)
-					if err != nil {
-						log.Errorf("Did not update %s: %s", cfg.slaveKey, err)
-						continue
-					}
-					cfg.slaveRWLock.Lock()
-					cfg.slave = newSlave
-					cfg.slaveRWLock.Unlock()
+				// check if empty, if so make the subconfig nil
+				if len(ev.Kv.Value) < 1 {
+					eslave.lock.Lock()
+					eslave.slave = nil
+					eslave.lock.Unlock()
+					log.Infof("%s was found empty on ETCD, setting slave to nil", ev.Kv.Key)
+					continue
 				}
+
+				// create new SlaveConfig
+				slave, err := NewSlaveConfig(ev.Kv.Value)
+				if err != nil {
+					log.Errorf("did not update slave for %s: %s", eslave.key, err)
+					continue
+				}
+
+				// if valid save it and return to channel
+				eslave.lock.Lock()
+				eslave.slave = slave
+				eslave.lock.Unlock()
+				// send value to each subscriber
+				eslave.subLock.RLock()
+				for sub := range eslave.subs {
+					sub <- *slave.Clone()
+				}
+				eslave.subLock.RUnlock()
 			}
 		}
 	}()

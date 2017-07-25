@@ -11,6 +11,7 @@ import (
 )
 
 // ConfigSource specifies a config source interface
+// TODO: will be depricated
 type ConfigSource interface {
 	Base() BaseConfig             // Returns the current base config
 	NBD() (*NBDConfig, error)     // Returns the current nbd config
@@ -23,6 +24,48 @@ type ConfigSource interface {
 	SetSlave(SlaveConfig) error // sets a slave base config and writes it to
 
 	Close() error // closes source connection and goroutines if present
+}
+
+// NBDConfigSource represents the NBD source interface
+type NBDConfigSource interface {
+	NBDConfig() (*NBDConfig, error) // Returns the latest NBD config version
+	SetNBDConfig(NBDConfig) error
+	Close() error // closes source connection and goroutines if present
+
+	// all NBDConfigSource implementations will probably contain
+	// a static BaseConfig which gets loaded at creation time,
+	// and does never need to be hot reloaded,
+	// as none of that info should ever be supported
+	VdiskType() VdiskType
+
+	// returns a channel where updates will be send to, Close will close this channel
+	Subscribe(chan<- NBDConfig) error
+	// closes the subscribe channel
+	Unsubscribe(chan<- NBDConfig) error
+}
+
+// TlogConfigSource represents the tlog source interface
+type TlogConfigSource interface {
+	TlogConfig() (*TlogConfig, error) // Returns the latest tlog config version
+	SetTlogConfig(TlogConfig) error
+	Close() error // closes source connection and goroutines if present
+
+	// returns a channel where updates will be send to, Close will close this channel
+	Subscribe(chan<- TlogConfig) error
+	// closes the subscribe channel
+	Unsubscribe(chan<- TlogConfig) error
+}
+
+// SlaveConfigSource represents the slave source interface
+type SlaveConfigSource interface {
+	SlaveConfig() (*SlaveConfig, error) // Returns the latest slave config version
+	SetSlaveConfig(SlaveConfig) error
+	Close() error // closes source connection and goroutines if present
+
+	// returns a channel where updates will be send to, Close will close this channel
+	Subscribe(chan<- SlaveConfig) error
+	// closes the subscribe channel
+	Unsubscribe(chan<- SlaveConfig) error
 }
 
 // ErrConfigNotAvailable represents an error where the asked for sub config was not available
@@ -50,6 +93,11 @@ func NewBaseConfig(data []byte) (*BaseConfig, error) {
 	return base, nil
 }
 
+// Clone returns a deep copy of BaseConfig
+func (base *BaseConfig) Clone() BaseConfig {
+	return *base
+}
+
 // ToBytes converts baseConfig in byte slice in YAML 1.2 format
 func (base *BaseConfig) ToBytes() ([]byte, error) {
 	res, err := yaml.Marshal(base)
@@ -62,6 +110,12 @@ func (base *BaseConfig) ToBytes() ([]byte, error) {
 // Validate Validates baseConfig
 // Should only be used for ConfigSource implementation
 func (base BaseConfig) Validate() error {
+	// check valid tags
+	_, err := valid.ValidateStruct(base)
+	if err != nil {
+		return fmt.Errorf("invalid base config: %v", err)
+	}
+
 	// check base properties
 	if base.BlockSize == 0 || base.BlockSize%2 != 0 {
 		return fmt.Errorf("%d is an invalid blockSize", base.BlockSize)
@@ -69,15 +123,10 @@ func (base BaseConfig) Validate() error {
 	if base.Size == 0 {
 		return fmt.Errorf("%d is an invalid size", base.Size)
 	}
-	err := base.Type.Validate()
+	err = base.Type.Validate()
 	if err != nil {
 		return fmt.Errorf("baseconfig has invalid type: %s", err.Error())
 
-	}
-	// check valid tags
-	_, err = valid.ValidateStruct(base)
-	if err != nil {
-		return fmt.Errorf("invalid base config: %v", err)
 	}
 
 	return nil
@@ -134,26 +183,19 @@ func (nbd *NBDConfig) Validate(vdiskType VdiskType) error {
 		return nil
 	}
 
-	if len(nbd.StorageCluster.DataStorage) <= 0 {
-		return fmt.Errorf("nbd datastorage was empty")
+	_, err := valid.ValidateStruct(nbd)
+	if err != nil {
+		return fmt.Errorf("invalid NBD config: %v", err)
 	}
 
-	// Check if templatestorage is present when required
-	if vdiskType.TemplateSupport() {
-		if len(nbd.TemplateStorageCluster.DataStorage) <= 0 {
-			return fmt.Errorf("template storage was empty while required")
-		}
+	if len(nbd.StorageCluster.DataStorage) <= 0 {
+		return fmt.Errorf("nbd datastorage was empty")
 	}
 
 	// validate if metadata storage is defined when required
 	metadataUndefined := nbd.StorageCluster.MetadataStorage == nil
 	if metadataUndefined && vdiskType.StorageType() == StorageDeduped {
 		return fmt.Errorf("metadata storage not found while required")
-	}
-
-	_, err := valid.ValidateStruct(nbd)
-	if err != nil {
-		return fmt.Errorf("invalid NBD config: %v", err)
 	}
 
 	return nil
@@ -204,13 +246,13 @@ func (tlog *TlogConfig) Validate() error {
 		return nil
 	}
 
-	if len(tlog.TlogStorageCluster.DataStorage) <= 0 {
-		return fmt.Errorf("no tlog datastorage was found")
-	}
-
 	_, err := valid.ValidateStruct(tlog)
 	if err != nil {
 		return fmt.Errorf("invalid tlog config: %v", err)
+	}
+
+	if len(tlog.TlogStorageCluster.DataStorage) <= 0 {
+		return fmt.Errorf("no tlog datastorage was found")
 	}
 
 	return nil
@@ -466,6 +508,35 @@ func (st StorageType) String() string {
 	}
 }
 
+// ParseStorageServerConfigString allows you to parse a raw dial config string.
+// Dial Config String are a simple format used to specify ardb connection configs
+// easily as a command line argument.
+// The format is as follows: `<ip>:<port>[@<db_index>]`,
+// where the db_index is optional.
+// The parsing algorithm of this function is very forgiving,
+// and returns an error only in case an invalid address is given.
+func ParseStorageServerConfigString(dialConfigString string) (config StorageServerConfig, err error) {
+	parts := strings.Split(dialConfigString, "@")
+	if n := len(parts); n < 2 {
+		config.Address = dialConfigString
+	} else {
+		config.Database, err = strconv.Atoi(parts[n-1])
+		if err != nil {
+			err = nil // ignore actual error
+			n++       // not a valid database, thus probably part of address
+		}
+		// join any other parts back together,
+		// if for some reason an @ sign makes part of the address
+		config.Address = strings.Join(parts[:n-1], "@")
+	}
+
+	if !valid.IsDialString(config.Address) {
+		err = fmt.Errorf("%s is not a valid storage address", config.Address)
+	}
+
+	return
+}
+
 // ParseCSStorageServerConfigStrings allows you to parse a slice of raw dial config strings.
 // Dial Config Strings are a simple format used to specify ardb connection configs
 // easily as a command line argument.
@@ -480,6 +551,8 @@ func ParseCSStorageServerConfigStrings(dialCSConfigString string) (configs []Sto
 	}
 	dialConfigStrings := strings.Split(dialCSConfigString, ",")
 
+	var cfg StorageServerConfig
+
 	// convert all connection strings into ConnectionConfigs
 	for _, dialConfigString := range dialConfigStrings {
 		// remove whitespace around
@@ -490,24 +563,13 @@ func ParseCSStorageServerConfigStrings(dialCSConfigString string) (configs []Sto
 			continue
 		}
 
-		var cfg StorageServerConfig
-		parts := strings.Split(dialConfigString, "@")
-		if n := len(parts); n < 2 {
-			cfg.Address = dialConfigString
-		} else {
-			cfg.Database, err = strconv.Atoi(parts[n-1])
-			if err != nil {
-				err = nil // ignore actual error
-				n++       // not a valid database, thus probably part of address
-			}
-			// join any other parts back together,
-			// if for some reason an @ sign makes part of the address
-			cfg.Address = strings.Join(parts[:n-1], "@")
-		}
-		if !valid.IsDialString(cfg.Address) {
-			err = fmt.Errorf("%s is not a valid storage address", cfg.Address)
+		// parse one storage server config string
+		cfg, err = ParseStorageServerConfigString(dialConfigString)
+		if err != nil {
+			configs = nil
 			return
 		}
+
 		configs = append(configs, cfg)
 	}
 

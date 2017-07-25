@@ -132,6 +132,27 @@ func TestValidVdiskTypeSerialization(t *testing.T) {
 }
 
 func TestSubConfigCloning(t *testing.T) {
+	// setup original base
+	base0, err := NewBaseConfig([]byte(validBaseStr))
+	if !assert.NoError(t, err) || !assert.NotNil(t, base0) {
+		return
+	}
+
+	// clone
+	base1 := base0.Clone()
+
+	// change fields in original
+	oldBlockSize := base0.BlockSize
+	newBlockSize := oldBlockSize + 64
+	base0.BlockSize = newBlockSize
+	oldReadOnly := base0.ReadOnly
+	newReadOnly := !oldReadOnly
+	base0.ReadOnly = newReadOnly
+
+	// check if changes did not appear in clone
+	assert.Equal(t, base1.BlockSize+64, base0.BlockSize)
+	assert.NotEqual(t, base0.ReadOnly, base1.ReadOnly)
+
 	// setup original nbd
 	vdiskType := VdiskTypeBoot
 	nbd0, err := NewNBDConfig([]byte(validNBDStr), vdiskType)
