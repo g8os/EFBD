@@ -78,21 +78,18 @@ func TestFileSource(t *testing.T) {
 func TestFileSourceWithWatcher(t *testing.T) {
 	// setup yaml file
 	// write
-	testpath := "/tmp/test.yaml"
-	fileperm, err := filePerm(testpath)
-	if err != nil {
-		fileperm = 0644
-	}
-	err = ioutil.WriteFile(testpath, []byte(validYAMLSourceStr), fileperm)
+	testfile, err := ioutil.TempFile("", "testconfig")
+	_, err = testfile.Write([]byte(validYAMLSourceStr))
 	if !assert.NoError(t, err) {
 		return
 	}
 	// make sure it'll be cleaned up
-	defer os.Remove(testpath)
+	defer os.Remove(testfile.Name())
 
 	// setup config
 	vdiskID := "testConfig"
-	cfg, err := NewFileConfig(vdiskID, testpath)
+
+	cfg, err := NewFileConfig(vdiskID, testfile.Name())
 	if !assert.NoError(t, err) || !assert.NotNil(t, cfg) {
 		return
 	}
@@ -122,10 +119,10 @@ func TestFileSourceWithWatcher(t *testing.T) {
 	go func() {
 		time.Sleep(1 * time.Second)
 		recievedLock.Lock()
+		defer recievedLock.Unlock()
 		if !received {
 			timeout <- true
 		}
-		recievedLock.Unlock()
 	}()
 	select {
 	case <-sighup:

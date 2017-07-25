@@ -176,18 +176,18 @@ func (cfg *fileConfig) SetSlave(slave SlaveConfig) error {
 
 // watch starts watching for SIGHUP signal, then update the config
 func (cfg *fileConfig) watch() {
-	sighub := make(chan os.Signal)
-	signal.Notify(sighub, syscall.SIGHUP)
+	sighup := make(chan os.Signal)
+	signal.Notify(sighup, syscall.SIGHUP)
 
 	go func() {
 		defer func() {
-			signal.Stop(sighub)
-			close(sighub)
+			signal.Stop(sighup)
+			close(sighup)
 		}()
 
 		for {
 			select {
-			case <-sighub:
+			case <-sighup:
 				// update config
 				cfg.fileRWLock.RLock()
 				bytes, err := ioutil.ReadFile(cfg.path)
@@ -234,9 +234,6 @@ func fromYAMLBytes(bytes []byte) (*fileConfig, error) {
 		return nil, fmt.Errorf("Could not unmarshal provided bytes: %v", err)
 	}
 
-	// debug
-	//log.Info("NBD Values: %v", buf.NBD)
-
 	// set up buffer to be able to set private fields
 	cfg.base = buf.Base
 	cfg.nbd = buf.NBD
@@ -247,23 +244,17 @@ func fromYAMLBytes(bytes []byte) (*fileConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid base configuration: %s", err)
 	}
-	if cfg.nbd != nil {
-		err = cfg.nbd.Validate(cfg.base.Type)
-		if err != nil {
-			return nil, fmt.Errorf("invalid nbd configuration: %s", err)
-		}
+	err = cfg.nbd.Validate(cfg.base.Type)
+	if err != nil {
+		return nil, fmt.Errorf("invalid nbd configuration: %s", err)
 	}
-	if cfg.tlog != nil {
-		err = cfg.tlog.Validate()
-		if err != nil {
-			return nil, fmt.Errorf("invalid tlog configuration: %s", err)
-		}
+	err = cfg.tlog.Validate()
+	if err != nil {
+		return nil, fmt.Errorf("invalid tlog configuration: %s", err)
 	}
-	if cfg.slave != nil {
-		err = cfg.slave.Validate()
-		if err != nil {
-			return nil, fmt.Errorf("invalid slave configuration: %s", err)
-		}
+	err = cfg.slave.Validate()
+	if err != nil {
+		return nil, fmt.Errorf("invalid slave configuration: %s", err)
 	}
 	return cfg, nil
 }

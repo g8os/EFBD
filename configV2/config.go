@@ -128,14 +128,18 @@ func (nbd *NBDConfig) ToBytes() ([]byte, error) {
 // Validate Validates NBDConfig
 // needs a vdisk type
 // Should only be used for ConfigSource implementation
-func (nbd NBDConfig) Validate(vdiskType VdiskType) error {
+func (nbd *NBDConfig) Validate(vdiskType VdiskType) error {
+	// nbd is optional so if nil return
+	if nbd == nil {
+		return nil
+	}
 
 	if len(nbd.StorageCluster.DataStorage) <= 0 {
 		return fmt.Errorf("nbd datastorage was empty")
 	}
 
 	// Check if templatestorage is present when required
-	if vdiskType.TemplateSupport(nbd) {
+	if vdiskType.TemplateSupport() {
 		if len(nbd.TemplateStorageCluster.DataStorage) <= 0 {
 			return fmt.Errorf("template storage was empty while required")
 		}
@@ -194,7 +198,12 @@ func (tlog *TlogConfig) ToBytes() ([]byte, error) {
 
 // Validate Validates TlogConfig
 // Should only be used for ConfigSource implementation
-func (tlog TlogConfig) Validate() error {
+func (tlog *TlogConfig) Validate() error {
+	// tlog is optional so if nil return
+	if tlog == nil {
+		return nil
+	}
+
 	if len(tlog.TlogStorageCluster.DataStorage) <= 0 {
 		return fmt.Errorf("no tlog datastorage was found")
 	}
@@ -245,6 +254,11 @@ func (slave *SlaveConfig) ToBytes() ([]byte, error) {
 // Validate Validates SlaveConfig
 // Should only be used for ConfigSource implementation
 func (slave *SlaveConfig) Validate() error {
+	// slave is optional so if nil return
+	if slave == nil {
+		return nil
+	}
+
 	_, err := valid.ValidateStruct(slave)
 	if err != nil {
 		return fmt.Errorf("invalid slave config: %v", err)
@@ -262,7 +276,7 @@ func (vdiskType VdiskType) TlogSupport() bool {
 // this vdisk supports a template server,
 // to get the data in case the data isn't available on
 // the normal (local) storage cluster.
-func (vdiskType VdiskType) TemplateSupport(nbd NBDConfig) bool {
+func (vdiskType VdiskType) TemplateSupport() bool {
 	return vdiskType&propTemplateSupport != 0
 }
 
