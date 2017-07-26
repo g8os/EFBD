@@ -10,66 +10,8 @@ import (
 	"github.com/go-yaml/yaml"
 )
 
-// ConfigSource specifies a config source interface
-// TODO: will be depricated
-type ConfigSource interface {
-	Base() BaseConfig             // Returns the current base config
-	NBD() (*NBDConfig, error)     // Returns the current nbd config
-	Tlog() (*TlogConfig, error)   // Returns the current tlog
-	Slave() (*SlaveConfig, error) // Returns the current Slave config
-
-	SetBase(BaseConfig) error   // sets a new base config and writes it to the source
-	SetNBD(NBDConfig) error     // sets a new NBD config and writes it to the source
-	SetTlog(TlogConfig) error   // sets a tlog base config and writes it to the source
-	SetSlave(SlaveConfig) error // sets a slave base config and writes it to
-
-	Close() error // closes source connection and goroutines if present
-}
-
-// NBDConfigSource represents the NBD source interface
-type NBDConfigSource interface {
-	NBDConfig() (*NBDConfig, error) // Returns the latest NBD config version
-	SetNBDConfig(NBDConfig) error
-	Close() error // closes source connection and goroutines if present
-
-	// all NBDConfigSource implementations will probably contain
-	// a static BaseConfig which gets loaded at creation time,
-	// and does never need to be hot reloaded,
-	// as none of that info should ever be supported
-	VdiskType() VdiskType
-
-	// returns a channel where updates will be send to, Close will close this channel
-	Subscribe(chan<- NBDConfig) error
-	// closes the subscribe channel
-	Unsubscribe(chan<- NBDConfig) error
-}
-
-// TlogConfigSource represents the tlog source interface
-type TlogConfigSource interface {
-	TlogConfig() (*TlogConfig, error) // Returns the latest tlog config version
-	SetTlogConfig(TlogConfig) error
-	Close() error // closes source connection and goroutines if present
-
-	// returns a channel where updates will be send to, Close will close this channel
-	Subscribe(chan<- TlogConfig) error
-	// closes the subscribe channel
-	Unsubscribe(chan<- TlogConfig) error
-}
-
-// SlaveConfigSource represents the slave source interface
-type SlaveConfigSource interface {
-	SlaveConfig() (*SlaveConfig, error) // Returns the latest slave config version
-	SetSlaveConfig(SlaveConfig) error
-	Close() error // closes source connection and goroutines if present
-
-	// returns a channel where updates will be send to, Close will close this channel
-	Subscribe(chan<- SlaveConfig) error
-	// closes the subscribe channel
-	Unsubscribe(chan<- SlaveConfig) error
-}
-
 // ErrConfigNotAvailable represents an error where the asked for sub config was not available
-var ErrConfigNotAvailable = errors.New("config is not available")
+//var ErrConfigNotAvailable = errors.New("config is not available")
 
 // BaseConfig represents the basic vdisk info
 type BaseConfig struct {
@@ -77,6 +19,7 @@ type BaseConfig struct {
 	ReadOnly  bool      `yaml:"readOnly" valid:"optional"`
 	Size      uint64    `yaml:"size" valid:"optional"`
 	Type      VdiskType `yaml:"type" valid:"optional"`
+	TlogRPC   string    `yaml:"tlogrpc" valid:"optional"`
 }
 
 // NewBaseConfig creates a new Baseconfig from byte slice in YAML 1.2 format
@@ -90,12 +33,8 @@ func NewBaseConfig(data []byte) (*BaseConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	return base, nil
-}
 
-// Clone returns a deep copy of BaseConfig
-func (base *BaseConfig) Clone() BaseConfig {
-	return *base
+	return base, nil
 }
 
 // ToBytes converts baseConfig in byte slice in YAML 1.2 format
@@ -104,6 +43,7 @@ func (base *BaseConfig) ToBytes() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to turn base config into bytes: %v", err)
 	}
+
 	return res, nil
 }
 
@@ -153,16 +93,8 @@ func NewNBDConfig(data []byte, vdiskType VdiskType) (*NBDConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	return nbd, nil
-}
 
-// Clone returns a deep copy of NDBConfig
-func (nbd *NBDConfig) Clone() *NBDConfig {
-	return &NBDConfig{
-		StorageCluster:         nbd.StorageCluster.Clone(),
-		TemplateStorageCluster: nbd.TemplateStorageCluster.Clone(),
-		TemplateVdiskID:        nbd.TemplateVdiskID,
-	}
+	return nbd, nil
 }
 
 // ToBytes converts NBDConfig in byte slice in YAML 1.2 format
@@ -171,6 +103,7 @@ func (nbd *NBDConfig) ToBytes() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to turn nbd config into bytes: %v", err)
 	}
+
 	return res, nil
 }
 
@@ -218,15 +151,8 @@ func NewTlogConfig(data []byte) (*TlogConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	return tlog, nil
-}
 
-// Clone returns a deep copy of TlogConfig
-func (tlog TlogConfig) Clone() *TlogConfig {
-	return &TlogConfig{
-		SlaveSync:          tlog.SlaveSync,
-		TlogStorageCluster: tlog.TlogStorageCluster.Clone(),
-	}
+	return tlog, nil
 }
 
 // ToBytes converts TlogConfig in byte slice in YAML 1.2 format
@@ -235,6 +161,7 @@ func (tlog *TlogConfig) ToBytes() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to turn tlog config into bytes: %v", err)
 	}
+
 	return res, nil
 }
 
@@ -274,14 +201,8 @@ func NewSlaveConfig(data []byte) (*SlaveConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	return slave, nil
-}
 
-// Clone returns a deep copy of SlaveConfig
-func (slave *SlaveConfig) Clone() *SlaveConfig {
-	return &SlaveConfig{
-		SlaveStorageCluster: slave.SlaveStorageCluster.Clone(),
-	}
+	return slave, nil
 }
 
 // ToBytes converts SlaveConfig in byte slice in YAML 1.2 format
@@ -290,6 +211,7 @@ func (slave *SlaveConfig) ToBytes() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to turn slave config into bytes: %v", err)
 	}
+
 	return res, nil
 }
 
@@ -305,6 +227,7 @@ func (slave *SlaveConfig) Validate() error {
 	if err != nil {
 		return fmt.Errorf("invalid slave config: %v", err)
 	}
+
 	return nil
 }
 
@@ -423,6 +346,7 @@ func (vdiskType *VdiskType) SetString(s string) error {
 	default:
 		return fmt.Errorf("%q is not a valid VdiskType", s)
 	}
+
 	return nil
 }
 
@@ -464,17 +388,6 @@ type StorageServerConfig struct {
 type StorageClusterConfig struct {
 	DataStorage     []StorageServerConfig `yaml:"dataStorage" valid:"required"`
 	MetadataStorage *StorageServerConfig  `yaml:"metadataStorage" valid:"optional"`
-}
-
-// Clone this StorageClusterConfig into a new StorageClusterConfig.
-func (cfg StorageClusterConfig) Clone() (clone StorageClusterConfig) {
-	clone.DataStorage = make([]StorageServerConfig, len(cfg.DataStorage))
-	copy(clone.DataStorage, cfg.DataStorage)
-	if cfg.MetadataStorage != nil {
-		metadataStorage := *cfg.MetadataStorage
-		clone.MetadataStorage = &metadataStorage
-	}
-	return clone
 }
 
 // StorageType represents the type of storage of a vdisk

@@ -62,7 +62,7 @@ size: 110
 type: cache
 `
 const validNBDStr = `
-templateVdiskID: mytemplate
+templateVdiskID: testtemplate
 storageCluster:
   dataStorage: 
     - address: 192.168.1.146:2000
@@ -92,10 +92,10 @@ const validSlaveStr = `
 slaveStorageCluster:
   dataStorage: 
     - address: 192.168.2.149:1000
-      db: 4
+      db: 14
   metadataStorage:
     address: 192.168.2.146:1001
-    db: 8
+    db: 18
 `
 
 var invalidNBDServerConfigs = []string{

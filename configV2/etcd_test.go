@@ -5,15 +5,15 @@ import (
 	"testing"
 	"time"
 
-	"fmt"
-
 	"github.com/coreos/etcd/clientv3"
 	"github.com/stretchr/testify/assert"
+	"github.com/zero-os/0-Disk/log"
 )
 
 // test only works if local etcd is running
 func testETCDConfig(t *testing.T) {
 	//init
+	log.SetLevel(log.DebugLevel)
 	endpoints := []string{"127.0.0.1:2379"}
 	vdiskID := "test"
 	baseKey := etcdBaseKey(vdiskID)
@@ -24,14 +24,15 @@ func testETCDConfig(t *testing.T) {
 	// input data
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   endpoints,
-		DialTimeout: 5 * time.Second,
+		DialTimeout: 1 * time.Second,
 	})
 	if !assert.NoError(t, err) || !assert.NotNil(t, cli) {
 		return
 	}
 	defer cli.Close()
-	// cleanup ETCD
+	// cleanup ETCD before and after use
 	cleanupETCD(cli, baseKey, nbdKey, tlogKey, slaveKey)
+	defer cleanupETCD(cli, baseKey, nbdKey, tlogKey, slaveKey)
 
 	ops := []clientv3.Op{
 		clientv3.OpPut(baseKey, validBaseStr),
@@ -47,7 +48,7 @@ func testETCDConfig(t *testing.T) {
 		}
 	}
 
-	base, err := BaseConfigFromETCD(vdiskID, endpoints)
+	base, err := ReadBaseConfigETCD(vdiskID, endpoints)
 	if !assert.NoError(t, err) || !assert.NotNil(t, base) {
 		return
 	}
@@ -57,67 +58,98 @@ func testETCDConfig(t *testing.T) {
 		return
 	}
 
-	nbd, err := NBDConfigFromETCD(vdiskID, endpoints, base.Type)
+	nbd, err := ReadNBDConfigETCD(vdiskID, endpoints)
 	if !assert.NoError(t, err) || !assert.NotNil(t, nbd) {
 		return
 	}
 
-	tlog, err := TlogConfigFromETCD(vdiskID, endpoints)
+	tlog, err := ReadTlogConfigETCD(vdiskID, endpoints)
 	if !assert.NoError(t, err) || !assert.NotNil(t, tlog) {
 		return
 	}
 
-	slave, err := SlaveConfigFromETCD(vdiskID, endpoints)
+	slave, err := ReadSlaveConfigETCD(vdiskID, endpoints)
 	if !assert.NoError(t, err) || !assert.NotNil(t, slave) {
 		return
 	}
 
-	nbdSrc, err := NBDConfigETCDSource(vdiskID, endpoints, base.Type)
-	if !assert.NoError(t, err) || !assert.NotNil(t, nbdSrc) {
-		return
-	}
-	defer nbdSrc.Close()
+	// NBD watch
+	ctx, cancel := context.WithCancel(context.Background())
+	nbdUpdate, err := WatchNBDConfigETCD(ctx, vdiskID, endpoints)
+	go func() {
+		for {
+			res, ok := <-nbdUpdate
+			if !ok {
+				log.Debug("nbd update listener closed")
+				return
+			}
+			log.Debugf("nbd update listener reciever: %v", res.NBD)
+		}
+	}()
 
-	nbdChan := make(chan NBDConfig)
-	err = nbdSrc.Subscribe(nbdChan)
+	// send updates
+	err = WriteNBDConfigETCD(vdiskID, endpoints, *nbd)
 	if !assert.NoError(t, err) {
+		cancel()
 		return
 	}
+	log.Debug("Sending empty value to nbd")
+	writeConfigETCD(endpoints, nbdKey, []byte{})
+	// allow time to listen for the updates
+	time.Sleep(1 * time.Millisecond)
+	cancel()
 
-	err = nbdSrc.SetNBDConfig(*nbd)
+	// Tlog watch
+	ctx, cancel = context.WithCancel(context.Background())
+	tlogUpdate, err := WatchTlogConfigETCD(ctx, vdiskID, endpoints)
+	go func() {
+		for {
+			res, ok := <-tlogUpdate
+			if !ok {
+				log.Debug("tlog update listener closed")
+				return
+			}
+			log.Debugf("tlog update listener reciever: %v", res.Tlog)
+		}
+	}()
+	// send updates
+	err = WriteTlogConfigETCD(vdiskID, endpoints, *tlog)
 	if !assert.NoError(t, err) {
+		cancel()
 		return
 	}
+	log.Debug("Sending empty value to tlog")
+	writeConfigETCD(endpoints, tlogKey, []byte{})
+	// allow time to listen for the updates
+	time.Sleep(1 * time.Millisecond)
+	cancel()
 
-	resp, ok := <-nbdChan
-	if !assert.True(t, ok) || !assert.NotNil(t, resp) {
-		return
-	}
+	// Slave watch
+	ctx, cancel = context.WithCancel(context.Background())
+	slaveUpdate, err := WatchSlaveConfigETCD(ctx, vdiskID, endpoints)
+	go func() {
+		for {
+			res, ok := <-slaveUpdate
+			if !ok {
+				log.Debug("slave update listener closed")
+				return
+			}
+			log.Debugf("slave update listener reciever: %v", res.Slave)
+		}
+	}()
 
-	err = nbdSrc.Unsubscribe(nbdChan)
+	// send updates
+	err = WriteSlaveConfigETCD(vdiskID, endpoints, *slave)
 	if !assert.NoError(t, err) {
+		cancel()
 		return
 	}
+	log.Debug("Sending invalid value to slave")
+	writeConfigETCD(endpoints, slaveKey, []byte("derp"))
+	// allow time to listen for the updates
+	time.Sleep(1 * time.Millisecond)
 
-	err = nbdSrc.SetNBDConfig(*nbd)
-	if !assert.NoError(t, err) {
-		return
-	}
-
-	tlogSrc, err := TlogConfigETCDSource(vdiskID, endpoints)
-	if !assert.NoError(t, err) || !assert.NotNil(t, tlogSrc) {
-		return
-	}
-	defer tlogSrc.Close()
-
-	slaveSrc, err := SlaveConfigETCDSource(vdiskID, endpoints)
-	if !assert.NoError(t, err) || !assert.NotNil(t, slaveSrc) {
-		return
-	}
-	slaveSrc.Close()
-
-	fmt.Println("end slave")
-
+	cancel()
 }
 
 func cleanupETCD(cli *clientv3.Client, baseKey, nbdKey, tlogKey, slaveKey string) error {

@@ -106,17 +106,18 @@ func TestSerializing(t *testing.T) {
 }
 
 func TestInvalidConfigs(t *testing.T) {
-	log.Info("Testing invalid configs, logging the errors")
+	log.SetLevel(log.DebugLevel)
+	log.Debug("Testing invalid configs, logging the errors")
 	for i, input := range invalidNBDServerConfigs {
 		// from YAMLbytes returns an error if config not valid
 		// check log if errors match intended fails
-		_, err := fromYAMLBytes([]byte(input))
-		log.Infof("%v: %v", i+1, err)
+		_, err := readConfigBytes([]byte(input))
+		log.Debugf("%v: %v", i+1, err)
 		if !assert.Error(t, err, input) {
 			return
 		}
 	}
-	log.Info("Done testing invalid configs")
+	log.Debug("Done testing invalid configs")
 }
 
 func TestValidVdiskTypeSerialization(t *testing.T) {
@@ -129,102 +130,6 @@ func TestValidVdiskTypeSerialization(t *testing.T) {
 		str := strings.Trim(string(bytes), "\n")
 		assert.Equal(t, validCase.String, str)
 	}
-}
-
-func TestSubConfigCloning(t *testing.T) {
-	// setup original base
-	base0, err := NewBaseConfig([]byte(validBaseStr))
-	if !assert.NoError(t, err) || !assert.NotNil(t, base0) {
-		return
-	}
-
-	// clone
-	base1 := base0.Clone()
-
-	// change fields in original
-	oldBlockSize := base0.BlockSize
-	newBlockSize := oldBlockSize + 64
-	base0.BlockSize = newBlockSize
-	oldReadOnly := base0.ReadOnly
-	newReadOnly := !oldReadOnly
-	base0.ReadOnly = newReadOnly
-
-	// check if changes did not appear in clone
-	assert.Equal(t, base1.BlockSize+64, base0.BlockSize)
-	assert.NotEqual(t, base0.ReadOnly, base1.ReadOnly)
-
-	// setup original nbd
-	vdiskType := VdiskTypeBoot
-	nbd0, err := NewNBDConfig([]byte(validNBDStr), vdiskType)
-	if !assert.NoError(t, err) || !assert.NotNil(t, nbd0) {
-		return
-	}
-
-	// clone
-	nbd1 := nbd0.Clone()
-
-	// change fields in original
-	oldTemplateID := nbd0.TemplateVdiskID
-	newTemplateID := "anotherTemplate"
-	nbd0.TemplateVdiskID = newTemplateID
-	newDataDB := 123
-	oldDataDB := nbd0.TemplateStorageCluster.DataStorage[0].Database
-	nbd0.TemplateStorageCluster.DataStorage[0].Database = newDataDB
-
-	// check if changes did not appear in clone
-	assert.NotEqual(t, nbd0.TemplateVdiskID, nbd1.TemplateVdiskID)
-	assert.Equal(t, nbd0.TemplateVdiskID, newTemplateID)
-	assert.Equal(t, nbd1.TemplateVdiskID, oldTemplateID)
-	assert.NotEqual(t, nbd0.TemplateStorageCluster.DataStorage[0].Database,
-		nbd1.TemplateStorageCluster.DataStorage[0].Database)
-	assert.Equal(t, nbd0.TemplateStorageCluster.DataStorage[0].Database, newDataDB)
-	assert.Equal(t, nbd1.TemplateStorageCluster.DataStorage[0].Database, oldDataDB)
-
-	// setup original tlog
-	tlog0, err := NewTlogConfig([]byte(validTlogStr))
-	if !assert.NoError(t, err) || !assert.NotNil(t, tlog0) {
-		return
-	}
-
-	// clone
-	tlog1 := tlog0.Clone()
-
-	// change fields in original
-	tlog0.SlaveSync = false
-	newDataAddress := "10.0.123.1:1234"
-	oldDataAddress := tlog0.TlogStorageCluster.DataStorage[0].Address
-	tlog0.TlogStorageCluster.DataStorage[0].Address = newDataAddress
-
-	// check if change did not appear in clone
-	assert.False(t, tlog0.SlaveSync)
-	assert.True(t, tlog1.SlaveSync)
-	assert.Equal(t, tlog0.TlogStorageCluster.DataStorage[0].Address, newDataAddress)
-	assert.Equal(t, tlog1.TlogStorageCluster.DataStorage[0].Address, oldDataAddress)
-
-	// setup original slave
-	slave0, err := NewSlaveConfig([]byte(validSlaveStr))
-	if !assert.NoError(t, err) || !assert.NotNil(t, slave0) {
-		return
-	}
-
-	// clone
-	slave1 := slave0.Clone()
-
-	// change fields in orgininal
-	newDataAddress = "10.0.123.1:5678"
-	oldDataAddress = slave0.SlaveStorageCluster.DataStorage[0].Address
-	slave0.SlaveStorageCluster.DataStorage[0].Address = newDataAddress
-	newMetaAddress := "10.0.123.1:5679"
-	oldMetaAddress := slave0.SlaveStorageCluster.MetadataStorage.Address
-	slave0.SlaveStorageCluster.MetadataStorage.Address = newMetaAddress
-
-	// check if fields did not appear in clone
-	assert.NotEqual(t, slave0.SlaveStorageCluster.DataStorage[0].Address, slave1.SlaveStorageCluster.DataStorage[0].Address)
-	assert.Equal(t, newDataAddress, slave0.SlaveStorageCluster.DataStorage[0].Address)
-	assert.Equal(t, oldDataAddress, slave1.SlaveStorageCluster.DataStorage[0].Address)
-	assert.NotEqual(t, slave0.SlaveStorageCluster.MetadataStorage.Address, slave1.SlaveStorageCluster.MetadataStorage.Address)
-	assert.Equal(t, newMetaAddress, slave0.SlaveStorageCluster.MetadataStorage.Address)
-	assert.Equal(t, oldMetaAddress, slave1.SlaveStorageCluster.MetadataStorage.Address)
 }
 
 func TestParseValidCSStorageServerConfigStrings(t *testing.T) {

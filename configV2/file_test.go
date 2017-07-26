@@ -3,79 +3,12 @@ package configV2
 import (
 	"io/ioutil"
 	"os"
-	"os/signal"
-	"sync"
-	"syscall"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/zero-os/0-Disk/log"
 )
 
 func TestFileSource(t *testing.T) {
-	cfg, err := fromYAMLBytes([]byte(validYAMLSourceStr))
-	if !assert.NoError(t, err) || !assert.NotNil(t, cfg) {
-		return
-	}
-	defer func() {
-		err = cfg.Close()
-		assert.NoError(t, err)
-	}()
-
-	base := BaseConfig{
-		BlockSize: 1234,
-		ReadOnly:  true,
-		Size:      2,
-		Type:      VdiskTypeBoot,
-	}
-
-	nbd := cfg.nbd
-	nbd.TemplateVdiskID = "test"
-
-	tlog := cfg.tlog
-	tlog.TlogStorageCluster.DataStorage[0].Address = "1.2.3.4:1234"
-
-	slave, err := NewSlaveConfig([]byte(validSlaveStr))
-	if !assert.NoError(t, err) {
-		return
-	}
-
-	// test if new base is set
-	err = cfg.SetBase(base)
-	if !assert.Equal(t, base.BlockSize, cfg.base.BlockSize) {
-		return
-	}
-	if !assert.Equal(t, base.ReadOnly, cfg.base.ReadOnly) {
-		return
-	}
-	if !assert.Equal(t, base.Size, cfg.base.Size) {
-		return
-	}
-	if !assert.Equal(t, base.Type, cfg.base.Type) {
-		return
-	}
-
-	// test if new nbd is set
-	cfg.SetNBD(*nbd)
-	if !assert.Equal(t, nbd.TemplateVdiskID, cfg.nbd.TemplateVdiskID) {
-		return
-	}
-
-	// test if new tlog is set
-	cfg.SetTlog(*tlog)
-	if !assert.Equal(t, tlog.TlogStorageCluster.DataStorage[0].Address, cfg.tlog.TlogStorageCluster.DataStorage[0].Address) {
-		return
-	}
-
-	// test if new slave is set
-	cfg.SetSlave(*slave)
-	if !assert.Equal(t, slave.SlaveStorageCluster.DataStorage[0].Address, cfg.slave.SlaveStorageCluster.DataStorage[0].Address) {
-		return
-	}
-}
-
-func TestFileSourceWithWatcher(t *testing.T) {
 	// setup yaml file
 	// write
 	testfile, err := ioutil.TempFile("", "testconfig")
@@ -83,92 +16,137 @@ func TestFileSourceWithWatcher(t *testing.T) {
 	if !assert.NoError(t, err) {
 		return
 	}
+
 	// make sure it'll be cleaned up
 	defer os.Remove(testfile.Name())
 
-	// setup config
-	vdiskID := "testConfig"
-
-	cfg, err := NewFileConfig(vdiskID, testfile.Name())
-	if !assert.NoError(t, err) || !assert.NotNil(t, cfg) {
+	// get BaseConfig
+	base, err := ReadBaseConfigFile(testfile.Name())
+	if !assert.NoError(t, err) || !assert.NotNil(t, base) {
 		return
 	}
 
-	// set a subconfig and listen for SIGHUP
-	// setup sighup listener
-	sighup := sighupListener()
-	defer close(sighup)
+	assert.Equal(t, uint64(4096), base.BlockSize)
+	assert.Equal(t, false, base.ReadOnly)
+	assert.Equal(t, uint64(10), base.Size)
+	assert.Equal(t, VdiskTypeDB, base.Type)
 
-	// create new tlog
-	tlog, err := NewTlogConfig([]byte(validTlogStr))
+	// get NBDConfig
+	nbd, err := ReadNBDConfigFile(testfile.Name())
+	if !assert.NoError(t, err) || !assert.NotNil(t, nbd) {
+		return
+	}
+
+	assert.Equal(t, "mytemplate", nbd.TemplateVdiskID)
+	assert.Equal(t, "192.168.58.146:2000", nbd.StorageCluster.DataStorage[0].Address)
+	assert.Equal(t, 0, nbd.StorageCluster.DataStorage[0].Database)
+	assert.Equal(t, "192.168.58.146:2001", nbd.StorageCluster.MetadataStorage.Address)
+	assert.Equal(t, 1, nbd.StorageCluster.MetadataStorage.Database)
+	assert.Equal(t, "192.168.58.147:2000", nbd.TemplateStorageCluster.DataStorage[0].Address)
+	assert.Equal(t, 0, nbd.TemplateStorageCluster.DataStorage[0].Database)
+
+	// get TlogConfig
+	tlog, err := ReadTlogConfigFile(testfile.Name())
+	if !assert.NoError(t, err) || !assert.NotNil(t, tlog) {
+		return
+	}
+
+	assert.Equal(t, "192.168.58.149:2000", tlog.TlogStorageCluster.DataStorage[0].Address)
+	assert.Equal(t, 4, tlog.TlogStorageCluster.DataStorage[0].Database)
+	assert.Equal(t, "192.168.58.146:2001", tlog.TlogStorageCluster.MetadataStorage.Address)
+	assert.Equal(t, 8, tlog.TlogStorageCluster.MetadataStorage.Database)
+
+	// get SlaveConfig
+	slave, err := ReadSlaveConfigFile(testfile.Name())
+	if !assert.NoError(t, err) || !assert.NotNil(t, slave) {
+		return
+	}
+
+	assert.Equal(t, "192.168.58.145:2000", slave.SlaveStorageCluster.DataStorage[0].Address)
+	assert.Equal(t, 4, slave.SlaveStorageCluster.DataStorage[0].Database)
+	assert.Equal(t, "192.168.58.144:2000", slave.SlaveStorageCluster.MetadataStorage.Address)
+	assert.Equal(t, 8, slave.SlaveStorageCluster.MetadataStorage.Database)
+
+	// write a new BaseConfig
+	newBase, err := NewBaseConfig([]byte(validBaseStr))
+	if !assert.NoError(t, err) || !assert.NotNil(t, newBase) {
+		return
+	}
+	err = WriteBaseConfigFile(testfile.Name(), *newBase)
 	if !assert.NoError(t, err) {
 		return
 	}
-	oldTlog, _ := cfg.Tlog()
-	// set new tlog, triggering SIGHUP
-	err = cfg.SetTlog(*tlog)
+	// read again and check
+	base, err = ReadBaseConfigFile(testfile.Name())
+	if !assert.NoError(t, err) || !assert.NotNil(t, base) {
+		return
+	}
+
+	assert.Equal(t, uint64(2048), base.BlockSize)
+	assert.Equal(t, true, base.ReadOnly)
+	assert.Equal(t, uint64(110), base.Size)
+	assert.Equal(t, VdiskTypeCache, base.Type)
+
+	// write a new NBDConfig
+	newNBD, err := NewNBDConfig([]byte(validNBDStr), base.Type)
+	if !assert.NoError(t, err) || !assert.NotNil(t, newNBD) {
+		return
+	}
+	err = WriteNBDConfigFile(testfile.Name(), *newNBD)
 	if !assert.NoError(t, err) {
 		return
 	}
-
-	// wait for SIGHUP with timeout
-	var recievedLock sync.Mutex
-	received := false
-	timeout := make(chan bool, 1)
-	defer close(timeout)
-	go func() {
-		time.Sleep(1 * time.Second)
-		recievedLock.Lock()
-		defer recievedLock.Unlock()
-		if !received {
-			timeout <- true
-		}
-	}()
-	select {
-	case <-sighup:
-		recievedLock.Lock()
-		received = true
-		recievedLock.Unlock()
-	case <-timeout:
-		recievedLock.Lock()
-		received = false
-		recievedLock.Unlock()
-	}
-	recievedLock.Lock()
-	defer recievedLock.Unlock()
-	if !assert.True(t, received) {
-		log.Error("Did not receive SIGHUP before timeout")
+	// read again and check
+	nbd, err = ReadNBDConfigFile(testfile.Name())
+	if !assert.NoError(t, err) || !assert.NotNil(t, nbd) {
 		return
 	}
 
-	// compare some values
-	assert.NotEqual(t, tlog.SlaveSync, oldTlog.SlaveSync)
-	assert.NotEqual(t, tlog.TlogStorageCluster.DataStorage[0].Address, oldTlog.TlogStorageCluster.DataStorage[0].Address)
-}
+	assert.Equal(t, "testtemplate", nbd.TemplateVdiskID)
+	assert.Equal(t, "192.168.1.146:2000", nbd.StorageCluster.DataStorage[0].Address)
+	assert.Equal(t, 10, nbd.StorageCluster.DataStorage[0].Database)
+	assert.Equal(t, "192.168.1.146:2001", nbd.StorageCluster.MetadataStorage.Address)
+	assert.Equal(t, 11, nbd.StorageCluster.MetadataStorage.Database)
+	assert.Equal(t, "192.168.1.147:2000", nbd.TemplateStorageCluster.DataStorage[0].Address)
+	assert.Equal(t, 10, nbd.TemplateStorageCluster.DataStorage[0].Database)
 
-func sighupListener() chan bool {
-	received := make(chan bool)
-	log.Infof("Starting test SIGHUP listener goroutine")
-	go func() {
-		sighub := make(chan os.Signal)
-		signal.Notify(sighub, syscall.SIGHUP)
-		defer func() {
-			signal.Stop(sighub)
-			close(sighub)
-		}()
+	// write a new TlogConfig
+	newTlog, err := NewTlogConfig([]byte(validTlogStr))
+	if !assert.NoError(t, err) || !assert.NotNil(t, newTlog) {
+		return
+	}
+	err = WriteTlogConfigFile(testfile.Name(), *newTlog)
+	if !assert.NoError(t, err) {
+		return
+	}
+	// read again and check
+	tlog, err = ReadTlogConfigFile(testfile.Name())
+	if !assert.NoError(t, err) || !assert.NotNil(t, tlog) {
+		return
+	}
 
-		for {
-			select {
-			case <-sighub:
-				received <- true
-			case _, ok := <-received:
-				if !ok {
-					log.Infof("Closing test SIGHUP listener goroutine")
-					return
-				}
-			}
-		}
-	}()
+	assert.Equal(t, "192.168.1.1:1000", tlog.TlogStorageCluster.DataStorage[0].Address)
+	assert.Equal(t, 14, tlog.TlogStorageCluster.DataStorage[0].Database)
+	assert.Equal(t, "192.168.1.1:1001", tlog.TlogStorageCluster.MetadataStorage.Address)
+	assert.Equal(t, 18, tlog.TlogStorageCluster.MetadataStorage.Database)
 
-	return received
+	// write a new SlaveConfig
+	newSlave, err := NewSlaveConfig([]byte(validSlaveStr))
+	if !assert.NoError(t, err) || !assert.NotNil(t, newSlave) {
+		return
+	}
+	err = WriteSlaveConfigFile(testfile.Name(), *newSlave)
+	if !assert.NoError(t, err) {
+		return
+	}
+	// read again and check
+	slave, err = ReadSlaveConfigFile(testfile.Name())
+	if !assert.NoError(t, err) || !assert.NotNil(t, slave) {
+		return
+	}
+
+	assert.Equal(t, "192.168.2.149:1000", slave.SlaveStorageCluster.DataStorage[0].Address)
+	assert.Equal(t, 14, slave.SlaveStorageCluster.DataStorage[0].Database)
+	assert.Equal(t, "192.168.2.146:1001", slave.SlaveStorageCluster.MetadataStorage.Address)
+	assert.Equal(t, 18, slave.SlaveStorageCluster.MetadataStorage.Database)
 }
