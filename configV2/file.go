@@ -1,11 +1,15 @@
 package configV2
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/go-yaml/yaml"
+	"github.com/zero-os/0-Disk/log"
 )
 
 // ReadBaseConfigFile returns Baseconfig from a file
@@ -19,29 +23,6 @@ func ReadBaseConfigFile(path string) (*BaseConfig, error) {
 	return &cfg.Base, nil
 }
 
-// WriteBaseConfigFile writes a BaseConfig to file
-func WriteBaseConfigFile(path string, base BaseConfig) error {
-	// validate
-	err := base.Validate()
-	if err != nil {
-		return fmt.Errorf("config to be written was not valid: %s", err)
-	}
-
-	// read full file (to only change the Baseconfig, other configs would not be overriden)
-	cfg, _ := readConfigFile(path)
-
-	// apply new subconfig
-	cfg.Base = base
-
-	// write new config file
-	err = writeConfigFile(path, cfg)
-	if err != nil {
-		return fmt.Errorf("could not write config file: %s", err)
-	}
-
-	return nil
-}
-
 // ReadNBDConfigFile returns NBDconfig from a file
 func ReadNBDConfigFile(path string) (*NBDConfig, error) {
 	// read file
@@ -53,30 +34,33 @@ func ReadNBDConfigFile(path string) (*NBDConfig, error) {
 	return cfg.NBD, nil
 }
 
-// WriteNBDConfigFile writes a NBDConfig to file
-func WriteNBDConfigFile(path string, nbd NBDConfig) error {
-	// read file to get base for validation
-	cfg, err := readConfigFile(path)
-	if err != nil {
-		return fmt.Errorf("could not read file to write nbd to: %s", err)
+// WatchNBDConfigFile listens to SIGHUP for updates
+// sends the current config to the channel when created
+func WatchNBDConfigFile(ctx context.Context, path string) (<-chan NBDConfig, error) {
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
-	// validate
-	err = nbd.Validate(cfg.Base.Type)
+	// fetch current data
+	nbd, err := ReadNBDConfigFile(path)
 	if err != nil {
-		return fmt.Errorf("config to be written was not valid: %s", err)
+		return nil, fmt.Errorf("Could not fetch initial NBDconfig for NBdConfig watcher: %s", err)
 	}
 
-	// apply new subconfig
-	cfg.NBD = &nbd
+	// setup channel
+	updater := make(chan NBDConfig, 1)
+	updater <- *nbd
 
-	// write new config file
-	err = writeConfigFile(path, cfg)
-	if err != nil {
-		return fmt.Errorf("could not write config file: %s", err)
-	}
+	go watchConfigFile(ctx, path, func(cfg *configFileFormat) {
+		// send current data to channel
+		select {
+		case updater <- *cfg.NBD:
+		// ensure we can't get stuck in a deadlock for this goroutine
+		case <-ctx.Done():
+		}
+	})
 
-	return nil
+	return updater, nil
 }
 
 // ReadTlogConfigFile returns Tlogconfig from a file
@@ -90,27 +74,33 @@ func ReadTlogConfigFile(path string) (*TlogConfig, error) {
 	return cfg.Tlog, nil
 }
 
-// WriteTlogConfigFile writes a TlogConfig to file
-func WriteTlogConfigFile(path string, tlog TlogConfig) error {
-	// validate
-	err := tlog.Validate()
-	if err != nil {
-		return fmt.Errorf("config to be written was not valid: %s", err)
+// WatchTlogConfigFile listens to SIGHUP for updates
+// sends the current config to the channel when created
+func WatchTlogConfigFile(ctx context.Context, path string) (<-chan TlogConfig, error) {
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
-	// read full file (to only change the TlogConfig, other configs would not be overriden)
-	cfg, _ := readConfigFile(path)
-
-	// apply new subconfig
-	cfg.Tlog = &tlog
-
-	// write new config file
-	err = writeConfigFile(path, cfg)
+	// fetch current data
+	nbd, err := ReadTlogConfigFile(path)
 	if err != nil {
-		return fmt.Errorf("could not write config file: %s", err)
+		return nil, fmt.Errorf("Could not fetch initial TlogConfig for TlogConfig watcher: %s", err)
 	}
 
-	return nil
+	// setup channel
+	updater := make(chan TlogConfig, 1)
+	updater <- *nbd
+
+	go watchConfigFile(ctx, path, func(cfg *configFileFormat) {
+		// send current data to channel
+		select {
+		case updater <- *cfg.Tlog:
+		// ensure we can't get stuck in a deadlock for this goroutine
+		case <-ctx.Done():
+		}
+	})
+
+	return updater, nil
 }
 
 // ReadSlaveConfigFile returns Slaveconfig from a file
@@ -124,27 +114,33 @@ func ReadSlaveConfigFile(path string) (*SlaveConfig, error) {
 	return cfg.Slave, nil
 }
 
-// WriteSlaveConfigFile writes a SlaveConfig to file
-func WriteSlaveConfigFile(path string, slave SlaveConfig) error {
-	// validate
-	err := slave.Validate()
-	if err != nil {
-		return fmt.Errorf("config to be written was not valid: %s", err)
+// WatchSlaveConfigFile listens to SIGHUP for updates
+// sends the current config to the channel when created
+func WatchSlaveConfigFile(ctx context.Context, path string) (<-chan SlaveConfig, error) {
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
-	// read full file (to only change the SlaveConfig, other configs would not be overriden)
-	cfg, _ := readConfigFile(path)
-
-	// apply new subconfig
-	cfg.Slave = &slave
-
-	// write new config file
-	err = writeConfigFile(path, cfg)
+	// fetch current data
+	nbd, err := ReadSlaveConfigFile(path)
 	if err != nil {
-		return fmt.Errorf("could not write config file: %s", err)
+		return nil, fmt.Errorf("Could not fetch initial SlaveConfig for SlaveConfig watcher: %s", err)
 	}
 
-	return nil
+	// setup channel
+	updater := make(chan SlaveConfig, 1)
+	updater <- *nbd
+
+	go watchConfigFile(ctx, path, func(cfg *configFileFormat) {
+		// send current data to channel
+		select {
+		case updater <- *cfg.Slave:
+		// ensure we can't get stuck in a deadlock for this goroutine
+		case <-ctx.Done():
+		}
+	})
+
+	return updater, nil
 }
 
 // configFile represents a config using a YAML file as source
@@ -194,27 +190,34 @@ func readConfigBytes(bytes []byte) (*configFileFormat, error) {
 	return cfg, nil
 }
 
-// writeConfigFile writes the full config to the source file
-func writeConfigFile(path string, cfg *configFileFormat) error {
+// watchConfigFile watches for SIGHUP and updates subconfig
+func watchConfigFile(ctx context.Context, path string, useConfig func(*configFileFormat)) {
+	// setup SIGHUP
+	sighup := make(chan os.Signal)
+	signal.Notify(sighup, syscall.SIGHUP)
+	defer signal.Stop(sighup)
+	defer close(sighup)
 
-	filePerm, err := filePerm(path)
-	if err != nil {
-		return err
+	log.Debug("watch goroutine for SIGHUP started")
+	defer log.Debug("watch goroutine for SIGHUP closed")
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-sighup:
+			log.Debug("SIGHUP received")
+			// read config file
+			cfg, err := readConfigFile(path)
+			if err != nil {
+				log.Errorf("Could not get config from file: %s", err)
+				continue
+			}
+
+			// send config to handler
+			useConfig(cfg)
+		}
 	}
-
-	// get bytes
-	bytes, err := yaml.Marshal(cfg)
-	if err != nil {
-		return err
-	}
-
-	// write
-	err = ioutil.WriteFile(path, bytes, filePerm)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 // get config file permission

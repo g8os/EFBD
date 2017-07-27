@@ -45,6 +45,7 @@ func ReadNBDConfigETCD(vdiskID string, endpoints []string) (*NBDConfig, error) {
 }
 
 // WatchNBDConfigETCD watches etcd for NBDConfig updates
+// sends the current config to the channel when created
 func WatchNBDConfigETCD(ctx context.Context, vdiskID string, endpoints []string) (<-chan NBDConfig, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -98,6 +99,7 @@ func ReadTlogConfigETCD(vdiskID string, endpoints []string) (*TlogConfig, error)
 }
 
 // WatchTlogConfigETCD watches etcd for TlogConfig updates
+// sends the current config to the channel when created
 func WatchTlogConfigETCD(ctx context.Context, vdiskID string, endpoints []string) (<-chan TlogConfig, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -145,6 +147,7 @@ func ReadSlaveConfigETCD(vdiskID string, endpoints []string) (*SlaveConfig, erro
 }
 
 // WatchSlaveConfigETCD watches etcd for SlaveConfig updates
+// sends the current config to the channel when created
 func WatchSlaveConfigETCD(ctx context.Context, vdiskID string, endpoints []string) (<-chan SlaveConfig, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -179,14 +182,15 @@ func WatchSlaveConfigETCD(ctx context.Context, vdiskID string, endpoints []strin
 	return updater, nil
 }
 
-func watchConfigETCD(ctx context.Context, endpoints []string, keyPrefix string, useConfig func(bytes []byte) error) error {
+func watchConfigETCD(ctx context.Context, endpoints []string, keyPrefix string, useConfig func(bytes []byte) error) {
 	// setup connection
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   endpoints,
 		DialTimeout: dialTimeout,
 	})
 	if err != nil {
-		return fmt.Errorf("could not connect to ETCD server: %v", err)
+		log.Errorf("could not connect to ETCD server: %v", err)
+		return
 	}
 	defer cli.Close()
 
@@ -198,17 +202,15 @@ func watchConfigETCD(ctx context.Context, endpoints []string, keyPrefix string, 
 	for {
 		select {
 		case <-ctx.Done():
-			return nil
+			return
 
 		case resp, ok := <-watch:
 			if !ok || resp.Err() != nil {
 				if ok {
 					err := resp.Err()
 					log.Errorf("Watch channel for %s encountered an error: %v", keyPrefix, err)
-					return err
 				}
-
-				return nil
+				return
 			}
 
 			// get latest event
@@ -224,7 +226,6 @@ func watchConfigETCD(ctx context.Context, endpoints []string, keyPrefix string, 
 			err = useConfig(ev.Kv.Value)
 			if err != nil {
 				log.Errorf("Watch channel for %s encountered an error: %v", keyPrefix, err)
-				return err
 			}
 		}
 	}

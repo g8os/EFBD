@@ -19,6 +19,8 @@ The etcd config source can be used for production allowing for distributed stora
 Using the etcdv3 Watch API, the etcd source will listen for updates of each subconfig and update the local configs as they come in.
 The config stored at the etcd keys are YAML formatted serialized versions of the sub config.
 
+NOTE: For the NBDConfig there should be a valid BaseConfig in the source to validate NBDConfig
+
 File source
 
 The file config source is recommended only for development use and gets it's config data from a provided YAML file location. 1 YAML file can represents the data of 1 vdisk formatted to the configFileFormat type.
@@ -53,6 +55,8 @@ YAML file example:
 			metadataStorage:
 			address: 192.168.58.146:2001
 			db: 8
+
+NOTE: For the NBDConfig there should be a valid BaseConfig in the source to validate NBDConfig
 
 */
 package configV2
