@@ -217,7 +217,7 @@ func watchConfigETCD(ctx context.Context, endpoints []string, keyPrefix string, 
 
 			// check if empty, if so log an error
 			if len(ev.Kv.Value) < 1 {
-				log.Errorf("key %s returned an empty value, keeping the old config", ev.Kv.Key)
+				log.Errorf("key %s returned an empty value, keeping the old config", keyPrefix)
 				continue
 			}
 

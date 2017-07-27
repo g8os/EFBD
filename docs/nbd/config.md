@@ -1,63 +1,21 @@
 # NBD Server Configuration
 
-The NBD server and its backend is configured using a YAML configuration file.
+The NBD server and its backend are configured using an etcd distributed key-value store.
 
-The [`ClusterClientFactory`][clusterclientfactory], [`BackendFactory`][backendfactory] and so on, all take a file path to this YAML configuration file.
-The `nbdserver` executable as well takes a `--config path`, which is then delegated to the factories mentioned above, among other objects.
-Therefore it is important to understand this configuration well, as it controls most of the NBD server behavior.
+The 0-Disk Config package contains 4 subconfigs:
+  * BaseConfig
+  * NBDConfig
+  * TlogConfig
+  * SlaveConfig
 
-Here's the `config.yml` file:
+For the NBD Server the BaseConfig, NBDConfig and SlaveConfig will be used to store the NBD server configuration.
 
-```yaml
-storageClusters: # A required map of storage clusters,
-                 # only 1 storage cluster is required
-  mycluster: # Required (string) ID of this storage cluster,
-             # you are free to name the cluster however you want
-    dataStorage: # A required array of connection (dial)strings, used to store data
-      - address: 192.168.58.146:2000 # At least 1 connection (dial)string is required
-        db: 0                        # database is optional, 0 by default
-      - address: 192.123.123.123:2001 # more connections are optional
-    metadataStorage: # Required ONLY when used as the (Template)StorageCluster of a `boot` vdisk
-      address: 192.168.58.146:2001 # Required connection (dial)string,
-                                   # used to store meta data (LBA indices)
-  templatecluster: # Required (string) ID of this (optional) storage cluster,
-               # you are free to name the cluster however you want
-    dataStorage: # A required array of connection (dial)strings, used to store data
-      - address: 192.168.58.147:2000 # only 1 connection (dial)string is required
-        db: 1                        # database is optional, 0 by default
-    metadataStorage: # Required ONLY when used as the (Template)StorageCluster of a `boot` vdisk
-      address: 192.168.58.147:2001 # Required connection (dial)string
-  # ... more (optional) storage clusters
-vdisks: # A required map of vdisks,
-        # only 1 vdisk is required,
-        # the ID of the vdisk is the same one that the user of this vdisk (nbd client)
-        # used to connect to this nbdserver
-  myvdisk: # Required (string) ID of this vdisk
-    blockSize: 4096 # Required static (uint64) size of each block
-    readOnly: false # Defines if this vdisk can be written to or not
-                    # (optional, false by default)
-    size: 10 # Required (uint64) total size in GiB of this vdisk
-    storageCluster: mycluster # Required (string) ID of the storage cluster to use
-                              # for this vdisk's storage, has to be a storage cluster
-                              # defined in the `storageClusters` section of THIS config file
-    templateStorageCluster: template # Optional (string) ID of the template storage cluster to use
-                                    # for this vdisk's template storage, has to be
-                                    # a storage cluster defined in the `storageClusters` section
-                                    # of THIS config file
-    templateVdiskID: mytemplate # Optional (string) ID of the template vdisk,
-                                # only used for `db` vdisks
-    type: boot # Required (VdiskType) type of this vdisk
-               # which also defines if its deduped or nondeduped,
-               # valid types are: `boot`, `db`, `cache` and `tmp`
-  # ... more (optional) vdisks
-```
+The NBD Server will use the methodes provided by the config package to communicate with the etcd storage cluster. It will use the Read\<Sub\>ConfigETCD methodes for getting the data once. If it needs the data to be updated the NBD server will use the channel returned by Watch\<Sub\>ConfigETCD to receive updates on the subconfig and store it.
 
-As you can see, both the storage clusters and vdisks are configured in
-and within the same NBD server `config.yml` file.
+Within the NBD server, it uses the configs in following places:
+  * ardb: use the BaseConfig and NBDConfig for the BackendFactory
+  * Tlogstorage: when switching to ardb slave the SlaveConfig will be used
 
-By default the `nbdserver` executable assumes the `config.yml` file
-exists within the working directory of its process. This location can be defined
-using the `--config path` optional CLI flag.
+More details about the subconfigs, etcd API can be found on the [config documentation page][configDoc]
 
-[clusterclientfactory]: /storagecluster/cluster.go#L32-#L40
-[backendfactory]: /nbdserver/ardb/ardb.go#L67-L75
+[configDoc]: /docs/config.md

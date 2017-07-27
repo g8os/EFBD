@@ -148,7 +148,7 @@ func WriteSlaveConfigFile(path string, slave SlaveConfig) error {
 }
 
 // configFile represents a config using a YAML file as source
-type configFile struct {
+type configFileFormat struct {
 	Base  BaseConfig   `yaml:"baseConfig" valid:"required"`
 	NBD   *NBDConfig   `yaml:"nbdConfig" valid:"optional"`
 	Tlog  *TlogConfig  `yaml:"tlogConfig" valid:"optional"`
@@ -157,7 +157,7 @@ type configFile struct {
 
 // readConfigFilecreates config from yaml byte slice
 // also used for testing config and etcd
-func readConfigFile(path string) (*configFile, error) {
+func readConfigFile(path string) (*configFileFormat, error) {
 	// read file
 	bytes, err := ioutil.ReadFile(path)
 	if err != nil {
@@ -167,8 +167,8 @@ func readConfigFile(path string) (*configFile, error) {
 	return readConfigBytes(bytes)
 }
 
-func readConfigBytes(bytes []byte) (*configFile, error) {
-	cfg := new(configFile)
+func readConfigBytes(bytes []byte) (*configFileFormat, error) {
+	cfg := new(configFileFormat)
 	// unmarshal the yaml content
 	err := yaml.Unmarshal(bytes, cfg)
 	if err != nil {
@@ -195,7 +195,7 @@ func readConfigBytes(bytes []byte) (*configFile, error) {
 }
 
 // writeConfigFile writes the full config to the source file
-func writeConfigFile(path string, cfg *configFile) error {
+func writeConfigFile(path string, cfg *configFileFormat) error {
 
 	filePerm, err := filePerm(path)
 	if err != nil {
