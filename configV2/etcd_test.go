@@ -2,6 +2,7 @@ package configV2
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -78,17 +79,17 @@ func testETCDConfig(t *testing.T) {
 	nbdUpdate, err := WatchNBDConfigETCD(ctx, vdiskID, endpoints)
 	go func() {
 		for {
-			res, ok := <-nbdUpdate
+			nbd, ok := <-nbdUpdate
 			if !ok {
 				log.Debug("nbd update listener closed")
 				return
 			}
-			log.Debugf("nbd update listener reciever: %v", res.NBD)
+			log.Debugf("nbd update listener reciever: %v", nbd)
 		}
 	}()
 
 	// send updates
-	err = WriteNBDConfigETCD(vdiskID, endpoints, *nbd)
+	err = writeNBDConfigETCD(vdiskID, endpoints, *nbd)
 	if !assert.NoError(t, err) {
 		cancel()
 		return
@@ -104,16 +105,16 @@ func testETCDConfig(t *testing.T) {
 	tlogUpdate, err := WatchTlogConfigETCD(ctx, vdiskID, endpoints)
 	go func() {
 		for {
-			res, ok := <-tlogUpdate
+			tlog, ok := <-tlogUpdate
 			if !ok {
 				log.Debug("tlog update listener closed")
 				return
 			}
-			log.Debugf("tlog update listener reciever: %v", res.Tlog)
+			log.Debugf("tlog update listener reciever: %v", tlog)
 		}
 	}()
 	// send updates
-	err = WriteTlogConfigETCD(vdiskID, endpoints, *tlog)
+	err = writeTlogConfigETCD(vdiskID, endpoints, *tlog)
 	if !assert.NoError(t, err) {
 		cancel()
 		return
@@ -129,17 +130,17 @@ func testETCDConfig(t *testing.T) {
 	slaveUpdate, err := WatchSlaveConfigETCD(ctx, vdiskID, endpoints)
 	go func() {
 		for {
-			res, ok := <-slaveUpdate
+			slave, ok := <-slaveUpdate
 			if !ok {
 				log.Debug("slave update listener closed")
 				return
 			}
-			log.Debugf("slave update listener reciever: %v", res.Slave)
+			log.Debugf("slave update listener reciever: %v", slave)
 		}
 	}()
 
 	// send updates
-	err = WriteSlaveConfigETCD(vdiskID, endpoints, *slave)
+	err = writeSlaveConfigETCD(vdiskID, endpoints, *slave)
 	if !assert.NoError(t, err) {
 		cancel()
 		return
@@ -150,6 +151,84 @@ func testETCDConfig(t *testing.T) {
 	time.Sleep(1 * time.Millisecond)
 
 	cancel()
+}
+
+// writeConfigETCD sets data to etcd cluster with the given key and data
+func writeConfigETCD(endpoints []string, key string, data []byte) error {
+	// setup connection
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   endpoints,
+		DialTimeout: dialTimeout,
+	})
+	if err != nil {
+		return fmt.Errorf("could not connect to ETCD server: %v", err)
+	}
+	defer cli.Close()
+
+	// set value
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	_, err = cli.Put(ctx, key, string(data))
+	if err != nil {
+		return fmt.Errorf("could not send tlog config: %v", err)
+	}
+
+	return nil
+}
+
+func writeNBDConfigETCD(vdiskID string, endpoints []string, nbd NBDConfig) error {
+	nbdKey := etcdNBDKey(vdiskID)
+
+	// validate before sending
+	//read base for vdisk type (validation)
+	base, err := ReadBaseConfigETCD(vdiskID, endpoints)
+	if err != nil {
+		return fmt.Errorf("could not get BaseConfig for writing to NBDConfig: %s", err)
+	}
+	err = nbd.Validate(base.Type)
+	if err != nil {
+		return fmt.Errorf("trying to write invalid config: %s", err)
+	}
+	nbdBS, err := nbd.ToBytes()
+	if err != nil {
+		return fmt.Errorf("could not turn NBDConfig to byteslice before sending to etcd: %s", err)
+	}
+
+	return writeConfigETCD(endpoints, nbdKey, nbdBS)
+}
+
+func writeTlogConfigETCD(vdiskID string, endpoints []string, tlog TlogConfig) error {
+	tlogKey := etcdTlogKey(vdiskID)
+
+	// validate before sending
+	err := tlog.Validate()
+	if err != nil {
+		return fmt.Errorf("trying to write invalid config to %s: %s", tlogKey, err)
+	}
+
+	tlogBS, err := tlog.ToBytes()
+	if err != nil {
+		return fmt.Errorf("could not turn TlogConfig to byteslice before sending to etcd: %s", err)
+	}
+
+	return writeConfigETCD(endpoints, tlogKey, tlogBS)
+}
+
+func writeSlaveConfigETCD(vdiskID string, endpoints []string, slave SlaveConfig) error {
+	slaveKey := etcdSlaveKey(vdiskID)
+
+	// validate before sending
+	err := slave.Validate()
+	if err != nil {
+		return fmt.Errorf("trying to write invalid configto %s: %s", slaveKey, err)
+	}
+
+	slaveBS, err := slave.ToBytes()
+	if err != nil {
+		return fmt.Errorf("could not turn SlaveConfig to byteslice before sending to etcd: %s", err)
+	}
+
+	return writeConfigETCD(endpoints, slaveKey, slaveBS)
 }
 
 func cleanupETCD(cli *clientv3.Client, baseKey, nbdKey, tlogKey, slaveKey string) error {

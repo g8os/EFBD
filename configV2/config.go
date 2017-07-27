@@ -29,7 +29,8 @@ func NewBaseConfig(data []byte) (*BaseConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	base.Validate()
+
+	err = base.Validate()
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +90,7 @@ func NewNBDConfig(data []byte, vdiskType VdiskType) (*NBDConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	nbd.Validate(vdiskType)
+	err = nbd.Validate(vdiskType)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +148,7 @@ func NewTlogConfig(data []byte) (*TlogConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	tlog.Validate()
+	err = tlog.Validate()
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +198,7 @@ func NewSlaveConfig(data []byte) (*SlaveConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	slave.Validate()
+	err = slave.Validate()
 	if err != nil {
 		return nil, err
 	}
