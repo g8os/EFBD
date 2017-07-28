@@ -1,4 +1,4 @@
-/*Package configV2 is a package for config management for 0-Disk virtual disks.
+/*Package config is a package for config management for 0-Disk virtual disks.
 
 Config
 
@@ -59,4 +59,4 @@ YAML file example:
 NOTE: For the NBDConfig there should be a valid BaseConfig in the source to validate NBDConfig
 
 */
-package configV2
+package config

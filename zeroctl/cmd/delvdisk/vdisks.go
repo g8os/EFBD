@@ -4,20 +4,20 @@ import (
 	"errors"
 
 	"github.com/spf13/cobra"
+	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	cmdconfig "github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
 
-var vdisksCfg struct {
-	ConfigPath string
-	Force      bool
+var vdiskCmdCfg struct {
+	ConfigInfo zerodisk.ConfigInfo
 }
 
 // VdisksCmd represents the vdisks delete subcommand
 var VdisksCmd = &cobra.Command{
-	Use:   "vdisks [vdiskid...]",
+	Use:   "vdisks config vdiskid...",
 	Short: "Delete one, multiple or all vdisks",
 	RunE:  deleteVdisks,
 }
@@ -29,14 +29,16 @@ func deleteVdisks(cmd *cobra.Command, args []string) error {
 	}
 	log.SetLevel(logLevel)
 
-	log.Infof("loading config %s...", vdisksCfg.ConfigPath)
-
-	cfg, err := config.ReadConfig(vdisksCfg.ConfigPath, config.NBDServer)
-	if err != nil {
-		return err
+	if len(args) == 0 {
+		return errors.New("not enough arguments given")
 	}
 
-	data, metadata, err := getAndSortVdisks(cfg, args)
+	// the first positional argument is the config resource
+	vdiskCmdCfg.ConfigInfo.Resource = args[0]
+	args = args[1:]
+
+	// get and sort vdisks per server cfg
+	data, metadata, err := getAndSortVdisks(args)
 	if err != nil {
 		return err
 	}
@@ -83,7 +85,11 @@ func (m vdisksPerServerMap) AddVdisk(cfg config.StorageServerConfig, vdiskID str
 	serverVdisks[vdiskID] = vdiskType
 }
 
-func getAndSortVdisks(cfg *config.Config, args []string) (data vdisksPerServerMap, metadata vdisksPerServerMap, err error) {
+func getAndSortVdisks(vdiskIDs []string) (data vdisksPerServerMap, metadata vdisksPerServerMap, err error) {
+	if len(vdiskIDs) == 0 {
+		err = errors.New("no vdisk identifiers given")
+	}
+
 	data = make(vdisksPerServerMap)
 	metadata = make(vdisksPerServerMap)
 
@@ -97,29 +103,19 @@ func getAndSortVdisks(cfg *config.Config, args []string) (data vdisksPerServerMa
 		}
 	}
 
-	var clusterCfg config.StorageClusterConfig
+	var baseConfig *config.BaseConfig
+	var nbdConfig *config.NBDConfig
 
-	if len(args) != 0 {
-		var ok bool
-		var vdiskCfg config.VdiskConfig
-
-		// add only the selected vdisk(s)
-		for _, arg := range args {
-			vdiskCfg, ok = cfg.Vdisks[arg]
-			if !ok {
-				log.Errorf("no config found for vdisk %s", arg)
-				continue
-			}
-
-			clusterCfg = cfg.StorageClusters[vdiskCfg.StorageCluster]
-			addVdiskCluster(clusterCfg, arg, vdiskCfg.Type)
+	// add only the selected vdisk(s)
+	for _, vdiskID := range vdiskIDs {
+		vdiskCmdCfg.ConfigInfo.VdiskID = vdiskID
+		baseConfig, nbdConfig, err = zerodisk.ReadNBDConfig(vdiskCmdCfg.ConfigInfo)
+		if err != nil {
+			log.Errorf("no NBD config could be retrieved for %s: %v", vdiskID, err)
+			continue
 		}
-	} else {
-		// add all available vdisk(s)
-		for vdiskID, vdiskCfg := range cfg.Vdisks {
-			clusterCfg = cfg.StorageClusters[vdiskCfg.StorageCluster]
-			addVdiskCluster(clusterCfg, vdiskID, vdiskCfg.Type)
-		}
+
+		addVdiskCluster(nbdConfig.StorageCluster, vdiskID, baseConfig.Type)
 	}
 
 	if len(data) == 0 && len(metadata) == 0 {
@@ -140,10 +136,7 @@ WARNING: until issue #88 has been resolved,
   Nondeduped vdisks have no metadata, and thus are not affected by this issue.
 `
 
-	VdisksCmd.Flags().StringVar(
-		&vdisksCfg.ConfigPath, "config", "config.yml",
-		"zeroctl config file")
-	VdisksCmd.Flags().BoolVarP(
-		&vdisksCfg.Force, "force", "f", false,
-		"when enabled non-fatal errors are logged instead of aborting the command")
+	VdisksCmd.Flags().Var(
+		&vdiskCmdCfg.ConfigInfo.ResourceType, "type",
+		"type of the config resource given (options: file, etcd) (default: etcd)")
 }

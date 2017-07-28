@@ -25,7 +25,7 @@ type ConnProvider interface {
 type ConnProviderHotReloader interface {
 	ConnProvider
 
-	Listen(ctx context.Context, vdiskID string, hr config.HotReloader)
+	Listen(ctx context.Context, vdiskID string, ch <-chan config.NBDConfig)
 }
 
 // DataConnProvider defines the interface to get an ARDB data connection,
@@ -47,7 +47,7 @@ type MetadataConnProvider interface {
 }
 
 // RedisProvider creates a Provider using Redis.
-func RedisProvider(cfg *config.VdiskClusterConfig, pool *RedisPool) (ConnProviderHotReloader, error) {
+func RedisProvider(cfg *config.NBDConfig, pool *RedisPool) (ConnProviderHotReloader, error) {
 	if pool == nil {
 		pool = NewRedisPool(nil)
 	}
@@ -132,22 +132,12 @@ func (rp *redisProvider) MetadataConnection() (conn redis.Conn, err error) {
 
 // Listen to the config hot reloader,
 // and reload the nbdserver config incase it has been updated.
-func (rp *redisProvider) Listen(ctx context.Context, vdiskID string, hr config.HotReloader) {
+// TODO: who closes this channel?
+//   |---> I guess we should share the ctx with the one given to this listener?!
+func (rp *redisProvider) Listen(ctx context.Context, vdiskID string, ch <-chan config.NBDConfig) {
 	log.Debug("redisProvider listening")
 
-	ch := make(chan config.VdiskClusterConfig)
-	err := hr.Subscribe(ch, vdiskID)
-	if err != nil {
-		panic(err)
-	}
-
-	defer func() {
-		log.Debug("exit redisProvider listener")
-		if err := hr.Unsubscribe(ch); err != nil {
-			log.Error(err)
-		}
-		close(ch)
-	}()
+	defer log.Debug("exit redisProvider listener")
 
 	for {
 		select {
@@ -180,20 +170,20 @@ func (rp *redisProvider) Close() error {
 
 // Update all internally stored parameters we care about,
 // based on the updated config content.
-func (rp *redisProvider) reloadConfig(cfg *config.VdiskClusterConfig) error {
+func (rp *redisProvider) reloadConfig(cfg *config.NBDConfig) error {
 	rp.mux.Lock()
 	defer rp.mux.Unlock()
 
-	rp.dataConnectionConfigs = cfg.DataCluster.DataStorage
+	rp.dataConnectionConfigs = cfg.StorageCluster.DataStorage
 	rp.numberOfServers = int64(len(rp.dataConnectionConfigs))
 
-	rp.metaConnectionConfig = cfg.DataCluster.MetadataStorage
+	rp.metaConnectionConfig = cfg.StorageCluster.MetadataStorage
 
-	if cfg.TemplateCluster == nil {
+	if cfg.TemplateStorageCluster == nil {
 		rp.templateDataConnectionConfigs = nil
 		rp.numberOfTemplateServers = 0
 	} else {
-		rp.templateDataConnectionConfigs = cfg.TemplateCluster.DataStorage
+		rp.templateDataConnectionConfigs = cfg.TemplateStorageCluster.DataStorage
 		rp.numberOfTemplateServers = int64(len(rp.templateDataConnectionConfigs))
 	}
 

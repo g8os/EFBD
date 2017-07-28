@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/garyburd/redigo/redis"
+	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/redisstub"
@@ -78,15 +79,10 @@ func StaticRedisPoolFactory(requiredDataServerCount int, storageServers []config
 // The required amount of data servers is specified upfront,
 // such that at creation of a RedisPool, it is validated that the
 // storage cluster in question has sufficient data servers available.
-func ConfigRedisPoolFactory(ctx context.Context, requiredDataServerCount int, configPath string) (RedisPoolFactory, error) {
-	reloader, err := config.NewHotReloader(configPath, config.TlogServer)
-	if err != nil {
-		return nil, fmt.Errorf("couldn't create RedisPoolFactory: %s", err.Error())
-	}
-	go reloader.Listen(ctx)
-
+func ConfigRedisPoolFactory(ctx context.Context, requiredDataServerCount int, configResourceType zerodisk.ConfigResourceType, configResource string) (RedisPoolFactory, error) {
 	return &configRedisPoolFactory{
-		reloader:                reloader,
+		configResourceType:      configResourceType,
+		configResource:          configResource,
 		requiredDataServerCount: requiredDataServerCount,
 	}, nil
 }
@@ -169,7 +165,7 @@ func InMemoryRedisPool(requiredDataServerCount int) RedisPool {
 // RedisPoolFromConfig creates a redis pool for a vdisk,
 // using the storage cluster defined in the given Blokstor config file,
 // for that vdisk.
-func RedisPoolFromConfig(configPath, vdiskID string, requiredDataServerCount int) (RedisPool, error) {
+func RedisPoolFromConfig(configResourceType zerodisk.ConfigResourceType, configResource string, vdiskID string, requiredDataServerCount int) (RedisPool, error) {
 	cfg, err := config.ReadConfig(configPath, config.TlogServer)
 	if err != nil {
 		return nil, err
@@ -296,7 +292,8 @@ func (factory *staticRedisPoolFactory) NewRedisPool(string) (RedisPool, error) {
 func (factory *staticRedisPoolFactory) Close() error { return nil }
 
 type configRedisPoolFactory struct {
-	reloader                config.HotReloader
+	configResourceType      zerodisk.ConfigResourceType
+	configResource          string
 	requiredDataServerCount int
 }
 

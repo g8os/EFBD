@@ -1,4 +1,4 @@
-package configV2
+package config
 
 import (
 	"context"
@@ -13,9 +13,9 @@ import (
 )
 
 // ReadBaseConfigFile returns Baseconfig from a file
-func ReadBaseConfigFile(path string) (*BaseConfig, error) {
+func ReadBaseConfigFile(vdiskID, path string) (*BaseConfig, error) {
 	// read file
-	cfg, err := readConfigFile(path)
+	cfg, err := readConfigFile(vdiskID, path)
 	if err != nil {
 		return nil, err
 	}
@@ -24,29 +24,29 @@ func ReadBaseConfigFile(path string) (*BaseConfig, error) {
 }
 
 // ReadNBDConfigFile returns NBDconfig from a file
-func ReadNBDConfigFile(path string) (*NBDConfig, error) {
+func ReadNBDConfigFile(vdiskID, path string) (*BaseConfig, *NBDConfig, error) {
 	// read file
-	cfg, err := readConfigFile(path)
+	cfg, err := readConfigFile(vdiskID, path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if cfg.NBD == nil {
-		return nil, fmt.Errorf("config file %s doesn't contain nbd config", path)
+		return nil, nil, fmt.Errorf("config file %s doesn't contain nbd config", path)
 	}
 
-	return cfg.NBD, nil
+	return &cfg.Base, cfg.NBD, nil
 }
 
 // WatchNBDConfigFile listens to SIGHUP for updates
 // sends the current config to the channel when created
-func WatchNBDConfigFile(ctx context.Context, path string) (<-chan NBDConfig, error) {
+func WatchNBDConfigFile(ctx context.Context, vdiskID, path string) (<-chan NBDConfig, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
 	// fetch current data
-	nbd, err := ReadNBDConfigFile(path)
+	_, nbd, err := ReadNBDConfigFile(vdiskID, path)
 	if err != nil {
 		return nil, fmt.Errorf("Could not fetch initial NBDconfig for NBdConfig watcher: %s", err)
 	}
@@ -55,7 +55,7 @@ func WatchNBDConfigFile(ctx context.Context, path string) (<-chan NBDConfig, err
 	updater := make(chan NBDConfig, 1)
 	updater <- *nbd
 
-	go watchConfigFile(ctx, path, func(cfg *configFileFormat) {
+	go watchConfigFile(ctx, vdiskID, path, func(cfg *vdiskConfigFileFormat) {
 		if cfg.NBD == nil {
 			log.Errorf("no nbd cfg in file %s, while nbd watcher requires it", path)
 			return
@@ -73,9 +73,9 @@ func WatchNBDConfigFile(ctx context.Context, path string) (<-chan NBDConfig, err
 }
 
 // ReadTlogConfigFile returns Tlogconfig from a file
-func ReadTlogConfigFile(path string) (*TlogConfig, error) {
+func ReadTlogConfigFile(vdiskID, path string) (*TlogConfig, error) {
 	// read file
-	cfg, err := readConfigFile(path)
+	cfg, err := readConfigFile(vdiskID, path)
 	if err != nil {
 		return nil, err
 	}
@@ -89,13 +89,13 @@ func ReadTlogConfigFile(path string) (*TlogConfig, error) {
 
 // WatchTlogConfigFile listens to SIGHUP for updates
 // sends the current config to the channel when created
-func WatchTlogConfigFile(ctx context.Context, path string) (<-chan TlogConfig, error) {
+func WatchTlogConfigFile(ctx context.Context, vdiskID, path string) (<-chan TlogConfig, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
 	// fetch current data
-	tlog, err := ReadTlogConfigFile(path)
+	tlog, err := ReadTlogConfigFile(vdiskID, path)
 	if err != nil {
 		return nil, fmt.Errorf("Could not fetch initial TlogConfig for TlogConfig watcher: %s", err)
 	}
@@ -104,7 +104,7 @@ func WatchTlogConfigFile(ctx context.Context, path string) (<-chan TlogConfig, e
 	updater := make(chan TlogConfig, 1)
 	updater <- *tlog
 
-	go watchConfigFile(ctx, path, func(cfg *configFileFormat) {
+	go watchConfigFile(ctx, vdiskID, path, func(cfg *vdiskConfigFileFormat) {
 		if cfg.Tlog == nil {
 			log.Errorf("no tlog cfg in file %s, while tlog watcher requires it", path)
 			return
@@ -122,9 +122,9 @@ func WatchTlogConfigFile(ctx context.Context, path string) (<-chan TlogConfig, e
 }
 
 // ReadSlaveConfigFile returns Slaveconfig from a file
-func ReadSlaveConfigFile(path string) (*SlaveConfig, error) {
+func ReadSlaveConfigFile(vdiskID, path string) (*SlaveConfig, error) {
 	// read file
-	cfg, err := readConfigFile(path)
+	cfg, err := readConfigFile(vdiskID, path)
 	if err != nil {
 		return nil, err
 	}
@@ -138,13 +138,13 @@ func ReadSlaveConfigFile(path string) (*SlaveConfig, error) {
 
 // WatchSlaveConfigFile listens to SIGHUP for updates
 // sends the current config to the channel when created
-func WatchSlaveConfigFile(ctx context.Context, path string) (<-chan SlaveConfig, error) {
+func WatchSlaveConfigFile(ctx context.Context, vdiskID, path string) (<-chan SlaveConfig, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
 	// fetch current data
-	slave, err := ReadSlaveConfigFile(path)
+	slave, err := ReadSlaveConfigFile(vdiskID, path)
 	if err != nil {
 		return nil, fmt.Errorf("Could not fetch initial SlaveConfig for SlaveConfig watcher: %s", err)
 	}
@@ -153,7 +153,7 @@ func WatchSlaveConfigFile(ctx context.Context, path string) (<-chan SlaveConfig,
 	updater := make(chan SlaveConfig, 1)
 	updater <- *slave
 
-	go watchConfigFile(ctx, path, func(cfg *configFileFormat) {
+	go watchConfigFile(ctx, vdiskID, path, func(cfg *vdiskConfigFileFormat) {
 		if cfg.Slave == nil {
 			log.Errorf("no slave cfg in file %s, while slave watcher requires it", path)
 			return
@@ -171,7 +171,11 @@ func WatchSlaveConfigFile(ctx context.Context, path string) (<-chan SlaveConfig,
 }
 
 // configFile represents a config using a YAML file as source
-type configFileFormat struct {
+type configFileFormat map[string]vdiskConfigFileFormat
+
+// vdiskConfigFileFormat represents a vdisk's config
+// as found in a YAML file
+type vdiskConfigFileFormat struct {
 	Base  BaseConfig   `yaml:"baseConfig" valid:"required"`
 	NBD   *NBDConfig   `yaml:"nbdConfig" valid:"optional"`
 	Tlog  *TlogConfig  `yaml:"tlogConfig" valid:"optional"`
@@ -180,22 +184,29 @@ type configFileFormat struct {
 
 // readConfigFilecreates config from yaml byte slice
 // also used for testing config and etcd
-func readConfigFile(path string) (*configFileFormat, error) {
+func readConfigFile(vdiskID string, path string) (*vdiskConfigFileFormat, error) {
 	// read file
 	bytes, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't read from the config file: %s", err.Error())
 	}
 
-	return readConfigBytes(bytes)
+	return readConfigBytes(vdiskID, bytes)
 }
 
-func readConfigBytes(bytes []byte) (*configFileFormat, error) {
-	cfg := new(configFileFormat)
+func readConfigBytes(vdiskID string, bytes []byte) (*vdiskConfigFileFormat, error) {
+	fileCfg := make(configFileFormat)
+
 	// unmarshal the yaml content
-	err := yaml.Unmarshal(bytes, cfg)
+	err := yaml.Unmarshal(bytes, &fileCfg)
 	if err != nil {
-		return nil, fmt.Errorf("Could not unmarshal provided bytes: %v", err)
+		return nil, fmt.Errorf("could not unmarshal provided bytes: %v", err)
+	}
+
+	cfg, ok := fileCfg[vdiskID]
+	if !ok {
+		return nil, fmt.Errorf(
+			"vdisk %s wasn't specified in the given YAML config", vdiskID)
 	}
 
 	err = cfg.Base.Validate()
@@ -214,11 +225,12 @@ func readConfigBytes(bytes []byte) (*configFileFormat, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid slave configuration: %s", err)
 	}
-	return cfg, nil
+
+	return &cfg, nil
 }
 
 // watchConfigFile watches for SIGHUP and updates subconfig
-func watchConfigFile(ctx context.Context, path string, useConfig func(*configFileFormat)) {
+func watchConfigFile(ctx context.Context, vdiskID, path string, useConfig func(*vdiskConfigFileFormat)) {
 	// setup SIGHUP
 	sighup := make(chan os.Signal)
 	signal.Notify(sighup, syscall.SIGHUP)
@@ -235,7 +247,7 @@ func watchConfigFile(ctx context.Context, path string, useConfig func(*configFil
 		case <-sighup:
 			log.Debug("SIGHUP received")
 			// read config file
-			cfg, err := readConfigFile(path)
+			cfg, err := readConfigFile(vdiskID, path)
 			if err != nil {
 				log.Errorf("Could not get config from file: %s", err)
 				continue

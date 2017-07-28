@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -29,45 +30,83 @@ type BlockStorage interface {
 // BlockStorageConfig is used when creating a block storage using the
 // NewBlockStorage helper constructor.
 type BlockStorageConfig struct {
-	Vdisk config.VdiskConfig
-	// only used for Deduped Storage
+	// required: ID of the vdisk
+	VdiskID string
+	// optional: used for nondeduped storage
+	TemplateVdiskID string
+
+	// required: type of vdisk
+	VdiskType config.VdiskType
+
+	// required: vdisk size in bytes
+	VdiskSize int64
+	// required: block size in bytes
+	BlockSize int64
+
+	// optional: used by (semi)deduped storage
 	LBACacheLimit int64
 }
 
+// Validate this BlockStorageConfig.
+func (cfg *BlockStorageConfig) Validate() error {
+	if cfg == nil {
+		return nil
+	}
+
+	if err := cfg.VdiskType.Validate(); err != nil {
+		return err
+	}
+
+	if cfg.VdiskSize <= 0 {
+		return errors.New("invalid vdisk size")
+	}
+
+	if cfg.BlockSize < cfg.VdiskSize {
+		return errors.New("invalid block size size")
+	}
+
+	return nil
+}
+
 // NewBlockStorage returns the correct block storage based on the given VdiskConfig.
-func NewBlockStorage(vdiskID string, cfg BlockStorageConfig, provider ardb.ConnProvider) (storage BlockStorage, err error) {
-	vdiskType := cfg.Vdisk.Type
+func NewBlockStorage(cfg BlockStorageConfig, provider ardb.ConnProvider) (storage BlockStorage, err error) {
+	err = cfg.Validate()
+	if err != nil {
+		return
+	}
+
+	vdiskType := cfg.VdiskType
 
 	switch storageType := vdiskType.StorageType(); storageType {
 	case config.StorageDeduped:
 		return Deduped(
-			vdiskID,
-			int64(cfg.Vdisk.Size)*ardb.GibibyteAsBytes,
-			int64(cfg.Vdisk.BlockSize),
+			cfg.VdiskID,
+			cfg.VdiskSize,
+			cfg.BlockSize,
 			cfg.LBACacheLimit,
 			vdiskType.TemplateSupport(),
 			provider)
 
 	case config.StorageNonDeduped:
 		return NonDeduped(
-			vdiskID,
-			cfg.Vdisk.TemplateVdiskID,
-			int64(cfg.Vdisk.BlockSize),
+			cfg.VdiskID,
+			cfg.TemplateVdiskID,
+			cfg.BlockSize,
 			vdiskType.TemplateSupport(),
 			provider)
 
 	case config.StorageSemiDeduped:
 		return SemiDeduped(
-			vdiskID,
-			int64(cfg.Vdisk.Size),
-			int64(cfg.Vdisk.BlockSize),
+			cfg.VdiskID,
+			cfg.VdiskSize,
+			cfg.BlockSize,
 			cfg.LBACacheLimit,
 			provider)
 
 	default:
 		return nil, fmt.Errorf(
 			"no block storage available for %s's storage type %s",
-			vdiskID, storageType)
+			cfg.VdiskID, storageType)
 	}
 }
 

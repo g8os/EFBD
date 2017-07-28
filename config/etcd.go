@@ -1,4 +1,4 @@
-package configV2
+package config
 
 import (
 	"context"
@@ -26,22 +26,28 @@ func ReadBaseConfigETCD(vdiskID string, endpoints []string) (*BaseConfig, error)
 }
 
 //ReadNBDConfigETCD gets an NBDConfig from provided etcd cluster
-func ReadNBDConfigETCD(vdiskID string, endpoints []string) (*NBDConfig, error) {
+func ReadNBDConfigETCD(vdiskID string, endpoints []string) (*BaseConfig, *NBDConfig, error) {
 	nbdKey := etcdNBDKey(vdiskID)
 	// Read base for vdisk type (validation)
 	base, err := ReadBaseConfigETCD(vdiskID, endpoints)
 	if err != nil {
-		return nil, fmt.Errorf("could not get BaseConfig for NBDConfig: %s", err)
+		return nil, nil, fmt.Errorf("could not get BaseConfig for NBDConfig: %s", err)
 	}
 
 	// get nbd data from ETCD
 	nbdBS, err := readConfigETCD(endpoints, nbdKey)
 	if err != nil {
-		return nil, fmt.Errorf("could not get NBDConfig from etcd: %s", err)
+		return nil, nil, fmt.Errorf("could not get NBDConfig from etcd: %s", err)
 	}
 
-	// return unmarshalled NBDConfig
-	return NewNBDConfig(nbdBS, base.Type)
+	// parse NBD Config
+	nbd, err := NewNBDConfig(nbdBS, base.Type)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// return base and nbd
+	return base, nbd, nil
 }
 
 // WatchNBDConfigETCD watches etcd for NBDConfig updates
@@ -51,14 +57,8 @@ func WatchNBDConfigETCD(ctx context.Context, vdiskID string, endpoints []string)
 		ctx = context.Background()
 	}
 
-	// fetch base config
-	base, err := ReadBaseConfigETCD(vdiskID, endpoints)
-	if err != nil {
-		return nil, fmt.Errorf("Could not fetch BaseConfig for NBdConfig watcher: %s", err)
-	}
-
 	// fetch current data
-	nbd, err := ReadNBDConfigETCD(vdiskID, endpoints)
+	base, nbd, err := ReadNBDConfigETCD(vdiskID, endpoints)
 	if err != nil {
 		return nil, fmt.Errorf("Could not fetch initial NBDconfig for NBdConfig watcher: %s", err)
 	}

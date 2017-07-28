@@ -1,4 +1,4 @@
-package configV2
+package config
 
 import (
 	"context"

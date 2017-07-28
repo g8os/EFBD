@@ -1,4 +1,4 @@
-package configV2
+package config
 
 var validBaseConfig = BaseConfig{
 	BlockSize: 1234,
@@ -141,25 +141,6 @@ baseConfig:
 nbdConfig:
   templateVdiskID: mytemplate
 `,
-	// missing template storage cluster
-	`
-baseConfig: 
-  blockSize: 4096
-  readOnly: false
-  size: 6
-  type: db
-nbdConfig:
-  templateVdiskID: mytemplate
-  storageCluster:
-    dataStorage: 
-      - address: 192.168.58.146:2000
-        db: 0
-      - address: 192.123.123.123:2001
-        db: 1
-    metadataStorage:
-      address: 192.168.58.146:2001
-      db: 1
-  `,
 
 	// bad template storage
 	`
