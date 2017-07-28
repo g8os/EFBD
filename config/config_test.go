@@ -111,7 +111,7 @@ func TestInvalidConfigs(t *testing.T) {
 	for i, input := range invalidNBDServerConfigs {
 		// from YAMLbytes returns an error if config not valid
 		// check log if errors match intended fails
-		_, err := readConfigBytes("testVdisk", []byte(input))
+		_, err := readVdiskConfigBytes("testVdisk", []byte(input))
 		log.Debugf("%v: %v", i+1, err)
 		if !assert.Error(t, err, input) {
 			return

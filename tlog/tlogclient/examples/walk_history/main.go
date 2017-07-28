@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 
+	"github.com/zero-os/0-Disk"
 	zerodiskcfg "github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
@@ -42,10 +43,13 @@ func main() {
 	redisPool, err := tlog.AnyRedisPool(tlog.RedisPoolConfig{
 		VdiskID:                 conf.vdiskID,
 		RequiredDataServerCount: conf.K + conf.M,
-		ConfigPath:              conf.ConfigPath,
-		ServerConfigs:           serverConfigs,
-		AutoFill:                true,
-		AllowInMemory:           false,
+		ConfigInfo: zerodisk.ConfigInfo{
+			Resource:     conf.ConfigPath,
+			ResourceType: zerodisk.FileConfigResource,
+		},
+		ServerConfigs: serverConfigs,
+		AutoFill:      true,
+		AllowInMemory: false,
 	})
 	exitOnErr(err)
 

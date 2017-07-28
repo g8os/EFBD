@@ -6,8 +6,9 @@ import (
 	"sync"
 
 	"github.com/garyburd/redigo/redis"
-	"github.com/siddontang/go/log"
+	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/log"
 )
 
 // ConnProvider defines the interface to get ARDB connections
@@ -17,15 +18,6 @@ type ConnProvider interface {
 	MetadataConnProvider
 
 	Close() error
-}
-
-// ConnProviderHotReloader defines the interface for a ConnProvider
-// which also supports hotreloading of the underlying configuration,
-// meaning the returned server information will always be up todate.
-type ConnProviderHotReloader interface {
-	ConnProvider
-
-	Listen(ctx context.Context, vdiskID string, ch <-chan config.NBDConfig)
 }
 
 // DataConnProvider defines the interface to get an ARDB data connection,
@@ -46,19 +38,33 @@ type MetadataConnProvider interface {
 	MetadataConnection() (conn redis.Conn, err error)
 }
 
-// RedisProvider creates a Provider using Redis.
-func RedisProvider(cfg *config.NBDConfig, pool *RedisPool) (ConnProviderHotReloader, error) {
+// StaticProvider creates a Static Provider using the given NBD Config.
+func StaticProvider(cfg config.NBDConfig, pool *RedisPool) (ConnProvider, error) {
+	if pool == nil {
+		pool = NewRedisPool(nil)
+	}
+
+	provider := &staticRedisProvider{redisPool: pool}
+	provider.setConfig(&cfg)
+	return provider, nil
+}
+
+// DynamicProvider creates a provider which always
+// has the most up to date config it can know about.
+func DynamicProvider(ctx context.Context, vdiskID string, configInfo zerodisk.ConfigInfo, pool *RedisPool) (ConnProvider, error) {
 	if pool == nil {
 		pool = NewRedisPool(nil)
 	}
 
 	provider := &redisProvider{
-		redisPool: pool,
-		done:      make(chan struct{}),
+		static: staticRedisProvider{redisPool: pool},
+		done:   make(chan struct{}),
 	}
 
-	// load nbdserver config
-	err := provider.reloadConfig(cfg)
+	// Start listen goroutine, which gives the initial config (if successfull,
+	// as well as provide the future updates of that config.
+	// If the config could not be fetch initially, an error will be returned instead.
+	err := provider.listen(ctx, vdiskID, configInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -66,12 +72,8 @@ func RedisProvider(cfg *config.NBDConfig, pool *RedisPool) (ConnProviderHotReloa
 	return provider, nil
 }
 
-// redisProvider allows you to get a redis connection from a pool
-// using a modulo index
-type redisProvider struct {
+type staticRedisProvider struct {
 	redisPool *RedisPool
-
-	done chan struct{}
 
 	// used to get a redis connection
 	dataConnectionConfigs []config.StorageServerConfig
@@ -83,16 +85,10 @@ type redisProvider struct {
 
 	// used to store meta data
 	metaConnectionConfig *config.StorageServerConfig
-
-	// to protect connection configs
-	mux sync.RWMutex
 }
 
 // DataConnection implements DataConnProvider.DataConnection
-func (rp *redisProvider) DataConnection(index int64) (conn redis.Conn, err error) {
-	rp.mux.RLock()
-	defer rp.mux.RUnlock()
-
+func (rp *staticRedisProvider) DataConnection(index int64) (conn redis.Conn, err error) {
 	bcIndex := index % rp.numberOfServers
 	connConfig := &rp.dataConnectionConfigs[bcIndex]
 
@@ -101,10 +97,7 @@ func (rp *redisProvider) DataConnection(index int64) (conn redis.Conn, err error
 }
 
 // TemplateConnection implements DataConnProvider.TemplateConnection
-func (rp *redisProvider) TemplateConnection(index int64) (conn redis.Conn, err error) {
-	rp.mux.RLock()
-	defer rp.mux.RUnlock()
-
+func (rp *staticRedisProvider) TemplateConnection(index int64) (conn redis.Conn, err error) {
 	// not all vdisks have a templateStoragecluster defined,
 	// it is therefore not a guarantee that at least one server is available,
 	// a given we do have in the ConnectionString method
@@ -121,59 +114,19 @@ func (rp *redisProvider) TemplateConnection(index int64) (conn redis.Conn, err e
 }
 
 // MetadataConnection implements MetadataConnProvider.MetaConnection
-func (rp *redisProvider) MetadataConnection() (conn redis.Conn, err error) {
-	rp.mux.RLock()
-	defer rp.mux.RUnlock()
-
+func (rp *staticRedisProvider) MetadataConnection() (conn redis.Conn, err error) {
 	connConfig := rp.metaConnectionConfig
 	conn = rp.redisPool.Get(connConfig.Address, connConfig.Database)
 	return
 }
 
-// Listen to the config hot reloader,
-// and reload the nbdserver config incase it has been updated.
-// TODO: who closes this channel?
-//   |---> I guess we should share the ctx with the one given to this listener?!
-func (rp *redisProvider) Listen(ctx context.Context, vdiskID string, ch <-chan config.NBDConfig) {
-	log.Debug("redisProvider listening")
-
-	defer log.Debug("exit redisProvider listener")
-
-	for {
-		select {
-		case cfg := <-ch:
-			err := rp.reloadConfig(&cfg)
-			if err != nil {
-				log.Error(err)
-			}
-
-		case <-rp.done:
-			return
-
-		case <-ctx.Done():
-			return
-		}
-	}
-}
-
-// Close the internal redis pool and stop the listen goroutine.
-func (rp *redisProvider) Close() error {
-	if rp.done == nil {
-		return nil
-	}
-
-	close(rp.done)
-	rp.done = nil
+// Close implements ConnProvider.Close
+func (rp *staticRedisProvider) Close() error {
 	rp.redisPool.Close()
 	return nil
 }
 
-// Update all internally stored parameters we care about,
-// based on the updated config content.
-func (rp *redisProvider) reloadConfig(cfg *config.NBDConfig) error {
-	rp.mux.Lock()
-	defer rp.mux.Unlock()
-
+func (rp *staticRedisProvider) setConfig(cfg *config.NBDConfig) {
 	rp.dataConnectionConfigs = cfg.StorageCluster.DataStorage
 	rp.numberOfServers = int64(len(rp.dataConnectionConfigs))
 
@@ -186,8 +139,89 @@ func (rp *redisProvider) reloadConfig(cfg *config.NBDConfig) error {
 		rp.templateDataConnectionConfigs = cfg.TemplateStorageCluster.DataStorage
 		rp.numberOfTemplateServers = int64(len(rp.templateDataConnectionConfigs))
 	}
+}
+
+// redisProvider allows you to get a redis connection from a pool
+// using a modulo index
+type redisProvider struct {
+	// used to contain the actual storage information,
+	// and dispatch all connection logic to this static type
+	static staticRedisProvider
+
+	// used to close background listener
+	done chan struct{}
+	// to protect connection configs
+	mux sync.RWMutex
+}
+
+// DataConnection implements DataConnProvider.DataConnection
+func (rp *redisProvider) DataConnection(index int64) (redis.Conn, error) {
+	rp.mux.RLock()
+	defer rp.mux.RUnlock()
+	return rp.static.DataConnection(index)
+}
+
+// TemplateConnection implements DataConnProvider.TemplateConnection
+func (rp *redisProvider) TemplateConnection(index int64) (redis.Conn, error) {
+	rp.mux.RLock()
+	defer rp.mux.RUnlock()
+	return rp.static.TemplateConnection(index)
+}
+
+// MetadataConnection implements MetadataConnProvider.MetaConnection
+func (rp *redisProvider) MetadataConnection() (redis.Conn, error) {
+	rp.mux.RLock()
+	defer rp.mux.RUnlock()
+	return rp.static.MetadataConnection()
+}
+
+// spawns listen goroutine which gives the initial config (if successfull,
+// as well as provide the future updates of that config.
+// If the config could not be fetch initially, an error will be returned instead.
+func (rp *redisProvider) listen(ctx context.Context, vdiskID string, configInfo zerodisk.ConfigInfo) error {
+	ctx, cancelFunc := context.WithCancel(ctx)
+	defer cancelFunc()
+
+	log.Debug("create nbd config listener for ", vdiskID)
+	ch, err := zerodisk.WatchNBDConfig(ctx, vdiskID, configInfo)
+	if err != nil {
+		return err
+	}
+
+	// get the initial NBD config
+	cfg := <-ch
+	rp.static.setConfig(&cfg)
+
+	log.Debug("spawn redisProvider listener goroutine for ", vdiskID)
+	go func() {
+		defer log.Debug("exit redisProvider listener from ", vdiskID)
+
+		for {
+			select {
+			case cfg := <-ch:
+				rp.static.setConfig(&cfg)
+
+			case <-rp.done:
+				rp.done = nil
+				return
+
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 
 	return nil
+}
+
+// Close the internal redis pool and stop the listen goroutine.
+func (rp *redisProvider) Close() error {
+	if rp.done == nil {
+		return nil
+	}
+
+	close(rp.done)
+	return rp.static.Close()
 }
 
 var (

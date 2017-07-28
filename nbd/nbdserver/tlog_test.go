@@ -140,7 +140,7 @@ func testTlogStorage(ctx context.Context, t *testing.T, vdiskID string, blockSiz
 		return
 	}
 
-	storage, err := newTlogStorage(vdiskID, tlogrpc, "", blockSize, storage)
+	storage, err := newTlogStorage(vdiskID, tlogrpc, nil, blockSize, storage)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}
@@ -154,7 +154,7 @@ func testTlogStorageForceFlush(ctx context.Context, t *testing.T, vdiskID string
 		return
 	}
 
-	storage, err := newTlogStorage(vdiskID, tlogrpc, "", blockSize, storage)
+	storage, err := newTlogStorage(vdiskID, tlogrpc, nil, blockSize, storage)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}
@@ -283,7 +283,7 @@ func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
 		return
 	}
 
-	storage, err := newTlogStorage(vdiskID, tlogrpc, "", blockSize, internalStorage)
+	storage, err := newTlogStorage(vdiskID, tlogrpc, nil, blockSize, internalStorage)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -381,7 +381,7 @@ func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
 	}
 
 	t.Log("replay from tlog except the last block")
-	player, err := player.NewPlayerWithPoolAndStorage(ctx, tlogRedisPool, storage, vdiskID,
+	player, err := player.NewPlayerWithPoolAndStorage(ctx, tlogRedisPool, nil, storage, vdiskID,
 		testConf.PrivKey, testConf.HexNonce, testConf.K, testConf.M)
 	if !assert.NoError(t, err) {
 		return

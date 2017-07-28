@@ -13,7 +13,7 @@ const (
 	dialTimeout = 5 * time.Second
 )
 
-// ReadBaseConfigETCD gets BaseConfig from provided etcd cluster
+// ReadBaseConfigETCD returns the requested BaseConfig from a provided etcd cluster.
 func ReadBaseConfigETCD(vdiskID string, endpoints []string) (*BaseConfig, error) {
 	baseKey := etcdBaseKey(vdiskID)
 
@@ -25,7 +25,7 @@ func ReadBaseConfigETCD(vdiskID string, endpoints []string) (*BaseConfig, error)
 	return NewBaseConfig(baseBS)
 }
 
-//ReadNBDConfigETCD gets an NBDConfig from provided etcd cluster
+// ReadNBDConfigETCD returns the requested NBDConfig from a provided etcd cluster.
 func ReadNBDConfigETCD(vdiskID string, endpoints []string) (*BaseConfig, *NBDConfig, error) {
 	nbdKey := etcdNBDKey(vdiskID)
 	// Read base for vdisk type (validation)
@@ -50,8 +50,10 @@ func ReadNBDConfigETCD(vdiskID string, endpoints []string) (*BaseConfig, *NBDCon
 	return base, nbd, nil
 }
 
-// WatchNBDConfigETCD watches etcd for NBDConfig updates
-// sends the current config to the channel when created
+// WatchNBDConfigETCD watches etcd for NBDConfig updates.
+// Sends the initial config to the channel when created,
+// as well as any future updated versions of that config,
+// for as long as the given context allows it.
 func WatchNBDConfigETCD(ctx context.Context, vdiskID string, endpoints []string) (<-chan NBDConfig, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -89,7 +91,7 @@ func WatchNBDConfigETCD(ctx context.Context, vdiskID string, endpoints []string)
 	return updater, nil
 }
 
-// ReadTlogConfigETCD returns the TlogConfig from provided etcd cluster
+// ReadTlogConfigETCD returns the requested TlogConfig from a provided etcd cluster.
 func ReadTlogConfigETCD(vdiskID string, endpoints []string) (*TlogConfig, error) {
 	tlogKey := etcdTlogKey(vdiskID)
 
@@ -101,8 +103,10 @@ func ReadTlogConfigETCD(vdiskID string, endpoints []string) (*TlogConfig, error)
 	return NewTlogConfig(tlogBS)
 }
 
-// WatchTlogConfigETCD watches etcd for TlogConfig updates
-// sends the current config to the channel when created
+// WatchTlogConfigETCD watches etcd for TlogConfig updates.
+// Sends the initial config to the channel when created,
+// as well as any future updated versions of that config,
+// for as long as the given context allows it.
 func WatchTlogConfigETCD(ctx context.Context, vdiskID string, endpoints []string) (<-chan TlogConfig, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -140,7 +144,7 @@ func WatchTlogConfigETCD(ctx context.Context, vdiskID string, endpoints []string
 	return updater, nil
 }
 
-// ReadSlaveConfigETCD returns the SlaveConfig from provided etcd cluster
+// ReadSlaveConfigETCD returns the requested SlaveConfig from a provided etcd cluster
 func ReadSlaveConfigETCD(vdiskID string, endpoints []string) (*SlaveConfig, error) {
 	slaveKey := etcdSlaveKey(vdiskID)
 
@@ -152,8 +156,10 @@ func ReadSlaveConfigETCD(vdiskID string, endpoints []string) (*SlaveConfig, erro
 	return NewSlaveConfig(slaveBS)
 }
 
-// WatchSlaveConfigETCD watches etcd for SlaveConfig updates
-// sends the current config to the channel when created
+// WatchSlaveConfigETCD watches etcd for SlaveConfig updates.
+// Sends the initial config to the channel when created,
+// as well as any future updated versions of that config,
+// for as long as the given context allows it.
 func WatchSlaveConfigETCD(ctx context.Context, vdiskID string, endpoints []string) (<-chan SlaveConfig, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -191,6 +197,18 @@ func WatchSlaveConfigETCD(ctx context.Context, vdiskID string, endpoints []strin
 	return updater, nil
 }
 
+// ReadVdisksConfigETCD gets the requested VdisksConfig from a provided etcd cluster
+func ReadVdisksConfigETCD(endpoints []string) (*VdisksConfig, error) {
+	vdisksBS, err := readConfigETCD(endpoints, etcdVdisksKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewVdisksConfig(vdisksBS)
+}
+
+// Internal etcd watch config, doing the heavy lifting for all public etcd watch functions.
+// This is the way to achieve config hot reloading for configs originating from an etcd cluster.
 func watchConfigETCD(ctx context.Context, endpoints []string, keyPrefix string, useConfig func(bytes []byte) error) error {
 	// setup connection
 	cli, err := clientv3.New(clientv3.Config{
@@ -244,7 +262,8 @@ func watchConfigETCD(ctx context.Context, endpoints []string, keyPrefix string, 
 	return nil
 }
 
-// readConfigETCD fetches data from etcd cluster with the given key
+// readConfigETCD fetches raw config data
+// from a provided etcd cluster and given config key.
 func readConfigETCD(endpoints []string, key string) ([]byte, error) {
 	// setup connection
 	cli, err := clientv3.New(clientv3.Config{
@@ -274,22 +293,29 @@ func readConfigETCD(endpoints []string, key string) ([]byte, error) {
 	return resp.Kvs[0].Value, nil
 }
 
-// etcdBaseKey returns base key for provided vdiskid
+// etcdBaseKey returns base config key for a provided vdiskid
 func etcdBaseKey(vdiskID string) string {
 	return vdiskID + ":conf:base"
 }
 
-// etcdNBDKey returns nbd key for provided vdiskid
+// etcdNBDKey returns the nbd config key for a provided vdiskid
 func etcdNBDKey(vdiskID string) string {
 	return vdiskID + ":conf:nbd"
 }
 
-// etcdTlogKey returns tlog key for provided vdiskid
+// etcdTlogKey returns the tlog config key for a provided vdiskid
 func etcdTlogKey(vdiskID string) string {
 	return vdiskID + ":conf:tlog"
 }
 
-// etcdSlaveKey returns slave key for provided vdiskid
+// etcdSlaveKey returns the slave config key for a provided vdiskid
 func etcdSlaveKey(vdiskID string) string {
 	return vdiskID + ":conf:slave"
 }
+
+const (
+	// etcdVdisksKey defines the vdisks config key,
+	// as it is the config containing all other vdisk IDs,
+	// it does not have a prefixed vdiskID.
+	etcdVdisksKey = "conf:vdisks"
+)

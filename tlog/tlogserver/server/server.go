@@ -68,12 +68,14 @@ func NewServer(conf *Config, poolFactory tlog.RedisPoolFactory) (*Server, error)
 		HexNonce:  conf.HexNonce,
 	}
 
+	vdiskManager := newVdiskManager(
+		conf.AggMq, conf.BlockSize, conf.FlushSize, conf.ConfigInfo)
 	return &Server{
 		poolFactory:          poolFactory,
 		listener:             listener,
 		flusherConf:          flusherConf,
 		maxRespSegmentBufLen: schema.RawTlogRespLen(conf.FlushSize),
-		vdiskMgr:             newVdiskManager(conf.AggMq, conf.BlockSize, conf.FlushSize, conf.ConfigPath),
+		vdiskMgr:             vdiskManager,
 	}, nil
 }
 
@@ -305,7 +307,7 @@ func (s *Server) handleBlock(vd *vdisk, br *bufio.Reader) error {
 	}
 
 	// check hash
-	if err := s.hash(block, vd.vdiskID); err != nil {
+	if err := s.hash(block, vd.ID()); err != nil {
 		log.Debugf("hash check failed:%v\n", err)
 		return err
 	}

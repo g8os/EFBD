@@ -2,37 +2,41 @@ package main
 
 import (
 	"errors"
-	"fmt"
 
-	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/gonbdserver/nbd"
 )
 
 // NewExportController creates a new export config manager.
-func NewExportController(cfg config.HotReloader, tlsOnly bool) (controller *ExportController, err error) {
-	if cfg == nil {
-		err = errors.New("ExportController requires a non-nil config.HotReloader")
-		return
+func NewExportController(configInfo zerodisk.ConfigInfo, tlsOnly bool) (*ExportController, error) {
+	if err := configInfo.Validate(); err != nil {
+		return nil, errors.New(
+			"ExportController requires a valid config resource: " + err.Error())
 	}
 
-	controller = &ExportController{
-		cfg:     cfg,
-		tlsOnly: tlsOnly,
-	}
-	return
+	return &ExportController{
+		configInfo: configInfo,
+		tlsOnly:    tlsOnly,
+	}, nil
 }
 
 // ExportController implements nbd.ExportConfigManager
-// using the NBDServer HotReloader internally.
+// reading the BaseConfig when a config is required
 type ExportController struct {
-	cfg     config.HotReloader
-	tlsOnly bool
+	configInfo zerodisk.ConfigInfo
+	tlsOnly    bool
 }
 
 // ListConfigNames implements nbd.ExportConfigManager.ListConfigNames
 func (c *ExportController) ListConfigNames() (exports []string) {
-	exports = c.cfg.VdiskIdentifiers()
+	cfg, err := zerodisk.ReadVdisksConfig(c.configInfo)
+	if err != nil {
+		log.Error(err)
+		return
+	}
+
+	exports = cfg.List
 	return
 }
 
@@ -40,16 +44,16 @@ func (c *ExportController) ListConfigNames() (exports []string) {
 func (c *ExportController) GetConfig(name string) (*nbd.ExportConfig, error) {
 	log.Infof("Getting vdisk %q", name)
 
-	cfg, err := c.cfg.VdiskClusterConfig(name)
+	cfg, err := zerodisk.ReadBaseConfig(name, c.configInfo)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't read zerodisk config: %s", err.Error())
+		return nil, err
 	}
 
 	return &nbd.ExportConfig{
 		Name:               name,
 		Description:        "Deduped g8os zerodisk",
 		Driver:             "ardb",
-		ReadOnly:           cfg.Vdisk.ReadOnly,
+		ReadOnly:           cfg.ReadOnly,
 		TLSOnly:            c.tlsOnly,
 		MinimumBlockSize:   0, // use size given by ArdbBackend.Geometry
 		PreferredBlockSize: 0, // use size given by ArdbBackend.Geometry

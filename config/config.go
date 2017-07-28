@@ -12,11 +12,10 @@ import (
 
 // BaseConfig represents the basic vdisk info
 type BaseConfig struct {
-	BlockSize uint64    `yaml:"blockSize" valid:"optional"`
+	BlockSize uint64    `yaml:"blockSize" valid:"required"`
 	ReadOnly  bool      `yaml:"readOnly" valid:"optional"`
-	Size      uint64    `yaml:"size" valid:"optional"`
-	Type      VdiskType `yaml:"type" valid:"optional"`
-	TlogRPC   string    `yaml:"tlogrpc" valid:"optional"`
+	Size      uint64    `yaml:"size" valid:"required"`
+	Type      VdiskType `yaml:"type" valid:"required"`
 }
 
 // NewBaseConfig creates a new Baseconfig from byte slice in YAML 1.2 format
@@ -75,6 +74,7 @@ type NBDConfig struct {
 	StorageCluster         StorageClusterConfig  `yaml:"storageCluster" valid:"required"`
 	TemplateStorageCluster *StorageClusterConfig `yaml:"templateStorageCluster" valid:"optional"`
 	TemplateVdiskID        string                `yaml:"templateVdiskID" valid:"optional"`
+	TlogRPC                string                `yaml:"tlogrpc" valid:"optional"`
 }
 
 // NewNBDConfig creates a new NBDConfig from byte slice in YAML 1.2 format
@@ -229,6 +229,61 @@ func (slave *SlaveConfig) Validate() error {
 	return nil
 }
 
+// VdisksConfig represents the vdisks config. It is used by the NBDServer,
+// as the NBD Protocol requires a list of available export names (vdisk IDs),
+// for some situations.
+type VdisksConfig struct {
+	List []string `yaml:"vdisks" valid:"required"`
+}
+
+// NewVdisksConfig creates a new VdisksConfig
+// from byte slice in YAML 1.2 format
+func NewVdisksConfig(data []byte) (*VdisksConfig, error) {
+	vdisks := new(VdisksConfig)
+	err := yaml.Unmarshal(data, vdisks)
+	if err != nil {
+		return nil, err
+	}
+	err = vdisks.Validate()
+	if err != nil {
+		return nil, err
+	}
+
+	return vdisks, nil
+}
+
+// ToBytes converts VdisksConfig in byte slice in YAML 1.2 format
+func (vdisks *VdisksConfig) ToBytes() ([]byte, error) {
+	res, err := yaml.Marshal(vdisks)
+	if err != nil {
+		return nil, fmt.Errorf("failed to turn vdisks config into bytes: %v", err)
+	}
+
+	return res, nil
+}
+
+// Validate Validates VdisksConfig
+// Should only be used for ConfigSource implementation
+func (vdisks *VdisksConfig) Validate() error {
+	// slave is optional so if nil return
+	if vdisks == nil {
+		return nil
+	}
+
+	_, err := valid.ValidateStruct(vdisks)
+	if err != nil {
+		return fmt.Errorf("invalid vdisks config: %v", err)
+	}
+
+	return nil
+}
+
+// VdiskType represents the type of a vdisk,
+// and each valid bit defines a property of the vdisk,
+// and its the different collections of valid bits that defines
+// each valid and unique type.
+type VdiskType uint8
+
 // TlogSupport returns whether or not the data of this vdisk
 // has to send to the tlog server, to log its transactions.
 func (vdiskType VdiskType) TlogSupport() bool {
@@ -242,12 +297,6 @@ func (vdiskType VdiskType) TlogSupport() bool {
 func (vdiskType VdiskType) TemplateSupport() bool {
 	return vdiskType&propTemplateSupport != 0
 }
-
-// VdiskType represents the type of a vdisk,
-// and each valid bit defines a property of the vdisk,
-// and its the different collections of valid bits that defines
-// each valid and unique type.
-type VdiskType uint8
 
 // Vdisk Properties
 const (

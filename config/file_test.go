@@ -199,7 +199,7 @@ func TestFileSourceWatch(t *testing.T) {
 	defer os.Remove(testfile.Name())
 
 	// get current values
-	cfg, err := readConfigFile(vdiskID, testfile.Name())
+	cfg, err := readVdiskConfigFile(vdiskID, testfile.Name())
 	if !assert.NoError(t, err) || !assert.NotNil(t, cfg) {
 		return
 	}
@@ -346,7 +346,7 @@ func TestInvalidFileSourceWatch(t *testing.T) {
 	defer os.Remove(testfile.Name())
 
 	// get current values
-	cfg, err := readConfigFile(vdiskID, testfile.Name())
+	cfg, err := readVdiskConfigFile(vdiskID, testfile.Name())
 	if !assert.NoError(t, err) || !assert.NotNil(t, cfg) {
 		return
 	}
@@ -417,7 +417,7 @@ func TestMissingConfigFileSourceWhileWatch(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// check if still original values
-	cfg, err := readConfigBytes(vdiskID, []byte(validYAMLSourceStr))
+	cfg, err := readVdiskConfigBytes(vdiskID, []byte(validYAMLSourceStr))
 	if !assert.NoError(t, err) {
 		return
 	}

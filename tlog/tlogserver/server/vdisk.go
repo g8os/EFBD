@@ -11,7 +11,7 @@ import (
 
 	"github.com/emirpasic/gods/sets/treeset"
 
-	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
@@ -46,11 +46,12 @@ type vdiskFlusherCmd struct {
 type vdiskCleanupFunc func(vdiskID string)
 
 type vdisk struct {
-	vdiskID     string
+	id          string
 	lastHash    []byte              // current in memory last hash
 	lastHashKey []byte              // redis key of the last hash
 	respChan    chan *BlockResponse // channel of responses to be sent to client
-	configPath  string
+
+	configInfo zerodisk.ConfigInfo
 
 	// channels for block receiver
 	blockInputChan       chan *schema.TlogBlock // input channel of block received from client
@@ -81,7 +82,7 @@ type vdisk struct {
 
 // ID returns the ID of this vdisk
 func (vd *vdisk) ID() string {
-	return vd.vdiskID
+	return vd.id
 }
 
 // ResponseChan returns the channel to which Block Responses get sent
@@ -92,7 +93,7 @@ func (vd *vdisk) ResponseChan() <-chan *BlockResponse {
 // creates vdisk with given vdiskID, flusher, and first sequence.
 // firstSequence is the very first sequence that this vdisk will receive.
 // blocks with sequence < firstSequence are going to be ignored.
-func newVdisk(parentCtx context.Context, aggMq *aggmq.MQ, vdiskID, configPath string, f *flusher,
+func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, configInfo zerodisk.ConfigInfo, f *flusher,
 	firstSequence uint64, flusherConf *flusherConfig, segmentBufLen int, cleanup vdiskCleanupFunc) (*vdisk, error) {
 
 	var aggComm *aggmq.AggComm
@@ -115,11 +116,11 @@ func newVdisk(parentCtx context.Context, aggMq *aggmq.MQ, vdiskID, configPath st
 	maxTlbInBuffer := f.flushSize * tlogBlockFactorSize
 
 	vd := &vdisk{
-		vdiskID:     vdiskID,
+		id:          vdiskID,
 		lastHashKey: decoder.GetLashHashKey(vdiskID),
 		lastHash:    lastHash,
 		respChan:    make(chan *BlockResponse, respChanSize),
-		configPath:  configPath,
+		configInfo:  configInfo,
 
 		// block receiver
 		blockInputChan:       make(chan *schema.TlogBlock, maxTlbInBuffer),
@@ -157,7 +158,7 @@ func newVdisk(parentCtx context.Context, aggMq *aggmq.MQ, vdiskID, configPath st
 
 // do all necessary cleanup for this vdisk
 func (vd *vdisk) cleanup(ctx context.Context, cleanup vdiskCleanupFunc) {
-	defer cleanup(vd.vdiskID)
+	defer cleanup(vd.id)
 	select {
 	case <-ctx.Done():
 		return
@@ -170,7 +171,7 @@ func (vd *vdisk) cleanup(ctx context.Context, cleanup vdiskCleanupFunc) {
 // - flush all unflushed ordered blocks (blocking)
 // - reset it
 func (vd *vdisk) resetFirstSequence(newSeq uint64, conn *net.TCPConn) error {
-	log.Infof("vdisk %v reset first sequence to %v", vd.vdiskID, newSeq)
+	log.Infof("vdisk %v reset first sequence to %v", vd.id, newSeq)
 	vd.expectedSequenceLock.Lock()
 	defer vd.expectedSequenceLock.Unlock()
 
@@ -423,7 +424,7 @@ func (vd *vdisk) runFlusher(ctx context.Context, cancelFunc context.CancelFunc) 
 
 		seqs, rawAgg, err := vd.flusher.flush(blocks[:], vd)
 		if err != nil {
-			log.Infof("flush %v failed: %v", vd.vdiskID, err)
+			log.Infof("flush %v failed: %v", vd.id, err)
 			status = tlog.BlockStatusFlushFailed
 		}
 
@@ -563,18 +564,13 @@ func (vd *vdisk) manageSlaveSync() error {
 	}
 
 	// read config
-	conf, err := config.ReadConfig(vd.configPath, config.TlogServer)
+	conf, err := zerodisk.ReadTlogConfig(vd.id, vd.configInfo)
 	if err != nil {
 		return err
 	}
 
-	vdiskConf, ok := conf.Vdisks[vd.vdiskID]
-	if !ok {
-		return nil
-	}
-
 	// it shouldn't be exist, simply return
-	if !vdiskConf.TlogSlaveSync {
+	if !conf.SlaveSync {
 		// kill the slave syncer first
 		if vd.withSlaveSyncer {
 			vd.aggComm.Destroy()

@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -15,7 +16,7 @@ import (
 // ReadBaseConfigFile returns Baseconfig from a file
 func ReadBaseConfigFile(vdiskID, path string) (*BaseConfig, error) {
 	// read file
-	cfg, err := readConfigFile(vdiskID, path)
+	cfg, err := readVdiskConfigFile(vdiskID, path)
 	if err != nil {
 		return nil, err
 	}
@@ -26,7 +27,7 @@ func ReadBaseConfigFile(vdiskID, path string) (*BaseConfig, error) {
 // ReadNBDConfigFile returns NBDconfig from a file
 func ReadNBDConfigFile(vdiskID, path string) (*BaseConfig, *NBDConfig, error) {
 	// read file
-	cfg, err := readConfigFile(vdiskID, path)
+	cfg, err := readVdiskConfigFile(vdiskID, path)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -75,7 +76,7 @@ func WatchNBDConfigFile(ctx context.Context, vdiskID, path string) (<-chan NBDCo
 // ReadTlogConfigFile returns Tlogconfig from a file
 func ReadTlogConfigFile(vdiskID, path string) (*TlogConfig, error) {
 	// read file
-	cfg, err := readConfigFile(vdiskID, path)
+	cfg, err := readVdiskConfigFile(vdiskID, path)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +125,7 @@ func WatchTlogConfigFile(ctx context.Context, vdiskID, path string) (<-chan Tlog
 // ReadSlaveConfigFile returns Slaveconfig from a file
 func ReadSlaveConfigFile(vdiskID, path string) (*SlaveConfig, error) {
 	// read file
-	cfg, err := readConfigFile(vdiskID, path)
+	cfg, err := readVdiskConfigFile(vdiskID, path)
 	if err != nil {
 		return nil, err
 	}
@@ -170,6 +171,22 @@ func WatchSlaveConfigFile(ctx context.Context, vdiskID, path string) (<-chan Sla
 	return updater, nil
 }
 
+// ReadVdisksConfigFile returns a requested VdisksConfig from a file
+func ReadVdisksConfigFile(path string) (*VdisksConfig, error) {
+	// read file
+	cfg, err := readFullConfigFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	vdisksConfig := new(VdisksConfig)
+	for vdiskID := range *cfg {
+		vdisksConfig.List = append(vdisksConfig.List, vdiskID)
+	}
+
+	return vdisksConfig, nil
+}
+
 // configFile represents a config using a YAML file as source
 type configFileFormat map[string]vdiskConfigFileFormat
 
@@ -182,28 +199,53 @@ type vdiskConfigFileFormat struct {
 	Slave *SlaveConfig `yaml:"slaveConfig" valid:"optional"`
 }
 
-// readConfigFilecreates config from yaml byte slice
+// readVdiskConfigFile creates a vdisk config from yaml byte slice
 // also used for testing config and etcd
-func readConfigFile(vdiskID string, path string) (*vdiskConfigFileFormat, error) {
+func readVdiskConfigFile(vdiskID string, path string) (*vdiskConfigFileFormat, error) {
 	// read file
 	bytes, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't read from the config file: %s", err.Error())
 	}
 
-	return readConfigBytes(vdiskID, bytes)
+	return readVdiskConfigBytes(vdiskID, bytes)
 }
 
-func readConfigBytes(vdiskID string, bytes []byte) (*vdiskConfigFileFormat, error) {
-	fileCfg := make(configFileFormat)
+// readFullConfigFile creates a full config from yaml byte slice
+// also used for testing config and etcd
+func readFullConfigFile(path string) (*configFileFormat, error) {
+	// read file
+	bytes, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't read from the config file: %s", err.Error())
+	}
+
+	return readFullConfigBytes(bytes)
+}
+
+func readFullConfigBytes(bytes []byte) (*configFileFormat, error) {
+	fileCfg := new(configFileFormat)
 
 	// unmarshal the yaml content
-	err := yaml.Unmarshal(bytes, &fileCfg)
+	err := yaml.Unmarshal(bytes, fileCfg)
 	if err != nil {
 		return nil, fmt.Errorf("could not unmarshal provided bytes: %v", err)
 	}
 
-	cfg, ok := fileCfg[vdiskID]
+	if fileCfg == nil || len(*fileCfg) == 0 {
+		return nil, errors.New("no vdisk configs available")
+	}
+
+	return fileCfg, nil
+}
+
+func readVdiskConfigBytes(vdiskID string, bytes []byte) (*vdiskConfigFileFormat, error) {
+	fileCfg, err := readFullConfigBytes(bytes)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg, ok := (*fileCfg)[vdiskID]
 	if !ok {
 		return nil, fmt.Errorf(
 			"vdisk %s wasn't specified in the given YAML config", vdiskID)
@@ -247,7 +289,7 @@ func watchConfigFile(ctx context.Context, vdiskID, path string, useConfig func(*
 		case <-sighup:
 			log.Debug("Received SIGHUP for: ", path)
 			// read config file
-			cfg, err := readConfigFile(vdiskID, path)
+			cfg, err := readVdiskConfigFile(vdiskID, path)
 			if err != nil {
 				log.Errorf("Could not get config from file: %s", err)
 				continue

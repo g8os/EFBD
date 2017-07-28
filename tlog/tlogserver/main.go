@@ -38,7 +38,8 @@ func main() {
 	flag.StringVar(&profileAddr, "profile-address", "", "Enables profiling of this server as an http service")
 
 	flag.BoolVar(&inMemoryStorage, "memorystorage", false, "Stores the (meta)data in memory only, usefull for testing or benchmarking (overwrites the storage-addresses flag)")
-	flag.StringVar(&conf.ConfigPath, "config", "config.yml", "Zerodisk Config YAML File")
+	flag.Var(&conf.ConfigInfo.ResourceType, "configtype",
+		"type of the config resource given (options: file, etcd) (default: etcd)")
 	flag.StringVar(&storageAddresses, "storage-addresses", "",
 		"comma seperated list of redis compatible connectionstrings (format: '<ip>:<port>[@<db>]', eg: 'localhost:16379,localhost:6379@2'), if given, these are used for all vdisks, ignoring the given config")
 
@@ -48,6 +49,18 @@ func main() {
 
 	// parse flags
 	flag.Parse()
+
+	args := flag.Args()
+	if argn := len(args); argn < 1 {
+		log.Error("not enough arguments given")
+		flag.Usage()
+		os.Exit(2)
+	} else if argn > 1 {
+		log.Error("to many arguments given")
+		flag.Usage()
+		os.Exit(2)
+	}
+	conf.ConfigInfo.Resource = args[0]
 
 	// config logger (verbose or not)
 	if verbose {
@@ -64,7 +77,7 @@ func main() {
 		log.SetHandlers(handler)
 	}
 
-	log.Debugf("flags parsed: address=%q flush-size=%d flush-time=%d block-size=%d k=%d m=%d priv-key=%q nonce=%q profile-address=%q memorystorage=%t config=%q storage-addresses=%q logfile=%q",
+	log.Debugf("flags parsed: address=%q flush-size=%d flush-time=%d block-size=%d k=%d m=%d priv-key=%q nonce=%q profile-address=%q memorystorage=%t configtype=%q storage-addresses=%q logfile=%q",
 		conf.ListenAddr,
 		conf.FlushSize,
 		conf.FlushTime,
@@ -75,7 +88,7 @@ func main() {
 		conf.HexNonce,
 		profileAddr,
 		inMemoryStorage,
-		conf.ConfigPath,
+		conf.ConfigInfo.ResourceType,
 		storageAddresses,
 		logPath,
 	)
@@ -102,7 +115,7 @@ func main() {
 	// create any kind of valid pool factory
 	poolFactory, err := tlog.AnyRedisPoolFactory(ctx, tlog.RedisPoolFactoryConfig{
 		RequiredDataServerCount: conf.RequiredDataServers(),
-		ConfigPath:              conf.ConfigPath,
+		ConfigInfo:              conf.ConfigInfo,
 		ServerConfigs:           serverConfigs,
 		AutoFill:                true,
 		AllowInMemory:           true,
@@ -118,7 +131,7 @@ func main() {
 		conf.AggMq = aggmq.NewMQ()
 
 		// slave syncer manager
-		ssm := slavesync.NewManager(ctx, conf.AggMq, conf.ConfigPath)
+		ssm := slavesync.NewManager(ctx, conf.AggMq, conf.ConfigInfo)
 		go ssm.Run()
 	}
 
@@ -142,7 +155,7 @@ func init() {
 
 		fmt.Fprintln(os.Stderr, "tlogserver", zerodisk.CurrentVersion)
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Usage of", exe+":")
+		fmt.Fprintln(os.Stderr, fmt.Sprintf("usage: %s [flags] config_resource", exe))
 		flag.PrintDefaults()
 	}
 }

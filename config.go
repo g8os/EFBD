@@ -11,8 +11,6 @@ import (
 // ConfigInfo is used to define which resource type to read from
 // and how we can identify the resource itself.
 type ConfigInfo struct {
-	// ID of the Vdisk we want to read the config from.
-	VdiskID string
 	// Identifies the config resource.
 	// ResourceType = file -> Resource defines config path.
 	// ResourceType = etcd -> Resource defines comma seperated list of etcd endpoints.
@@ -23,9 +21,6 @@ type ConfigInfo struct {
 
 // Validate this ConfigInfo struct.
 func (info *ConfigInfo) Validate() error {
-	if info.VdiskID == "" {
-		return ErrNoVdiskID
-	}
 	if info.Resource == "" {
 		return ErrNoConfigResource
 	}
@@ -102,104 +97,139 @@ func (ct *ConfigResourceType) Type() string {
 }
 
 // ReadBaseConfig reads a vdisk's base config from a given config resource
-func ReadBaseConfig(info ConfigInfo) (*config.BaseConfig, error) {
+func ReadBaseConfig(vdiskID string, info ConfigInfo) (*config.BaseConfig, error) {
 	if err := info.Validate(); err != nil {
 		return nil, err
 	}
+	if vdiskID == "" {
+		return nil, ErrNoVdiskID
+	}
 
 	if info.ResourceType == FileConfigResource {
-		return config.ReadBaseConfigFile(info.VdiskID, info.Resource)
+		return config.ReadBaseConfigFile(vdiskID, info.Resource)
 	}
 
 	endpoints := strings.Split(info.Resource, endpointsResourceSeperator)
-	return config.ReadBaseConfigETCD(info.VdiskID, endpoints)
+	return config.ReadBaseConfigETCD(vdiskID, endpoints)
 }
 
 // ReadNBDConfig reads a vdisk's NBD config from a given config resource
-func ReadNBDConfig(info ConfigInfo) (*config.BaseConfig, *config.NBDConfig, error) {
+func ReadNBDConfig(vdiskID string, info ConfigInfo) (*config.BaseConfig, *config.NBDConfig, error) {
 	if err := info.Validate(); err != nil {
 		return nil, nil, err
 	}
+	if vdiskID == "" {
+		return nil, nil, ErrNoVdiskID
+	}
 
 	if info.ResourceType == FileConfigResource {
-		return config.ReadNBDConfigFile(info.VdiskID, info.Resource)
+		return config.ReadNBDConfigFile(vdiskID, info.Resource)
 	}
 
 	endpoints := strings.Split(info.Resource, endpointsResourceSeperator)
-	return config.ReadNBDConfigETCD(info.VdiskID, endpoints)
+	return config.ReadNBDConfigETCD(vdiskID, endpoints)
 }
 
 // WatchNBDConfig allows you to receive an initial NBD Config over a channel,
 // and a new NBD Config every time its resource is updated.
-func WatchNBDConfig(ctx context.Context, info ConfigInfo) (<-chan config.NBDConfig, error) {
+func WatchNBDConfig(ctx context.Context, vdiskID string, info ConfigInfo) (<-chan config.NBDConfig, error) {
 	if err := info.Validate(); err != nil {
 		return nil, err
 	}
+	if vdiskID == "" {
+		return nil, ErrNoVdiskID
+	}
 
 	if info.ResourceType == FileConfigResource {
-		return config.WatchNBDConfigFile(ctx, info.VdiskID, info.Resource)
+		return config.WatchNBDConfigFile(ctx, vdiskID, info.Resource)
 	}
 
 	endpoints := strings.Split(info.Resource, endpointsResourceSeperator)
-	return config.WatchNBDConfigETCD(ctx, info.VdiskID, endpoints)
+	return config.WatchNBDConfigETCD(ctx, vdiskID, endpoints)
 }
 
 // ReadTlogConfig reads a vdisk's TLog config from a given config resource
-func ReadTlogConfig(info ConfigInfo) (*config.TlogConfig, error) {
+func ReadTlogConfig(vdiskID string, info ConfigInfo) (*config.TlogConfig, error) {
 	if err := info.Validate(); err != nil {
 		return nil, err
 	}
+	if vdiskID == "" {
+		return nil, ErrNoVdiskID
+	}
 
 	if info.ResourceType == FileConfigResource {
-		return config.ReadTlogConfigFile(info.VdiskID, info.Resource)
+		return config.ReadTlogConfigFile(vdiskID, info.Resource)
 	}
 
 	endpoints := strings.Split(info.Resource, endpointsResourceSeperator)
-	return config.ReadTlogConfigETCD(info.VdiskID, endpoints)
+	return config.ReadTlogConfigETCD(vdiskID, endpoints)
 }
 
 // WatchTlogConfig allows you to receive an initial Tlog Config over a channel,
 // and a new TLog Config every time its resource is updated.
-func WatchTlogConfig(ctx context.Context, info ConfigInfo) (<-chan config.TlogConfig, error) {
+func WatchTlogConfig(ctx context.Context, vdiskID string, info ConfigInfo) (<-chan config.TlogConfig, error) {
 	if err := info.Validate(); err != nil {
 		return nil, err
 	}
+	if vdiskID == "" {
+		return nil, ErrNoVdiskID
+	}
 
 	if info.ResourceType == FileConfigResource {
-		return config.WatchTlogConfigFile(ctx, info.VdiskID, info.Resource)
+		return config.WatchTlogConfigFile(ctx, vdiskID, info.Resource)
 	}
 
 	endpoints := strings.Split(info.Resource, endpointsResourceSeperator)
-	return config.WatchTlogConfigETCD(ctx, info.VdiskID, endpoints)
+	return config.WatchTlogConfigETCD(ctx, vdiskID, endpoints)
 }
 
 // ReadSlaveConfig reads a vdisk's slave config from a given config resource
-func ReadSlaveConfig(info ConfigInfo) (*config.SlaveConfig, error) {
+func ReadSlaveConfig(vdiskID string, info ConfigInfo) (*config.SlaveConfig, error) {
 	if err := info.Validate(); err != nil {
 		return nil, err
 	}
+	if vdiskID == "" {
+		return nil, ErrNoVdiskID
+	}
 
 	if info.ResourceType == FileConfigResource {
-		return config.ReadSlaveConfigFile(info.VdiskID, info.Resource)
+		return config.ReadSlaveConfigFile(vdiskID, info.Resource)
 	}
 
 	endpoints := strings.Split(info.Resource, endpointsResourceSeperator)
-	return config.ReadSlaveConfigETCD(info.VdiskID, endpoints)
+	return config.ReadSlaveConfigETCD(vdiskID, endpoints)
 }
 
 // WatchSlaveConfig allows you to receive an initial slave Config over a channel,
 // and a new slave Config every time its resource is updated.
-func WatchSlaveConfig(ctx context.Context, info ConfigInfo) (<-chan config.SlaveConfig, error) {
+func WatchSlaveConfig(ctx context.Context, vdiskID string, info ConfigInfo) (<-chan config.SlaveConfig, error) {
+	if err := info.Validate(); err != nil {
+		return nil, err
+	}
+	if vdiskID == "" {
+		return nil, ErrNoVdiskID
+	}
+
+	if info.ResourceType == FileConfigResource {
+		return config.WatchSlaveConfigFile(ctx, vdiskID, info.Resource)
+	}
+
+	endpoints := strings.Split(info.Resource, endpointsResourceSeperator)
+	return config.WatchSlaveConfigETCD(ctx, vdiskID, endpoints)
+}
+
+// ReadVdisksConfig reads the vdisks config from a given config resource
+func ReadVdisksConfig(info ConfigInfo) (*config.VdisksConfig, error) {
 	if err := info.Validate(); err != nil {
 		return nil, err
 	}
 
 	if info.ResourceType == FileConfigResource {
-		return config.WatchSlaveConfigFile(ctx, info.VdiskID, info.Resource)
+		return config.ReadVdisksConfigFile(info.Resource)
 	}
 
 	endpoints := strings.Split(info.Resource, endpointsResourceSeperator)
-	return config.WatchSlaveConfigETCD(ctx, info.VdiskID, endpoints)
+	return config.ReadVdisksConfigETCD(endpoints)
 }
 
 const (

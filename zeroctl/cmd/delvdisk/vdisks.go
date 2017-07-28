@@ -17,7 +17,7 @@ var vdiskCmdCfg struct {
 
 // VdisksCmd represents the vdisks delete subcommand
 var VdisksCmd = &cobra.Command{
-	Use:   "vdisks config vdiskid...",
+	Use:   "vdisks config_resource vdiskid...",
 	Short: "Delete one, multiple or all vdisks",
 	RunE:  deleteVdisks,
 }
@@ -108,8 +108,7 @@ func getAndSortVdisks(vdiskIDs []string) (data vdisksPerServerMap, metadata vdis
 
 	// add only the selected vdisk(s)
 	for _, vdiskID := range vdiskIDs {
-		vdiskCmdCfg.ConfigInfo.VdiskID = vdiskID
-		baseConfig, nbdConfig, err = zerodisk.ReadNBDConfig(vdiskCmdCfg.ConfigInfo)
+		baseConfig, nbdConfig, err = zerodisk.ReadNBDConfig(vdiskID, vdiskCmdCfg.ConfigInfo)
 		if err != nil {
 			log.Errorf("no NBD config could be retrieved for %s: %v", vdiskID, err)
 			continue

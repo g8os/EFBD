@@ -19,7 +19,7 @@ var vdiskCmdCfg struct {
 
 // VdiskCmd represents the vdisk copy subcommand
 var VdiskCmd = &cobra.Command{
-	Use:   "vdisk config source_vdiskid target_vdiskid",
+	Use:   "vdisk config_resource source_vdiskid target_vdiskid",
 	Short: "Copy a vdisk configured in the config file",
 	RunE:  copyVdisk,
 }
@@ -49,8 +49,7 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 	var sourceClusterConfig, targetClusterConfig *config.StorageClusterConfig
 
 	// try to read the NBD config of source vdisk
-	vdiskCmdCfg.ConfigInfo.VdiskID = sourceVdiskID
-	sourceBaseCfg, sourceNBDCfg, err := zerodisk.ReadNBDConfig(vdiskCmdCfg.ConfigInfo)
+	sourceBaseCfg, sourceNBDCfg, err := zerodisk.ReadNBDConfig(sourceVdiskID, vdiskCmdCfg.ConfigInfo)
 	if err != nil {
 		return fmt.Errorf(
 			"couldn't read source vdisk %s's config: %v", sourceVdiskID, err)
@@ -60,7 +59,7 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 	if !vdiskCmdCfg.ForceSameStorageCluster {
 		// try to read the NBD config of target vdisk
 		// if it exist,
-		_, targetNBDConfig, err := zerodisk.ReadNBDConfig(vdiskCmdCfg.ConfigInfo)
+		_, targetNBDConfig, err := zerodisk.ReadNBDConfig(targetVdiskID, vdiskCmdCfg.ConfigInfo)
 		if err == nil {
 			targetClusterConfig = &targetNBDConfig.StorageCluster
 		}

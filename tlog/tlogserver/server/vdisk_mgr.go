@@ -5,6 +5,7 @@ import (
 	"net"
 	"sync"
 
+	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/aggmq"
 )
@@ -13,11 +14,11 @@ type vdiskManager struct {
 	vdisks           map[string]*vdisk
 	lock             sync.Mutex
 	aggMq            *aggmq.MQ
-	configPath       string
+	configInfo       zerodisk.ConfigInfo
 	maxSegmentBufLen int // max len of capnp buffer used by flushing process
 }
 
-func newVdiskManager(aggMq *aggmq.MQ, blockSize, flushSize int, configPath string) *vdiskManager {
+func newVdiskManager(aggMq *aggmq.MQ, blockSize, flushSize int, configInfo zerodisk.ConfigInfo) *vdiskManager {
 	// the estimation of max segment buf len we will need.
 	// we add it by '1' because:
 	// - the block will also container other data like 'sequenece', 'timestamp', etc..
@@ -28,7 +29,7 @@ func newVdiskManager(aggMq *aggmq.MQ, blockSize, flushSize int, configPath strin
 		aggMq:            aggMq,
 		vdisks:           map[string]*vdisk{},
 		maxSegmentBufLen: segmentBufLen,
-		configPath:       configPath,
+		configInfo:       configInfo,
 	}
 }
 
@@ -55,8 +56,8 @@ func (vt *vdiskManager) Get(ctx context.Context, vdiskID string, firstSequence u
 	}
 
 	// create vdisk
-	vd, err = newVdisk(ctx, vt.aggMq, vdiskID, vt.configPath, f, firstSequence, flusherConf, vt.maxSegmentBufLen,
-		vt.remove)
+	vd, err = newVdisk(ctx, vdiskID, vt.aggMq, vt.configInfo, f,
+		firstSequence, flusherConf, vt.maxSegmentBufLen, vt.remove)
 	if err != nil {
 		return
 	}

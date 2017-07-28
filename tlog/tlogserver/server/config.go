@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/aggmq"
 )
 
@@ -28,7 +29,7 @@ type Config struct {
 	FlushTime  int
 	PrivKey    string
 	HexNonce   string
-	ConfigPath string // config file path
+	ConfigInfo zerodisk.ConfigInfo
 	AggMq      *aggmq.MQ
 }
 
