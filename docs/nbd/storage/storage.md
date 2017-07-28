@@ -16,7 +16,7 @@ It stores any given [block][block] only once. Meaning it has no duplicated [bloc
 
 See the [deduped storage docs](/docs/nbd/storage/deduped.md) for more information.
 
-The code for this storage type can be found in [/nbdserver/ardb/deduped.go](/nbdserver/ardb/deduped.go).
+The code for this storage type can be found in [/nbd/ardb/storage/deduped.go](/nbd/ardb/storage/deduped.go).
 
 ### Non Deduped Storage
 
@@ -26,7 +26,7 @@ The simplest storage type of them all. It stores all [blocks][block] directly ma
 
 See the [non-deduped storage docs](/docs/nbd/storage/nondeduped.md) for more information.
 
-The code for this storage type can be found in [/nbdserver/ardb/nondeduped.go](/nbdserver/ardb/nondeduped.go).
+The code for this storage type can be found in [/nbd/ardb/storage/nondeduped.go](/nbd/ardb/storage/nondeduped.go).
 
 ### Semi Deduped Storage
 
@@ -36,7 +36,7 @@ It is a hybrid storage, combining the [non-deduped](#non-deduped-storage)- and [
 
 See the [semi-deduped storage docs](/docs/nbd/storage/semideduped.md) for more information.
 
-The code for this storage type can be found in [/nbdserver/ardb/semideduped.go](/nbdserver/ardb/semideduped.go).
+The code for this storage type can be found in [/nbd/ardb/storage/semideduped.go](/nbd/ardb/storage/semideduped.go).
 
 ### TLog Storage
 
@@ -46,7 +46,7 @@ It delegates the actual storage work to the [deduped](#deduped-storage)- or [non
 
 See the [TLog storage docs](/docs/nbd/storage/tlog.md) for more information.
 
-The code for this storage type can be found in [/nbdserver/ardb/tlog.go](/nbdserver/ardb/tlog.go).
+The code for this storage type can be found in [/nbd/nbdserver/tlog.go](/nbd/nbdserver/tlog.go).
 
 [backend]: /docs/glossary.md#backend
 [persistent]: /docs/glossary.md#persistent

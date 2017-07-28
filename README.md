@@ -9,7 +9,7 @@ The Zero-OS block storage components allow you to create and use block devices (
 A vdisk can be deduped, persistent, redundant and depending on the underlying storage, have different speed characteristics.
 
 Components:
-* [NBD Server](nbdserver/)
+* [NBD Server](nbd/nbdserver/)
   - A network block device (NBD) server to expose the vdisks to virtual machines
 * [TLOG Server/Client](tlog/)
   - A transaction log server and client to record block changes

@@ -2,12 +2,11 @@ package delvdisk
 
 import (
 	"errors"
-	"fmt"
 
-	"github.com/garyburd/redigo/redis"
 	"github.com/spf13/cobra"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	cmdconfig "github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
 
@@ -26,7 +25,7 @@ var VdisksCmd = &cobra.Command{
 func deleteVdisks(cmd *cobra.Command, args []string) error {
 	logLevel := log.ErrorLevel
 	if cmdconfig.Verbose {
-		logLevel = log.InfoLevel
+		logLevel = log.DebugLevel
 	}
 	log.SetLevel(logLevel)
 
@@ -37,199 +36,98 @@ func deleteVdisks(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	vdisks, err := getVdisks(cfg, args)
+	data, metadata, err := getAndSortVdisks(cfg, args)
 	if err != nil {
 		return err
 	}
 
-	// store all requests in a map, sorted per storage server,
-	// such that we only require 1 delete pipeline per storage server.
-	delControllerMap := make(map[config.StorageServerConfig][]delController)
+	var errs []error
 
-	var storage config.StorageServerConfig
-	var storageType config.StorageType
-
-	log.Info("sorting all target vdisks by storage type and connection")
-	for vdiskID, vdisk := range vdisks {
-		// storageCluster is guaranteed to exist by the config module
-		cluster := cfg.StorageClusters[vdisk.StorageCluster]
-
-		switch storageType = vdisk.StorageType(); storageType {
-		// add deduped delete controllers
-		case config.StorageDeduped:
-			storage = *cluster.MetadataStorage
-			delControllerMap[storage] = append(
-				delControllerMap[storage], newDedupDelController(vdiskID))
-
-		// add non deduped delete controllers
-		case config.StorageNonDeduped:
-			for _, storage = range cluster.DataStorage {
-				delControllerMap[storage] = append(
-					delControllerMap[storage], newNonDedupDelController(vdiskID))
-			}
-
-		// add semi deduped delete controllers
-		case config.StorageSemiDeduped:
-			storage = *cluster.MetadataStorage
-			delControllerMap[storage] = append(
-				delControllerMap[storage],
-				newDedupDelController(vdiskID), newSemiDedupDelController(vdiskID))
-
-			for _, storage = range cluster.DataStorage {
-				delControllerMap[storage] = append(
-					delControllerMap[storage], newNonDedupDelController(vdiskID))
-			}
-
-		default: // shouldn't happen
-			return fmt.Errorf("invariant: vdisk %s has unknown storage type %d",
-				vdiskID, storageType)
-		}
-	}
-
-	for cfg, controllers := range delControllerMap {
-		err = deleleFromStorageServer(vdisksCfg.Force, cfg, controllers...)
+	for serverCfg, vdisks := range metadata {
+		err = storage.DeleteMetadata(serverCfg, vdisks)
 		if err != nil {
-			if !vdisksCfg.Force {
-				return err
-			}
-
 			log.Error(err)
+			errs = append(errs, err)
 		}
 	}
 
-	log.Info("done")
-	return nil
-}
-
-func getVdisks(cfg *config.Config, args []string) (map[string]config.VdiskConfig, error) {
-	if len(args) == 0 {
-		return cfg.Vdisks, nil
-	}
-
-	// create a vdisk map, so we only have each id once
-	vdiskids := make(map[string]struct{}, len(args))
-	for _, vdiskid := range args {
-		vdiskids[vdiskid] = struct{}{}
-	}
-
-	log.Info("retreiving given vdisks from config file...")
-
-	// collect all vdisk configurations (once)
-	vdisks := make(map[string]config.VdiskConfig)
-	for candidateID := range vdiskids {
-		for vdiskID := range cfg.Vdisks {
-			if vdiskID == candidateID {
-				vdisks[vdiskID] = cfg.Vdisks[vdiskID]
-				delete(cfg.Vdisks, vdiskID)
-				delete(vdiskids, vdiskID)
-				break
-			}
-		}
-
-		if len(cfg.Vdisks) == 0 {
-			break
-		}
-	}
-
-	if len(vdisks) == 0 {
-		return nil, errors.New("no vdisks could be found for the given vdiskids")
-	}
-
-	if !vdisksCfg.Force && len(vdiskids) > 0 {
-		// abort non-forced command,
-		// in case least one given vdisk could not be found
-
-		message := "following vdisk(s) could not be found in the config file:"
-		for vdiskID := range vdiskids {
-			message += " " + vdiskID + ","
-		}
-		return nil, errors.New(message[:len(message)-1])
-	}
-
-	// log an error for each invalid vdisk id
-	for vdiskID := range vdiskids {
-		log.Errorf("vdisk %s could not be found and will thus not be deleted", vdiskID)
-	}
-
-	return vdisks, nil
-}
-
-// delete the semideduped vdisks
-func deleleFromStorageServer(force bool, cfg config.StorageServerConfig, controllers ...delController) error {
-	if len(controllers) == 0 {
-		return nil // no controllers defined, returning early
-	}
-
-	// open redis connection
-	log.Infof("dialing redis TCP connection at: %s (%d)", cfg.Address, cfg.Database)
-	conn, err := redis.Dial("tcp", cfg.Address, redis.DialDatabase(cfg.Database))
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	// add each delete request to the pipeline
-	var batchedControllers []delController
-	for _, controller := range controllers {
-		err = controller.BatchRequest(conn)
+	for serverCfg, vdisks := range data {
+		err = storage.DeleteData(serverCfg, vdisks)
 		if err != nil {
-			if !force {
-				return err
-			}
-
 			log.Error(err)
-			continue
+			errs = append(errs, err)
 		}
-		batchedControllers = append(batchedControllers, controller)
 	}
 
-	// flush all delete requests
-	err = conn.Flush()
-	if err != nil {
-		return fmt.Errorf("could not flush request for conn %s (%d): %v",
-			cfg.Address, cfg.Database, err)
-	}
-
-	// check if all delete operations were successfull
-	for _, controller := range batchedControllers {
-		err = controller.CheckRequest(conn)
-		// content was deleted, no error, Yay!
-		if err == nil {
-			continue
+	if errs != nil {
+		var str string
+		for _, err := range errs {
+			str += err.Error() + ", "
 		}
 
-		// no critical error, content simply didn't exist, so couldn't be deleted
-		if err, ok := err.(noDeleteError); ok {
-			log.Infof("%v: did not exist at %s (%d)", err, cfg.Address, cfg.Database)
-			continue
-		}
-
-		// critical error while deleting content
-
-		if !force {
-			return err
-		}
-
-		log.Error(err)
+		return errors.New(str[:len(str)-2])
 	}
 
 	return nil
 }
 
-// delController is a generic interface, which allows us to batch & check
-// a deletion request, pipelined in a series of deletion processes
-// for a single storage server.
-type delController interface {
-	// BatchRequest adds the request to the conn's pipeline
-	BatchRequest(conn redis.Conn) error
-	// CheckRequest checks if the earlier batch request has been processed fine
-	CheckRequest(conn redis.Conn) error
+type vdisksPerServerMap map[config.StorageServerConfig]map[string]config.VdiskType
+
+func (m vdisksPerServerMap) AddVdisk(cfg config.StorageServerConfig, vdiskID string, vdiskType config.VdiskType) {
+	serverVdisks, ok := m[cfg]
+	if !ok {
+		serverVdisks = make(map[string]config.VdiskType)
+		m[cfg] = serverVdisks
+	}
+
+	serverVdisks[vdiskID] = vdiskType
 }
 
-// noDeleteError can be returned by delController.CheckRequest,
-// in case there was no real error, but nothing got deleted either,
-// probably because it didn't exist
-type noDeleteError error
+func getAndSortVdisks(cfg *config.Config, args []string) (data vdisksPerServerMap, metadata vdisksPerServerMap, err error) {
+	data = make(vdisksPerServerMap)
+	metadata = make(vdisksPerServerMap)
+
+	addVdiskCluster := func(cfg config.StorageClusterConfig, vdiskID string, vdiskType config.VdiskType) {
+		if cfg.MetadataStorage != nil {
+			metadata.AddVdisk(*cfg.MetadataStorage, vdiskID, vdiskType)
+		}
+
+		for _, serverCfg := range cfg.DataStorage {
+			data.AddVdisk(serverCfg, vdiskID, vdiskType)
+		}
+	}
+
+	var clusterCfg config.StorageClusterConfig
+
+	if len(args) != 0 {
+		var ok bool
+		var vdiskCfg config.VdiskConfig
+
+		// add only the selected vdisk(s)
+		for _, arg := range args {
+			vdiskCfg, ok = cfg.Vdisks[arg]
+			if !ok {
+				log.Errorf("no config found for vdisk %s", arg)
+				continue
+			}
+
+			clusterCfg = cfg.StorageClusters[vdiskCfg.StorageCluster]
+			addVdiskCluster(clusterCfg, arg, vdiskCfg.Type)
+		}
+	} else {
+		// add all available vdisk(s)
+		for vdiskID, vdiskCfg := range cfg.Vdisks {
+			clusterCfg = cfg.StorageClusters[vdiskCfg.StorageCluster]
+			addVdiskCluster(clusterCfg, vdiskID, vdiskCfg.Type)
+		}
+	}
+
+	if len(data) == 0 && len(metadata) == 0 {
+		return nil, nil, errors.New("no given vdisk could be found to be deleted")
+	}
+
+	return data, metadata, nil
+}
 
 func init() {
 	VdisksCmd.Long = VdisksCmd.Short + `

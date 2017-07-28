@@ -84,7 +84,7 @@ func main() {
 	// send the data
 	for i := 0; i < numLogsToSend; i++ {
 		seq := uint64(i)
-		err := client.Send(schema.OpWrite, seq, seq*dataLen, uint64(time.Now().Unix()), data, uint64(len(data)))
+		err := client.Send(schema.OpSet, seq, int64(seq), uint64(time.Now().Unix()), data)
 		if err != nil {
 			log.Fatalf("send failed at seq=%v, err= %v", seq, err)
 			return

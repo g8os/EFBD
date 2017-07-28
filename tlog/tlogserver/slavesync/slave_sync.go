@@ -11,7 +11,7 @@ import (
 
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
-	"github.com/zero-os/0-Disk/nbdserver/ardb"
+	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/tlog/schema"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/player"

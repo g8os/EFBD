@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	zerodiskcfg "github.com/zero-os/0-Disk/config"
-	"github.com/zero-os/0-Disk/gonbdserver/nbd"
-	"github.com/zero-os/0-Disk/nbdserver/ardb"
+	"github.com/zero-os/0-Disk/nbd/ardb"
+	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
@@ -17,10 +17,10 @@ import (
 // It could be used to restore the data based on transactions
 // sent to tlog server
 type Player struct {
-	vdiskID string
-	dec     *decoder.Decoder
-	backend nbd.Backend
-	ctx     context.Context
+	vdiskID      string
+	dec          *decoder.Decoder
+	blockStorage storage.BlockStorage
+	ctx          context.Context
 }
 
 // OnReplayCb defines func signature which can be used as callback
@@ -44,45 +44,38 @@ func NewPlayer(ctx context.Context, configPath string, serverConfigs []zerodiskc
 		AutoFill:                true,
 		AllowInMemory:           false,
 	})
-
 	if err != nil {
 		return nil, err
 	}
 
-	hotreloader, err := zerodiskcfg.NopHotReloader(configPath, zerodiskcfg.NBDServer)
+	cfg, err := zerodiskcfg.ReadConfig(configPath, zerodiskcfg.NBDServer)
 	if err != nil {
 		return nil, err
 	}
 
-	config := ardb.BackendFactoryConfig{
-		PoolFactory:       ardb.NewRedisPoolFactory(nil),
-		ConfigHotReloader: hotreloader,
-		LBACacheLimit:     ardb.DefaultLBACacheLimit,
-	}
-	fact, err := ardb.NewBackendFactory(config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create factory:%v", err)
-	}
-
-	ec := &nbd.ExportConfig{
-		Name:        vdiskID,
-		Description: "zero-os/zerodisk",
-		Driver:      "ardb",
-		ReadOnly:    false,
-		TLSOnly:     false,
-	}
-
-	backend, err := fact.NewBackend(ctx, ec)
+	vdiskCfg, err := cfg.VdiskClusterConfig(vdiskID)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewPlayerWithPoolAndBackend(ctx, pool, backend, vdiskID, privKey, hexNonce, k, m)
+	ardbProvider, err := ardb.RedisProvider(vdiskCfg, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	blockStorage, err := storage.NewBlockStorage(vdiskID, storage.BlockStorageConfig{
+		Vdisk: vdiskCfg.Vdisk,
+	}, ardbProvider)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewPlayerWithPoolAndStorage(ctx, pool, blockStorage, vdiskID, privKey, hexNonce, k, m)
 }
 
-// NewPlayerWithPoolAndBackend create new tlog player
-// with given redis pool and nbd backend
-func NewPlayerWithPoolAndBackend(ctx context.Context, pool tlog.RedisPool, backend nbd.Backend,
+// NewPlayerWithPoolAndStorage create new tlog player
+// with given redis pool and BlockStorage
+func NewPlayerWithPoolAndStorage(ctx context.Context, pool tlog.RedisPool, storage storage.BlockStorage,
 	vdiskID, privKey, hexNonce string, k, m int) (*Player, error) {
 
 	dec, err := decoder.New(pool, k, m, vdiskID, privKey, hexNonce)
@@ -91,18 +84,18 @@ func NewPlayerWithPoolAndBackend(ctx context.Context, pool tlog.RedisPool, backe
 	}
 
 	return &Player{
-		dec:     dec,
-		backend: backend,
-		ctx:     ctx,
-		vdiskID: vdiskID,
+		dec:          dec,
+		blockStorage: storage,
+		ctx:          ctx,
+		vdiskID:      vdiskID,
 	}, nil
 
 }
 
 // Close releases all its resources
-func (p *Player) Close() {
+func (p *Player) Close() error {
 	p.dec.Close()
-	p.backend.Close(p.ctx)
+	return p.blockStorage.Close()
 }
 
 // Replay replays the tlog by decoding data from the tlog blockchains.
@@ -134,7 +127,7 @@ func (p *Player) ReplayWithCallback(lmt decoder.Limiter, onReplayCb OnReplayCb) 
 			return lastSeq, err
 		}
 	}
-	return lastSeq, p.backend.Flush(p.ctx)
+	return lastSeq, p.blockStorage.Flush()
 }
 
 // ReplayAggregation replays an aggregation.
@@ -159,6 +152,9 @@ func (p *Player) ReplayAggregationWithCallback(agg *schema.TlogAggregation, lmt 
 	}
 
 	var seq uint64
+	var index int64
+	var data []byte
+
 	// replay all the blocks
 	blocks, err := agg.Blocks()
 	for i := 0; i < blocks.Len(); i++ {
@@ -172,32 +168,30 @@ func (p *Player) ReplayAggregationWithCallback(agg *schema.TlogAggregation, lmt 
 			return seq, nil
 		}
 
-		seq = block.Sequence()
-
-		offset := block.Offset()
+		seq, index = block.Sequence(), block.Index()
 
 		switch block.Operation() {
-		case schema.OpWrite:
-			data, err := block.Data()
+		case schema.OpSet:
+			data, err = block.Data()
 			if err != nil {
-				return seq - 1, fmt.Errorf("failed to get data block of offset=%v, err=%v", offset, err)
+				return seq - 1, fmt.Errorf("failed to get data block %v, err=%v", index, err)
 			}
-			if _, err := p.backend.WriteAt(p.ctx, data, int64(offset)); err != nil {
-				return seq - 1, fmt.Errorf("failed to WriteAt offset=%v, err=%v", offset, err)
+			if err = p.blockStorage.SetBlock(index, data); err != nil {
+				return seq - 1, fmt.Errorf("failed to set block %v, err=%v", index, err)
 			}
-		case schema.OpWriteZeroesAt:
-			if _, err := p.backend.WriteZeroesAt(p.ctx, int64(offset), int64(block.Size())); err != nil {
-				return seq - 1, fmt.Errorf("failed to WriteAt offset=%v, err=%v", offset, err)
+		case schema.OpDelete:
+			if err = p.blockStorage.DeleteBlock(index); err != nil {
+				return seq - 1, fmt.Errorf("failed to delete block %v, err=%v", index, err)
 			}
 		}
 		// we flush it per sequence instead of per aggregation to
 		// make sure we have sequence level accuracy about what we've replayed
-		if err := p.backend.Flush(p.ctx); err != nil {
+		if err = p.blockStorage.Flush(); err != nil {
 			return seq - 1, err
 		}
 
 		// execute the callback
-		if err := onReplayCb(seq); err != nil {
+		if err = onReplayCb(seq); err != nil {
 			return seq, err
 		}
 	}

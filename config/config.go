@@ -522,6 +522,14 @@ func (t VdiskType) StorageType() StorageType {
 	return StorageNonDeduped
 }
 
+// TemplateSupport returns whether or not
+// this vdisk type supports a template storage cluster,
+// to get the data in case the data isn't available on
+// the primary storage cluster.
+func (t VdiskType) TemplateSupport() bool {
+	return t&propTemplateSupport != 0
+}
+
 const (
 	vdiskTypeNilStr   = ""
 	vdiskTypeBootStr  = "boot"
