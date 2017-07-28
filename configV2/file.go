@@ -31,6 +31,10 @@ func ReadNBDConfigFile(path string) (*NBDConfig, error) {
 		return nil, err
 	}
 
+	if cfg.NBD == nil {
+		return nil, fmt.Errorf("config file %s doesn't contain nbd config", path)
+	}
+
 	return cfg.NBD, nil
 }
 
@@ -52,6 +56,11 @@ func WatchNBDConfigFile(ctx context.Context, path string) (<-chan NBDConfig, err
 	updater <- *nbd
 
 	go watchConfigFile(ctx, path, func(cfg *configFileFormat) {
+		if cfg.NBD == nil {
+			log.Errorf("no nbd cfg in file %s, while nbd watcher requires it", path)
+			return
+		}
+
 		// send current data to channel
 		select {
 		case updater <- *cfg.NBD:
@@ -71,6 +80,10 @@ func ReadTlogConfigFile(path string) (*TlogConfig, error) {
 		return nil, err
 	}
 
+	if cfg.Tlog == nil {
+		return nil, fmt.Errorf("config file %s doesn't contain tlog config", path)
+	}
+
 	return cfg.Tlog, nil
 }
 
@@ -82,16 +95,21 @@ func WatchTlogConfigFile(ctx context.Context, path string) (<-chan TlogConfig, e
 	}
 
 	// fetch current data
-	nbd, err := ReadTlogConfigFile(path)
+	tlog, err := ReadTlogConfigFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("Could not fetch initial TlogConfig for TlogConfig watcher: %s", err)
 	}
 
 	// setup channel
 	updater := make(chan TlogConfig, 1)
-	updater <- *nbd
+	updater <- *tlog
 
 	go watchConfigFile(ctx, path, func(cfg *configFileFormat) {
+		if cfg.Tlog == nil {
+			log.Errorf("no tlog cfg in file %s, while tlog watcher requires it", path)
+			return
+		}
+
 		// send current data to channel
 		select {
 		case updater <- *cfg.Tlog:
@@ -111,6 +129,10 @@ func ReadSlaveConfigFile(path string) (*SlaveConfig, error) {
 		return nil, err
 	}
 
+	if cfg.Slave == nil {
+		return nil, fmt.Errorf("config file %s doesn't contain slave config", path)
+	}
+
 	return cfg.Slave, nil
 }
 
@@ -122,16 +144,21 @@ func WatchSlaveConfigFile(ctx context.Context, path string) (<-chan SlaveConfig,
 	}
 
 	// fetch current data
-	nbd, err := ReadSlaveConfigFile(path)
+	slave, err := ReadSlaveConfigFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("Could not fetch initial SlaveConfig for SlaveConfig watcher: %s", err)
 	}
 
 	// setup channel
 	updater := make(chan SlaveConfig, 1)
-	updater <- *nbd
+	updater <- *slave
 
 	go watchConfigFile(ctx, path, func(cfg *configFileFormat) {
+		if cfg.Slave == nil {
+			log.Errorf("no slave cfg in file %s, while slave watcher requires it", path)
+			return
+		}
+
 		// send current data to channel
 		select {
 		case updater <- *cfg.Slave:

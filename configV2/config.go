@@ -10,9 +10,6 @@ import (
 	"github.com/go-yaml/yaml"
 )
 
-// ErrConfigNotAvailable represents an error where the asked for sub config was not available
-//var ErrConfigNotAvailable = errors.New("config is not available")
-
 // BaseConfig represents the basic vdisk info
 type BaseConfig struct {
 	BlockSize uint64    `yaml:"blockSize" valid:"optional"`
