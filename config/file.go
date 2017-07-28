@@ -237,15 +237,15 @@ func watchConfigFile(ctx context.Context, vdiskID, path string, useConfig func(*
 	defer signal.Stop(sighup)
 	defer close(sighup)
 
-	log.Debug("watch goroutine for SIGHUP started")
-	defer log.Debug("watch goroutine for SIGHUP closed")
+	log.Debug("Started watch goroutine for SIGHUP")
+	defer log.Debugf("Closing SIGHUP watch goroutine for %s", path)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-sighup:
-			log.Debug("SIGHUP received")
+			log.Debug("Received SIGHUP for: ", path)
 			// read config file
 			cfg, err := readConfigFile(vdiskID, path)
 			if err != nil {

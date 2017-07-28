@@ -18,42 +18,43 @@ var validVDiskTypeCases = []struct {
 }
 
 const validYAMLSourceStr = `
-baseConfig: 
-  blockSize: 4096
-  readOnly: false
-  size: 10
-  type: db
-nbdConfig:
-  templateVdiskID: mytemplate
-  storageCluster:
-    dataStorage: 
-      - address: 192.168.58.146:2000
-        db: 0
-      - address: 192.123.123.123:2001
-        db: 0
-    metadataStorage:
-      address: 192.168.58.146:2001
-      db: 1
-  templateStorageCluster:
-    dataStorage:
-      - address: 192.168.58.147:2000
-        db: 0
-tlogConfig:
-  tlogStorageCluster:
-    dataStorage: 
-      - address: 192.168.58.149:2000
-        db: 4
-    metadataStorage:
-      address: 192.168.58.146:2001
-      db: 8
-slaveConfig:
-  slaveStorageCluster:
-    dataStorage: 
-      - address: 192.168.58.145:2000
-        db: 4
-    metadataStorage:
-      address: 192.168.58.144:2000
-      db: 8
+testVdisk:
+  baseConfig: 
+    blockSize: 4096
+    readOnly: false
+    size: 10
+    type: db
+  nbdConfig:
+    templateVdiskID: mytemplate
+    storageCluster:
+      dataStorage: 
+        - address: 192.168.58.146:2000
+          db: 0
+        - address: 192.123.123.123:2001
+          db: 0
+      metadataStorage:
+        address: 192.168.58.146:2001
+        db: 1
+    templateStorageCluster:
+      dataStorage:
+        - address: 192.168.58.147:2000
+          db: 0
+  tlogConfig:
+    tlogStorageCluster:
+      dataStorage: 
+        - address: 192.168.58.149:2000
+          db: 4
+      metadataStorage:
+        address: 192.168.58.146:2001
+        db: 8
+  slaveConfig:
+    slaveStorageCluster:
+      dataStorage: 
+        - address: 192.168.58.145:2000
+          db: 4
+      metadataStorage:
+        address: 192.168.58.144:2000
+        db: 8
   `
 const validBaseStr = `
 blockSize: 2048
@@ -101,89 +102,136 @@ slaveStorageCluster:
 var invalidNBDServerConfigs = []string{
 	// invalid blocksize (0)
 	`
-baseConfig: 
-  blockSize: 0
-  readOnly: false
-  size: 1
+testVdisk:
+  baseConfig: 
+    blockSize: 0
+    readOnly: false
+    size: 1
   type: db
   `,
 	// invalid blocksize (uneven)
 	`
-baseConfig: 
-  blockSize: 4095
-  readOnly: false
-  size: 2
-  type: db
+testVdisk:
+  baseConfig: 
+    blockSize: 4095
+    readOnly: false
+    size: 2
+    type: db
   `,
 	// invalid VdiskType (nil)
 	`
-baseConfig: 
-  blockSize: 4096
-  readOnly: false
-  size: 3
-  type: 
+testVdisk:
+  baseConfig: 
+    blockSize: 4096
+    readOnly: false
+    size: 3
+    type: 
   `,
 	// invalid blocksize (random string)
 	`
-baseConfig: 
-  blockSize: 4096
-  readOnly: false
-  size: 4
-  type: random
+testVdisk:
+  baseConfig: 
+    blockSize: 4096
+    readOnly: false
+    size: 4
+    type: random
   `,
 	// no storage clusters
 	`
-baseConfig: 
-  blockSize: 4096
-  readOnly: false
-  size: 5
-  type: db
-nbdConfig:
-  templateVdiskID: mytemplate
+testVdisk:
+  baseConfig: 
+    blockSize: 4096
+    readOnly: false
+    size: 5
+    type: db
+  nbdConfig:
+    templateVdiskID: mytemplate
 `,
 
 	// bad template storage
 	`
-baseConfig: 
-  blockSize: 4096
-  readOnly: false
-  size: 7
-  type: tmp
-nbdConfig:
-  storageCluster:
-    dataStorage: 
-      - address: 192.168.58.146:2000
-        db: 0
-      - address: 192.123.123.123:2001
-        db: 0
-    metadataStorage:
-      address: 192.168.58.146:2001
-      db: 1
-  templateStorageCluster:
-    dataStorage:
-      - address: 192.168.58.147:2000
-        db: foo
+testVdisk:
+  baseConfig: 
+    blockSize: 4096
+    readOnly: false
+    size: 6
+    type: tmp
+  nbdConfig:
+    storageCluster:
+      dataStorage: 
+        - address: 192.168.58.146:2000
+          db: 0
+        - address: 192.123.123.123:2001
+          db: 0
+      metadataStorage:
+        address: 192.168.58.146:2001
+        db: 1
+    templateStorageCluster:
+      dataStorage:
+        - address: 192.168.58.147:2000
+          db: foo
   `,
 	// bad template storage dial address
 	`
-baseConfig: 
-  blockSize: 4096
-  readOnly: false
-  size: 8
-  type: tmp
-nbdConfig:
-  storageCluster:
-    dataStorage: 
-      - address: 192.168.58.146:2000
-        db: 0
-      - address: 192.123.123.123:2001
-        db: 0
-    metadataStorage:
-      address: 192.168.58.146:2001
-      db: 1
-  templateStorageCluster:
-    dataStorage:
-      - address: foo
+testVdisk:
+  baseConfig: 
+    blockSize: 4096
+    readOnly: false
+    size: 7
+    type: tmp
+  nbdConfig:
+    storageCluster:
+      dataStorage: 
+        - address: 192.168.58.146:2000
+          db: 0
+        - address: 192.123.123.123:2001
+          db: 0
+      metadataStorage:
+        address: 192.168.58.146:2001
         db: 1
+    templateStorageCluster:
+      dataStorage:
+        - address: foo
+          db: 1
+  `,
+	// bad tlog data storage dial address
+	`
+testVdisk:
+  baseConfig: 
+    blockSize: 4096
+    readOnly: false
+    size: 8
+    type: tmp
+  tlogConfig:
+    tlogStorageCluster:
+      dataStorage: 
+        - address: notAnAdress
+          db: 0
+        - address: 192.123.123.123:2001
+          db: 0
+      metadataStorage:
+        address: 192.168.58.146:2001
+        db: 1
+
+  `,
+	// bad slave metadata storage dial address
+	`
+testVdisk:
+  baseConfig: 
+    blockSize: 4096
+    readOnly: false
+    size: 8
+    type: tmp
+  slaveConfig:
+    slaveStorageCluster:
+      dataStorage: 
+        - address: 192.168.58.146:2001
+          db: 0
+        - address: 192.123.123.123:2001
+          db: 0
+      metadataStorage:
+        address: thisshouldnotbevalid
+        db: 1
+
   `,
 }

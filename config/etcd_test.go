@@ -59,13 +59,13 @@ func testETCDConfig(t *testing.T) {
 		return
 	}
 
-	nbd, err := ReadNBDConfigETCD(vdiskID, endpoints)
+	nbdBa, nbd, err := ReadNBDConfigETCD(vdiskID, endpoints)
 	if !assert.NoError(t, err) || !assert.NotNil(t, nbd) {
 		return
 	}
 
 	tlog, err := ReadTlogConfigETCD(vdiskID, endpoints)
-	if !assert.NoError(t, err) || !assert.NotNil(t, tlog) {
+	if !assert.NoError(t, err) || !assert.NotNil(t, tlog) || !assert.NotNil(t, nbdBa) {
 		return
 	}
 
@@ -151,6 +151,11 @@ func testETCDConfig(t *testing.T) {
 	time.Sleep(1 * time.Millisecond)
 
 	cancel()
+
+	// test with nil ctx
+	WatchNBDConfigETCD(nil, vdiskID, endpoints)
+	WatchTlogConfigETCD(nil, vdiskID, endpoints)
+	WatchSlaveConfigETCD(nil, vdiskID, endpoints)
 }
 
 // writeConfigETCD sets data to etcd cluster with the given key and data

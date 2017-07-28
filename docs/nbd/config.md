@@ -14,7 +14,7 @@ The NBD Server will use the methodes provided by the config package to communica
 
 Within the NBD server, it uses the configs in following places:
   * ardb: use the BaseConfig and NBDConfig for the BackendFactory
-  * Tlogstorage: when switching to ardb slave the SlaveConfig will be used
+  * nbdserver.tlog : when switching to the ardb slave the SlaveConfig will be used
 
 More details about the subconfigs, etcd API can be found on the [config documentation page][configDoc]
 
