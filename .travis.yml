@@ -2,10 +2,6 @@ sudo: required
 dist: trusty
 language: go
 
-branches:
-  except:
-    - adds-etcdconfig
-
 jobs:
   include:
     - stage: test
