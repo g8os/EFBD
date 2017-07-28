@@ -67,7 +67,7 @@ func WatchNBDConfigETCD(ctx context.Context, vdiskID string, endpoints []string)
 	updater := make(chan NBDConfig, 1)
 	updater <- *nbd
 
-	go watchConfigETCD(ctx, endpoints, etcdNBDKey(vdiskID), func(data []byte) error {
+	err = watchConfigETCD(ctx, endpoints, etcdNBDKey(vdiskID), func(data []byte) error {
 		nbd, err := NewNBDConfig(data, base.Type)
 		if err != nil {
 			return err
@@ -82,6 +82,9 @@ func WatchNBDConfigETCD(ctx context.Context, vdiskID string, endpoints []string)
 
 		return nil
 	})
+	if err != nil {
+		return nil, fmt.Errorf("Could not create NBdConfig watcher: %s", err)
+	}
 
 	return updater, nil
 }
@@ -115,7 +118,7 @@ func WatchTlogConfigETCD(ctx context.Context, vdiskID string, endpoints []string
 	updater := make(chan TlogConfig, 1)
 	updater <- *tlog
 
-	go watchConfigETCD(ctx, endpoints, etcdTlogKey(vdiskID), func(data []byte) error {
+	err = watchConfigETCD(ctx, endpoints, etcdTlogKey(vdiskID), func(data []byte) error {
 		tlog, err := NewTlogConfig(data)
 		if err != nil {
 			return err
@@ -130,6 +133,9 @@ func WatchTlogConfigETCD(ctx context.Context, vdiskID string, endpoints []string
 
 		return nil
 	})
+	if err != nil {
+		return nil, fmt.Errorf("Could not create TlogConfig watcher: %s", err)
+	}
 
 	return updater, nil
 }
@@ -163,7 +169,7 @@ func WatchSlaveConfigETCD(ctx context.Context, vdiskID string, endpoints []strin
 	updater := make(chan SlaveConfig, 1)
 	updater <- *slave
 
-	go watchConfigETCD(ctx, endpoints, etcdSlaveKey(vdiskID), func(data []byte) error {
+	err = watchConfigETCD(ctx, endpoints, etcdSlaveKey(vdiskID), func(data []byte) error {
 		slave, err := NewSlaveConfig(data)
 		if err != nil {
 			return err
@@ -178,11 +184,14 @@ func WatchSlaveConfigETCD(ctx context.Context, vdiskID string, endpoints []strin
 
 		return nil
 	})
+	if err != nil {
+		return nil, fmt.Errorf("Could not create SlaveConfig watcher: %s", err)
+	}
 
 	return updater, nil
 }
 
-func watchConfigETCD(ctx context.Context, endpoints []string, keyPrefix string, useConfig func(bytes []byte) error) {
+func watchConfigETCD(ctx context.Context, endpoints []string, keyPrefix string, useConfig func(bytes []byte) error) error {
 	// setup connection
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   endpoints,
@@ -190,45 +199,49 @@ func watchConfigETCD(ctx context.Context, endpoints []string, keyPrefix string, 
 	})
 	if err != nil {
 		log.Errorf("could not connect to ETCD server: %v", err)
-		return
+		return err
 	}
 	defer cli.Close()
 
 	watch := cli.Watch(ctx, keyPrefix, clientv3.WithPrefix())
 
 	log.Debugf("watch channel for %s started", keyPrefix)
-	defer log.Debugf("watch channel for %s closed", keyPrefix)
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
+	go func() {
+		defer log.Debugf("watch channel for %s closed", keyPrefix)
+		for {
+			select {
+			case <-ctx.Done():
+				return
 
-		case resp, ok := <-watch:
-			if !ok || resp.Err() != nil {
-				if ok {
-					err := resp.Err()
+			case resp, ok := <-watch:
+				if !ok || resp.Err() != nil {
+					if ok {
+						err := resp.Err()
+						log.Errorf("Watch channel for %s encountered an error: %v", keyPrefix, err)
+					}
+					return
+				}
+
+				// get latest event
+				ev := resp.Events[len(resp.Events)-1]
+				log.Debugf("Value for %s received an update", ev.Kv.Key)
+
+				// check if empty, if so log an error
+				if len(ev.Kv.Value) < 1 {
+					log.Errorf("key %s returned an empty value, keeping the old config", keyPrefix)
+					continue
+				}
+
+				err = useConfig(ev.Kv.Value)
+				if err != nil {
 					log.Errorf("Watch channel for %s encountered an error: %v", keyPrefix, err)
 				}
-				return
-			}
-
-			// get latest event
-			ev := resp.Events[len(resp.Events)-1]
-			log.Debugf("Value for %s received an update", ev.Kv.Key)
-
-			// check if empty, if so log an error
-			if len(ev.Kv.Value) < 1 {
-				log.Errorf("key %s returned an empty value, keeping the old config", keyPrefix)
-				continue
-			}
-
-			err = useConfig(ev.Kv.Value)
-			if err != nil {
-				log.Errorf("Watch channel for %s encountered an error: %v", keyPrefix, err)
 			}
 		}
-	}
+	}()
+
+	return nil
 }
 
 // readConfigETCD fetches data from etcd cluster with the given key
