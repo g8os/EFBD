@@ -16,7 +16,7 @@ import (
 // vdiskCfg is the configuration used for the restore vdisk command
 var vdiskCmdCfg struct {
 	TlogObjStorAddresses string
-	ConfigInfo           zerodisk.ConfigInfo
+	RawConfigResource    string
 	K, M                 int
 	PrivKey, HexNonce    string
 	StartTs              uint64 // start timestamp
@@ -25,7 +25,7 @@ var vdiskCmdCfg struct {
 
 // VdiskCmd represents the restore vdisk subcommand
 var VdiskCmd = &cobra.Command{
-	Use:   "vdisk config_resource id",
+	Use:   "vdisk id",
 	Short: "Restore a vdisk using a given tlogserver",
 	RunE:  restoreVdisk,
 }
@@ -33,15 +33,19 @@ var VdiskCmd = &cobra.Command{
 func restoreVdisk(cmd *cobra.Command, args []string) error {
 	argn := len(args)
 
-	if argn < 2 {
+	if argn < 1 {
 		return errors.New("not enough arguments")
 	}
-	if argn > 2 {
+	if argn > 1 {
 		return errors.New("too many arguments")
 	}
 
-	var vdiskID string
-	vdiskCmdCfg.ConfigInfo.Resource, vdiskID = args[0], args[1]
+	vdiskID := args[0]
+
+	configInfo, err := zerodisk.ParseConfigInfo(vdiskCmdCfg.RawConfigResource)
+	if err != nil {
+		return err
+	}
 
 	logLevel := log.ErrorLevel
 	if config.Verbose {
@@ -59,7 +63,7 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 			vdiskCmdCfg.TlogObjStorAddresses, err.Error())
 	}
 
-	player, err := player.NewPlayer(ctx, vdiskCmdCfg.ConfigInfo, serverConfigs, vdiskID,
+	player, err := player.NewPlayer(ctx, *configInfo, serverConfigs, vdiskID,
 		vdiskCmdCfg.PrivKey, vdiskCmdCfg.HexNonce, vdiskCmdCfg.K, vdiskCmdCfg.M)
 	if err != nil {
 		return err
@@ -74,9 +78,9 @@ func init() {
 		&vdiskCmdCfg.TlogObjStorAddresses,
 		"storage-addresses", "",
 		"comma seperated list of redis compatible connectionstrings (format: '<ip>:<port>[@<db>]', eg: 'localhost:16379,localhost:6379@2'), if given, these are used for all vdisks, ignoring the given config")
-	VdiskCmd.Flags().Var(
-		&vdiskCmdCfg.ConfigInfo.ResourceType, "type",
-		"type of the config resource given (options: file, etcd) (default: etcd)")
+	VdiskCmd.Flags().StringVar(
+		&vdiskCmdCfg.RawConfigResource, "config", "config.yml",
+		"config resource: etcd (dialstring(s)) or file (path)")
 	VdiskCmd.Flags().IntVar(
 		&vdiskCmdCfg.K,
 		"k", 4,

@@ -76,12 +76,12 @@ templateStorageCluster:
 
 ### Tlog config
 * TlogConfig: stores tlog server information:
-	* TlogStorageCluster: defines the storage cluster of the Tlog Server
+	* StorageCluster: defines the storage cluster of the Tlog Server
 	* SlaveSync: defines if tlog should use the slave syncer
 
 * YAML example:
 ```yaml
-tlogStorageCluster:
+storageCluster:
   dataStorage: 
     - address: 192.168.1.1:1000
       db: 14
@@ -100,11 +100,11 @@ tlogSlaveSync: true
 
 ### Slave config
 * SlaveConfig: stores slave storage cluster information:
-	* SlaveStorageCluster: defines the storage cluster of the slave
+	* StorageCluster: defines the storage cluster of the slave
 
 * YAML example:
 ```yaml
-slaveStorageCluster:
+storageCluster:
   dataStorage: 
     - address: 192.168.2.149:1000
       db: 14

@@ -61,7 +61,7 @@ func (cfg *BlockStorageConfig) Validate() error {
 		return errors.New("invalid vdisk size")
 	}
 
-	if cfg.BlockSize < cfg.VdiskSize {
+	if cfg.BlockSize > cfg.VdiskSize {
 		return errors.New("invalid block size size")
 	}
 

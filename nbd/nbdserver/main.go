@@ -28,7 +28,7 @@ func main() {
 	var profileAddress string
 	var protocol string
 	var address string
-	var configInfo zerodisk.ConfigInfo
+	var rawConfigResource string
 	var logPath string
 	flag.BoolVar(&verbose, "v", false, "when false, only log warnings and errors")
 	flag.StringVar(&logPath, "logfile", "", "optionally log to the specified file, instead of the stderr")
@@ -37,23 +37,10 @@ func main() {
 	flag.StringVar(&profileAddress, "profile-address", "", "Enables profiling of this server as an http service")
 	flag.StringVar(&protocol, "protocol", "unix", "Protocol to listen on, 'tcp' or 'unix'")
 	flag.StringVar(&address, "address", "/tmp/nbd-socket", "Address to listen on, unix socket or tcp address, ':6666' for example")
-	flag.Var(&configInfo.ResourceType, "configtype",
-		"type of the config resource given (options: file, etcd) (default: etcd)")
+	flag.StringVar(&rawConfigResource, "config", "config.yml", "config resource: etcd (dialstring(s)) or file (path)")
 	flag.Int64Var(&lbacachelimit, "lbacachelimit", ardb.DefaultLBACacheLimit,
 		fmt.Sprintf("Cache limit of LBA in bytes, needs to be higher then %d (bytes in 1 sector)", lba.BytesPerSector))
 	flag.Parse()
-
-	args := flag.Args()
-	if argn := len(args); argn < 1 {
-		log.Error("not enough arguments given")
-		flag.Usage()
-		os.Exit(2)
-	} else if argn > 1 {
-		log.Error("to many arguments given")
-		flag.Usage()
-		os.Exit(2)
-	}
-	configInfo.Resource = args[0]
 
 	logLevel := log.InfoLevel
 	if verbose {
@@ -72,14 +59,19 @@ func main() {
 		log.SetHandlers(logHandlers...)
 	}
 
-	log.Debugf("flags parsed: memorystorage=%t tlsonly=%t profileaddress=%q protocol=%q address=%q configtype=%q lbacachelimit=%d logfile=%q",
+	log.Debugf("flags parsed: memorystorage=%t tlsonly=%t profileaddress=%q protocol=%q address=%q config=%q lbacachelimit=%d logfile=%q",
 		inMemoryStorage, tlsonly,
 		profileAddress,
 		protocol, address,
-		configInfo.ResourceType,
+		rawConfigResource,
 		lbacachelimit,
 		logPath,
 	)
+
+	configInfo, err := zerodisk.ParseConfigInfo(rawConfigResource)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	if len(profileAddress) > 0 {
 		go func() {
@@ -130,7 +122,7 @@ func main() {
 
 	backendFactory, err := newBackendFactory(backendFactoryConfig{
 		PoolFactory:   redisPoolFactory,
-		ConfigInfo:    configInfo,
+		ConfigInfo:    *configInfo,
 		LBACacheLimit: lbacachelimit,
 	})
 	handleSigterm(backendFactory, cancelFunc)
@@ -148,7 +140,7 @@ func main() {
 	}
 
 	exportController, err := NewExportController(
-		configInfo,
+		*configInfo,
 		tlsonly,
 	)
 	if err != nil {

@@ -19,12 +19,12 @@ var validVDiskTypeCases = []struct {
 
 const validYAMLSourceStr = `
 testVdisk:
-  baseConfig: 
+  base:
     blockSize: 4096
     readOnly: false
     size: 10
     type: db
-  nbdConfig:
+  nbd:
     templateVdiskID: mytemplate
     storageCluster:
       dataStorage: 
@@ -39,16 +39,16 @@ testVdisk:
       dataStorage:
         - address: 192.168.58.147:2000
           db: 0
-  tlogConfig:
-    tlogStorageCluster:
+  tlog:
+    storageCluster:
       dataStorage: 
         - address: 192.168.58.149:2000
           db: 4
       metadataStorage:
         address: 192.168.58.146:2001
         db: 8
-  slaveConfig:
-    slaveStorageCluster:
+  slave:
+    storageCluster:
       dataStorage: 
         - address: 192.168.58.145:2000
           db: 4
@@ -80,17 +80,17 @@ templateStorageCluster:
 `
 
 const validTlogStr = `
-tlogStorageCluster:
+storageCluster:
   dataStorage: 
     - address: 192.168.1.1:1000
       db: 14
   metadataStorage:
     address: 192.168.1.1:1001
     db: 18
-tlogSlaveSync: true
+slaveSync: true
 `
 const validSlaveStr = `
-slaveStorageCluster:
+storageCluster:
   dataStorage: 
     - address: 192.168.2.149:1000
       db: 14
@@ -103,7 +103,7 @@ var invalidNBDServerConfigs = []string{
 	// invalid blocksize (0)
 	`
 testVdisk:
-  baseConfig: 
+  base: 
     blockSize: 0
     readOnly: false
     size: 1
@@ -112,7 +112,7 @@ testVdisk:
 	// invalid blocksize (uneven)
 	`
 testVdisk:
-  baseConfig: 
+  base: 
     blockSize: 4095
     readOnly: false
     size: 2
@@ -121,7 +121,7 @@ testVdisk:
 	// invalid VdiskType (nil)
 	`
 testVdisk:
-  baseConfig: 
+  base: 
     blockSize: 4096
     readOnly: false
     size: 3
@@ -130,7 +130,7 @@ testVdisk:
 	// invalid blocksize (random string)
 	`
 testVdisk:
-  baseConfig: 
+  base: 
     blockSize: 4096
     readOnly: false
     size: 4
@@ -139,24 +139,24 @@ testVdisk:
 	// no storage clusters
 	`
 testVdisk:
-  baseConfig: 
+  base: 
     blockSize: 4096
     readOnly: false
     size: 5
     type: db
-  nbdConfig:
+  nbd:
     templateVdiskID: mytemplate
 `,
 
 	// bad template storage
 	`
 testVdisk:
-  baseConfig: 
+  base: 
     blockSize: 4096
     readOnly: false
     size: 6
     type: tmp
-  nbdConfig:
+  nbd:
     storageCluster:
       dataStorage: 
         - address: 192.168.58.146:2000
@@ -174,12 +174,12 @@ testVdisk:
 	// bad template storage dial address
 	`
 testVdisk:
-  baseConfig: 
+  base: 
     blockSize: 4096
     readOnly: false
     size: 7
     type: tmp
-  nbdConfig:
+  nbd:
     storageCluster:
       dataStorage: 
         - address: 192.168.58.146:2000
@@ -197,13 +197,13 @@ testVdisk:
 	// bad tlog data storage dial address
 	`
 testVdisk:
-  baseConfig: 
+  base: 
     blockSize: 4096
     readOnly: false
     size: 8
     type: tmp
-  tlogConfig:
-    tlogStorageCluster:
+  tlog:
+    storageCluster:
       dataStorage: 
         - address: notAnAdress
           db: 0
@@ -217,13 +217,13 @@ testVdisk:
 	// bad slave metadata storage dial address
 	`
 testVdisk:
-  baseConfig: 
+  base: 
     blockSize: 4096
     readOnly: false
     size: 8
     type: tmp
-  slaveConfig:
-    slaveStorageCluster:
+  slave:
+    storageCluster:
       dataStorage: 
         - address: 192.168.58.146:2001
           db: 0

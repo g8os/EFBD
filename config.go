@@ -11,13 +11,31 @@ import (
 	"github.com/zero-os/0-Disk/config"
 )
 
+// ParseConfigInfo can be used to implicitly infer the resource type
+// and parse the resource from the given data based on that.
+func ParseConfigInfo(data string) (*ConfigInfo, error) {
+	if endpoints, err := etcdResourceFromString(data); err == nil {
+		return &ConfigInfo{
+			Resource:     endpoints,
+			ResourceType: ETCDConfigResource,
+		}, nil
+	}
+
+	// we'll just assume it is a file path,
+	// as there is no perfect way to validate if it's a file
+	return &ConfigInfo{
+		Resource:     data,
+		ResourceType: FileConfigResource,
+	}, nil
+}
+
 // ConfigInfo is used to define which resource type to read from
 // and how we can identify the resource itself.
 type ConfigInfo struct {
 	// Identifies the config resource.
-	// ResourceType = file -> Resource defines config path.
-	// ResourceType = etcd -> Resource defines comma seperated list of etcd endpoints.
-	Resource string
+	// ResourceType = file -> Resource defines file path.
+	// ResourceType = etcd -> Resource defines etcd endpoints.
+	Resource interface{}
 	// Defines the type of config resource to be read from.
 	ResourceType ConfigResourceType
 }
@@ -29,6 +47,51 @@ func (info *ConfigInfo) Validate() error {
 	}
 
 	return nil
+}
+
+func etcdResourceFromString(data string) ([]string, error) {
+	if strings.Contains(data, endpointsResourceSeperator) {
+		addresses := strings.Split(data, endpointsResourceSeperator)
+		for _, address := range addresses {
+			address = strings.TrimSpace(address)
+			if !valid.IsDialString(address) {
+				return nil, fmt.Errorf(
+					"etcd config info: '%s' is not a valid address", address)
+			}
+		}
+
+		return addresses, nil
+	}
+
+	data = strings.TrimSpace(data)
+	if valid.IsDialString(data) {
+		return []string{data}, nil
+	}
+
+	return nil, fmt.Errorf(
+		"etcd config info: '%s' is not a valid address", data)
+}
+
+func etcdResource(value interface{}) ([]string, error) {
+	if endpoints, ok := value.([]string); ok {
+		return endpoints, nil
+	}
+
+	if str, ok := value.(string); ok {
+		return etcdResourceFromString(str)
+	}
+
+	return nil, fmt.Errorf(
+		"etcd config info: '%v' is not a valid etcd resource", value)
+}
+
+func fileResource(value interface{}) (string, error) {
+	if path, ok := value.(string); ok {
+		return path, nil
+	}
+
+	return "", fmt.Errorf(
+		"file config info: %v is not a valid file path", value)
 }
 
 // ConfigResourceType specifies the type of config resource
@@ -109,10 +172,17 @@ func ReadBaseConfig(vdiskID string, info ConfigInfo) (*config.BaseConfig, error)
 	}
 
 	if info.ResourceType == FileConfigResource {
-		return config.ReadBaseConfigFile(vdiskID, info.Resource)
+		path, err := fileResource(info.Resource)
+		if err != nil {
+			return nil, err
+		}
+		return config.ReadBaseConfigFile(vdiskID, path)
 	}
 
-	endpoints := strings.Split(info.Resource, endpointsResourceSeperator)
+	endpoints, err := etcdResource(info.Resource)
+	if err != nil {
+		return nil, err
+	}
 	return config.ReadBaseConfigETCD(vdiskID, endpoints)
 }
 
@@ -126,10 +196,17 @@ func ReadNBDConfig(vdiskID string, info ConfigInfo) (*config.BaseConfig, *config
 	}
 
 	if info.ResourceType == FileConfigResource {
-		return config.ReadNBDConfigFile(vdiskID, info.Resource)
+		path, err := fileResource(info.Resource)
+		if err != nil {
+			return nil, nil, err
+		}
+		return config.ReadNBDConfigFile(vdiskID, path)
 	}
 
-	endpoints := strings.Split(info.Resource, endpointsResourceSeperator)
+	endpoints, err := etcdResource(info.Resource)
+	if err != nil {
+		return nil, nil, err
+	}
 	return config.ReadNBDConfigETCD(vdiskID, endpoints)
 }
 
@@ -144,10 +221,17 @@ func WatchNBDConfig(ctx context.Context, vdiskID string, info ConfigInfo) (<-cha
 	}
 
 	if info.ResourceType == FileConfigResource {
-		return config.WatchNBDConfigFile(ctx, vdiskID, info.Resource)
+		path, err := fileResource(info.Resource)
+		if err != nil {
+			return nil, err
+		}
+		return config.WatchNBDConfigFile(ctx, vdiskID, path)
 	}
 
-	endpoints := strings.Split(info.Resource, endpointsResourceSeperator)
+	endpoints, err := etcdResource(info.Resource)
+	if err != nil {
+		return nil, err
+	}
 	return config.WatchNBDConfigETCD(ctx, vdiskID, endpoints)
 }
 
@@ -161,10 +245,17 @@ func ReadTlogConfig(vdiskID string, info ConfigInfo) (*config.TlogConfig, error)
 	}
 
 	if info.ResourceType == FileConfigResource {
-		return config.ReadTlogConfigFile(vdiskID, info.Resource)
+		path, err := fileResource(info.Resource)
+		if err != nil {
+			return nil, err
+		}
+		return config.ReadTlogConfigFile(vdiskID, path)
 	}
 
-	endpoints := strings.Split(info.Resource, endpointsResourceSeperator)
+	endpoints, err := etcdResource(info.Resource)
+	if err != nil {
+		return nil, err
+	}
 	return config.ReadTlogConfigETCD(vdiskID, endpoints)
 }
 
@@ -179,10 +270,17 @@ func WatchTlogConfig(ctx context.Context, vdiskID string, info ConfigInfo) (<-ch
 	}
 
 	if info.ResourceType == FileConfigResource {
-		return config.WatchTlogConfigFile(ctx, vdiskID, info.Resource)
+		path, err := fileResource(info.Resource)
+		if err != nil {
+			return nil, err
+		}
+		return config.WatchTlogConfigFile(ctx, vdiskID, path)
 	}
 
-	endpoints := strings.Split(info.Resource, endpointsResourceSeperator)
+	endpoints, err := etcdResource(info.Resource)
+	if err != nil {
+		return nil, err
+	}
 	return config.WatchTlogConfigETCD(ctx, vdiskID, endpoints)
 }
 
@@ -196,10 +294,17 @@ func ReadSlaveConfig(vdiskID string, info ConfigInfo) (*config.SlaveConfig, erro
 	}
 
 	if info.ResourceType == FileConfigResource {
-		return config.ReadSlaveConfigFile(vdiskID, info.Resource)
+		path, err := fileResource(info.Resource)
+		if err != nil {
+			return nil, err
+		}
+		return config.ReadSlaveConfigFile(vdiskID, path)
 	}
 
-	endpoints := strings.Split(info.Resource, endpointsResourceSeperator)
+	endpoints, err := etcdResource(info.Resource)
+	if err != nil {
+		return nil, err
+	}
 	return config.ReadSlaveConfigETCD(vdiskID, endpoints)
 }
 
@@ -214,10 +319,17 @@ func WatchSlaveConfig(ctx context.Context, vdiskID string, info ConfigInfo) (<-c
 	}
 
 	if info.ResourceType == FileConfigResource {
-		return config.WatchSlaveConfigFile(ctx, vdiskID, info.Resource)
+		path, err := fileResource(info.Resource)
+		if err != nil {
+			return nil, err
+		}
+		return config.WatchSlaveConfigFile(ctx, vdiskID, path)
 	}
 
-	endpoints := strings.Split(info.Resource, endpointsResourceSeperator)
+	endpoints, err := etcdResource(info.Resource)
+	if err != nil {
+		return nil, err
+	}
 	return config.WatchSlaveConfigETCD(ctx, vdiskID, endpoints)
 }
 
@@ -228,10 +340,17 @@ func ReadVdisksConfig(info ConfigInfo) (*config.VdisksConfig, error) {
 	}
 
 	if info.ResourceType == FileConfigResource {
-		return config.ReadVdisksConfigFile(info.Resource)
+		path, err := fileResource(info.Resource)
+		if err != nil {
+			return nil, err
+		}
+		return config.ReadVdisksConfigFile(path)
 	}
 
-	endpoints := strings.Split(info.Resource, endpointsResourceSeperator)
+	endpoints, err := etcdResource(info.Resource)
+	if err != nil {
+		return nil, err
+	}
 	return config.ReadVdisksConfigETCD(endpoints)
 }
 

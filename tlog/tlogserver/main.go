@@ -25,6 +25,7 @@ func main() {
 	var storageAddresses string
 	var withSlaveSync bool
 	var logPath string
+	var rawConfigResource string
 
 	flag.StringVar(&conf.ListenAddr, "address", conf.ListenAddr, "Address to listen on")
 	flag.IntVar(&conf.FlushSize, "flush-size", conf.FlushSize, "flush size")
@@ -37,8 +38,7 @@ func main() {
 	flag.StringVar(&profileAddr, "profile-address", "", "Enables profiling of this server as an http service")
 
 	flag.BoolVar(&inMemoryStorage, "memorystorage", false, "Stores the (meta)data in memory only, usefull for testing or benchmarking (overwrites the storage-addresses flag)")
-	flag.Var(&conf.ConfigInfo.ResourceType, "configtype",
-		"type of the config resource given (options: file, etcd) (default: etcd)")
+	flag.StringVar(&rawConfigResource, "config", "config.yml", "config resource: etcd (dialstring(s)) or file (path)")
 	flag.StringVar(&storageAddresses, "storage-addresses", "",
 		"comma seperated list of redis compatible connectionstrings (format: '<ip>:<port>[@<db>]', eg: 'localhost:16379,localhost:6379@2'), if given, these are used for all vdisks, ignoring the given config")
 
@@ -48,18 +48,6 @@ func main() {
 
 	// parse flags
 	flag.Parse()
-
-	args := flag.Args()
-	if argn := len(args); argn < 1 {
-		log.Error("not enough arguments given")
-		flag.Usage()
-		os.Exit(2)
-	} else if argn > 1 {
-		log.Error("to many arguments given")
-		flag.Usage()
-		os.Exit(2)
-	}
-	conf.ConfigInfo.Resource = args[0]
 
 	// config logger (verbose or not)
 	if verbose {
@@ -76,7 +64,7 @@ func main() {
 		log.SetHandlers(handler)
 	}
 
-	log.Debugf("flags parsed: address=%q flush-size=%d flush-time=%d block-size=%d k=%d m=%d priv-key=%q nonce=%q profile-address=%q memorystorage=%t configtype=%q storage-addresses=%q logfile=%q",
+	log.Debugf("flags parsed: address=%q flush-size=%d flush-time=%d block-size=%d k=%d m=%d priv-key=%q nonce=%q profile-address=%q memorystorage=%t config=%q storage-addresses=%q logfile=%q",
 		conf.ListenAddr,
 		conf.FlushSize,
 		conf.FlushTime,
@@ -87,10 +75,17 @@ func main() {
 		conf.HexNonce,
 		profileAddr,
 		inMemoryStorage,
-		conf.ConfigInfo.ResourceType,
+		rawConfigResource,
 		storageAddresses,
 		logPath,
 	)
+
+	// parse config info
+	if configInfo, err := zerodisk.ParseConfigInfo(rawConfigResource); err != nil {
+		log.Fatal(err)
+	} else {
+		conf.ConfigInfo = *configInfo
+	}
 
 	// profiling
 	if profileAddr != "" {

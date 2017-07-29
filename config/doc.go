@@ -52,7 +52,7 @@ YAML file example:
 			- address: 192.168.58.147:2000
 				db: 0
 	tlogConfig:
-		tlogStorageCluster:
+		storageCluster:
 			dataStorage:
 		current	- address: 192.168.58.149:2000
 				db: 4

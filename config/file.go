@@ -193,10 +193,10 @@ type configFileFormat map[string]vdiskConfigFileFormat
 // vdiskConfigFileFormat represents a vdisk's config
 // as found in a YAML file
 type vdiskConfigFileFormat struct {
-	Base  BaseConfig   `yaml:"baseConfig" valid:"required"`
-	NBD   *NBDConfig   `yaml:"nbdConfig" valid:"optional"`
-	Tlog  *TlogConfig  `yaml:"tlogConfig" valid:"optional"`
-	Slave *SlaveConfig `yaml:"slaveConfig" valid:"optional"`
+	Base  BaseConfig   `yaml:"base" valid:"required"`
+	NBD   *NBDConfig   `yaml:"nbd" valid:"optional"`
+	Tlog  *TlogConfig  `yaml:"tlog" valid:"optional"`
+	Slave *SlaveConfig `yaml:"slave" valid:"optional"`
 }
 
 // readVdiskConfigFile creates a vdisk config from yaml byte slice

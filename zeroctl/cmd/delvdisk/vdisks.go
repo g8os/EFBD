@@ -12,12 +12,12 @@ import (
 )
 
 var vdiskCmdCfg struct {
-	ConfigInfo zerodisk.ConfigInfo
+	RawConfigResource string
 }
 
 // VdisksCmd represents the vdisks delete subcommand
 var VdisksCmd = &cobra.Command{
-	Use:   "vdisks config_resource vdiskid...",
+	Use:   "vdisks vdiskid...",
 	Short: "Delete one, multiple or all vdisks",
 	RunE:  deleteVdisks,
 }
@@ -29,16 +29,17 @@ func deleteVdisks(cmd *cobra.Command, args []string) error {
 	}
 	log.SetLevel(logLevel)
 
-	if len(args) == 0 {
-		return errors.New("not enough arguments given")
+	configInfo, err := zerodisk.ParseConfigInfo(vdiskCmdCfg.RawConfigResource)
+	if err != nil {
+		return err
 	}
 
-	// the first positional argument is the config resource
-	vdiskCmdCfg.ConfigInfo.Resource = args[0]
-	args = args[1:]
+	if len(args) == 0 {
+		return errors.New("no vdisk identifiers given")
+	}
 
 	// get and sort vdisks per server cfg
-	data, metadata, err := getAndSortVdisks(args)
+	data, metadata, err := getAndSortVdisks(*configInfo, args)
 	if err != nil {
 		return err
 	}
@@ -85,7 +86,7 @@ func (m vdisksPerServerMap) AddVdisk(cfg config.StorageServerConfig, vdiskID str
 	serverVdisks[vdiskID] = vdiskType
 }
 
-func getAndSortVdisks(vdiskIDs []string) (data vdisksPerServerMap, metadata vdisksPerServerMap, err error) {
+func getAndSortVdisks(configInfo zerodisk.ConfigInfo, vdiskIDs []string) (data vdisksPerServerMap, metadata vdisksPerServerMap, err error) {
 	if len(vdiskIDs) == 0 {
 		err = errors.New("no vdisk identifiers given")
 	}
@@ -108,7 +109,7 @@ func getAndSortVdisks(vdiskIDs []string) (data vdisksPerServerMap, metadata vdis
 
 	// add only the selected vdisk(s)
 	for _, vdiskID := range vdiskIDs {
-		baseConfig, nbdConfig, err = zerodisk.ReadNBDConfig(vdiskID, vdiskCmdCfg.ConfigInfo)
+		baseConfig, nbdConfig, err = zerodisk.ReadNBDConfig(vdiskID, configInfo)
 		if err != nil {
 			log.Errorf("no NBD config could be retrieved for %s: %v", vdiskID, err)
 			continue
@@ -135,7 +136,7 @@ WARNING: until issue #88 has been resolved,
   Nondeduped vdisks have no metadata, and thus are not affected by this issue.
 `
 
-	VdisksCmd.Flags().Var(
-		&vdiskCmdCfg.ConfigInfo.ResourceType, "type",
-		"type of the config resource given (options: file, etcd) (default: etcd)")
+	VdisksCmd.Flags().StringVar(
+		&vdiskCmdCfg.RawConfigResource, "config", "config.yml",
+		"config resource: etcd (dialstring(s)) or file (path)")
 }

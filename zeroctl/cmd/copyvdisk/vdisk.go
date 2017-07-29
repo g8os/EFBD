@@ -13,13 +13,13 @@ import (
 )
 
 var vdiskCmdCfg struct {
-	ConfigInfo              zerodisk.ConfigInfo
+	RawConfigResource       string
 	ForceSameStorageCluster bool
 }
 
 // VdiskCmd represents the vdisk copy subcommand
 var VdiskCmd = &cobra.Command{
-	Use:   "vdisk config_resource source_vdiskid target_vdiskid",
+	Use:   "vdisk source_vdiskid target_vdiskid",
 	Short: "Copy a vdisk configured in the config file",
 	RunE:  copyVdisk,
 }
@@ -35,21 +35,24 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 
 	// validate pos arg length
 	argn := len(args)
-	if argn < 3 {
+	if argn < 2 {
 		return errors.New("not enough arguments")
-	} else if argn > 3 {
+	} else if argn > 2 {
 		return errors.New("too many arguments")
 	}
 
-	vdiskCmdCfg.ConfigInfo.Resource = args[0]
+	configInfo, err := zerodisk.ParseConfigInfo(vdiskCmdCfg.RawConfigResource)
+	if err != nil {
+		return err
+	}
 
 	// store pos arguments in named variables
-	sourceVdiskID, targetVdiskID := args[1], args[2]
+	sourceVdiskID, targetVdiskID := args[0], args[1]
 
 	var sourceClusterConfig, targetClusterConfig *config.StorageClusterConfig
 
 	// try to read the NBD config of source vdisk
-	sourceBaseCfg, sourceNBDCfg, err := zerodisk.ReadNBDConfig(sourceVdiskID, vdiskCmdCfg.ConfigInfo)
+	sourceBaseCfg, sourceNBDCfg, err := zerodisk.ReadNBDConfig(sourceVdiskID, *configInfo)
 	if err != nil {
 		return fmt.Errorf(
 			"couldn't read source vdisk %s's config: %v", sourceVdiskID, err)
@@ -59,7 +62,7 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 	if !vdiskCmdCfg.ForceSameStorageCluster {
 		// try to read the NBD config of target vdisk
 		// if it exist,
-		_, targetNBDConfig, err := zerodisk.ReadNBDConfig(targetVdiskID, vdiskCmdCfg.ConfigInfo)
+		_, targetNBDConfig, err := zerodisk.ReadNBDConfig(targetVdiskID, *configInfo)
 		if err == nil {
 			targetClusterConfig = &targetNBDConfig.StorageCluster
 		}
@@ -106,9 +109,9 @@ WARNING: when copying nondeduped vdisks,
   See issue #206 for more information.
 `
 
-	VdiskCmd.Flags().Var(
-		&vdiskCmdCfg.ConfigInfo.ResourceType, "type",
-		"type of the config resource given (options: file, etcd) (default: etcd)")
+	VdiskCmd.Flags().StringVar(
+		&vdiskCmdCfg.RawConfigResource, "config", "config.yml",
+		"config resource: etcd (dialstring(s)) or file (path)")
 	VdiskCmd.Flags().BoolVar(
 		&vdiskCmdCfg.ForceSameStorageCluster, "same", false,
 		"enable flag to force copy within the same nbd servers")
