@@ -219,7 +219,6 @@ func watchConfigETCD(ctx context.Context, endpoints []string, keyPrefix string, 
 		log.Errorf("could not connect to ETCD server: %v", err)
 		return err
 	}
-	defer cli.Close()
 
 	watch := cli.Watch(ctx, keyPrefix, clientv3.WithPrefix())
 
@@ -227,6 +226,8 @@ func watchConfigETCD(ctx context.Context, endpoints []string, keyPrefix string, 
 
 	go func() {
 		defer log.Debugf("watch channel for %s closed", keyPrefix)
+		defer cli.Close()
+
 		for {
 			select {
 			case <-ctx.Done():

@@ -180,11 +180,11 @@ func (rp *redisProvider) MetadataConnection() (redis.Conn, error) {
 // If the config could not be fetch initially, an error will be returned instead.
 func (rp *redisProvider) listen(ctx context.Context, vdiskID string, configInfo zerodisk.ConfigInfo) error {
 	ctx, cancelFunc := context.WithCancel(ctx)
-	defer cancelFunc()
 
 	log.Debug("create nbd config listener for ", vdiskID)
 	ch, err := zerodisk.WatchNBDConfig(ctx, vdiskID, configInfo)
 	if err != nil {
+		cancelFunc()
 		return err
 	}
 
@@ -195,6 +195,7 @@ func (rp *redisProvider) listen(ctx context.Context, vdiskID string, configInfo 
 	log.Debug("spawn redisProvider listener goroutine for ", vdiskID)
 	go func() {
 		defer log.Debug("exit redisProvider listener from ", vdiskID)
+		defer cancelFunc()
 
 		for {
 			select {
