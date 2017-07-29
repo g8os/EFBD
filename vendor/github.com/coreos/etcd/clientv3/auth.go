@@ -18,9 +18,10 @@ import (
 	"fmt"
 	"strings"
 
+	"context"
+
 	"github.com/coreos/etcd/auth/authpb"
 	pb "github.com/coreos/etcd/etcdserver/etcdserverpb"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )
 
