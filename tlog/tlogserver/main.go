@@ -9,7 +9,6 @@ import (
 	"os"
 
 	"github.com/zero-os/0-Disk"
-	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/aggmq"
@@ -107,7 +106,7 @@ func main() {
 	defer cancelFunc()
 
 	// return server configs based on the given storage addresses
-	serverConfigs, err := config.ParseCSStorageServerConfigStrings(storageAddresses)
+	serverConfigs, err := zerodisk.ParseCSStorageServerConfigStrings(storageAddresses)
 	if err != nil {
 		log.Fatal(err)
 	}
