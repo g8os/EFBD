@@ -23,49 +23,58 @@ The Watch<Sub>ConfigETCD functions uses the etcdv3 Watch API to listen for updat
 When calling this function it will return an error if no connection could be made or the current data is invalid. If no error occurred it will return a channel and send the current subconfig to the channel.
 The configs stored at the etcd keys are YAML formatted serialized versions of the subconfig.
 
-NOTE: For the NBDConfig there should be a valid BaseConfig available in the source (e.g. etcd), as it is required to validate the NBDConfig.
+NOTE: For the nbd config there should be a valid base config available in the source (e.g. etcd), as it is required to validate the nbd config.
 
 File source
 
-The fileConfig source is recommended for development use and gets it's config data from a provided YAML file path. 1 YAML file represents the data of 1 vdisk formatted to the yamlConfigFormat type.
+The fileConfig source is recommended for development use and gets it's config data from a provided YAML file path. The YAML file represents the data of multiple vdisks listed by their ID formatted to the configFileFormat type.
 It will automatically devide the data in the subconfigs after reading from the source file.
 
 YAML file example:
-	baseConfig:
-		blockSize: 4096
-		readOnly: false
-		size: 10
-		type: db
-	nbdConfig:
-		templateVdiskID: mytemplate
-		storageCluster:
+	testVdisk:
+		base:
+			blockSize: 4096
+			readOnly: false
+			size: 10
+			type: db
+		nbd:
+			templateVdiskID: mytemplate
+			storageCluster:
 			dataStorage:
-			- address: 192.168.58.146:2000
+				- address: 192.168.58.146:2000
 				db: 0
-			- address: 192.123.123.123:2001
+				- address: 192.123.123.123:2001
 				db: 0
 			metadataStorage:
-			address: 192.168.58.146:2001
-			db: 1
-		templateStorageCluster:
+				address: 192.168.58.146:2001
+				db: 1
+			templateStorageCluster:
 			dataStorage:
-			- address: 192.168.58.147:2000
+				- address: 192.168.58.147:2000
 				db: 0
-	tlogConfig:
-		storageCluster:
+		tlog:
+			storageCluster:
 			dataStorage:
-		current	- address: 192.168.58.149:2000
+				- address: 192.168.58.149:2000
 				db: 4
 			metadataStorage:
-			address: 192.168.58.146:2001
-			db: 8
+				address: 192.168.58.146:2001
+				db: 8
+		slave:
+			storageCluster:
+			dataStorage:
+				- address: 192.168.58.145:2000
+				db: 4
+			metadataStorage:
+				address: 192.168.58.144:2000
+				db: 8
 
-The Get Read<Sub>ConfiFile functions will the source file and get the data for the subconfig. It uses the subconfig's constructor to create and validate the subconfig and returns an error if this or the reading the file fails.
+The Get Read<Sub>ConfigFile functions will the source file and get the data for the subconfig. It uses the subconfig's constructor to create and validate the subconfig and returns an error if this or the reading the file fails.
 
 The Watch<Sub>ConfigFile functions listens to the SIGHUP signal for updates of the configs and send that updated value if valid to the channel returned from the function.
 When calling this function it will return an error if it could not read the source file or the current data is invalid. If no error occurred it will return a channel and send the current subconfig to the channel.
 
-NOTE: For the NBDConfig there should be a valid BaseConfig available in the source (e.g. file), as it is required to validate the NBDConfig.
+NOTE: For the nbd config there should be a valid base config available in the source (e.g. file), as it is required to validate the nbd config.
 
 */
 package config

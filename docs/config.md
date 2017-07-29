@@ -19,38 +19,39 @@ The data is split up in this way so that for the use cases of 0-Disk, most of th
 The source implementations of the config (etcd) allows for data being read from the source and include a watch/update feature that returns an updated subconfig as it is updated by the 0-orchestrator. This feature is not implemented for BaseConfig as that data should be quite static.
 
 ## Subconfigs
-### Base config
-* BaseConfig: stores general vdisk information:
-	* BlockSize: Size of a block on the vdisk
-	* ReadOnly: Defines if vdisk is readonly
-	* Size: vdisk size
-	* Type: Type of vdisk (Boot, DB, Cache, tmp)
-	* TlogServerAddresses: Defines a list of network addresses of tlogserver(s)
 
-* YAML example:
+### Base config
+stores general [VDisk][VDisk] information:
+
+* BlockSize: Size of a block on the [VDisk][VDisk]
+* ReadOnly: Defines if [VDisk][VDisk] is readonly
+* Size: [VDisk][VDisk] size
+* Type: Type of [VDisk][VDisk] ([boot][boot], [db][db], [cache][cache], [tmp][tmp])
+
+YAML example:
+
 ```yaml
 blockSize: 4096 # can not be zero or uneven
 readOnly: false
 size: 10 	# can not be 0
-type: db	# should be a valid vdisk type (boot, db, cache or tmp)
-tlogServerAddresses:
-  - 192.168.58.123:2000
-  - 192.168.58.125:2000
+type: db	# should be a valid VDisk type (boot, db, cache or tmp)
 ```
 
 * Used by:
-	* [NBD Server][nbdServerConfig]:
-		* ardb uses it for the BackendFactory
+	* [NBD Server][nbdServerConfig] (e.g. used for the [ardb][ardb])
 
 * Godoc: [BaseConfig][baseconfigGodoc]
 
 ### NBD config
-* NBDConfig: stores NBD server information:
-	* StorageCluster: defines the storage cluster of the NBD Server
-	* TemplateStorageCluster: defines the template storage cluster of the NBD Server
-	* TemplateVdiskID: defines the vdisk id of the template
+NBDConfig: stores NBD server information.
 
-* YAML example:
+* StorageCluster: defines the storage cluster of the NBD Server
+* TemplateStorageCluster: defines the [template][template] storage cluster of the NBD Server
+* TemplateVdiskID: defines the VDisk id of the [template][template]  
+* TlogServerAddresses: Defines a list of network addresses of [tlogserver(s)][tlog]
+
+YAML example:
+
 ```yaml
 templateVdiskID: testtemplate
 storageCluster:
@@ -66,20 +67,24 @@ templateStorageCluster:
   dataStorage:
     - address: 192.168.1.147:2000
       db: 10
+tlogServerAddresses:    # array of network addresses
+  - 192.168.58.123:2000
+  - 192.168.58.125:2000
 ```
 
 * Used by:
-	* [NBD Server][nbdServerConfig]:
-		* ardb uses it for the BackendFactory
+	* [NBD Server][nbdServerConfig] (e.g. used for the [ardb][ardb])
 
 * Godoc: [NBDConfig][nbdconfigGodoc]
 
 ### Tlog config
-* TlogConfig: stores tlog server information:
-	* StorageCluster: defines the storage cluster of the Tlog Server
-	* SlaveSync: defines if tlog should use the slave syncer
+TlogConfig: stores tlog server information.
 
-* YAML example:
+* StorageCluster: defines the storage cluster of the [Tlog Server][tlog]
+* SlaveSync: defines if tlog should use the slave syncer
+
+YAML example:
+
 ```yaml
 storageCluster:
   dataStorage: 
@@ -92,17 +97,16 @@ tlogSlaveSync: true
 ```
 
 * Used by:
-	* [Tlog Server][tlogServerConfig]:
-		* server.vdisk uses the tlogSlaveSync
-		* slavesync uses the TlogStorageCluster
+	* [Tlog Server][tlogServerConfig] (e.g. used for [redispool][redispool])
 
 * Godoc: [TlogConfig][tlogconfigGodoc]
 
 ### Slave config
-* SlaveConfig: stores slave storage cluster information:
-	* StorageCluster: defines the storage cluster of the slave
+* SlaveConfig: stores [slave][slave] storage cluster information:
+	* StorageCluster: defines the storage cluster of the [slave][slave]
 
 * YAML example:
+
 ```yaml
 storageCluster:
   dataStorage: 
@@ -114,8 +118,7 @@ storageCluster:
 ```
 
 * Used by:
-	* [NBD Server][nbdServerConfig]:
-		* nbdserver.tlog uses it for switching to ardb slave (switchToArdbSlave())
+	* [NBD Server][nbdServerConfig]
 
 * Godoc: [SlaveConfig][slaveconfigGodoc]
 
@@ -139,9 +142,9 @@ When the values are read from etcd, the subconfig will be created with the subco
 
 e.g.:
 ```go
-func ReadBaseConfigETCD(vdiskID string, endpoints []string) (*BaseConfig, error)
+func ReadBaseConfigETCD(VDiskID string, endpoints []string) (*BaseConfig, error)
 ```
-ReadBaseConfigETCD will read a Baseconfig looking on an etcd cluster from provided endpoint(s) that is parth of the cluster. It will then look for the following key ```<VdiskID>:conf:base``` generated with the provided vdiskID. If the vdiskID is ```vdisk123``` then it will look for the following key: ```vdisk123:conf:base```.  
+`ReadBaseConfigETCD` will read a Baseconfig looking on an etcd cluster from provided endpoint(s) that is parth of the cluster. It will then look for the following key ```<VdiskID>:conf:base``` generated with the provided VDiskID. If the VDiskID is ```VDisk123``` then it will look for the following key: ```VDisk123:conf:base```.  
 It will return a BaseConfig and validate it. An error will be returned if a connection error occurred, the Base Config could not be found or it could be found but was invalid. The BaseConfig will always be defined if no error is returned.
 
 ### Watch
@@ -151,15 +154,25 @@ Those methodes return a channel that first sends the current subconfig. From the
 
 e.g.:
 ```go
-func WatchNBDConfigETCD(ctx context.Context, vdiskID string, endpoints []string) (<-chan NBDConfig, error)
+func WatchNBDConfigETCD(ctx context.Context, VDiskID string, endpoints []string) (<-chan NBDConfig, error)
 ```
-WatchNBDConfigETCD will return a channel that sends a NBDConfig instance right at the start, and each time it is updated following that. If the NBDConfig didn't exist yet at startup or any other error occurred while doing the initial fetching, this method will return an error instead.
+`WatchNBDConfigETCD` will return a channel that sends a [NBDConfig](#nbd-config) instance right at the start, and each time it is updated following that. If the [NBDConfig](#nbd-config) didn't exist yet at startup or any other error occurred while doing the initial fetching, this method will return an error instead.
 
 Learn more about:
 
 + [how to configure the NBD Server][nbdServerConfig];
 + [how to configure the TLog Server][tlogServerConfig];
 
+[ardb]: /nbd/ardb/ardb.go
+[redispool]: /tlog/redispool.go
+[VDisk]: ./glossary.md#vdisk
+[boot]: ./glossary.md#boot
+[db]: ./glossary.md#db
+[cache]: ./glossary.md#cache
+[tmp]: ./glossary.md#tmp
+[template]: ./glossary.md#template
+[tlog]: ./glossary.md#TLog
+[slave]: ./glossary.md#slave
 [nbdServerConfig]: nbd/config.md
 [tlogServerConfig]: tlog/config.md
 [etcd]: https://github.com/coreos/etcd
