@@ -296,27 +296,27 @@ func readConfigETCD(endpoints []string, key string) ([]byte, error) {
 
 // etcdBaseKey returns base config key for a provided vdiskid
 func etcdBaseKey(vdiskID string) string {
-	return vdiskID + ":conf:base"
+	return vdiskID + ":zerodisk:conf:base"
 }
 
 // etcdNBDKey returns the nbd config key for a provided vdiskid
 func etcdNBDKey(vdiskID string) string {
-	return vdiskID + ":conf:nbd"
+	return vdiskID + ":zerodisk:conf:nbd"
 }
 
 // etcdTlogKey returns the tlog config key for a provided vdiskid
 func etcdTlogKey(vdiskID string) string {
-	return vdiskID + ":conf:tlog"
+	return vdiskID + ":zerodisk:conf:tlog"
 }
 
 // etcdSlaveKey returns the slave config key for a provided vdiskid
 func etcdSlaveKey(vdiskID string) string {
-	return vdiskID + ":conf:slave"
+	return vdiskID + ":zerodisk:conf:slave"
 }
 
 const (
 	// etcdVdisksKey defines the vdisks config key,
 	// as it is the config containing all other vdisk IDs,
 	// it does not have a prefixed vdiskID.
-	etcdVdisksKey = "conf:vdisks"
+	etcdVdisksKey = "zerodisk:conf:vdisks"
 )
