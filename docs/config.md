@@ -25,7 +25,7 @@ The source implementations of the config (etcd) allows for data being read from 
 	* ReadOnly: Defines if vdisk is readonly
 	* Size: vdisk size
 	* Type: Type of vdisk (Boot, DB, Cache, tmp)
-	* TlogRPC: Defines a list of network addresses of tlogserver(s)
+	* TlogServerAddresses: Defines a list of network addresses of tlogserver(s)
 
 * YAML example:
 ```yaml
@@ -33,7 +33,9 @@ blockSize: 4096 # can not be zero or uneven
 readOnly: false
 size: 10 	# can not be 0
 type: db	# should be a valid vdisk type (boot, db, cache or tmp)
-tlogrpc: 192.168.58.123:2000,192.168.58.125:2000
+tlogServerAddresses:
+  - 192.168.58.123:2000
+  - 192.168.58.125:2000
 ```
 
 * Used by:

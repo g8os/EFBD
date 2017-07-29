@@ -140,7 +140,7 @@ func testTlogStorage(ctx context.Context, t *testing.T, vdiskID string, blockSiz
 		return
 	}
 
-	storage, err := newTlogStorage(vdiskID, tlogrpc, nil, blockSize, storage)
+	storage, err := newTlogStorage(vdiskID, []string{tlogrpc}, nil, blockSize, storage)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}
@@ -154,7 +154,7 @@ func testTlogStorageForceFlush(ctx context.Context, t *testing.T, vdiskID string
 		return
 	}
 
-	storage, err := newTlogStorage(vdiskID, tlogrpc, nil, blockSize, storage)
+	storage, err := newTlogStorage(vdiskID, []string{tlogrpc}, nil, blockSize, storage)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}
@@ -283,7 +283,7 @@ func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
 		return
 	}
 
-	storage, err := newTlogStorage(vdiskID, tlogrpc, nil, blockSize, internalStorage)
+	storage, err := newTlogStorage(vdiskID, []string{tlogrpc}, nil, blockSize, internalStorage)
 	if !assert.NoError(t, err) {
 		return
 	}

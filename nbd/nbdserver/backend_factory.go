@@ -111,10 +111,10 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	// One tlog client can define multiple tlog server connections,
 	// but only one will be used at a time, the others merely serve as backup servers.
 	if baseCfg.Type.TlogSupport() {
-		if nbdCfg.TlogRPC != "" {
+		if nbdCfg.TlogServerAddresses != nil {
 			log.Debugf("creating tlogStorage for backend %v (%v)", vdiskID, baseCfg.Type)
 			blockStorage, err = newTlogStorage(
-				vdiskID, nbdCfg.TlogRPC, &f.configInfo, blockSize, blockStorage)
+				vdiskID, nbdCfg.TlogServerAddresses, &f.configInfo, blockSize, blockStorage)
 			if err != nil {
 				blockStorage.Close()
 				redisProvider.Close()

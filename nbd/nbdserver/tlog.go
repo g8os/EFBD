@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"strings"
 	"sync"
 	"time"
 
@@ -26,8 +25,8 @@ const (
 // newTlogStorage creates a tlog storage BlockStorage,
 // wrapping around a given backend storage,
 // piggy backing on the newTlogStorageWithClient function for the actual logic.
-func newTlogStorage(vdiskID, tlogrpc string, configInfo *zerodisk.ConfigInfo, blockSize int64, storage storage.BlockStorage) (storage.BlockStorage, error) {
-	client, err := tlogclient.New(strings.Split(tlogrpc, ","), vdiskID, 0, true)
+func newTlogStorage(vdiskID string, tlogserverAddresses []string, configInfo *zerodisk.ConfigInfo, blockSize int64, storage storage.BlockStorage) (storage.BlockStorage, error) {
+	client, err := tlogclient.New(tlogserverAddresses, vdiskID, 0, true)
 	if err != nil {
 		return nil, fmt.Errorf("tlogStorage requires a valid tlogclient: %s", err.Error())
 	}
@@ -411,14 +410,13 @@ func (tls *tlogStorage) spawnTlogRPCReloader(ctx context.Context, configInfo zer
 		for {
 			select {
 			case cfg := <-nbdCh:
-				if cfg.TlogRPC == "" {
+				if cfg.TlogServerAddresses == nil {
 					log.Errorf(
 						"nbd config for vdisk %s no longer specifies tlog rpcs", tls.vdiskID)
 					continue
 				}
 
-				addresses := strings.Split(cfg.TlogRPC, ",")
-				tls.tlog.ChangeServerAddrs(addresses)
+				tls.tlog.ChangeServerAddrs(cfg.TlogServerAddresses)
 
 			case <-ctx.Done():
 				return

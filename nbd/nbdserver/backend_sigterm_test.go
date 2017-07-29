@@ -55,7 +55,7 @@ func TestBackendSigtermHandler(t *testing.T) {
 			return nil
 		}
 
-		tls, err := newTlogStorage(vdiskID, tlogrpc, nil, blockSize, storage)
+		tls, err := newTlogStorage(vdiskID, []string{tlogrpc}, nil, blockSize, storage)
 		if !assert.NoError(t, err) || !assert.NotNil(t, tls) {
 			return nil
 		}

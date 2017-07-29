@@ -72,7 +72,7 @@ type NBDConfig struct {
 	StorageCluster         StorageClusterConfig  `yaml:"storageCluster" valid:"required"`
 	TemplateStorageCluster *StorageClusterConfig `yaml:"templateStorageCluster" valid:"optional"`
 	TemplateVdiskID        string                `yaml:"templateVdiskID" valid:"optional"`
-	TlogRPC                string                `yaml:"tlogrpc" valid:"optional"`
+	TlogServerAddresses    []string              `yaml:"tlogServerAddresses" valid:"optional"`
 }
 
 // NewNBDConfig creates a new NBDConfig from byte slice in YAML 1.2 format
@@ -119,6 +119,12 @@ func (nbd *NBDConfig) Validate(vdiskType VdiskType) error {
 
 	if len(nbd.StorageCluster.DataStorage) <= 0 {
 		return fmt.Errorf("nbd datastorage was empty")
+	}
+
+	for _, address := range nbd.TlogServerAddresses {
+		if !valid.IsDialString(address) {
+			return fmt.Errorf("%v is not a valid tlogserver address", address)
+		}
 	}
 
 	// validate if metadata storage is defined when required
