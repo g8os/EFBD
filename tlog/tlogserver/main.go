@@ -25,7 +25,6 @@ func main() {
 	var storageAddresses string
 	var withSlaveSync bool
 	var logPath string
-	var rawConfigResource string
 
 	flag.StringVar(&conf.ListenAddr, "address", conf.ListenAddr, "Address to listen on")
 	flag.IntVar(&conf.FlushSize, "flush-size", conf.FlushSize, "flush size")
@@ -38,7 +37,7 @@ func main() {
 	flag.StringVar(&profileAddr, "profile-address", "", "Enables profiling of this server as an http service")
 
 	flag.BoolVar(&inMemoryStorage, "memorystorage", false, "Stores the (meta)data in memory only, usefull for testing or benchmarking (overwrites the storage-addresses flag)")
-	flag.StringVar(&rawConfigResource, "config", "config.yml", "config resource: etcd (dialstring(s)) or file (path)")
+	flag.Var(&conf.ConfigInfo, "config", "config resource: dialstrings (etcd cluster) or path (yaml file)")
 	flag.StringVar(&storageAddresses, "storage-addresses", "",
 		"comma seperated list of redis compatible connectionstrings (format: '<ip>:<port>[@<db>]', eg: 'localhost:16379,localhost:6379@2'), if given, these are used for all vdisks, ignoring the given config")
 
@@ -75,16 +74,15 @@ func main() {
 		conf.HexNonce,
 		profileAddr,
 		inMemoryStorage,
-		rawConfigResource,
+		conf.ConfigInfo.String(),
 		storageAddresses,
 		logPath,
 	)
 
-	// parse config info
-	if configInfo, err := zerodisk.ParseConfigInfo(rawConfigResource); err != nil {
+	// let's ping config resource immediately,
+	// as to make sure we can fetch resources
+	if err := conf.ConfigInfo.Ping(); err != nil {
 		log.Fatal(err)
-	} else {
-		conf.ConfigInfo = *configInfo
 	}
 
 	// profiling

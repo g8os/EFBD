@@ -16,7 +16,7 @@ import (
 // vdiskCfg is the configuration used for the restore vdisk command
 var vdiskCmdCfg struct {
 	TlogObjStorAddresses string
-	RawConfigResource    string
+	ConfigInfo           zerodisk.ConfigInfo
 	K, M                 int
 	PrivKey, HexNonce    string
 	StartTs              uint64 // start timestamp
@@ -42,11 +42,6 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 
 	vdiskID := args[0]
 
-	configInfo, err := zerodisk.ParseConfigInfo(vdiskCmdCfg.RawConfigResource)
-	if err != nil {
-		return err
-	}
-
 	logLevel := log.ErrorLevel
 	if config.Verbose {
 		logLevel = log.DebugLevel
@@ -63,7 +58,7 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 			vdiskCmdCfg.TlogObjStorAddresses, err.Error())
 	}
 
-	player, err := player.NewPlayer(ctx, *configInfo, serverConfigs, vdiskID,
+	player, err := player.NewPlayer(ctx, vdiskCmdCfg.ConfigInfo, serverConfigs, vdiskID,
 		vdiskCmdCfg.PrivKey, vdiskCmdCfg.HexNonce, vdiskCmdCfg.K, vdiskCmdCfg.M)
 	if err != nil {
 		return err
@@ -78,9 +73,9 @@ func init() {
 		&vdiskCmdCfg.TlogObjStorAddresses,
 		"storage-addresses", "",
 		"comma seperated list of redis compatible connectionstrings (format: '<ip>:<port>[@<db>]', eg: 'localhost:16379,localhost:6379@2'), if given, these are used for all vdisks, ignoring the given config")
-	VdiskCmd.Flags().StringVar(
-		&vdiskCmdCfg.RawConfigResource, "config", "config.yml",
-		"config resource: etcd (dialstring(s)) or file (path)")
+	VdiskCmd.Flags().Var(
+		&vdiskCmdCfg.ConfigInfo, "config",
+		"config resource: dialstrings (etcd cluster) or path (yaml file)")
 	VdiskCmd.Flags().IntVar(
 		&vdiskCmdCfg.K,
 		"k", 4,
@@ -101,7 +96,6 @@ func init() {
 		&vdiskCmdCfg.StartTs,
 		"start-timestamp", 0,
 		"start timestamp in nanosecond(default 0: since beginning)")
-
 	VdiskCmd.Flags().Uint64Var(
 		&vdiskCmdCfg.EndTs,
 		"end-timestamp", 0,

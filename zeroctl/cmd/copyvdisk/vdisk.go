@@ -13,7 +13,7 @@ import (
 )
 
 var vdiskCmdCfg struct {
-	RawConfigResource       string
+	ConfigInfo              zerodisk.ConfigInfo
 	ForceSameStorageCluster bool
 }
 
@@ -41,18 +41,14 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 		return errors.New("too many arguments")
 	}
 
-	configInfo, err := zerodisk.ParseConfigInfo(vdiskCmdCfg.RawConfigResource)
-	if err != nil {
-		return err
-	}
-
 	// store pos arguments in named variables
 	sourceVdiskID, targetVdiskID := args[0], args[1]
 
 	var sourceClusterConfig, targetClusterConfig *config.StorageClusterConfig
 
 	// try to read the NBD config of source vdisk
-	sourceBaseCfg, sourceNBDCfg, err := zerodisk.ReadNBDConfig(sourceVdiskID, *configInfo)
+	sourceBaseCfg, sourceNBDCfg, err := zerodisk.ReadNBDConfig(
+		sourceVdiskID, vdiskCmdCfg.ConfigInfo)
 	if err != nil {
 		return fmt.Errorf(
 			"couldn't read source vdisk %s's config: %v", sourceVdiskID, err)
@@ -62,7 +58,8 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 	if !vdiskCmdCfg.ForceSameStorageCluster {
 		// try to read the NBD config of target vdisk
 		// if it exist,
-		_, targetNBDConfig, err := zerodisk.ReadNBDConfig(targetVdiskID, *configInfo)
+		_, targetNBDConfig, err := zerodisk.ReadNBDConfig(
+			targetVdiskID, vdiskCmdCfg.ConfigInfo)
 		if err == nil {
 			targetClusterConfig = &targetNBDConfig.StorageCluster
 		}
@@ -109,9 +106,9 @@ WARNING: when copying nondeduped vdisks,
   See issue #206 for more information.
 `
 
-	VdiskCmd.Flags().StringVar(
-		&vdiskCmdCfg.RawConfigResource, "config", "config.yml",
-		"config resource: etcd (dialstring(s)) or file (path)")
+	VdiskCmd.Flags().Var(
+		&vdiskCmdCfg.ConfigInfo, "config",
+		"config resource: dialstrings (etcd cluster) or path (yaml file)")
 	VdiskCmd.Flags().BoolVar(
 		&vdiskCmdCfg.ForceSameStorageCluster, "same", false,
 		"enable flag to force copy within the same nbd servers")

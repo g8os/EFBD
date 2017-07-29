@@ -28,7 +28,7 @@ func main() {
 	var profileAddress string
 	var protocol string
 	var address string
-	var rawConfigResource string
+	var configInfo zerodisk.ConfigInfo
 	var logPath string
 	flag.BoolVar(&verbose, "v", false, "when false, only log warnings and errors")
 	flag.StringVar(&logPath, "logfile", "", "optionally log to the specified file, instead of the stderr")
@@ -37,7 +37,7 @@ func main() {
 	flag.StringVar(&profileAddress, "profile-address", "", "Enables profiling of this server as an http service")
 	flag.StringVar(&protocol, "protocol", "unix", "Protocol to listen on, 'tcp' or 'unix'")
 	flag.StringVar(&address, "address", "/tmp/nbd-socket", "Address to listen on, unix socket or tcp address, ':6666' for example")
-	flag.StringVar(&rawConfigResource, "config", "config.yml", "config resource: etcd (dialstring(s)) or file (path)")
+	flag.Var(&configInfo, "config", "config resource: dialstrings (etcd cluster) or path (yaml file)")
 	flag.Int64Var(&lbacachelimit, "lbacachelimit", ardb.DefaultLBACacheLimit,
 		fmt.Sprintf("Cache limit of LBA in bytes, needs to be higher then %d (bytes in 1 sector)", lba.BytesPerSector))
 	flag.Parse()
@@ -63,13 +63,14 @@ func main() {
 		inMemoryStorage, tlsonly,
 		profileAddress,
 		protocol, address,
-		rawConfigResource,
+		configInfo.String(),
 		lbacachelimit,
 		logPath,
 	)
 
-	configInfo, err := zerodisk.ParseConfigInfo(rawConfigResource)
-	if err != nil {
+	// let's ping config resource immediately,
+	// as to make sure we can fetch resources
+	if err := configInfo.Ping(); err != nil {
 		log.Fatal(err)
 	}
 
@@ -122,7 +123,7 @@ func main() {
 
 	backendFactory, err := newBackendFactory(backendFactoryConfig{
 		PoolFactory:   redisPoolFactory,
-		ConfigInfo:    *configInfo,
+		ConfigInfo:    configInfo,
 		LBACacheLimit: lbacachelimit,
 	})
 	handleSigterm(backendFactory, cancelFunc)
@@ -140,7 +141,7 @@ func main() {
 	}
 
 	exportController, err := NewExportController(
-		*configInfo,
+		configInfo,
 		tlsonly,
 	)
 	if err != nil {

@@ -21,6 +21,11 @@ func ParseConfigInfo(data string) (*ConfigInfo, error) {
 		}, nil
 	}
 
+	// file config has a default value, in case no value was given
+	if data == "" {
+		data = defaultFileResource
+	}
+
 	// we'll just assume it is a file path,
 	// as there is no perfect way to validate if it's a file
 	return &ConfigInfo{
@@ -40,58 +45,88 @@ type ConfigInfo struct {
 	ResourceType ConfigResourceType
 }
 
+// Ping the given config resource,
+// to see if it is available and ready to fetch subconfigs from.
+func (info *ConfigInfo) Ping() error {
+	// check if the given config file path points to a usable file
+	if info.ResourceType == FileConfigResource {
+		path, err := fileResource(info.Resource)
+		if err != nil {
+			return fmt.Errorf(
+				"can't ping, as file config info is invalid: %v", err)
+		}
+
+		// check if the file exists, we can open it, we can parse it and
+		// whether or not it contains the vdisks key
+		if _, err := config.ReadVdisksConfigFile(path); err != nil {
+			return fmt.Errorf(
+				"file %s can't be opened or is invalid: %v",
+				path, err)
+		}
+
+		// config file be opened, is valid, and contains the vdisks key,
+		// profit!
+		return nil
+	}
+
+	// for all other resource type value we'll assume it's the etcd resource
+
+	// connect to etcd and see if it contains the vdisks key value
+	endpoints, err := etcdResource(info.Resource)
+	if err != nil {
+		return fmt.Errorf(
+			"can't ping, as etcd config info is invalid: %v", err)
+	}
+
+	// check if the etcd cluster can be reached,
+	// and whether or not it contains the vdisks key
+	if _, err := config.ReadVdisksConfigETCD(endpoints); err != nil {
+		return fmt.Errorf(
+			"etcd can't be reached at %v or is missing the vdisks config: %v",
+			endpoints, err)
+	}
+
+	// etcd cluster can be reached and contains the vdisks key,
+	// profit!
+	return nil
+}
+
 // Validate this ConfigInfo struct.
 func (info *ConfigInfo) Validate() error {
-	if info.Resource == "" {
+	if info.ResourceType != FileConfigResource && info.Resource == nil {
 		return ErrNoConfigResource
 	}
 
 	return nil
 }
 
-func etcdResourceFromString(data string) ([]string, error) {
-	if strings.Contains(data, endpointsResourceSeperator) {
-		addresses := strings.Split(data, endpointsResourceSeperator)
-		for _, address := range addresses {
-			address = strings.TrimSpace(address)
-			if !valid.IsDialString(address) {
-				return nil, fmt.Errorf(
-					"etcd config info: '%s' is not a valid address", address)
-			}
-		}
-
-		return addresses, nil
+// String implements Stringer.String
+func (info *ConfigInfo) String() string {
+	if info.ResourceType == FileConfigResource {
+		str, _ := fileResource(info.Resource)
+		return str
 	}
 
-	data = strings.TrimSpace(data)
-	if valid.IsDialString(data) {
-		return []string{data}, nil
-	}
-
-	return nil, fmt.Errorf(
-		"etcd config info: '%s' is not a valid address", data)
+	// for all other resource type value we'll assume it's the etcd resource
+	str, _ := etcdResourceToString(info.Resource)
+	return str
 }
 
-func etcdResource(value interface{}) ([]string, error) {
-	if endpoints, ok := value.([]string); ok {
-		return endpoints, nil
+// Set implements flag.Value.Set
+func (info *ConfigInfo) Set(value string) error {
+	parsedInfo, err := ParseConfigInfo(value)
+	if err != nil {
+		return err
 	}
 
-	if str, ok := value.(string); ok {
-		return etcdResourceFromString(str)
-	}
-
-	return nil, fmt.Errorf(
-		"etcd config info: '%v' is not a valid etcd resource", value)
+	info.Resource = parsedInfo.Resource
+	info.ResourceType = parsedInfo.ResourceType
+	return nil
 }
 
-func fileResource(value interface{}) (string, error) {
-	if path, ok := value.(string); ok {
-		return path, nil
-	}
-
-	return "", fmt.Errorf(
-		"file config info: %v is not a valid file path", value)
+// Type implements pflag.Value.Type
+func (info *ConfigInfo) Type() string {
+	return "ConfigInfo"
 }
 
 // ConfigResourceType specifies the type of config resource
@@ -99,10 +134,13 @@ func fileResource(value interface{}) (string, error) {
 type ConfigResourceType uint8
 
 const (
-	// ETCDConfigResource defines the etcd config resource
-	ETCDConfigResource ConfigResourceType = 0
 	// FileConfigResource defines the file config resource
-	FileConfigResource ConfigResourceType = 1
+	// This is the default config resource,
+	// as the file config is the only config resource with
+	// a valid default resource.
+	FileConfigResource ConfigResourceType = 0
+	// ETCDConfigResource defines the etcd config resource
+	ETCDConfigResource ConfigResourceType = 1
 )
 
 const (
@@ -159,7 +197,77 @@ func (ct *ConfigResourceType) Set(str string) error {
 
 // Type returns the flag type for a ConfigResourceType.
 func (ct *ConfigResourceType) Type() string {
-	return "configResourceType"
+	return "ConfigResourceType"
+}
+
+// Used to parse a etcd resource from a raw string.
+func etcdResourceFromString(data string) ([]string, error) {
+	if strings.Contains(data, endpointsResourceSeperator) {
+		addresses := strings.Split(data, endpointsResourceSeperator)
+		for _, address := range addresses {
+			address = strings.TrimSpace(address)
+			if !valid.IsDialString(address) {
+				return nil, fmt.Errorf(
+					"etcd config info: '%s' is not a valid address", address)
+			}
+		}
+
+		return addresses, nil
+	}
+
+	data = strings.TrimSpace(data)
+	if valid.IsDialString(data) {
+		return []string{data}, nil
+	}
+
+	return nil, fmt.Errorf(
+		"etcd config info: '%s' is not a valid address", data)
+}
+
+// Used to interpolate a list of endpoints from any kind of accepted value.
+func etcdResource(value interface{}) ([]string, error) {
+	if endpoints, ok := value.([]string); ok {
+		return endpoints, nil
+	}
+
+	if str, ok := value.(string); ok {
+		return etcdResourceFromString(str)
+	}
+
+	return nil, fmt.Errorf(
+		"etcd config info: '%v' is not a valid etcd resource", value)
+}
+
+// Used to interpolate a file path from any kind of accepted value.
+func fileResource(value interface{}) (string, error) {
+	if path, ok := value.(string); ok {
+		if path == "" {
+			return defaultFileResource, nil
+		}
+
+		return path, nil
+	}
+
+	if value == nil {
+		return defaultFileResource, nil
+	}
+
+	return "", fmt.Errorf(
+		"file config info: %v is not a valid file path", value)
+}
+
+// Used to turn any valid etcd resource value into a formatted string.
+func etcdResourceToString(value interface{}) (string, error) {
+	if endpoints, ok := value.([]string); ok {
+		return strings.Join(endpoints, endpointsResourceSeperator), nil
+	}
+
+	if endpoint, ok := value.(string); ok {
+		return endpoint, nil
+	}
+
+	return "", fmt.Errorf(
+		"etcd config info: '%v' is not a valid etcd resource", value)
 }
 
 // ReadBaseConfig reads a vdisk's base config from a given config resource
@@ -178,6 +286,8 @@ func ReadBaseConfig(vdiskID string, info ConfigInfo) (*config.BaseConfig, error)
 		}
 		return config.ReadBaseConfigFile(vdiskID, path)
 	}
+
+	// for all other resource type value we'll assume it's the etcd resource
 
 	endpoints, err := etcdResource(info.Resource)
 	if err != nil {
@@ -202,6 +312,8 @@ func ReadNBDConfig(vdiskID string, info ConfigInfo) (*config.BaseConfig, *config
 		}
 		return config.ReadNBDConfigFile(vdiskID, path)
 	}
+
+	// for all other resource type value we'll assume it's the etcd resource
 
 	endpoints, err := etcdResource(info.Resource)
 	if err != nil {
@@ -228,6 +340,8 @@ func WatchNBDConfig(ctx context.Context, vdiskID string, info ConfigInfo) (<-cha
 		return config.WatchNBDConfigFile(ctx, vdiskID, path)
 	}
 
+	// for all other resource type value we'll assume it's the etcd resource
+
 	endpoints, err := etcdResource(info.Resource)
 	if err != nil {
 		return nil, err
@@ -251,6 +365,8 @@ func ReadTlogConfig(vdiskID string, info ConfigInfo) (*config.TlogConfig, error)
 		}
 		return config.ReadTlogConfigFile(vdiskID, path)
 	}
+
+	// for all other resource type value we'll assume it's the etcd resource
 
 	endpoints, err := etcdResource(info.Resource)
 	if err != nil {
@@ -277,6 +393,8 @@ func WatchTlogConfig(ctx context.Context, vdiskID string, info ConfigInfo) (<-ch
 		return config.WatchTlogConfigFile(ctx, vdiskID, path)
 	}
 
+	// for all other resource type value we'll assume it's the etcd resource
+
 	endpoints, err := etcdResource(info.Resource)
 	if err != nil {
 		return nil, err
@@ -300,6 +418,8 @@ func ReadSlaveConfig(vdiskID string, info ConfigInfo) (*config.SlaveConfig, erro
 		}
 		return config.ReadSlaveConfigFile(vdiskID, path)
 	}
+
+	// for all other resource type value we'll assume it's the etcd resource
 
 	endpoints, err := etcdResource(info.Resource)
 	if err != nil {
@@ -326,6 +446,8 @@ func WatchSlaveConfig(ctx context.Context, vdiskID string, info ConfigInfo) (<-c
 		return config.WatchSlaveConfigFile(ctx, vdiskID, path)
 	}
 
+	// for all other resource type value we'll assume it's the etcd resource
+
 	endpoints, err := etcdResource(info.Resource)
 	if err != nil {
 		return nil, err
@@ -346,6 +468,8 @@ func ReadVdisksConfig(info ConfigInfo) (*config.VdisksConfig, error) {
 		}
 		return config.ReadVdisksConfigFile(path)
 	}
+
+	// for all other resource type value we'll assume it's the etcd resource
 
 	endpoints, err := etcdResource(info.Resource)
 	if err != nil {
@@ -424,4 +548,5 @@ func ParseCSStorageServerConfigStrings(dialCSConfigString string) (configs []con
 
 const (
 	endpointsResourceSeperator = ","
+	defaultFileResource        = "config.yml"
 )

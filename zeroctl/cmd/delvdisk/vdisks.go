@@ -12,7 +12,7 @@ import (
 )
 
 var vdiskCmdCfg struct {
-	RawConfigResource string
+	ConfigInfo zerodisk.ConfigInfo
 }
 
 // VdisksCmd represents the vdisks delete subcommand
@@ -29,17 +29,12 @@ func deleteVdisks(cmd *cobra.Command, args []string) error {
 	}
 	log.SetLevel(logLevel)
 
-	configInfo, err := zerodisk.ParseConfigInfo(vdiskCmdCfg.RawConfigResource)
-	if err != nil {
-		return err
-	}
-
 	if len(args) == 0 {
 		return errors.New("no vdisk identifiers given")
 	}
 
 	// get and sort vdisks per server cfg
-	data, metadata, err := getAndSortVdisks(*configInfo, args)
+	data, metadata, err := getAndSortVdisks(args)
 	if err != nil {
 		return err
 	}
@@ -86,7 +81,7 @@ func (m vdisksPerServerMap) AddVdisk(cfg config.StorageServerConfig, vdiskID str
 	serverVdisks[vdiskID] = vdiskType
 }
 
-func getAndSortVdisks(configInfo zerodisk.ConfigInfo, vdiskIDs []string) (data vdisksPerServerMap, metadata vdisksPerServerMap, err error) {
+func getAndSortVdisks(vdiskIDs []string) (data vdisksPerServerMap, metadata vdisksPerServerMap, err error) {
 	if len(vdiskIDs) == 0 {
 		err = errors.New("no vdisk identifiers given")
 	}
@@ -109,7 +104,7 @@ func getAndSortVdisks(configInfo zerodisk.ConfigInfo, vdiskIDs []string) (data v
 
 	// add only the selected vdisk(s)
 	for _, vdiskID := range vdiskIDs {
-		baseConfig, nbdConfig, err = zerodisk.ReadNBDConfig(vdiskID, configInfo)
+		baseConfig, nbdConfig, err = zerodisk.ReadNBDConfig(vdiskID, vdiskCmdCfg.ConfigInfo)
 		if err != nil {
 			log.Errorf("no NBD config could be retrieved for %s: %v", vdiskID, err)
 			continue
@@ -136,7 +131,7 @@ WARNING: until issue #88 has been resolved,
   Nondeduped vdisks have no metadata, and thus are not affected by this issue.
 `
 
-	VdisksCmd.Flags().StringVar(
-		&vdiskCmdCfg.RawConfigResource, "config", "config.yml",
-		"config resource: etcd (dialstring(s)) or file (path)")
+	VdisksCmd.Flags().Var(
+		&vdiskCmdCfg.ConfigInfo, "config",
+		"config resource: dialstrings (etcd cluster) or path (yaml file)")
 }

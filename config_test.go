@@ -1,15 +1,31 @@
 package zerodisk
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/zero-os/0-Disk/config"
 )
 
+func TestNilConfigInfo(t *testing.T) {
+	assert := assert.New(t)
+
+	var info ConfigInfo
+
+	if assert.NoError(info.Validate()) {
+		assert.Equal(defaultFileResource, info.String())
+	}
+
+	info.Resource = ""
+	if assert.NoError(info.Validate()) {
+		assert.Equal(defaultFileResource, info.String())
+	}
+}
+
 func TestNilConfigResourceType(t *testing.T) {
 	var crt ConfigResourceType
-	assert.Equal(t, ETCDConfigResource, crt)
+	assert.Equal(t, FileConfigResource, crt)
 }
 
 func TestConfigResourceTypeInequality(t *testing.T) {
@@ -95,8 +111,37 @@ func TestETCDResourceFromString(t *testing.T) {
 	}
 }
 
-func TestParseConfigInfo(t *testing.T) {
+func TestConfigInfoReflectivity(t *testing.T) {
 	assert := assert.New(t)
+
+	// add all valid strings together and remove spaces,
+	// as spaces would mess wth our reflectivity
+	validResourceStrings := append(validETCDStrings, validConfigPaths...)
+	for i := range validResourceStrings {
+		validResourceStrings[i] = strings.Replace(validResourceStrings[i], " ", "", -1)
+	}
+
+	// strA ==     strB       ==            StrC
+	// x    == String(Set(x)) == String(Set(String(Set(x))))
+	for _, strA := range validResourceStrings {
+		info, err := ParseConfigInfo(strA)
+		if !assert.NoError(err, strA) {
+			continue
+		}
+
+		strB := info.String()
+		if !assert.Equal(strA, strB) {
+			continue
+		}
+
+		err = info.Set(strB)
+		if assert.NoError(err, strA) {
+			continue
+		}
+
+		strC := info.String()
+		assert.Equal(strB, strC)
+	}
 
 	for _, validETCDString := range validETCDStrings {
 		info, err := ParseConfigInfo(validETCDString)

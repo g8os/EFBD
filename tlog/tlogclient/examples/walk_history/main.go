@@ -17,7 +17,7 @@ type config struct {
 	vdiskID              string
 	nonce                string // encryption nonce
 	TlogObjStorAddresses string
-	ConfigPath           string
+	ConfigInfo           zerodisk.ConfigInfo
 }
 
 func main() {
@@ -30,7 +30,7 @@ func main() {
 	flag.StringVar(&conf.nonce, "nonce", "37b8e8a308c354048d245f6d", "encryption nonce")
 	flag.StringVar(&conf.TlogObjStorAddresses, "storage-addresses", "",
 		"comma seperated list of redis compatible connectionstrings (format: '<ip>:<port>[@<db>]', eg: 'localhost:16379,localhost:6379@2'), if given, these are used for all vdisks, ignoring the given config")
-	flag.StringVar(&conf.ConfigPath, "config", "config.yml", "zerodisk config file")
+	flag.Var(&conf.ConfigInfo, "config", "config resource: dialstrings (etcd cluster) or path (yaml file)")
 
 	flag.Parse()
 
@@ -42,13 +42,10 @@ func main() {
 	redisPool, err := tlog.AnyRedisPool(tlog.RedisPoolConfig{
 		VdiskID:                 conf.vdiskID,
 		RequiredDataServerCount: conf.K + conf.M,
-		ConfigInfo: zerodisk.ConfigInfo{
-			Resource:     conf.ConfigPath,
-			ResourceType: zerodisk.FileConfigResource,
-		},
-		ServerConfigs: serverConfigs,
-		AutoFill:      true,
-		AllowInMemory: false,
+		ConfigInfo:              conf.ConfigInfo,
+		ServerConfigs:           serverConfigs,
+		AutoFill:                true,
+		AllowInMemory:           false,
 	})
 	exitOnErr(err)
 
