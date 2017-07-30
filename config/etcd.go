@@ -156,6 +156,47 @@ func ReadSlaveConfigETCD(vdiskID string, endpoints []string) (*SlaveConfig, erro
 	return NewSlaveConfig(slaveBS)
 }
 
+// WatchVdisksConfigETCD watches etcd for VdisksConfig updates.
+// Sends the initial config to the channel when created,
+// as well as any future updated versions of that config,
+// for as long as the given context allows it.
+func WatchVdisksConfigETCD(ctx context.Context, endpoints []string) (<-chan VdisksConfig, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	// fetch current data
+	vdisks, err := ReadVdisksConfigETCD(endpoints)
+	if err != nil {
+		return nil, fmt.Errorf("Could not fetch initial VdisksConfig for VdisksConfig watcher: %s", err)
+	}
+
+	// setup channel
+	updater := make(chan VdisksConfig, 1)
+	updater <- *vdisks
+
+	err = watchConfigETCD(ctx, endpoints, etcdVdisksKey, func(data []byte) error {
+		vdisks, err := NewVdisksConfig(data)
+		if err != nil {
+			return err
+		}
+
+		// send current data to channel
+		select {
+		case updater <- *vdisks:
+		// ensure we can't get stuck in a deadlock for this goroutine
+		case <-ctx.Done():
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Could not create VdisksConfig watcher: %s", err)
+	}
+
+	return updater, nil
+}
+
 // WatchSlaveConfigETCD watches etcd for SlaveConfig updates.
 // Sends the initial config to the channel when created,
 // as well as any future updated versions of that config,

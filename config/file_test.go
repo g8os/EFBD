@@ -549,21 +549,13 @@ func writeConfigFile(path string, cfg *configFileFormat) error {
 	return nil
 }
 
-func readFullConfig(path string) (configFileFormat, error) {
-	// read file
-	bytes, err := ioutil.ReadFile(path)
+// get config file permission
+// we need it because we want to rewrite it.
+// better to write it with same permission
+func filePerm(path string) (os.FileMode, error) {
+	info, err := os.Stat(path)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't read from the config file: %s", err.Error())
+		return 0, err
 	}
-
-	cfgFile := make(configFileFormat)
-
-	// unmarshal the yaml content
-	err = yaml.Unmarshal(bytes, &cfgFile)
-	if err != nil {
-		return nil, fmt.Errorf("could not unmarshal provided bytes: %v", err)
-	}
-
-	return cfgFile, nil
-
+	return info.Mode(), nil
 }

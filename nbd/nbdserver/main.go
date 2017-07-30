@@ -141,12 +141,14 @@ func main() {
 	}
 
 	exportController, err := NewExportController(
+		ctx,
 		configInfo,
 		tlsonly,
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer exportController.Close()
 
 	// set export config controller,
 	// so we can generate the ExportConfig,

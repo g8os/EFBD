@@ -478,6 +478,30 @@ func ReadVdisksConfig(info ConfigInfo) (*config.VdisksConfig, error) {
 	return config.ReadVdisksConfigETCD(endpoints)
 }
 
+// WatchVdisksConfig allows you to receive an initial vdisks Config over a channel,
+// and a new vdisks Config every time its resource is updated.
+func WatchVdisksConfig(ctx context.Context, info ConfigInfo) (<-chan config.VdisksConfig, error) {
+	if err := info.Validate(); err != nil {
+		return nil, err
+	}
+
+	if info.ResourceType == FileConfigResource {
+		path, err := fileResource(info.Resource)
+		if err != nil {
+			return nil, err
+		}
+		return config.WatchVdisksConfigFile(ctx, path)
+	}
+
+	// for all other resource type value we'll assume it's the etcd resource
+
+	endpoints, err := etcdResource(info.Resource)
+	if err != nil {
+		return nil, err
+	}
+	return config.WatchVdisksConfigETCD(ctx, endpoints)
+}
+
 // ParseStorageServerConfigString allows you to parse a raw dial config string.
 // Dial Config String are a simple format used to specify ardb connection configs
 // easily as a command line argument.
