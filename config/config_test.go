@@ -79,8 +79,8 @@ func TestSerializing(t *testing.T) {
 		return
 	}
 	// check if values are persisted
-	assert.Equal(t, tlog.TlogStorageCluster.MetadataStorage.Address, tlog2.TlogStorageCluster.MetadataStorage.Address)
-	assert.Equal(t, tlog.TlogStorageCluster.DataStorage[0].Address, tlog2.TlogStorageCluster.DataStorage[0].Address)
+	assert.Equal(t, tlog.StorageCluster.MetadataStorage.Address, tlog2.StorageCluster.MetadataStorage.Address)
+	assert.Equal(t, tlog.StorageCluster.DataStorage[0].Address, tlog2.StorageCluster.DataStorage[0].Address)
 	assert.Equal(t, tlog.SlaveSync, tlog2.SlaveSync)
 
 	// create s config from valid s config string
@@ -101,8 +101,8 @@ func TestSerializing(t *testing.T) {
 		return
 	}
 	// check if values are persisted
-	assert.Equal(t, s.SlaveStorageCluster.MetadataStorage.Address, s2.SlaveStorageCluster.MetadataStorage.Address)
-	assert.Equal(t, s.SlaveStorageCluster.DataStorage[0].Address, s2.SlaveStorageCluster.DataStorage[0].Address)
+	assert.Equal(t, s.StorageCluster.MetadataStorage.Address, s2.StorageCluster.MetadataStorage.Address)
+	assert.Equal(t, s.StorageCluster.DataStorage[0].Address, s2.StorageCluster.DataStorage[0].Address)
 }
 
 func TestInvalidConfigs(t *testing.T) {

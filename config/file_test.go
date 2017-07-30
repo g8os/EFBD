@@ -2,9 +2,12 @@ package config
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"sync"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/zero-os/0-Disk/log"
@@ -15,14 +18,14 @@ const (
 )
 
 // acts as the file for testing
-var testFile []byte
+var testFiles = make(map[string][]byte)
 
 func TestFileSourceRead(t *testing.T) {
 	// for testing, the path can be left empty, the data will be read from testFile
-	testFile = []byte(validYAMLSourceStr)
+	testFiles["TestFileSourceRead"] = []byte(validYAMLSourceStr)
 
 	// get base
-	base, err := ReadBaseConfigFile(vdiskID, "")
+	base, err := ReadBaseConfigFile(vdiskID, "TestFileSourceRead")
 	if !assert.NoError(t, err) || !assert.NotNil(t, base) {
 		return
 	}
@@ -33,7 +36,7 @@ func TestFileSourceRead(t *testing.T) {
 	assert.Equal(t, VdiskTypeDB, base.Type)
 
 	// get NBDConfig
-	base, nbd, err := ReadNBDConfigFile(vdiskID, "")
+	base, nbd, err := ReadNBDConfigFile(vdiskID, "TestFileSourceRead")
 	if !assert.NoError(t, err) || !assert.NotNil(t, nbd) {
 		return
 	}
@@ -52,36 +55,36 @@ func TestFileSourceRead(t *testing.T) {
 	assert.Equal(t, 0, nbd.TemplateStorageCluster.DataStorage[0].Database)
 
 	// get TlogConfig
-	tlog, err := ReadTlogConfigFile(vdiskID, "")
+	tlog, err := ReadTlogConfigFile(vdiskID, "TestFileSourceRead")
 	if !assert.NoError(t, err) || !assert.NotNil(t, tlog) {
 		return
 	}
 
-	assert.Equal(t, "192.168.58.149:2000", tlog.TlogStorageCluster.DataStorage[0].Address)
-	assert.Equal(t, 4, tlog.TlogStorageCluster.DataStorage[0].Database)
-	assert.Equal(t, "192.168.58.146:2001", tlog.TlogStorageCluster.MetadataStorage.Address)
-	assert.Equal(t, 8, tlog.TlogStorageCluster.MetadataStorage.Database)
+	assert.Equal(t, "192.168.58.149:2000", tlog.StorageCluster.DataStorage[0].Address)
+	assert.Equal(t, 4, tlog.StorageCluster.DataStorage[0].Database)
+	assert.Equal(t, "192.168.58.146:2001", tlog.StorageCluster.MetadataStorage.Address)
+	assert.Equal(t, 8, tlog.StorageCluster.MetadataStorage.Database)
 
 	// get SlaveConfig
-	slave, err := ReadSlaveConfigFile(vdiskID, "")
+	slave, err := ReadSlaveConfigFile(vdiskID, "TestFileSourceRead")
 	if !assert.NoError(t, err) || !assert.NotNil(t, slave) {
 		return
 	}
 
-	assert.Equal(t, "192.168.58.145:2000", slave.SlaveStorageCluster.DataStorage[0].Address)
-	assert.Equal(t, 4, slave.SlaveStorageCluster.DataStorage[0].Database)
-	assert.Equal(t, "192.168.58.144:2000", slave.SlaveStorageCluster.MetadataStorage.Address)
-	assert.Equal(t, 8, slave.SlaveStorageCluster.MetadataStorage.Database)
+	assert.Equal(t, "192.168.58.145:2000", slave.StorageCluster.DataStorage[0].Address)
+	assert.Equal(t, 4, slave.StorageCluster.DataStorage[0].Database)
+	assert.Equal(t, "192.168.58.144:2000", slave.StorageCluster.MetadataStorage.Address)
+	assert.Equal(t, 8, slave.StorageCluster.MetadataStorage.Database)
 }
 
 func TestFileSourceInvalidRead(t *testing.T) {
-	testFile = []byte("")
+	testFiles["TestFileSourceInvalidRead"] = []byte("")
 
 	// check if error is returned when reading empty file
-	_, baseerr := ReadBaseConfigFile(vdiskID, "")
-	_, _, nbderr := ReadNBDConfigFile(vdiskID, "")
-	_, tlogerr := ReadTlogConfigFile(vdiskID, "")
-	_, slaveerr := ReadSlaveConfigFile(vdiskID, "")
+	_, baseerr := ReadBaseConfigFile(vdiskID, "TestFileSourceInvalidRead")
+	_, _, nbderr := ReadNBDConfigFile(vdiskID, "TestFileSourceInvalidRead")
+	_, tlogerr := ReadTlogConfigFile(vdiskID, "TestFileSourceInvalidRead")
+	_, slaveerr := ReadSlaveConfigFile(vdiskID, "TestFileSourceInvalidRead")
 
 	// check if error is returned when reading non empty file
 	log.Debugf("Errors reading from empty file:\n base error: %s \n nbd error: %s \n tlog error: %s \n slave error: %s", baseerr, nbderr, tlogerr, slaveerr)
@@ -97,13 +100,13 @@ func TestFileSourceInvalidRead(t *testing.T) {
 	b, _ := NewBaseConfig([]byte(validBaseStr))
 	vcfg.Base = *b
 	cfg[vdiskID] = vcfg
-	testFile, _ = cfg.Bytes()
+	testFiles["TestFileSourceInvalidRead"], _ = cfg.Bytes()
 
 	// read
-	_, baseerr = ReadBaseConfigFile(vdiskID, "")
-	_, _, nbderr = ReadNBDConfigFile(vdiskID, "")
-	_, tlogerr = ReadTlogConfigFile(vdiskID, "")
-	_, slaveerr = ReadSlaveConfigFile(vdiskID, "")
+	_, baseerr = ReadBaseConfigFile(vdiskID, "TestFileSourceInvalidRead")
+	_, _, nbderr = ReadNBDConfigFile(vdiskID, "TestFileSourceInvalidRead")
+	_, tlogerr = ReadTlogConfigFile(vdiskID, "TestFileSourceInvalidRead")
+	_, slaveerr = ReadSlaveConfigFile(vdiskID, "TestFileSourceInvalidRead")
 
 	// check if error is returned when reading non empty file
 	// base should be fine tho
@@ -118,75 +121,94 @@ func TestFileSourceInvalidRead(t *testing.T) {
 	vcfg = *new(vdiskConfigFileFormat)
 	vcfg.NBD, _ = NewNBDConfig([]byte(validNBDStr), b.Type)
 	cfg[vdiskID] = vcfg
-	testFile, _ = cfg.Bytes()
+	testFiles["TestFileSourceInvalidRead"], _ = cfg.Bytes()
 
-	_, _, nbderr = ReadNBDConfigFile(vdiskID, "")
+	_, _, nbderr = ReadNBDConfigFile(vdiskID, "TestFileSourceInvalidRead")
 	log.Debugf("Error from reading NBD with missing BaseConfig: %s", nbderr)
 	assert.Error(t, nbderr)
 
 	// write invalid nbd config
-	testFile = []byte(invalidNBDServerConfigs[4])
+	testFiles["TestFileSourceInvalidRead"] = []byte(invalidNBDServerConfigs[4])
 	_, _, nbderr = ReadNBDConfigFile(vdiskID, "")
 	log.Debugf("Error from reading invalid NBD: %s", nbderr)
 	assert.Error(t, nbderr)
 
 	// write invalid tlog config
-	testFile = []byte(invalidNBDServerConfigs[7])
+	testFiles["TestFileSourceInvalidRead"] = []byte(invalidNBDServerConfigs[7])
 	_, tlogerr = ReadTlogConfigFile(vdiskID, "")
 	log.Debugf("Error from reading invalid Tlog: %s", tlogerr)
 	assert.Error(t, tlogerr)
 
 	// write invalid slave config
-	testFile = []byte(invalidNBDServerConfigs[8])
+	testFiles["TestFileSourceInvalidRead"] = []byte(invalidNBDServerConfigs[8])
 	_, slaveerr = ReadSlaveConfigFile(vdiskID, "")
 	log.Debugf("Error from reading invalid Slave: %s", slaveerr)
 	assert.Error(t, slaveerr)
 }
 
 func TestFileSourceWatch(t *testing.T) {
+	assert := assert.New(t)
+
 	// get start values
-	testFile = []byte(validYAMLSourceStr)
-	cfg, err := readVdiskConfigFile(vdiskID, "")
-	if !assert.NoError(t, err) || !assert.NotNil(t, cfg) {
+	testFiles["TestFileSourceWatch"] = []byte(validYAMLSourceStr)
+	cfg, err := readVdiskConfigFile(vdiskID, "TestFileSourceWatch")
+	if !assert.NoError(err) || !assert.NotNil(cfg) {
 		return
 	}
 
 	// setup watchers
-	ctxnbd, cancelnbd := context.WithCancel(context.Background())
-	ctxtlog, canceltlog := context.WithCancel(context.Background())
-	ctxslave, cancelslave := context.WithCancel(context.Background())
-	defer func() {
-		cancelnbd()
-		canceltlog()
-		cancelslave()
-	}()
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
 	var (
 		nbd   NBDConfig
 		tlog  TlogConfig
 		slave SlaveConfig
-		lock  sync.RWMutex
+		lock  sync.Mutex
 	)
-	nbdUpdate, err := WatchNBDConfigFile(ctxnbd, vdiskID, "")
-	tlogUpdate, err := WatchTlogConfigFile(ctxtlog, vdiskID, "")
-	slaveUpdate, err := WatchSlaveConfigFile(ctxslave, vdiskID, "")
+
+	nbdUpdate, err := WatchNBDConfigFile(ctx, vdiskID, "TestFileSourceWatch")
+	if !assert.NoError(err) || !assert.NotNil(nbdUpdate) {
+		return
+	}
+	nbd = <-nbdUpdate // get initial config
+
+	tlogUpdate, err := WatchTlogConfigFile(ctx, vdiskID, "TestFileSourceWatch")
+	if !assert.NoError(err) || !assert.NotNil(tlogUpdate) {
+		return
+	}
+	tlog = <-tlogUpdate // get initial config
+
+	slaveUpdate, err := WatchSlaveConfigFile(ctx, vdiskID, "TestFileSourceWatch")
+	if !assert.NoError(err) || !assert.NotNil(slaveUpdate) {
+		return
+	}
+	slave = <-slaveUpdate // get initial config
+
+	var wg sync.WaitGroup
+	wg.Add(3)
 
 	go func() {
 		for {
 			select {
-			case <-ctxnbd.Done():
+			case <-ctx.Done():
 				return
 
 			case nnbd := <-nbdUpdate:
 				lock.Lock()
 				nbd = nnbd
+				wg.Done()
 				lock.Unlock()
+
 			case ntlog := <-tlogUpdate:
 				lock.Lock()
 				tlog = ntlog
+				wg.Done()
 				lock.Unlock()
 			case nslave := <-slaveUpdate:
 				lock.Lock()
 				slave = nslave
+				wg.Done()
 				lock.Unlock()
 			}
 		}
@@ -195,203 +217,224 @@ func TestFileSourceWatch(t *testing.T) {
 	// setup new values
 	cfgBuf := make(configFileFormat)
 	var vcfg vdiskConfigFileFormat
-	b, _ := NewBaseConfig([]byte(validBaseStr)) // just to have a valid base config
-	newNBD, _ := NewNBDConfig([]byte(validNBDStr), VdiskTypeCache)
-	newTlog, _ := NewTlogConfig([]byte(validTlogStr))
-	newSlave, _ := NewSlaveConfig([]byte(validSlaveStr))
+
+	b, err := NewBaseConfig([]byte(validBaseStr)) // just to have a valid base config
+	if !assert.NoError(err) {
+		return
+	}
+	newNBD, err := NewNBDConfig([]byte(validNBDStr), VdiskTypeCache)
+	if !assert.NoError(err) {
+		return
+	}
+	newTlog, err := NewTlogConfig([]byte(validTlogStr))
+	if !assert.NoError(err) {
+		return
+	}
+	newSlave, err := NewSlaveConfig([]byte(validSlaveStr))
+	if !assert.NoError(err) {
+		return
+	}
+
 	vcfg.Base = *b
+	vcfg.NBD = newNBD
+	vcfg.Tlog = newTlog
+	vcfg.Slave = newSlave
 	cfgBuf[vdiskID] = vcfg
-	println(cfgBuf)
-	testFile, _ = cfgBuf.Bytes()
+	testFiles["TestFileSourceWatch"], err = cfgBuf.Bytes()
+	if !assert.NoError(err) {
+		return
+	}
 
 	// send SIGHUP
 	syscall.Kill(syscall.Getpid(), syscall.SIGHUP)
 
+	wg.Wait()
+
 	// check if values are updated
-	lock.RLock()
+	lock.Lock()
+	defer lock.Unlock()
+
 	// nbd
-	assert.Equal(t, newNBD.TemplateVdiskID, nbd.TemplateVdiskID)
-	assert.Equal(t, newNBD.StorageCluster.DataStorage[0].Address, nbd.StorageCluster.DataStorage[0].Address)
-	assert.NotEqual(t, cfg.NBD.TemplateVdiskID, nbd.TemplateVdiskID)
-	assert.NotEqual(t, cfg.NBD.StorageCluster.DataStorage[0].Address, nbd.StorageCluster.DataStorage[0].Address)
+	assert.Equal(newNBD.TemplateVdiskID, nbd.TemplateVdiskID)
+	assert.Equal(newNBD.StorageCluster.DataStorage[0].Address, nbd.StorageCluster.DataStorage[0].Address)
+	assert.NotEqual(cfg.NBD.TemplateVdiskID, nbd.TemplateVdiskID)
+	assert.NotEqual(cfg.NBD.StorageCluster.DataStorage[0].Address, nbd.StorageCluster.DataStorage[0].Address)
 	// tlog
-	assert.Equal(t, newTlog.SlaveSync, tlog.SlaveSync)
-	assert.Equal(t, newTlog.TlogStorageCluster.DataStorage[0].Address, tlog.TlogStorageCluster.DataStorage[0].Address)
-	assert.NotEqual(t, cfg.Tlog.SlaveSync, tlog.SlaveSync)
-	assert.NotEqual(t, cfg.Tlog.TlogStorageCluster.DataStorage[0].Address, tlog.TlogStorageCluster.DataStorage[0].Address)
+	assert.Equal(newTlog.SlaveSync, tlog.SlaveSync)
+	assert.Equal(newTlog.StorageCluster.DataStorage[0].Address, tlog.StorageCluster.DataStorage[0].Address)
+	assert.NotEqual(cfg.Tlog.SlaveSync, tlog.SlaveSync)
+	assert.NotEqual(cfg.Tlog.StorageCluster.DataStorage[0].Address, tlog.StorageCluster.DataStorage[0].Address)
 	// slave
-	assert.Equal(t, newSlave.SlaveStorageCluster.DataStorage[0].Address, slave.SlaveStorageCluster.DataStorage[0].Address)
-	assert.Equal(t, newSlave.SlaveStorageCluster.MetadataStorage.Address, slave.SlaveStorageCluster.MetadataStorage.Address)
-	assert.NotEqual(t, cfg.Slave.SlaveStorageCluster.DataStorage[0].Address, slave.SlaveStorageCluster.DataStorage[0].Address)
-	assert.NotEqual(t, cfg.Slave.SlaveStorageCluster.MetadataStorage.Address, slave.SlaveStorageCluster.MetadataStorage.Address)
-	lock.RUnlock()
+	assert.Equal(newSlave.StorageCluster.DataStorage[0].Address, slave.StorageCluster.DataStorage[0].Address)
+	assert.Equal(newSlave.StorageCluster.MetadataStorage.Address, slave.StorageCluster.MetadataStorage.Address)
+	assert.NotEqual(cfg.Slave.StorageCluster.DataStorage[0].Address, slave.StorageCluster.DataStorage[0].Address)
+	assert.NotEqual(cfg.Slave.StorageCluster.MetadataStorage.Address, slave.StorageCluster.MetadataStorage.Address)
 }
 
 func TestInvalidFileSourceWatch(t *testing.T) {
+	assert := assert.New(t)
 
 	// setup empty yaml file
-	testFile = []byte("")
+	testFiles["TestInvalidFileSourceWatch"] = []byte("")
 
 	// try and read the file, it should fail
-	ctxEmptynbd, cancelEmptynbd := context.WithCancel(context.Background())
-	ctxEmptytlog, cancelEmptytlog := context.WithCancel(context.Background())
-	ctxEmptyslave, cancelEmptyslave := context.WithCancel(context.Background())
-	_, errnbd := WatchNBDConfigFile(ctxEmptynbd, vdiskID, "")
-	_, errtlog := WatchTlogConfigFile(ctxEmptytlog, vdiskID, "")
-	_, errslave := WatchSlaveConfigFile(ctxEmptyslave, vdiskID, "")
-	cancelEmptynbd()
-	cancelEmptytlog()
-	cancelEmptyslave()
+	ctxEmpty, cancelEmpty := context.WithCancel(context.Background())
+	_, errnbd := WatchNBDConfigFile(ctxEmpty, vdiskID, "TestInvalidFileSourceWatch")
+	_, errtlog := WatchTlogConfigFile(ctxEmpty, vdiskID, "TestInvalidFileSourceWatch")
+	_, errslave := WatchSlaveConfigFile(ctxEmpty, vdiskID, "TestInvalidFileSourceWatch")
+	cancelEmpty()
 
 	log.Debugf("Errors from empty file:\n nbd error: %s \n tlog error: %s \n slave error: %s", errnbd, errtlog, errslave)
-	if !assert.Error(t, errnbd) || !assert.Error(t, errtlog) || !assert.Error(t, errslave) {
+	if !assert.Error(errnbd) || !assert.Error(errtlog) || !assert.Error(errslave) {
 		return
 	}
 
 	// setup yaml file with valid configs later replace with invalid
 	// write
-	testFile = []byte(validYAMLSourceStr)
+	testFiles["TestInvalidFileSourceWatch"] = []byte(validYAMLSourceStr)
 
 	// get current values
-	cfg, err := readVdiskConfigFile(vdiskID, "")
-	if !assert.NoError(t, err) || !assert.NotNil(t, cfg) {
+	cfg, err := readVdiskConfigFile(vdiskID, "TestInvalidFileSourceWatch")
+	if !assert.NoError(err) || !assert.NotNil(cfg) {
 		return
 	}
 
 	// setup watchers
-	ctxnbd, cancelnbd := context.WithCancel(context.Background())
-	ctxtlog, canceltlog := context.WithCancel(context.Background())
-	ctxslave, cancelslave := context.WithCancel(context.Background())
-	defer func() {
-		cancelnbd()
-		canceltlog()
-		cancelslave()
-	}()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	var (
 		nbd   NBDConfig
 		tlog  TlogConfig
 		slave SlaveConfig
-		lock  sync.RWMutex
 	)
-	nbdUpdate, err := WatchNBDConfigFile(ctxnbd, vdiskID, "")
-	tlogUpdate, err := WatchTlogConfigFile(ctxtlog, vdiskID, "")
-	slaveUpdate, err := WatchSlaveConfigFile(ctxslave, vdiskID, "")
+	nbdUpdate, err := WatchNBDConfigFile(ctx, vdiskID, "TestInvalidFileSourceWatch")
+	if !assert.NoError(err) {
+		return
+	}
+	nbd = <-nbdUpdate // initial config
+	tlogUpdate, err := WatchTlogConfigFile(ctx, vdiskID, "TestInvalidFileSourceWatch")
+	if !assert.NoError(err) {
+		return
+	}
+	tlog = <-tlogUpdate // initial config
+	slaveUpdate, err := WatchSlaveConfigFile(ctx, vdiskID, "TestInvalidFileSourceWatch")
+	if !assert.NoError(err) {
+		return
+	}
+	slave = <-slaveUpdate // initial config
 
 	go func() {
 		for {
 			select {
-			case <-ctxnbd.Done():
+			case <-ctx.Done():
 				return
 
 			case nnbd := <-nbdUpdate:
-				lock.Lock()
-				nbd = nnbd
-				lock.Unlock()
+				assert.FailNow("should not happen: %v", nnbd)
 			case ntlog := <-tlogUpdate:
-				lock.Lock()
-				tlog = ntlog
-				lock.Unlock()
+				assert.FailNow("should not happen: %v", ntlog)
 			case nslave := <-slaveUpdate:
-				lock.Lock()
-				slave = nslave
-				lock.Unlock()
+				assert.FailNow("should not happen: %v", nslave)
 			}
 		}
 	}()
 
 	// update with invalid nbd data
-	testFile = []byte(invalidNBDServerConfigs[5])
+	testFiles["TestInvalidFileSourceWatch"] = []byte(invalidNBDServerConfigs[5])
 	syscall.Kill(syscall.Getpid(), syscall.SIGHUP)
 
-	// check if old values are persisted
-	assert.Equal(t, cfg.NBD.StorageCluster.DataStorage[0].Address, nbd.StorageCluster.DataStorage[0].Address)
-	assert.Equal(t, cfg.NBD.TemplateStorageCluster.DataStorage[0].Database, nbd.TemplateStorageCluster.DataStorage[0].Database)
+	time.Sleep(1 * time.Second)
 
+	// check if old values are persisted
+	assert.Equal(cfg.NBD.StorageCluster.DataStorage[0].Address, nbd.StorageCluster.DataStorage[0].Address)
+	assert.Equal(cfg.Tlog.StorageCluster.DataStorage[0].Database, tlog.StorageCluster.DataStorage[0].Database)
+	assert.Equal(cfg.Slave.StorageCluster.DataStorage[0].Address, slave.StorageCluster.DataStorage[0].Address)
 }
 
 func TestMissingConfigFileSourceWhileWatch(t *testing.T) {
+	assert := assert.New(t)
+
 	// setup yaml file later, make data go missing
-	testFile = []byte(validYAMLSourceStr)
+	testFiles["TestMissingConfigFileSourceWhileWatch"] = []byte(validYAMLSourceStr)
 
 	var (
 		nbd   NBDConfig
 		tlog  TlogConfig
 		slave SlaveConfig
-		lock  sync.RWMutex
 	)
 
 	// setup watchers
-	ctxnbd, cancelnbd := context.WithCancel(context.Background())
-	ctxtlog, canceltlog := context.WithCancel(context.Background())
-	ctxslave, cancelslave := context.WithCancel(context.Background())
-	nbdUpdate, errnbd := WatchNBDConfigFile(ctxnbd, vdiskID, "")
-	tlogUpdate, errtlog := WatchTlogConfigFile(ctxtlog, vdiskID, "")
-	slaveUpdate, errslave := WatchSlaveConfigFile(ctxslave, vdiskID, "")
-	defer func() {
-		cancelnbd()
-		canceltlog()
-		cancelslave()
-	}()
-	if !assert.NoError(t, errnbd) || !assert.NoError(t, errtlog) || !assert.NoError(t, errslave) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	nbdUpdate, err := WatchNBDConfigFile(ctx, vdiskID, "TestMissingConfigFileSourceWhileWatch")
+	if !assert.NoError(err) {
 		return
 	}
+	nbd = <-nbdUpdate // initial config
+	tlogUpdate, err := WatchTlogConfigFile(ctx, vdiskID, "TestMissingConfigFileSourceWhileWatch")
+	if !assert.NoError(err) {
+		return
+	}
+	tlog = <-tlogUpdate // initial config
+	slaveUpdate, err := WatchSlaveConfigFile(ctx, vdiskID, "TestMissingConfigFileSourceWhileWatch")
+	if !assert.NoError(err) {
+		return
+	}
+	slave = <-slaveUpdate // initial config
 
 	go func() {
 		for {
 			select {
-			case <-ctxnbd.Done():
+			case <-ctx.Done():
 				return
 
 			case nnbd := <-nbdUpdate:
-				lock.Lock()
-				nbd = nnbd
-				lock.Unlock()
+				assert.FailNow("should not happen: %v", nnbd)
 			case ntlog := <-tlogUpdate:
-				lock.Lock()
-				tlog = ntlog
-				lock.Unlock()
+				assert.FailNow("should not happen: %v", ntlog)
 			case nslave := <-slaveUpdate:
-				lock.Lock()
-				slave = nslave
-				lock.Unlock()
+				assert.FailNow("should not happen: %v", nslave)
 			}
 		}
 	}()
 
 	// remove configs
-	testFile = []byte("")
+	testFiles["TestMissingConfigFileSourceWhileWatch"] = []byte("")
 
 	// send sighup
 	syscall.Kill(syscall.Getpid(), syscall.SIGHUP)
 
+	time.Sleep(1 * time.Second)
+
 	// check if still original values
 	cfg, err := readVdiskConfigBytes(vdiskID, []byte(validYAMLSourceStr))
-	if !assert.NoError(t, err) {
+	if !assert.NoError(err) {
 		return
 	}
-	lock.RLock()
+
 	// nbd
-	assert.NotEmpty(t, nbd.TemplateVdiskID)
-	assert.Equal(t, cfg.NBD.TemplateVdiskID, nbd.TemplateVdiskID)
-	assert.Equal(t, cfg.NBD.StorageCluster.MetadataStorage.Address, nbd.StorageCluster.MetadataStorage.Address)
+	assert.NotEmpty(nbd.TemplateVdiskID)
+	assert.Equal(cfg.NBD.TemplateVdiskID, nbd.TemplateVdiskID)
+	assert.Equal(cfg.NBD.StorageCluster.MetadataStorage.Address, nbd.StorageCluster.MetadataStorage.Address)
 	// tlog
-	assert.NotEmpty(t, tlog.TlogStorageCluster)
-	assert.Equal(t, cfg.Tlog.SlaveSync, tlog.SlaveSync)
-	assert.Equal(t, cfg.Tlog.TlogStorageCluster.MetadataStorage.Address, tlog.TlogStorageCluster.MetadataStorage.Address)
-	assert.NotEmpty(t, tlog.TlogStorageCluster)
+	assert.NotEmpty(tlog.StorageCluster)
+	assert.Equal(cfg.Tlog.SlaveSync, tlog.SlaveSync)
+	assert.Equal(cfg.Tlog.StorageCluster.MetadataStorage.Address, tlog.StorageCluster.MetadataStorage.Address)
+	assert.NotEmpty(tlog.StorageCluster)
 	// slave
-	assert.Equal(t, cfg.Slave.SlaveStorageCluster.DataStorage[0].Address, slave.SlaveStorageCluster.DataStorage[0].Address)
-	assert.Equal(t, cfg.Slave.SlaveStorageCluster.MetadataStorage.Address, slave.SlaveStorageCluster.MetadataStorage.Address)
-	assert.NotEmpty(t, slave.SlaveStorageCluster)
-	lock.RUnlock()
+	assert.Equal(cfg.Slave.StorageCluster.DataStorage[0].Address, slave.StorageCluster.DataStorage[0].Address)
+	assert.Equal(cfg.Slave.StorageCluster.MetadataStorage.Address, slave.StorageCluster.MetadataStorage.Address)
+	assert.NotEmpty(slave.StorageCluster)
 
 }
 
 func TestFileSourceWatchNilCtx(t *testing.T) {
-	testFile = []byte(validYAMLSourceStr)
-	_, errnbd := WatchNBDConfigFile(nil, vdiskID, "")
-	_, errtlog := WatchTlogConfigFile(nil, vdiskID, "")
-	_, errslave := WatchSlaveConfigFile(nil, vdiskID, "")
+	testFiles["TestFileSourceWatchNilCtx"] = []byte(validYAMLSourceStr)
+	_, errnbd := WatchNBDConfigFile(nil, vdiskID, "TestFileSourceWatchNilCtx")
+	_, errtlog := WatchTlogConfigFile(nil, vdiskID, "TestFileSourceWatchNilCtx")
+	_, errslave := WatchSlaveConfigFile(nil, vdiskID, "TestFileSourceWatchNilCtx")
 
 	assert.NoError(t, errnbd)
 	assert.NoError(t, errtlog)
@@ -401,6 +444,21 @@ func TestFileSourceWatchNilCtx(t *testing.T) {
 func init() {
 	// stub ioutil
 	readFile = func(path string) ([]byte, error) {
-		return testFile, nil
+		if content, ok := testFiles[path]; ok {
+			return content, nil
+		}
+
+		return nil, fmt.Errorf("no content available for %s", path)
 	}
+}
+
+// get config file permission
+// we need it because we want to rewrite it.
+// better to write it with same permission
+func filePerm(path string) (os.FileMode, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, err
+	}
+	return info.Mode(), nil
 }

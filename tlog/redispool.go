@@ -171,14 +171,14 @@ func RedisPoolFromConfig(vdiskID string, configInfo zerodisk.ConfigInfo, require
 		return nil, err
 	}
 
-	if len(cfg.TlogStorageCluster.DataStorage) < requiredDataServerCount {
+	if len(cfg.StorageCluster.DataStorage) < requiredDataServerCount {
 		return nil, fmt.Errorf(
 			"storageCluster of vdisk %s has not enough dataservers",
 			vdiskID)
 	}
 
 	// create redis pool based on the given valid storage cluster
-	return newStaticRedisPool(cfg.TlogStorageCluster.DataStorage), nil
+	return newStaticRedisPool(cfg.StorageCluster.DataStorage), nil
 }
 
 // RedisPoolConfig used to create any kind
@@ -444,7 +444,7 @@ func (p *dynamicRedisPool) Close() {
 }
 
 func (p *dynamicRedisPool) reloadConfig(cfg *config.TlogConfig) error {
-	numServers := len(cfg.TlogStorageCluster.DataStorage)
+	numServers := len(cfg.StorageCluster.DataStorage)
 	if numServers < p.requiredNumberOfDataPools {
 		return errors.New("not enough tlog servers defined")
 	}
@@ -454,7 +454,7 @@ func (p *dynamicRedisPool) reloadConfig(cfg *config.TlogConfig) error {
 
 	log.Debug("(re)loading redis pools, using the latest available config")
 
-	configs := cfg.TlogStorageCluster.DataStorage[:p.requiredNumberOfDataPools]
+	configs := cfg.StorageCluster.DataStorage[:p.requiredNumberOfDataPools]
 	for index, cfg := range configs {
 		if pool, ok := p.dataPools[index]; ok {
 			// pool already exists, so let's see

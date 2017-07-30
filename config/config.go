@@ -138,8 +138,8 @@ func (nbd *NBDConfig) Validate(vdiskType VdiskType) error {
 
 // TlogConfig represents a tlog storage configuration
 type TlogConfig struct {
-	TlogStorageCluster StorageClusterConfig `yaml:"storageCluster" valid:"optional"`
-	SlaveSync          bool                 `yaml:"slaveSync" valid:"optional"`
+	StorageCluster StorageClusterConfig `yaml:"storageCluster" valid:"optional"`
+	SlaveSync      bool                 `yaml:"slaveSync" valid:"optional"`
 }
 
 // NewTlogConfig creates a new Tlogconfig from byte slice in YAML 1.2 format
@@ -180,7 +180,7 @@ func (tlog *TlogConfig) Validate() error {
 		return fmt.Errorf("invalid tlog config: %v", err)
 	}
 
-	if len(tlog.TlogStorageCluster.DataStorage) <= 0 {
+	if len(tlog.StorageCluster.DataStorage) <= 0 {
 		return fmt.Errorf("no tlog datastorage was found")
 	}
 
@@ -189,7 +189,7 @@ func (tlog *TlogConfig) Validate() error {
 
 // SlaveConfig represents a backup storage configuration
 type SlaveConfig struct {
-	SlaveStorageCluster StorageClusterConfig `yaml:"storageCluster" valid:"optional"`
+	StorageCluster StorageClusterConfig `yaml:"storageCluster" valid:"optional"`
 }
 
 // NewSlaveConfig creates a new Slaveconfig from byte slice in YAML 1.2 format

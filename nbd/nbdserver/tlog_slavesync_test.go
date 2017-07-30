@@ -373,7 +373,7 @@ func newTlogRedisPoolAndConfig(vdiskID string, blockSize, size uint64) (*redisst
 				StorageCluster:     "mycluster",
 				Type:               config.VdiskTypeDB,
 				TlogSlaveSync:      true,
-				TlogStorageCluster: "tlogCluster",
+				StorageCluster: "tlogCluster",
 			},
 		},
 		StorageClusters: map[string]config.StorageClusterConfig{
@@ -422,7 +422,7 @@ func newRedisPoolAndConfig(vdiskID string, blockSize, size uint64,
 				StorageCluster:     "mycluster",
 				Type:               config.VdiskTypeDB,
 				TlogSlaveSync:      true,
-				TlogStorageCluster: "tlogCluster",
+				StorageCluster: "tlogCluster",
 			},
 		},
 		StorageClusters: map[string]config.StorageClusterConfig{
