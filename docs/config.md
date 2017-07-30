@@ -148,7 +148,7 @@ vdisks: # required
 
 Used by the [NBD Server][nbdServerConfig].
 
-See the [VdisksConf Godoc][vdisksConfGodoc] for more information
+See the [VdisksConf Godoc][vdisksconfigGodoc] for more information
 
 ## etcd
 
@@ -275,7 +275,7 @@ Learn more about:
 [nbdconfigGodoc]: https://godoc.org/github.com/zero-os/0-Disk/config#NBDConfig
 [tlogconfigGodoc]: https://godoc.org/github.com/zero-os/0-Disk/config#TlogConfig
 [slaveconfigGodoc]: https://godoc.org/github.com/zero-os/0-Disk/config#SlaveConfig
-[vdisksConfGodoc]: https://godoc.org/github.com/zero-os/0-Disk/config#VdisksConfig
+[vdisksconfigGodoc]: https://godoc.org/github.com/zero-os/0-Disk/config#VdisksConfig
 
 [baseconf]: #base-config
 [nbdconf]: #nbd-config
