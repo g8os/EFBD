@@ -8,4 +8,6 @@ package assets
 
 //go:generate dot -Tpng -o tlog_player_overview.png src/tlog_player_overview.dot
 
+//go:generate dot -Tpng -o config_overview_etcd.png src/config_overview_etcd.dot
+
 //go:generate dot -Tpng -o zerodisk_overview.png src/zerodisk_overview.dot

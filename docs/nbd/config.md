@@ -3,6 +3,7 @@
 The NBD server and its backend are configured using an etcd distributed key-value store.
 
 The 0-Disk Config package contains 4 subconfigs:
+
   * BaseConfig
   * NBDConfig
   * TlogConfig

@@ -1,0 +1,56 @@
+graph {
+    rankdir = "LR"
+    label = "configure using etcd"
+
+    user [ shape = "egg" ]
+
+    subgraph clusterETCD {
+        label = "etcd cluster"
+        style = "dotted"
+
+        config [
+            shape = "record"
+            label = "
+                <vdisks> zerodisk:conf:vdisks |
+                ... |
+                <base> ubuntu42:zerodisk:conf:base |
+                ... |
+                <nbd> ubuntu42:zerodisk:conf:nbd |
+                ... |
+                <tlog> ubuntu42:zerodisk:conf:tlog |
+                ... |
+                <slave> ubuntu42:zerodisk:conf:slave
+            "
+        ]
+    }
+
+    subgraph clusterZeroDisk {
+        label = "0-Disk"
+        style = "dotted"
+
+        vdisk [
+            shape = "box3d" 
+            label = "ubuntu42"
+        ]
+
+        nbdserver -- tlogserver [ style = "dashed" ]
+        nbdserver [
+            shape = "oval"
+            label = "NBD Server"
+        ]
+        tlogserver [
+            shape = "oval"
+            label = "TLog Server(s)"
+        ]
+    }
+
+    vdisk -- nbdserver [ label = "r/w" ]
+    nbdserver -- user [ label = "mount and use\nubuntu42 vdisk" ]
+
+    config:vdisks -- nbdserver [ label = "Get" ]
+    config:base -- nbdserver [ label = "Get" ]
+    config:nbd -- nbdserver [ label = "Get/Watch" ]
+
+    config:tlog -- tlogserver [ label = "Get/Watch" ]
+    config:slave -- tlogserver [ label = "Get/Watch" ]
+}
