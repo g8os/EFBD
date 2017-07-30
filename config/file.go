@@ -56,21 +56,15 @@ func WatchNBDConfigFile(ctx context.Context, vdiskID, path string) (<-chan NBDCo
 	updater := make(chan NBDConfig, 1)
 	updater <- *nbd
 
-	go watchConfigFile(ctx, path, func(cfg configFileFormat) {
-		vdiskCfg, err := cfg.VdiskConfig(vdiskID)
-		if err != nil {
-			log.Errorf("vdisk %s is not configured in %s", vdiskID, path)
-			return
-		}
-
-		if vdiskCfg.NBD == nil {
+	go watchConfigFile(ctx, vdiskID, path, func(cfg *vdiskConfigFileFormat) {
+		if cfg.NBD == nil {
 			log.Errorf("no nbd cfg in file %s, while nbd watcher requires it", path)
 			return
 		}
 
 		// send current data to channel
 		select {
-		case updater <- *vdiskCfg.NBD:
+		case updater <- *cfg.NBD:
 		// ensure we can't get stuck in a deadlock for this goroutine
 		case <-ctx.Done():
 		}
@@ -111,21 +105,15 @@ func WatchTlogConfigFile(ctx context.Context, vdiskID, path string) (<-chan Tlog
 	updater := make(chan TlogConfig, 1)
 	updater <- *tlog
 
-	go watchConfigFile(ctx, path, func(cfg configFileFormat) {
-		vdiskCfg, err := cfg.VdiskConfig(vdiskID)
-		if err != nil {
-			log.Errorf("vdisk %s is not configured in %s", vdiskID, path)
-			return
-		}
-
-		if vdiskCfg.Tlog == nil {
+	go watchConfigFile(ctx, vdiskID, path, func(cfg *vdiskConfigFileFormat) {
+		if cfg.Tlog == nil {
 			log.Errorf("no tlog cfg in file %s, while tlog watcher requires it", path)
 			return
 		}
 
 		// send current data to channel
 		select {
-		case updater <- *vdiskCfg.Tlog:
+		case updater <- *cfg.Tlog:
 		// ensure we can't get stuck in a deadlock for this goroutine
 		case <-ctx.Done():
 		}
@@ -166,21 +154,15 @@ func WatchSlaveConfigFile(ctx context.Context, vdiskID, path string) (<-chan Sla
 	updater := make(chan SlaveConfig, 1)
 	updater <- *slave
 
-	go watchConfigFile(ctx, path, func(cfg configFileFormat) {
-		vdiskCfg, err := cfg.VdiskConfig(vdiskID)
-		if err != nil {
-			log.Errorf("vdisk %s is not configured in %s", vdiskID, path)
-			return
-		}
-
-		if vdiskCfg.Slave == nil {
+	go watchConfigFile(ctx, vdiskID, path, func(cfg *vdiskConfigFileFormat) {
+		if cfg.Slave == nil {
 			log.Errorf("no slave cfg in file %s, while slave watcher requires it", path)
 			return
 		}
 
 		// send current data to channel
 		select {
-		case updater <- *vdiskCfg.Slave:
+		case updater <- *cfg.Slave:
 		// ensure we can't get stuck in a deadlock for this goroutine
 		case <-ctx.Done():
 		}
@@ -205,70 +187,16 @@ func ReadVdisksConfigFile(path string) (*VdisksConfig, error) {
 	return vdisksConfig, nil
 }
 
-// WatchVdisksConfigFile listens to SIGHUP for updates
-// sends the current config to the channel when created
-func WatchVdisksConfigFile(ctx context.Context, path string) (<-chan VdisksConfig, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	// fetch current data
-	vdisks, err := ReadVdisksConfigFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("Could not fetch initial VdisksConfig for VdisksConfig watcher: %s", err)
-	}
-
-	// setup channel
-	updater := make(chan VdisksConfig, 1)
-	updater <- *vdisks
-
-	go watchConfigFile(ctx, path, func(cfg configFileFormat) {
-		// send current data to channel
-		select {
-		case updater <- VdisksConfig{List: cfg.ListVdisks()}:
-		// ensure we can't get stuck in a deadlock for this goroutine
-		case <-ctx.Done():
-		}
-	})
-
-	return updater, nil
-}
-
 // configFile represents a config using a YAML file as source
 type configFileFormat map[string]vdiskConfigFileFormat
 
-func (cfg configFileFormat) ListVdisks() (ids []string) {
-	for id := range cfg {
-		ids = append(ids, id)
-	}
-	return
-}
-
-func (cfg configFileFormat) VdiskConfig(vdiskID string) (*vdiskConfigFileFormat, error) {
-	vdiskCfg, ok := cfg[vdiskID]
-	if !ok {
-		return nil, fmt.Errorf(
-			"vdisk %s wasn't specified in the given YAML config", vdiskID)
+func (cfg *configFileFormat) Bytes() ([]byte, error) {
+	res, err := yaml.Marshal(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to turn config into bytes: %v", err)
 	}
 
-	err := vdiskCfg.Base.Validate()
-	if err != nil {
-		return nil, fmt.Errorf("invalid base configuration: %s", err)
-	}
-	err = vdiskCfg.NBD.Validate(vdiskCfg.Base.Type)
-	if err != nil {
-		return nil, fmt.Errorf("invalid nbd configuration: %s", err)
-	}
-	err = vdiskCfg.Tlog.Validate()
-	if err != nil {
-		return nil, fmt.Errorf("invalid tlog configuration: %s", err)
-	}
-	err = vdiskCfg.Slave.Validate()
-	if err != nil {
-		return nil, fmt.Errorf("invalid slave configuration: %s", err)
-	}
-
-	return &vdiskCfg, nil
+	return res, nil
 }
 
 // vdiskConfigFileFormat represents a vdisk's config
@@ -280,11 +208,16 @@ type vdiskConfigFileFormat struct {
 	Slave *SlaveConfig `yaml:"slave" valid:"optional"`
 }
 
+// stub for testing
+var readFile = func(path string) ([]byte, error) {
+	return ioutil.ReadFile(path)
+}
+
 // readVdiskConfigFile creates a vdisk config from yaml byte slice
 // also used for testing config and etcd
 func readVdiskConfigFile(vdiskID string, path string) (*vdiskConfigFileFormat, error) {
 	// read file
-	bytes, err := ioutil.ReadFile(path)
+	bytes, err := readFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't read from the config file: %s", err.Error())
 	}
@@ -292,11 +225,44 @@ func readVdiskConfigFile(vdiskID string, path string) (*vdiskConfigFileFormat, e
 	return readVdiskConfigBytes(vdiskID, bytes)
 }
 
+// readVdiskConfigBytes marchals vdisk config from bytes, validate and return
+func readVdiskConfigBytes(vdiskID string, bytes []byte) (*vdiskConfigFileFormat, error) {
+	fileCfg, err := readFullConfigBytes(bytes)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg, ok := (*fileCfg)[vdiskID]
+	if !ok {
+		return nil, fmt.Errorf(
+			"vdisk %s wasn't specified in the given YAML config", vdiskID)
+	}
+
+	err = cfg.Base.Validate()
+	if err != nil {
+		return nil, fmt.Errorf("invalid base configuration: %s", err)
+	}
+	err = cfg.NBD.Validate(cfg.Base.Type)
+	if err != nil {
+		return nil, fmt.Errorf("invalid nbd configuration: %s", err)
+	}
+	err = cfg.Tlog.Validate()
+	if err != nil {
+		return nil, fmt.Errorf("invalid tlog configuration: %s", err)
+	}
+	err = cfg.Slave.Validate()
+	if err != nil {
+		return nil, fmt.Errorf("invalid slave configuration: %s", err)
+	}
+
+	return &cfg, nil
+}
+
 // readFullConfigFile creates a full config from yaml byte slice
 // also used for testing config and etcd
 func readFullConfigFile(path string) (*configFileFormat, error) {
 	// read file
-	bytes, err := ioutil.ReadFile(path)
+	bytes, err := readFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't read from the config file: %s", err.Error())
 	}
@@ -320,17 +286,8 @@ func readFullConfigBytes(bytes []byte) (*configFileFormat, error) {
 	return fileCfg, nil
 }
 
-func readVdiskConfigBytes(vdiskID string, bytes []byte) (*vdiskConfigFileFormat, error) {
-	fileCfg, err := readFullConfigBytes(bytes)
-	if err != nil {
-		return nil, err
-	}
-
-	return fileCfg.VdiskConfig(vdiskID)
-}
-
 // watchConfigFile watches for SIGHUP and updates subconfig
-func watchConfigFile(ctx context.Context, path string, useConfig func(configFileFormat)) {
+func watchConfigFile(ctx context.Context, vdiskID, path string, useConfig func(*vdiskConfigFileFormat)) {
 	// setup SIGHUP
 	sighup := make(chan os.Signal)
 	signal.Notify(sighup, syscall.SIGHUP)
@@ -347,9 +304,9 @@ func watchConfigFile(ctx context.Context, path string, useConfig func(configFile
 		case <-sighup:
 			log.Debug("Received SIGHUP for: ", path)
 			// read config file
-			cfg, err := readFullConfig(path)
+			cfg, err := readVdiskConfigFile(vdiskID, path)
 			if err != nil {
-				log.Errorf("Could not read config file: %s", err)
+				log.Errorf("Could not get config from file: %s", err)
 				continue
 			}
 
@@ -359,21 +316,13 @@ func watchConfigFile(ctx context.Context, path string, useConfig func(configFile
 	}
 }
 
-func readFullConfig(path string) (configFileFormat, error) {
-	// read file
-	bytes, err := ioutil.ReadFile(path)
+// get config file permission
+// we need it because we want to rewrite it.
+// better to write it with same permission
+func filePerm(path string) (os.FileMode, error) {
+	info, err := os.Stat(path)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't read from the config file: %s", err.Error())
+		return 0, err
 	}
-
-	cfgFile := make(configFileFormat)
-
-	// unmarshal the yaml content
-	err = yaml.Unmarshal(bytes, &cfgFile)
-	if err != nil {
-		return nil, fmt.Errorf("could not unmarshal provided bytes: %v", err)
-	}
-
-	return cfgFile, nil
-
+	return info.Mode(), nil
 }

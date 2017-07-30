@@ -2,16 +2,10 @@ package config
 
 import (
 	"context"
-	"fmt"
-	"io/ioutil"
-	"os"
 	"sync"
 	"syscall"
 	"testing"
 
-	"time"
-
-	"github.com/go-yaml/yaml"
 	"github.com/stretchr/testify/assert"
 	"github.com/zero-os/0-Disk/log"
 )
@@ -20,17 +14,15 @@ const (
 	vdiskID = "testVdisk"
 )
 
-func TestFileSourceRead(t *testing.T) {
-	// setup yaml file
-	// write
-	testfile, err := ioutil.TempFile("", "testconfig")
-	_, err = testfile.Write([]byte(validYAMLSourceStr))
-	if !assert.NoError(t, err) {
-		return
-	}
-	defer os.Remove(testfile.Name())
+// acts as the file for testing
+var testFile []byte
 
-	base, err := ReadBaseConfigFile(vdiskID, testfile.Name())
+func TestFileSourceRead(t *testing.T) {
+	// for testing, the path can be left empty, the data will be read from testFile
+	testFile = []byte(validYAMLSourceStr)
+
+	// get base
+	base, err := ReadBaseConfigFile(vdiskID, "")
 	if !assert.NoError(t, err) || !assert.NotNil(t, base) {
 		return
 	}
@@ -41,7 +33,7 @@ func TestFileSourceRead(t *testing.T) {
 	assert.Equal(t, VdiskTypeDB, base.Type)
 
 	// get NBDConfig
-	base, nbd, err := ReadNBDConfigFile(vdiskID, testfile.Name())
+	base, nbd, err := ReadNBDConfigFile(vdiskID, "")
 	if !assert.NoError(t, err) || !assert.NotNil(t, nbd) {
 		return
 	}
@@ -60,7 +52,7 @@ func TestFileSourceRead(t *testing.T) {
 	assert.Equal(t, 0, nbd.TemplateStorageCluster.DataStorage[0].Database)
 
 	// get TlogConfig
-	tlog, err := ReadTlogConfigFile(vdiskID, testfile.Name())
+	tlog, err := ReadTlogConfigFile(vdiskID, "")
 	if !assert.NoError(t, err) || !assert.NotNil(t, tlog) {
 		return
 	}
@@ -71,7 +63,7 @@ func TestFileSourceRead(t *testing.T) {
 	assert.Equal(t, 8, tlog.TlogStorageCluster.MetadataStorage.Database)
 
 	// get SlaveConfig
-	slave, err := ReadSlaveConfigFile(vdiskID, testfile.Name())
+	slave, err := ReadSlaveConfigFile(vdiskID, "")
 	if !assert.NoError(t, err) || !assert.NotNil(t, slave) {
 		return
 	}
@@ -83,22 +75,16 @@ func TestFileSourceRead(t *testing.T) {
 }
 
 func TestFileSourceInvalidRead(t *testing.T) {
-	// check if error is returned when reading non existing file
-	// setup temp dir with non existing yamlfile path
-	tempdir, err := ioutil.TempDir("", "doesnotcontainyamlsource")
-	if !assert.NoError(t, err) {
-		return
-	}
-	defer os.RemoveAll(tempdir)
-	nullPath := tempdir + "/doesntexist.yaml"
+	testFile = []byte("")
 
-	_, baseerr := ReadBaseConfigFile(vdiskID, nullPath)
-	_, _, nbderr := ReadNBDConfigFile(vdiskID, nullPath)
-	_, tlogerr := ReadTlogConfigFile(vdiskID, nullPath)
-	_, slaveerr := ReadSlaveConfigFile(vdiskID, nullPath)
+	// check if error is returned when reading empty file
+	_, baseerr := ReadBaseConfigFile(vdiskID, "")
+	_, _, nbderr := ReadNBDConfigFile(vdiskID, "")
+	_, tlogerr := ReadTlogConfigFile(vdiskID, "")
+	_, slaveerr := ReadSlaveConfigFile(vdiskID, "")
 
 	// check if error is returned when reading non empty file
-	log.Debugf("Errors reading from non existing file:\n base error: %s \n nbd error: %s \n tlog error: %s \n slave error: %s", baseerr, nbderr, tlogerr, slaveerr)
+	log.Debugf("Errors reading from empty file:\n base error: %s \n nbd error: %s \n tlog error: %s \n slave error: %s", baseerr, nbderr, tlogerr, slaveerr)
 	assert.Error(t, baseerr)
 	assert.Error(t, nbderr)
 	assert.Error(t, tlogerr)
@@ -111,19 +97,13 @@ func TestFileSourceInvalidRead(t *testing.T) {
 	b, _ := NewBaseConfig([]byte(validBaseStr))
 	vcfg.Base = *b
 	cfg[vdiskID] = vcfg
-	testfile, err := ioutil.TempFile("", "testonlybasedata")
-	if !assert.NoError(t, err) {
-		return
-	}
-	defer os.Remove(testfile.Name())
-
-	writeConfigFile(testfile.Name(), &cfg)
+	testFile, _ = cfg.Bytes()
 
 	// read
-	_, baseerr = ReadBaseConfigFile(vdiskID, testfile.Name())
-	_, _, nbderr = ReadNBDConfigFile(vdiskID, testfile.Name())
-	_, tlogerr = ReadTlogConfigFile(vdiskID, testfile.Name())
-	_, slaveerr = ReadSlaveConfigFile(vdiskID, testfile.Name())
+	_, baseerr = ReadBaseConfigFile(vdiskID, "")
+	_, _, nbderr = ReadNBDConfigFile(vdiskID, "")
+	_, tlogerr = ReadTlogConfigFile(vdiskID, "")
+	_, slaveerr = ReadSlaveConfigFile(vdiskID, "")
 
 	// check if error is returned when reading non empty file
 	// base should be fine tho
@@ -135,71 +115,38 @@ func TestFileSourceInvalidRead(t *testing.T) {
 
 	// write only nbd config
 	// missing base should make it fail
-	nobasefile, err := ioutil.TempFile("", "testnobasedata")
-	if !assert.NoError(t, err) {
-		return
-	}
-	defer os.Remove(nobasefile.Name())
-	vcfg.Base = *new(BaseConfig)
+	vcfg = *new(vdiskConfigFileFormat)
 	vcfg.NBD, _ = NewNBDConfig([]byte(validNBDStr), b.Type)
 	cfg[vdiskID] = vcfg
-	writeConfigFile(nobasefile.Name(), &cfg)
+	testFile, _ = cfg.Bytes()
 
-	_, _, nbderr = ReadNBDConfigFile(vdiskID, nobasefile.Name())
+	_, _, nbderr = ReadNBDConfigFile(vdiskID, "")
 	log.Debugf("Error from reading NBD with missing BaseConfig: %s", nbderr)
 	assert.Error(t, nbderr)
 
 	// write invalid nbd config
-	invalnbdfile, err := ioutil.TempFile("", "testinvalnbddata")
-	if !assert.NoError(t, err) {
-		return
-	}
-	defer os.Remove(invalnbdfile.Name())
-	invalnbdfile.Write([]byte(invalidNBDServerConfigs[4]))
-
-	_, _, nbderr = ReadNBDConfigFile(vdiskID, invalnbdfile.Name())
+	testFile = []byte(invalidNBDServerConfigs[4])
+	_, _, nbderr = ReadNBDConfigFile(vdiskID, "")
 	log.Debugf("Error from reading invalid NBD: %s", nbderr)
 	assert.Error(t, nbderr)
 
 	// write invalid tlog config
-	invaltlogfile, err := ioutil.TempFile("", "testinvaltlogdata")
-	if !assert.NoError(t, err) {
-		return
-	}
-	defer os.Remove(invaltlogfile.Name())
-	invaltlogfile.Write([]byte(invalidNBDServerConfigs[7]))
-
-	_, tlogerr = ReadTlogConfigFile(vdiskID, invaltlogfile.Name())
+	testFile = []byte(invalidNBDServerConfigs[7])
+	_, tlogerr = ReadTlogConfigFile(vdiskID, "")
 	log.Debugf("Error from reading invalid Tlog: %s", tlogerr)
 	assert.Error(t, tlogerr)
 
 	// write invalid slave config
-	invalslavefile, err := ioutil.TempFile("", "testinvalslavedata")
-	if !assert.NoError(t, err) {
-		return
-	}
-	defer os.Remove(invalslavefile.Name())
-	invalslavefile.Write([]byte(invalidNBDServerConfigs[8]))
-
-	_, slaveerr = ReadSlaveConfigFile(vdiskID, invalslavefile.Name())
+	testFile = []byte(invalidNBDServerConfigs[8])
+	_, slaveerr = ReadSlaveConfigFile(vdiskID, "")
 	log.Debugf("Error from reading invalid Slave: %s", slaveerr)
 	assert.Error(t, slaveerr)
 }
 
 func TestFileSourceWatch(t *testing.T) {
-	// give the goroutines time to close
-	time.Sleep(10 * time.Millisecond)
-	// setup yaml file
-	// write
-	testfile, err := ioutil.TempFile("", "testconfigwatchersdata")
-	_, err = testfile.Write([]byte(validYAMLSourceStr))
-	if !assert.NoError(t, err) {
-		return
-	}
-	defer os.Remove(testfile.Name())
-
-	// get current values
-	cfg, err := readVdiskConfigFile(vdiskID, testfile.Name())
+	// get start values
+	testFile = []byte(validYAMLSourceStr)
+	cfg, err := readVdiskConfigFile(vdiskID, "")
 	if !assert.NoError(t, err) || !assert.NotNil(t, cfg) {
 		return
 	}
@@ -219,9 +166,9 @@ func TestFileSourceWatch(t *testing.T) {
 		slave SlaveConfig
 		lock  sync.RWMutex
 	)
-	nbdUpdate, err := WatchNBDConfigFile(ctxnbd, vdiskID, testfile.Name())
-	tlogUpdate, err := WatchTlogConfigFile(ctxtlog, vdiskID, testfile.Name())
-	slaveUpdate, err := WatchSlaveConfigFile(ctxslave, vdiskID, testfile.Name())
+	nbdUpdate, err := WatchNBDConfigFile(ctxnbd, vdiskID, "")
+	tlogUpdate, err := WatchTlogConfigFile(ctxtlog, vdiskID, "")
+	slaveUpdate, err := WatchSlaveConfigFile(ctxslave, vdiskID, "")
 
 	go func() {
 		for {
@@ -246,24 +193,19 @@ func TestFileSourceWatch(t *testing.T) {
 	}()
 
 	// setup new values
-	newBase, err := NewBaseConfig([]byte(validBaseStr))
-	newNBD, err := NewNBDConfig([]byte(validNBDStr), newBase.Type)
-	newTlog, err := NewTlogConfig([]byte(validTlogStr))
-	newSlave, err := NewSlaveConfig([]byte(validSlaveStr))
-
-	// send updates
-	err = writeNBDConfigFile(vdiskID, testfile.Name(), newNBD, newBase.Type)
-	err = writeTlogConfigFile(vdiskID, testfile.Name(), newTlog)
-	err = writeSlaveConfigFile(vdiskID, testfile.Name(), newSlave)
-	if !assert.NoError(t, err) {
-		return
-	}
+	cfgBuf := make(configFileFormat)
+	var vcfg vdiskConfigFileFormat
+	b, _ := NewBaseConfig([]byte(validBaseStr)) // just to have a valid base config
+	newNBD, _ := NewNBDConfig([]byte(validNBDStr), VdiskTypeCache)
+	newTlog, _ := NewTlogConfig([]byte(validTlogStr))
+	newSlave, _ := NewSlaveConfig([]byte(validSlaveStr))
+	vcfg.Base = *b
+	cfgBuf[vdiskID] = vcfg
+	println(cfgBuf)
+	testFile, _ = cfgBuf.Bytes()
 
 	// send SIGHUP
 	syscall.Kill(syscall.Getpid(), syscall.SIGHUP)
-
-	// wait a bit
-	time.Sleep(100 * time.Millisecond)
 
 	// check if values are updated
 	lock.RLock()
@@ -286,47 +228,17 @@ func TestFileSourceWatch(t *testing.T) {
 }
 
 func TestInvalidFileSourceWatch(t *testing.T) {
-	// give the goroutines time to close
-	time.Sleep(10 * time.Millisecond)
-
-	// setup temp dir with non existing yamlfile path
-	tempdir, err := ioutil.TempDir("", "doesnotcontainyamlsource")
-	if !assert.NoError(t, err) {
-		return
-	}
-	defer os.RemoveAll(tempdir)
-	nullPath := tempdir + "/doesntexist.yaml"
-
-	// try and read, it should fail
-	ctxNullnbd, cancelNullnbd := context.WithCancel(context.Background())
-	ctxNulltlog, cancelNulltlog := context.WithCancel(context.Background())
-	ctxNullslave, cancelNullslave := context.WithCancel(context.Background())
-	_, errNullnbd := WatchNBDConfigFile(ctxNullnbd, vdiskID, nullPath)
-	_, errNulltlog := WatchTlogConfigFile(ctxNulltlog, vdiskID, nullPath)
-	_, errNullslave := WatchSlaveConfigFile(ctxNullslave, vdiskID, nullPath)
-	cancelNullnbd()
-	cancelNulltlog()
-	cancelNullslave()
-
-	log.Debugf("Errors from non existing file:\n nbd error: %s \n tlog error: %s \n slave error: %s", errNullnbd, errNulltlog, errNullslave)
-	if !assert.Error(t, errNullnbd) || !assert.Error(t, errNulltlog) || !assert.Error(t, errNullslave) {
-		return
-	}
 
 	// setup empty yaml file
-	emptyfile, err := ioutil.TempFile("", "testemptyconfigwatchersdata")
-	if !assert.NoError(t, err) {
-		return
-	}
-	defer os.Remove(emptyfile.Name())
+	testFile = []byte("")
 
 	// try and read the file, it should fail
 	ctxEmptynbd, cancelEmptynbd := context.WithCancel(context.Background())
 	ctxEmptytlog, cancelEmptytlog := context.WithCancel(context.Background())
 	ctxEmptyslave, cancelEmptyslave := context.WithCancel(context.Background())
-	_, errnbd := WatchNBDConfigFile(ctxEmptynbd, vdiskID, emptyfile.Name())
-	_, errtlog := WatchTlogConfigFile(ctxEmptytlog, vdiskID, emptyfile.Name())
-	_, errslave := WatchSlaveConfigFile(ctxEmptyslave, vdiskID, emptyfile.Name())
+	_, errnbd := WatchNBDConfigFile(ctxEmptynbd, vdiskID, "")
+	_, errtlog := WatchTlogConfigFile(ctxEmptytlog, vdiskID, "")
+	_, errslave := WatchSlaveConfigFile(ctxEmptyslave, vdiskID, "")
 	cancelEmptynbd()
 	cancelEmptytlog()
 	cancelEmptyslave()
@@ -336,31 +248,70 @@ func TestInvalidFileSourceWatch(t *testing.T) {
 		return
 	}
 
-	// setup yaml file with invalid configs
+	// setup yaml file with valid configs later replace with invalid
 	// write
-	testfile, err := ioutil.TempFile("", "testinvalidconfigwatchersdata")
-	_, err = testfile.Write([]byte(validYAMLSourceStr))
-	if !assert.NoError(t, err) {
-		return
-	}
-	defer os.Remove(testfile.Name())
+	testFile = []byte(validYAMLSourceStr)
 
 	// get current values
-	cfg, err := readVdiskConfigFile(vdiskID, testfile.Name())
+	cfg, err := readVdiskConfigFile(vdiskID, "")
 	if !assert.NoError(t, err) || !assert.NotNil(t, cfg) {
 		return
 	}
 
+	// setup watchers
+	ctxnbd, cancelnbd := context.WithCancel(context.Background())
+	ctxtlog, canceltlog := context.WithCancel(context.Background())
+	ctxslave, cancelslave := context.WithCancel(context.Background())
+	defer func() {
+		cancelnbd()
+		canceltlog()
+		cancelslave()
+	}()
+	var (
+		nbd   NBDConfig
+		tlog  TlogConfig
+		slave SlaveConfig
+		lock  sync.RWMutex
+	)
+	nbdUpdate, err := WatchNBDConfigFile(ctxnbd, vdiskID, "")
+	tlogUpdate, err := WatchTlogConfigFile(ctxtlog, vdiskID, "")
+	slaveUpdate, err := WatchSlaveConfigFile(ctxslave, vdiskID, "")
+
+	go func() {
+		for {
+			select {
+			case <-ctxnbd.Done():
+				return
+
+			case nnbd := <-nbdUpdate:
+				lock.Lock()
+				nbd = nnbd
+				lock.Unlock()
+			case ntlog := <-tlogUpdate:
+				lock.Lock()
+				tlog = ntlog
+				lock.Unlock()
+			case nslave := <-slaveUpdate:
+				lock.Lock()
+				slave = nslave
+				lock.Unlock()
+			}
+		}
+	}()
+
+	// update with invalid nbd data
+	testFile = []byte(invalidNBDServerConfigs[5])
+	syscall.Kill(syscall.Getpid(), syscall.SIGHUP)
+
+	// check if old values are persisted
+	assert.Equal(t, cfg.NBD.StorageCluster.DataStorage[0].Address, nbd.StorageCluster.DataStorage[0].Address)
+	assert.Equal(t, cfg.NBD.TemplateStorageCluster.DataStorage[0].Database, nbd.TemplateStorageCluster.DataStorage[0].Database)
+
 }
 
 func TestMissingConfigFileSourceWhileWatch(t *testing.T) {
-	// setup yaml file with missing configs
-	testmissfile, err := ioutil.TempFile("", "testmissingconfigwatchersdata")
-	_, err = testmissfile.Write([]byte(validYAMLSourceStr))
-	if !assert.NoError(t, err) {
-		return
-	}
-	defer os.Remove(testmissfile.Name())
+	// setup yaml file later, make data go missing
+	testFile = []byte(validYAMLSourceStr)
 
 	var (
 		nbd   NBDConfig
@@ -373,9 +324,9 @@ func TestMissingConfigFileSourceWhileWatch(t *testing.T) {
 	ctxnbd, cancelnbd := context.WithCancel(context.Background())
 	ctxtlog, canceltlog := context.WithCancel(context.Background())
 	ctxslave, cancelslave := context.WithCancel(context.Background())
-	nbdUpdate, errnbd := WatchNBDConfigFile(ctxnbd, vdiskID, testmissfile.Name())
-	tlogUpdate, errtlog := WatchTlogConfigFile(ctxtlog, vdiskID, testmissfile.Name())
-	slaveUpdate, errslave := WatchSlaveConfigFile(ctxslave, vdiskID, testmissfile.Name())
+	nbdUpdate, errnbd := WatchNBDConfigFile(ctxnbd, vdiskID, "")
+	tlogUpdate, errtlog := WatchTlogConfigFile(ctxtlog, vdiskID, "")
+	slaveUpdate, errslave := WatchSlaveConfigFile(ctxslave, vdiskID, "")
 	defer func() {
 		cancelnbd()
 		canceltlog()
@@ -408,13 +359,10 @@ func TestMissingConfigFileSourceWhileWatch(t *testing.T) {
 	}()
 
 	// remove configs
-	writeNBDConfigFile(vdiskID, testmissfile.Name(), nil, VdiskTypeDB)
-	writeTlogConfigFile(vdiskID, testmissfile.Name(), nil)
-	writeSlaveConfigFile(vdiskID, testmissfile.Name(), nil)
+	testFile = []byte("")
 
 	// send sighup
 	syscall.Kill(syscall.Getpid(), syscall.SIGHUP)
-	time.Sleep(100 * time.Millisecond)
 
 	// check if still original values
 	cfg, err := readVdiskConfigBytes(vdiskID, []byte(validYAMLSourceStr))
@@ -440,122 +388,19 @@ func TestMissingConfigFileSourceWhileWatch(t *testing.T) {
 }
 
 func TestFileSourceWatchNilCtx(t *testing.T) {
-	testfile, err := ioutil.TempFile("", "testconfigwatchersdata")
-	_, err = testfile.Write([]byte(validYAMLSourceStr))
-	if !assert.NoError(t, err) {
-		return
-	}
-	defer os.Remove(testfile.Name())
-	_, errnbd := WatchNBDConfigFile(nil, vdiskID, testfile.Name())
-	_, errtlog := WatchTlogConfigFile(nil, vdiskID, testfile.Name())
-	_, errslave := WatchSlaveConfigFile(nil, vdiskID, testfile.Name())
+	testFile = []byte(validYAMLSourceStr)
+	_, errnbd := WatchNBDConfigFile(nil, vdiskID, "")
+	_, errtlog := WatchTlogConfigFile(nil, vdiskID, "")
+	_, errslave := WatchSlaveConfigFile(nil, vdiskID, "")
 
 	assert.NoError(t, errnbd)
 	assert.NoError(t, errtlog)
 	assert.NoError(t, errslave)
 }
 
-// WriteNBDConfigFile writes a NBDConfig to file
-func writeNBDConfigFile(vdiskID, path string, nbd *NBDConfig, vdiskType VdiskType) error {
-	// validate
-	err := nbd.Validate(vdiskType)
-	if err != nil {
-		return fmt.Errorf("config to be written was not valid: %s", err)
+func init() {
+	// stub ioutil
+	readFile = func(path string) ([]byte, error) {
+		return testFile, nil
 	}
-
-	cfg, _ := readFullConfig(path)
-
-	// apply new subconfig
-	vdiskCfg := cfg[vdiskID]
-	vdiskCfg.NBD = nbd
-	cfg[vdiskID] = vdiskCfg
-
-	// write new config file
-	err = writeConfigFile(path, &cfg)
-	if err != nil {
-		return fmt.Errorf("could not write config file: %s", err)
-	}
-
-	return nil
-}
-
-// WriteTlogConfigFile writes a TlogConfig to file
-func writeTlogConfigFile(vdiskID, path string, tlog *TlogConfig) error {
-	// validate
-	err := tlog.Validate()
-	if err != nil {
-		return fmt.Errorf("config to be written was not valid: %s", err)
-	}
-
-	cfg, _ := readFullConfig(path)
-
-	// apply new subconfig
-	vdiskCfg := cfg[vdiskID]
-	vdiskCfg.Tlog = tlog
-	cfg[vdiskID] = vdiskCfg
-
-	// write new config file
-	err = writeConfigFile(path, &cfg)
-	if err != nil {
-		return fmt.Errorf("could not write config file: %s", err)
-	}
-
-	return nil
-}
-
-// WriteSlaveConfigFile writes a SlaveConfig to file
-func writeSlaveConfigFile(vdiskID, path string, slave *SlaveConfig) error {
-	// validate
-	err := slave.Validate()
-	if err != nil {
-		return fmt.Errorf("config to be written was not valid: %s", err)
-	}
-
-	cfg, _ := readFullConfig(path)
-
-	// apply new subconfig
-	vdiskCfg := cfg[vdiskID]
-	vdiskCfg.Slave = slave
-	cfg[vdiskID] = vdiskCfg
-
-	// write new config file
-	err = writeConfigFile(path, &cfg)
-	if err != nil {
-		return fmt.Errorf("could not write config file: %s", err)
-	}
-
-	return nil
-}
-
-// writeConfigFile writes the full config to the source file
-func writeConfigFile(path string, cfg *configFileFormat) error {
-	filePerm, err := filePerm(path)
-	if err != nil {
-		return err
-	}
-
-	// get bytes
-	bytes, err := yaml.Marshal(cfg)
-	if err != nil {
-		return err
-	}
-
-	// write
-	err = ioutil.WriteFile(path, bytes, filePerm)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// get config file permission
-// we need it because we want to rewrite it.
-// better to write it with same permission
-func filePerm(path string) (os.FileMode, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return 0, err
-	}
-	return info.Mode(), nil
 }
