@@ -90,7 +90,6 @@ See the [NBDConfig Godoc][nbdconfigGodoc] for more information about the interna
 [nbdprotocol]: https://github.com/NetworkBlockDevice/nbd/blob/master/doc/proto.md
 
 [etcd]: https://github.com/coreos/etcd
-[etcdwatch]: https://coreos.com/etcd/docs/latest/learning/api.html#watch-api
 
 [configDoc]: /docs/config.md
 [configetcd]: /docs/config.md#etcd
@@ -98,20 +97,14 @@ See the [NBDConfig Godoc][nbdconfigGodoc] for more information about the interna
 [vdisksconf]: /docs/config.md#vdisks-config
 [baseconf]: /docs/config.md#base-config
 [nbdconf]: /docs/config.md#nbd-config
-[tlogconf]: /docs/config.md#tlog-config
-[slaveconf]: /docs/config.md#slave-config
 [tlogserver]: /docs/tlog/server.md
 
 [metadata]: glossary.md#metadata
 [redundant]: glossary.md#redundant
 [data]: glossary.md#data
+[vdisk]: /docs/glossary.md#vdisk
 
 [configGodoc]:  https://godoc.org/github.com/zero-os/0-Disk/config
 [baseconfigGodoc]: https://godoc.org/github.com/zero-os/0-Disk/config#BaseConfig
 [nbdconfigGodoc]: https://godoc.org/github.com/zero-os/0-Disk/config#NBDConfig
-[tlogconfigGodoc]: https://godoc.org/github.com/zero-os/0-Disk/config#TlogConfig
-[slaveconfigGodoc]: https://godoc.org/github.com/zero-os/0-Disk/config#SlaveConfig
 [vdisksconfigGodoc]: https://godoc.org/github.com/zero-os/0-Disk/config#VdisksConfig
-
-
-[vdisk]: /docs/glossary.md#vdisk
