@@ -8,6 +8,11 @@ import (
 	"github.com/go-yaml/yaml"
 )
 
+const (
+	// gibibyteAsBytes is a constant used to convert between GiB and bytes
+	gibibyteAsBytes = 1024 * 1024 * 1024
+)
+
 // BaseConfig represents the basic vdisk info
 type BaseConfig struct {
 	BlockSize uint64    `yaml:"blockSize" valid:"required"`
@@ -52,10 +57,10 @@ func (base BaseConfig) Validate() error {
 	}
 
 	// check base properties
-	if base.BlockSize == 0 || base.BlockSize%2 != 0 {
-		return fmt.Errorf("%d is an invalid blockSize", base.BlockSize)
+	if x := base.BlockSize; x == 0 || (x&(x-1)) != 0 {
+		return fmt.Errorf("blockSize '%d' is not a power of 2, while that is required", base.BlockSize)
 	}
-	if base.Size == 0 {
+	if (base.Size * gibibyteAsBytes) < base.BlockSize {
 		return fmt.Errorf("%d is an invalid size", base.Size)
 	}
 	err = base.Type.Validate()
@@ -138,7 +143,7 @@ func (nbd *NBDConfig) Validate(vdiskType VdiskType) error {
 
 // TlogConfig represents a tlog storage configuration
 type TlogConfig struct {
-	StorageCluster StorageClusterConfig `yaml:"storageCluster" valid:"optional"`
+	StorageCluster StorageClusterConfig `yaml:"storageCluster" valid:"required"`
 	SlaveSync      bool                 `yaml:"slaveSync" valid:"optional"`
 }
 
@@ -189,7 +194,7 @@ func (tlog *TlogConfig) Validate() error {
 
 // SlaveConfig represents a backup storage configuration
 type SlaveConfig struct {
-	StorageCluster StorageClusterConfig `yaml:"storageCluster" valid:"optional"`
+	StorageCluster StorageClusterConfig `yaml:"storageCluster" valid:"required"`
 }
 
 // NewSlaveConfig creates a new Slaveconfig from byte slice in YAML 1.2 format
