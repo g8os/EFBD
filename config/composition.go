@@ -17,8 +17,8 @@ type NBDStorageConfig struct {
 	TemplateVdiskID        string
 }
 
-// Validate the optional properties of this config,
-// using the VdiskType information.
+// Validate all properties of this config,
+// using the Storage Type information for the optional properties.
 func (cfg *NBDStorageConfig) Validate(storageType StorageType) error {
 	// validate primary storage cluster
 	err := cfg.StorageCluster.Validate()
@@ -45,6 +45,12 @@ func (cfg *NBDStorageConfig) Validate(storageType StorageType) error {
 		}
 	}
 
+	return cfg.ValidateOptional(storageType)
+}
+
+// ValidateOptional validates the optional properties of this config,
+// using the Storage Type information.
+func (cfg *NBDStorageConfig) ValidateOptional(storageType StorageType) error {
 	// both deduped and semideduped storage types require
 	// a metadata server to be defined
 	if storageType != StorageNonDeduped &&
@@ -56,6 +62,24 @@ func (cfg *NBDStorageConfig) Validate(storageType StorageType) error {
 
 	// composed config is valid
 	return nil
+}
+
+// Clone this config
+func (cfg *NBDStorageConfig) Clone() NBDStorageConfig {
+	var clone NBDStorageConfig
+	if cfg == nil {
+		return clone
+	}
+
+	clone.StorageCluster = cfg.StorageCluster.Clone()
+
+	if cfg.TemplateStorageCluster != nil {
+		templateClone := cfg.TemplateStorageCluster.Clone()
+		clone.TemplateStorageCluster = &templateClone
+		clone.TemplateVdiskID = cfg.TemplateVdiskID
+	}
+
+	return clone
 }
 
 // TlogStorageConfig contains all information needed
@@ -75,9 +99,18 @@ func (cfg *TlogStorageConfig) Validate(storageType StorageType) error {
 			"invalid TlogStorageConfig, invalid tlog storage cluster: %v", err)
 	}
 
+	return cfg.ValidateOptional(storageType)
+}
+
+// ValidateOptional validates the optional properties of this config,
+// using the Storage Type information.
+func (cfg *TlogStorageConfig) ValidateOptional(storageType StorageType) error {
+	// both deduped and semideduped storage types require
+	// a metadata server to be defined for the slave cluster,
+	// if one is given
 	if cfg.SlaveStorageCluster != nil {
 		// ensure it is valid
-		err = cfg.SlaveStorageCluster.Validate()
+		err := cfg.SlaveStorageCluster.Validate()
 		if err != nil {
 			return fmt.Errorf(
 				"invalid TlogStorageConfig, invalid slave storage cluster: %v", err)
@@ -95,4 +128,11 @@ func (cfg *TlogStorageConfig) Validate(storageType StorageType) error {
 
 	// composed config is valid
 	return nil
+}
+
+// TlogStorageConfigResult is the result returned over
+// a channel when watching a TlogStorageConfig.
+type TlogStorageConfigResult struct {
+	Value *TlogStorageConfig
+	Error error
 }

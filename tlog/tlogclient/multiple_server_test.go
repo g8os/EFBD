@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/zero-os/0-Disk"
+	zerodiskcfg "github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/redisstub"
 	"github.com/zero-os/0-Disk/tlog"
@@ -263,7 +263,7 @@ func createTestTlogServer(ctx context.Context, vdiskID string,
 	for _, stor := range stors {
 		addrs = append(addrs, stor.Address())
 	}
-	serverConfigs, err := zerodisk.ParseCSStorageServerConfigStrings(strings.Join(addrs, ","))
+	serverConfigs, err := zerodiskcfg.ParseCSStorageServerConfigStrings(strings.Join(addrs, ","))
 	if err != nil {
 		return nil, nil, nil, err
 	}

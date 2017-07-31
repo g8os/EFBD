@@ -1,10 +1,8 @@
 package zerodisk
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	valid "github.com/asaskevich/govalidator"
@@ -45,52 +43,6 @@ type ConfigInfo struct {
 	ResourceType ConfigResourceType
 }
 
-// Ping the given config resource,
-// to see if it is available and ready to fetch subconfigs from.
-func (info *ConfigInfo) Ping() error {
-	// check if the given config file path points to a usable file
-	if info.ResourceType == FileConfigResource {
-		path, err := fileResource(info.Resource)
-		if err != nil {
-			return fmt.Errorf(
-				"can't ping, as file config info is invalid: %v", err)
-		}
-
-		// check if the file exists, we can open it, we can parse it and
-		// whether or not it contains the vdisks key
-		if _, err := config.ReadVdisksConfigFile(path); err != nil {
-			return fmt.Errorf(
-				"file %s can't be opened or is invalid: %v",
-				path, err)
-		}
-
-		// config file be opened, is valid, and contains the vdisks key,
-		// profit!
-		return nil
-	}
-
-	// for all other resource type value we'll assume it's the etcd resource
-
-	// connect to etcd and see if it contains the vdisks key value
-	endpoints, err := etcdResource(info.Resource)
-	if err != nil {
-		return fmt.Errorf(
-			"can't ping, as etcd config info is invalid: %v", err)
-	}
-
-	// check if the etcd cluster can be reached,
-	// and whether or not it contains the vdisks key
-	if _, err := config.ReadVdisksConfigETCD(endpoints); err != nil {
-		return fmt.Errorf(
-			"etcd can't be reached at %v or is missing the vdisks config: %v",
-			endpoints, err)
-	}
-
-	// etcd cluster can be reached and contains the vdisks key,
-	// profit!
-	return nil
-}
-
 // Validate this ConfigInfo struct.
 func (info *ConfigInfo) Validate() error {
 	if info.ResourceType != FileConfigResource && info.Resource == nil {
@@ -98,6 +50,25 @@ func (info *ConfigInfo) Validate() error {
 	}
 
 	return nil
+}
+
+// CreateSource creates a source based on the config
+func (info *ConfigInfo) CreateSource() (config.Source, error) {
+	if info.ResourceType == FileConfigResource {
+		path, err := fileResource(info.Resource)
+		if err != nil {
+			return nil, fmt.Errorf("can't create config source: %v", err)
+		}
+
+		return config.FileSource(path)
+	}
+
+	endpoints, err := etcdResource(info.Resource)
+	if err != nil {
+		return nil, fmt.Errorf("can't create config source: %v", err)
+	}
+
+	return config.ETCDV3Source(endpoints)
 }
 
 // String implements Stringer.String
@@ -268,306 +239,6 @@ func etcdResourceToString(value interface{}) (string, error) {
 
 	return "", fmt.Errorf(
 		"etcd config info: '%v' is not a valid etcd resource", value)
-}
-
-// ReadBaseConfig reads a vdisk's base config from a given config resource
-func ReadBaseConfig(vdiskID string, info ConfigInfo) (*config.BaseConfig, error) {
-	if err := info.Validate(); err != nil {
-		return nil, err
-	}
-	if vdiskID == "" {
-		return nil, ErrNoVdiskID
-	}
-
-	if info.ResourceType == FileConfigResource {
-		path, err := fileResource(info.Resource)
-		if err != nil {
-			return nil, err
-		}
-		return config.ReadBaseConfigFile(vdiskID, path)
-	}
-
-	// for all other resource type value we'll assume it's the etcd resource
-
-	endpoints, err := etcdResource(info.Resource)
-	if err != nil {
-		return nil, err
-	}
-	return config.ReadBaseConfigETCD(vdiskID, endpoints)
-}
-
-// ReadNBDConfig reads a vdisk's NBD config from a given config resource
-func ReadNBDConfig(vdiskID string, info ConfigInfo) (*config.BaseConfig, *config.NBDConfig, error) {
-	if err := info.Validate(); err != nil {
-		return nil, nil, err
-	}
-	if vdiskID == "" {
-		return nil, nil, ErrNoVdiskID
-	}
-
-	if info.ResourceType == FileConfigResource {
-		path, err := fileResource(info.Resource)
-		if err != nil {
-			return nil, nil, err
-		}
-		return config.ReadNBDConfigFile(vdiskID, path)
-	}
-
-	// for all other resource type value we'll assume it's the etcd resource
-
-	endpoints, err := etcdResource(info.Resource)
-	if err != nil {
-		return nil, nil, err
-	}
-	return config.ReadNBDConfigETCD(vdiskID, endpoints)
-}
-
-// WatchNBDConfig allows you to receive an initial NBD Config over a channel,
-// and a new NBD Config every time its resource is updated.
-func WatchNBDConfig(ctx context.Context, vdiskID string, info ConfigInfo) (<-chan config.NBDConfig, error) {
-	if err := info.Validate(); err != nil {
-		return nil, err
-	}
-	if vdiskID == "" {
-		return nil, ErrNoVdiskID
-	}
-
-	if info.ResourceType == FileConfigResource {
-		path, err := fileResource(info.Resource)
-		if err != nil {
-			return nil, err
-		}
-		return config.WatchNBDConfigFile(ctx, vdiskID, path)
-	}
-
-	// for all other resource type value we'll assume it's the etcd resource
-
-	endpoints, err := etcdResource(info.Resource)
-	if err != nil {
-		return nil, err
-	}
-	return config.WatchNBDConfigETCD(ctx, vdiskID, endpoints)
-}
-
-// ReadTlogConfig reads a vdisk's TLog config from a given config resource
-func ReadTlogConfig(vdiskID string, info ConfigInfo) (*config.TlogConfig, error) {
-	if err := info.Validate(); err != nil {
-		return nil, err
-	}
-	if vdiskID == "" {
-		return nil, ErrNoVdiskID
-	}
-
-	if info.ResourceType == FileConfigResource {
-		path, err := fileResource(info.Resource)
-		if err != nil {
-			return nil, err
-		}
-		return config.ReadTlogConfigFile(vdiskID, path)
-	}
-
-	// for all other resource type value we'll assume it's the etcd resource
-
-	endpoints, err := etcdResource(info.Resource)
-	if err != nil {
-		return nil, err
-	}
-	return config.ReadTlogConfigETCD(vdiskID, endpoints)
-}
-
-// WatchTlogConfig allows you to receive an initial Tlog Config over a channel,
-// and a new TLog Config every time its resource is updated.
-func WatchTlogConfig(ctx context.Context, vdiskID string, info ConfigInfo) (<-chan config.TlogConfig, error) {
-	if err := info.Validate(); err != nil {
-		return nil, err
-	}
-	if vdiskID == "" {
-		return nil, ErrNoVdiskID
-	}
-
-	if info.ResourceType == FileConfigResource {
-		path, err := fileResource(info.Resource)
-		if err != nil {
-			return nil, err
-		}
-		return config.WatchTlogConfigFile(ctx, vdiskID, path)
-	}
-
-	// for all other resource type value we'll assume it's the etcd resource
-
-	endpoints, err := etcdResource(info.Resource)
-	if err != nil {
-		return nil, err
-	}
-	return config.WatchTlogConfigETCD(ctx, vdiskID, endpoints)
-}
-
-// ReadSlaveConfig reads a vdisk's slave config from a given config resource
-func ReadSlaveConfig(vdiskID string, info ConfigInfo) (*config.SlaveConfig, error) {
-	if err := info.Validate(); err != nil {
-		return nil, err
-	}
-	if vdiskID == "" {
-		return nil, ErrNoVdiskID
-	}
-
-	if info.ResourceType == FileConfigResource {
-		path, err := fileResource(info.Resource)
-		if err != nil {
-			return nil, err
-		}
-		return config.ReadSlaveConfigFile(vdiskID, path)
-	}
-
-	// for all other resource type value we'll assume it's the etcd resource
-
-	endpoints, err := etcdResource(info.Resource)
-	if err != nil {
-		return nil, err
-	}
-	return config.ReadSlaveConfigETCD(vdiskID, endpoints)
-}
-
-// WatchSlaveConfig allows you to receive an initial slave Config over a channel,
-// and a new slave Config every time its resource is updated.
-func WatchSlaveConfig(ctx context.Context, vdiskID string, info ConfigInfo) (<-chan config.SlaveConfig, error) {
-	if err := info.Validate(); err != nil {
-		return nil, err
-	}
-	if vdiskID == "" {
-		return nil, ErrNoVdiskID
-	}
-
-	if info.ResourceType == FileConfigResource {
-		path, err := fileResource(info.Resource)
-		if err != nil {
-			return nil, err
-		}
-		return config.WatchSlaveConfigFile(ctx, vdiskID, path)
-	}
-
-	// for all other resource type value we'll assume it's the etcd resource
-
-	endpoints, err := etcdResource(info.Resource)
-	if err != nil {
-		return nil, err
-	}
-	return config.WatchSlaveConfigETCD(ctx, vdiskID, endpoints)
-}
-
-// ReadVdisksConfig reads the vdisks config from a given config resource
-func ReadVdisksConfig(info ConfigInfo) (*config.VdisksConfig, error) {
-	if err := info.Validate(); err != nil {
-		return nil, err
-	}
-
-	if info.ResourceType == FileConfigResource {
-		path, err := fileResource(info.Resource)
-		if err != nil {
-			return nil, err
-		}
-		return config.ReadVdisksConfigFile(path)
-	}
-
-	// for all other resource type value we'll assume it's the etcd resource
-
-	endpoints, err := etcdResource(info.Resource)
-	if err != nil {
-		return nil, err
-	}
-	return config.ReadVdisksConfigETCD(endpoints)
-}
-
-// WatchVdisksConfig allows you to receive an initial vdisks Config over a channel,
-// and a new vdisks Config every time its resource is updated.
-func WatchVdisksConfig(ctx context.Context, info ConfigInfo) (<-chan config.VdisksConfig, error) {
-	if err := info.Validate(); err != nil {
-		return nil, err
-	}
-
-	if info.ResourceType == FileConfigResource {
-		path, err := fileResource(info.Resource)
-		if err != nil {
-			return nil, err
-		}
-		return config.WatchVdisksConfigFile(ctx, path)
-	}
-
-	// for all other resource type value we'll assume it's the etcd resource
-
-	endpoints, err := etcdResource(info.Resource)
-	if err != nil {
-		return nil, err
-	}
-	return config.WatchVdisksConfigETCD(ctx, endpoints)
-}
-
-// ParseStorageServerConfigString allows you to parse a raw dial config string.
-// Dial Config String are a simple format used to specify ardb connection configs
-// easily as a command line argument.
-// The format is as follows: `<ip>:<port>[@<db_index>]`,
-// where the db_index is optional.
-// The parsing algorithm of this function is very forgiving,
-// and returns an error only in case an invalid address is given.
-func ParseStorageServerConfigString(dialConfigString string) (config config.StorageServerConfig, err error) {
-	parts := strings.Split(dialConfigString, "@")
-	if n := len(parts); n < 2 {
-		config.Address = dialConfigString
-	} else {
-		config.Database, err = strconv.Atoi(parts[n-1])
-		if err != nil {
-			err = nil // ignore actual error
-			n++       // not a valid database, thus probably part of address
-		}
-		// join any other parts back together,
-		// if for some reason an @ sign makes part of the address
-		config.Address = strings.Join(parts[:n-1], "@")
-	}
-
-	if !valid.IsDialString(config.Address) {
-		err = fmt.Errorf("%s is not a valid storage address", config.Address)
-	}
-
-	return
-}
-
-// ParseCSStorageServerConfigStrings allows you to parse a slice of raw dial config strings.
-// Dial Config Strings are a simple format used to specify ardb connection configs
-// easily as a command line argument.
-// The format is as follows: `<ip>:<port>[@<db_index>][,<ip>:<port>[@<db_index>]]`,
-// where the db_index is optional, and you can give multiple configs by
-// seperating them with a comma.
-// The parsing algorithm of this function is very forgiving,
-// and returns an error only in case an invalid address is given.
-func ParseCSStorageServerConfigStrings(dialCSConfigString string) (configs []config.StorageServerConfig, err error) {
-	if dialCSConfigString == "" {
-		return nil, nil
-	}
-	dialConfigStrings := strings.Split(dialCSConfigString, ",")
-
-	var cfg config.StorageServerConfig
-
-	// convert all connection strings into ConnectionConfigs
-	for _, dialConfigString := range dialConfigStrings {
-		// remove whitespace around
-		dialConfigString = strings.TrimSpace(dialConfigString)
-
-		// trailing commas are allowed
-		if dialConfigString == "" {
-			continue
-		}
-
-		// parse one storage server config string
-		cfg, err = ParseStorageServerConfigString(dialConfigString)
-		if err != nil {
-			configs = nil
-			return
-		}
-
-		configs = append(configs, cfg)
-	}
-
-	return
 }
 
 const (

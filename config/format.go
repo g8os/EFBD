@@ -129,7 +129,7 @@ func NewVdiskNBDConfig(data []byte) (*VdiskNBDConfig, error) {
 
 // VdiskNBDConfig represents the nbdserver-related information for a vdisk.
 type VdiskNBDConfig struct {
-	StorageClusterClusterID  string `yaml:"storageClusterID" valid:"required"`
+	StorageClusterID         string `yaml:"storageClusterID" valid:"required"`
 	TemplateStorageClusterID string `yaml:"templateStorageClusterID" valid:"optional"`
 	TemplateVdiskID          string `yaml:"templateVdiskID" valid:"optional"`
 	TlogServerClusterID      string `yaml:"tlogServerClusterID" valid:"optional"`
@@ -230,6 +230,24 @@ func (cfg *StorageClusterConfig) Validate() error {
 	}
 
 	return nil
+}
+
+// Clone implements Cloner.Clone
+func (cfg *StorageClusterConfig) Clone() StorageClusterConfig {
+	var clone StorageClusterConfig
+	if cfg == nil {
+		return clone
+	}
+
+	clone.DataStorage = make([]StorageServerConfig, len(clone.DataStorage))
+	copy(clone.DataStorage, cfg.DataStorage)
+
+	if cfg.MetadataStorage != nil {
+		storage := *cfg.MetadataStorage
+		clone.MetadataStorage = &storage
+	}
+
+	return clone
 }
 
 // NewTlogClusterConfig creates a new TlogClusterConfig from a given YAML slice.

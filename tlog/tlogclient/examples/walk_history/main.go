@@ -4,6 +4,7 @@ import (
 	"flag"
 
 	"github.com/zero-os/0-Disk"
+	zerodiskcfg "github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 
@@ -35,7 +36,7 @@ func main() {
 	flag.Parse()
 
 	// parse optional server configs
-	serverConfigs, err := zerodisk.ParseCSStorageServerConfigStrings(conf.TlogObjStorAddresses)
+	serverConfigs, err := zerodiskcfg.ParseCSStorageServerConfigStrings(conf.TlogObjStorAddresses)
 	exitOnErr(err)
 
 	// create redisPool, used by the tlog decoder

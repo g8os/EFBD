@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/zero-os/0-Disk"
+	zerodiskcfg "github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/player"
@@ -51,7 +52,7 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
 	// parse optional server configs
-	serverConfigs, err := zerodisk.ParseCSStorageServerConfigStrings(vdiskCmdCfg.TlogObjStorAddresses)
+	serverConfigs, err := zerodiskcfg.ParseCSStorageServerConfigStrings(vdiskCmdCfg.TlogObjStorAddresses)
 	if err != nil {
 		return fmt.Errorf(
 			"failed to parse given connection strings %q: %s",
