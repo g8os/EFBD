@@ -11,7 +11,7 @@ import (
 
 // ETCDV3Source creates a config source,
 // where the configurations originate from an ETCD v3 cluster.
-func ETCDV3Source(endpoints []string) (Source, error) {
+func ETCDV3Source(endpoints []string) (SourceCloser, error) {
 	client, err := clientv3.New(clientv3.Config{
 		Endpoints:   endpoints,
 		DialTimeout: etcdDialTimeout,
@@ -61,24 +61,23 @@ func (s *etcdv3Source) Get(key Key) ([]byte, error) {
 }
 
 // Watch implements Source.Watch
-func (s *etcdv3Source) Watch(ctx context.Context, key Key, cb WatchCallback) error {
-	if cb == nil {
-		return ErrNilCallback
-	}
-
+func (s *etcdv3Source) Watch(ctx context.Context, key Key) (<-chan []byte, error) {
 	// convert our internal key type to an etcd key
 	keyString, err := etcdKey(key.ID, key.Type)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
 	watch := s.client.Watch(ctx, keyString)
 
 	log.Debugf("watch channel for etcd key '%s' started", keyString)
+	ch := make(chan []byte)
+
 	go func() {
 		defer cancel()
 		defer log.Debugf("watch channel for etcd key '%s' closed", keyString)
+		defer close(ch)
 
 		for {
 			select {
@@ -108,18 +107,18 @@ func (s *etcdv3Source) Watch(ctx context.Context, key Key, cb WatchCallback) err
 					continue
 				}
 
-				err = cb(ev.Kv.Value)
-				if err != nil {
+				select {
+				case ch <- ev.Kv.Value:
+				case <-ctx.Done():
 					log.Errorf(
-						"watch channel for '%s' encountered an error: %v",
-						keyString, err)
+						"timed out while attempting to send updated config (%s)", keyString)
 				}
 			}
 		}
 	}()
 
 	// watch function active
-	return nil
+	return ch, nil
 }
 
 // Close implements Source.Close

@@ -1,16 +1,16 @@
-package zerodisk
+package config
 
 // ValidateNBDServerConfigs validates all available NBD Vdisk Configurations,
-// for a given NBD server config, using a given config resource.
-func ValidateNBDServerConfigs(info ConfigInfo, serverID string) error {
-	cfg, err := ReadNBDVdisksConfig(info, serverID)
+// for a given NBD server config, using a given config source.
+func ValidateNBDServerConfigs(source Source, serverID string) error {
+	cfg, err := ReadNBDVdisksConfig(source, serverID)
 	if err != nil {
 		return err
 	}
 
 	var errs validateErrors
 	for _, vdiskID := range cfg.Vdisks {
-		_, err = ReadNBDStorageConfig(info, vdiskID)
+		_, err = ReadNBDStorageConfig(source, vdiskID)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -24,16 +24,16 @@ func ValidateNBDServerConfigs(info ConfigInfo, serverID string) error {
 }
 
 // ValidateTlogServerConfigs validates all available Tlog Vdisk Configurations,
-// for a given Tlog server config, using a given config resource.
-func ValidateTlogServerConfigs(info ConfigInfo, serverID string) error {
-	cfg, err := ReadNBDVdisksConfig(info, serverID)
+// for a given Tlog server config, using a given config source.
+func ValidateTlogServerConfigs(source Source, serverID string) error {
+	cfg, err := ReadNBDVdisksConfig(source, serverID)
 	if err != nil {
 		return err
 	}
 
 	var errs validateErrors
 	for _, vdiskID := range cfg.Vdisks {
-		_, err = ReadTlogStorageConfig(info, vdiskID)
+		_, err = ReadTlogStorageConfig(source, vdiskID)
 		if err != nil {
 			errs = append(errs, err)
 		}

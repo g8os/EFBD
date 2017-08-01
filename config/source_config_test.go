@@ -1,4 +1,4 @@
-package zerodisk
+package config
 
 import (
 	"strings"
@@ -7,64 +7,64 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNilConfigInfo(t *testing.T) {
+func TestNilSourceConfig(t *testing.T) {
 	assert := assert.New(t)
 
-	var info ConfigInfo
+	var cfg SourceConfig
 
-	if assert.NoError(info.Validate()) {
-		assert.Equal(defaultFileResource, info.String())
+	if assert.NoError(cfg.Validate()) {
+		assert.Equal(defaultFileResource, cfg.String())
 	}
 
-	info.Resource = ""
-	if assert.NoError(info.Validate()) {
-		assert.Equal(defaultFileResource, info.String())
+	cfg.Resource = ""
+	if assert.NoError(cfg.Validate()) {
+		assert.Equal(defaultFileResource, cfg.String())
 	}
 }
 
-func TestNilConfigResourceType(t *testing.T) {
-	var crt ConfigResourceType
-	assert.Equal(t, FileConfigResource, crt)
+func TestNilSourceType(t *testing.T) {
+	var crt SourceType
+	assert.Equal(t, FileSourceType, crt)
 }
 
-func TestConfigResourceTypeInequality(t *testing.T) {
-	assert.NotEqual(t, ETCDConfigResource, FileConfigResource)
+func TestSourceTypeInequality(t *testing.T) {
+	assert.NotEqual(t, ETCDSourceType, FileSourceType)
 }
 
-func TestConfigResourceTypeToString(t *testing.T) {
+func TestSourceTypeToString(t *testing.T) {
 	assert := assert.New(t)
 
 	// valid config resource types
-	assert.Equal(etcdConfigResourceString, ETCDConfigResource.String())
-	assert.Equal(fileConfigResourceString, FileConfigResource.String())
+	assert.Equal(etcdSourceTypeString, ETCDSourceType.String())
+	assert.Equal(fileSourceTypeString, FileSourceType.String())
 
 	// anything else defaults to etcd as well
-	assert.Equal(etcdConfigResourceString, ConfigResourceType(42).String())
+	assert.Equal(etcdSourceTypeString, SourceType(42).String())
 }
 
-func TestConfigResourceTypeFromString(t *testing.T) {
+func TestSourceTypeFromString(t *testing.T) {
 	assert := assert.New(t)
 
 	var err error
-	var crt ConfigResourceType
+	var crt SourceType
 
 	// etcd config resource type
-	err = crt.Set(etcdConfigResourceString)
+	err = crt.Set(etcdSourceTypeString)
 	if assert.NoError(err) {
-		assert.Equal(ETCDConfigResource, crt)
+		assert.Equal(ETCDSourceType, crt)
 	}
 
 	// file config resource type
-	err = crt.Set(fileConfigResourceString)
+	err = crt.Set(fileSourceTypeString)
 	if assert.NoError(err) {
-		assert.Equal(FileConfigResource, crt)
+		assert.Equal(FileSourceType, crt)
 	}
 
 	// any other string will result in an error
 	err = crt.Set("foo")
 	if assert.Error(err) {
 		// and the variable will remain unchanged
-		assert.Equal(FileConfigResource, crt)
+		assert.Equal(FileSourceType, crt)
 	}
 }
 
@@ -110,7 +110,7 @@ func TestETCDResourceFromString(t *testing.T) {
 	}
 }
 
-func TestConfigInfoReflectivity(t *testing.T) {
+func TestSourceConfigReflectivity(t *testing.T) {
 	assert := assert.New(t)
 
 	// add all valid strings together and remove spaces,
@@ -123,30 +123,30 @@ func TestConfigInfoReflectivity(t *testing.T) {
 	// strA ==     strB       ==            StrC
 	// x    == String(Set(x)) == String(Set(String(Set(x))))
 	for _, strA := range validResourceStrings {
-		info, err := ParseConfigInfo(strA)
+		cfg, err := NewSourceConfig(strA)
 		if !assert.NoError(err, strA) {
 			continue
 		}
 
-		strB := info.String()
+		strB := cfg.String()
 		if !assert.Equal(strA, strB) {
 			continue
 		}
 
-		err = info.Set(strB)
+		err = cfg.Set(strB)
 		if assert.NoError(err, strA) {
 			continue
 		}
 
-		strC := info.String()
+		strC := cfg.String()
 		assert.Equal(strB, strC)
 	}
 
 	for _, validETCDString := range validETCDStrings {
-		info, err := ParseConfigInfo(validETCDString)
-		if assert.NoError(err, validETCDString) && assert.NotNil(info, validETCDString) {
-			assert.Equal(ETCDConfigResource, info.ResourceType, validETCDString)
-			endpoints, ok := info.Resource.([]string)
+		cfg, err := NewSourceConfig(validETCDString)
+		if assert.NoError(err, validETCDString) && assert.NotNil(cfg, validETCDString) {
+			assert.Equal(ETCDSourceType, cfg.SourceType, validETCDString)
+			endpoints, ok := cfg.Resource.([]string)
 			if assert.True(ok, validETCDString) {
 				assert.True(len(endpoints) > 0, validETCDString)
 			}
@@ -154,10 +154,10 @@ func TestConfigInfoReflectivity(t *testing.T) {
 	}
 
 	for _, validPath := range validConfigPaths {
-		info, err := ParseConfigInfo(validPath)
-		if assert.NoError(err, validPath) && assert.NotNil(info, validPath) {
-			assert.Equal(FileConfigResource, info.ResourceType, validPath)
-			path, ok := info.Resource.(string)
+		cfg, err := NewSourceConfig(validPath)
+		if assert.NoError(err, validPath) && assert.NotNil(cfg, validPath) {
+			assert.Equal(FileSourceType, cfg.SourceType, validPath)
+			path, ok := cfg.Resource.(string)
 			if assert.True(ok, validPath) {
 				assert.Equal(validPath, path)
 			}

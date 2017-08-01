@@ -129,10 +129,3 @@ func (cfg *TlogStorageConfig) ValidateOptional(storageType StorageType) error {
 	// composed config is valid
 	return nil
 }
-
-// TlogStorageConfigResult is the result returned over
-// a channel when watching a TlogStorageConfig.
-type TlogStorageConfigResult struct {
-	Value *TlogStorageConfig
-	Error error
-}

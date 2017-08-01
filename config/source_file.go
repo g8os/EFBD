@@ -18,7 +18,7 @@ import (
 // where the configurations originate from a file on the local file system.
 // WARNING: this is only to be used for development and testing purposes,
 // it is by no means intended for production.
-func FileSource(path string) (Source, error) {
+func FileSource(path string) (SourceCloser, error) {
 	return &fileSource{
 		path:   path,
 		reader: ioutil.ReadFile,
@@ -72,15 +72,18 @@ func (s *fileSource) Get(key Key) ([]byte, error) {
 }
 
 // Watch implements Source.Watch
-func (s *fileSource) Watch(ctx context.Context, key Key, cb WatchCallback) error {
+func (s *fileSource) Watch(ctx context.Context, key Key) (<-chan []byte, error) {
 	// setup SIGHUP
 	sighup := make(chan os.Signal)
 	signal.Notify(sighup, syscall.SIGHUP)
+
+	ch := make(chan []byte)
 
 	log.Debug("Started watch goroutine for SIGHUP")
 	go func() {
 		defer signal.Stop(sighup)
 		defer close(sighup)
+		defer close(ch)
 		defer log.Debugf("Closing SIGHUP watch goroutine for %s", s.path)
 
 		for {
@@ -95,12 +98,18 @@ func (s *fileSource) Watch(ctx context.Context, key Key, cb WatchCallback) error
 					log.Errorf("Could not read config (%d): %s", key.Type, err)
 					continue
 				}
-				cb(bytes)
+
+				select {
+				case ch <- bytes:
+				case <-ctx.Done():
+					log.Errorf(
+						"timed out while attempting to send updated config (%d)", key.Type)
+				}
 			}
 		}
 	}()
 
-	return nil
+	return ch, nil
 }
 
 // Close implements Source.Close
