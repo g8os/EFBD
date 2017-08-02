@@ -1,0 +1,160 @@
+package stor
+
+import (
+	"fmt"
+	"sync"
+
+	"github.com/zero-os/0-Disk/tlog/schema"
+
+	storclient "github.com/zero-os/0-stor/client"
+	storclientconf "github.com/zero-os/0-stor/client/config"
+	"github.com/zero-os/0-stor/client/lib/compress"
+	"github.com/zero-os/0-stor/client/lib/distribution"
+	"github.com/zero-os/0-stor/client/lib/encrypt"
+	"github.com/zero-os/0-stor/client/lib/hash"
+	"github.com/zero-os/0-stor/client/meta"
+)
+
+// Config defines the 0-stor client config
+type Config struct {
+	VdiskID         string
+	Organization    string
+	Namespace       string
+	IyoClientID     string
+	IyoSecret       string
+	ZeroStorShards  []string
+	MetaShards      []string
+	DataShardsNum   int
+	ParityShardsNum int
+	EncryptPrivKey  string
+	EncryptNonce    string
+}
+
+// Client defines the 0-stor client
+type Client struct {
+	vdiskID string
+
+	// 0-stor client
+	storClient *storclient.Client
+
+	hasher *hash.Hasher
+
+	// capnp buffer
+	capnpBuf []byte
+
+	// first & last metadata key
+	firstMetaKey []byte
+	lastMetaKey  []byte
+
+	// etcd key in which we store our last metadata
+	// we need to store it so we still know it after restart
+	lastMetaEtcdKey []byte
+
+	lastMd *meta.Meta
+
+	mux sync.Mutex
+}
+
+// NewClient creates new client from the given config
+func NewClient(conf Config) (*Client, error) {
+	// 0-stor client
+	sc, err := storclient.New(newStorClientConf(conf))
+	if err != nil {
+		return nil, err
+	}
+
+	hasher, err := hash.NewHasher(hash.Config{
+		Type: hash.TypeBlake2,
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	cli := &Client{
+		vdiskID:         conf.VdiskID,
+		storClient:      sc,
+		capnpBuf:        make([]byte, 4096*4),
+		hasher:          hasher,
+		firstMetaKey:    []byte(fmt.Sprintf("tlog:%v:first_meta", conf.VdiskID)),
+		lastMetaEtcdKey: []byte(fmt.Sprintf("tlog:%v:last_meta", conf.VdiskID)),
+	}
+
+	lastMetaKey, lastMd, err := cli.getLastMetaKey()
+	if err != nil {
+		return nil, err
+	}
+	cli.lastMetaKey = lastMetaKey
+	cli.lastMd = lastMd
+	return cli, nil
+}
+
+// ProcessStore processes and then stores the data to 0-stor server
+func (c *Client) ProcessStore(blocks []*schema.TlogBlock) ([]byte, error) {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+
+	// encode capnp
+	data, err := c.encodeCapnp(blocks)
+	if err != nil {
+		return nil, err
+	}
+
+	key := c.hasher.Hash(data)
+
+	// stor to 0-stor
+	lastMd, err := c.storClient.Write(key, data, c.lastMetaKey, c.lastMd)
+	if err != nil {
+		return nil, err
+	}
+	if lastMd == nil {
+		return nil, fmt.Errorf("empty meta returned by stor client")
+	}
+
+	c.lastMd = lastMd
+	c.lastMetaKey = key
+	return data, c.saveLastMetaKey(c.lastMetaKey)
+}
+
+// creates 0-stor client config from Config
+func newStorClientConf(conf Config) *storclientconf.Config {
+	compressConf := compress.Config{
+		Type: compress.TypeSnappy,
+	}
+	encryptConf := encrypt.Config{
+		Type:    encrypt.TypeAESGCM,
+		PrivKey: conf.EncryptPrivKey,
+		Nonce:   conf.EncryptNonce,
+	}
+
+	distConf := distribution.Config{
+		Data:   conf.DataShardsNum,
+		Parity: conf.ParityShardsNum,
+	}
+
+	return &storclientconf.Config{
+		Organization: conf.Organization,
+		Namespace:    conf.Namespace,
+		Shards:       conf.ZeroStorShards,
+		MetaShards:   conf.MetaShards,
+		IYOSecret:    conf.IyoSecret,
+		Pipes: []storclientconf.Pipe{
+			storclientconf.Pipe{
+				Name:   "pipe1",
+				Type:   "compress",
+				Config: compressConf,
+			},
+			storclientconf.Pipe{
+				Name:   "pipe2",
+				Type:   "encrypt",
+				Config: encryptConf,
+			},
+
+			storclientconf.Pipe{
+				Name:   "pipe3",
+				Type:   "distribution",
+				Config: distConf,
+			},
+		},
+	}
+}
