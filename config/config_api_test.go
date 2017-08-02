@@ -13,7 +13,7 @@ func TestReadNBDVdisksConfig(t *testing.T) {
 	assert.Error(err, "should trigger error due to nil-source")
 
 	// create stub source, with no config, which will trigger errors
-	source := newStubSource(nil)
+	source := NewStubSource()
 
 	_, err = ReadNBDVdisksConfig(source, "foo")
 	assert.Error(err, "should trigger error due to nil config")

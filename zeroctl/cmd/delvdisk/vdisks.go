@@ -4,7 +4,6 @@ import (
 	"errors"
 
 	"github.com/spf13/cobra"
-	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
@@ -12,7 +11,7 @@ import (
 )
 
 var vdiskCmdCfg struct {
-	ConfigInfo zerodisk.ConfigInfo
+	SourceConfig config.SourceConfig
 }
 
 // VdisksCmd represents the vdisks delete subcommand
@@ -29,12 +28,19 @@ func deleteVdisks(cmd *cobra.Command, args []string) error {
 	}
 	log.SetLevel(logLevel)
 
+	// create config source
+	configSource, err := config.NewSource(vdiskCmdCfg.SourceConfig)
+	if err != nil {
+		return err
+	}
+	defer configSource.Close()
+
 	if len(args) == 0 {
 		return errors.New("no vdisk identifiers given")
 	}
 
 	// get and sort vdisks per server cfg
-	data, metadata, err := getAndSortVdisks(args)
+	data, metadata, err := getAndSortVdisks(args, configSource)
 	if err != nil {
 		return err
 	}
@@ -81,7 +87,7 @@ func (m vdisksPerServerMap) AddVdisk(cfg config.StorageServerConfig, vdiskID str
 	serverVdisks[vdiskID] = vdiskType
 }
 
-func getAndSortVdisks(vdiskIDs []string) (data vdisksPerServerMap, metadata vdisksPerServerMap, err error) {
+func getAndSortVdisks(vdiskIDs []string, configSource config.Source) (data vdisksPerServerMap, metadata vdisksPerServerMap, err error) {
 	if len(vdiskIDs) == 0 {
 		err = errors.New("no vdisk identifiers given")
 	}
@@ -99,18 +105,23 @@ func getAndSortVdisks(vdiskIDs []string) (data vdisksPerServerMap, metadata vdis
 		}
 	}
 
-	var baseConfig *config.BaseConfig
-	var nbdConfig *config.NBDConfig
+	var vdiskConfig *config.VdiskStaticConfig
+	var nbdConfig *config.NBDStorageConfig
 
 	// add only the selected vdisk(s)
 	for _, vdiskID := range vdiskIDs {
-		baseConfig, nbdConfig, err = zerodisk.ReadNBDConfig(vdiskID, vdiskCmdCfg.ConfigInfo)
+		vdiskConfig, err = config.ReadVdiskStaticConfig(configSource, vdiskID)
 		if err != nil {
-			log.Errorf("no NBD config could be retrieved for %s: %v", vdiskID, err)
+			log.Errorf("no static vdisk config could be retrieved for %s: %v", vdiskID, err)
+			continue
+		}
+		nbdConfig, err = config.ReadNBDStorageConfig(configSource, vdiskID, vdiskConfig)
+		if err != nil {
+			log.Errorf("no nbd config could be retrieved for %s: %v", vdiskID, err)
 			continue
 		}
 
-		addVdiskCluster(nbdConfig.StorageCluster, vdiskID, baseConfig.Type)
+		addVdiskCluster(nbdConfig.StorageCluster, vdiskID, vdiskConfig.Type)
 	}
 
 	if len(data) == 0 && len(metadata) == 0 {
@@ -132,6 +143,6 @@ WARNING: until issue #88 has been resolved,
 `
 
 	VdisksCmd.Flags().Var(
-		&vdiskCmdCfg.ConfigInfo, "config",
+		&vdiskCmdCfg.SourceConfig, "config",
 		"config resource: dialstrings (etcd cluster) or path (yaml file)")
 }

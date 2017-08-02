@@ -13,6 +13,7 @@ import (
 	_ "net/http/pprof"
 
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage/lba"
@@ -28,8 +29,9 @@ func main() {
 	var profileAddress string
 	var protocol string
 	var address string
-	var configInfo zerodisk.ConfigInfo
+	var sourceConfig config.SourceConfig
 	var logPath string
+	var serverID string
 	flag.BoolVar(&verbose, "v", false, "when false, only log warnings and errors")
 	flag.StringVar(&logPath, "logfile", "", "optionally log to the specified file, instead of the stderr")
 	flag.BoolVar(&inMemoryStorage, "memorystorage", false, "Stores the data in memory only, usefull for testing or benchmarking")
@@ -37,9 +39,10 @@ func main() {
 	flag.StringVar(&profileAddress, "profile-address", "", "Enables profiling of this server as an http service")
 	flag.StringVar(&protocol, "protocol", "unix", "Protocol to listen on, 'tcp' or 'unix'")
 	flag.StringVar(&address, "address", "/tmp/nbd-socket", "Address to listen on, unix socket or tcp address, ':6666' for example")
-	flag.Var(&configInfo, "config", "config resource: dialstrings (etcd cluster) or path (yaml file)")
+	flag.Var(&sourceConfig, "config", "config resource: dialstrings (etcd cluster) or path (yaml file)")
 	flag.Int64Var(&lbacachelimit, "lbacachelimit", ardb.DefaultLBACacheLimit,
 		fmt.Sprintf("Cache limit of LBA in bytes, needs to be higher then %d (bytes in 1 sector)", lba.BytesPerSector))
+	flag.StringVar(&serverID, "id", "default", "The server ID (default: default)")
 	flag.Parse()
 
 	logLevel := log.InfoLevel
@@ -59,18 +62,25 @@ func main() {
 		log.SetHandlers(logHandlers...)
 	}
 
-	log.Debugf("flags parsed: memorystorage=%t tlsonly=%t profileaddress=%q protocol=%q address=%q config=%q lbacachelimit=%d logfile=%q",
+	log.Debugf("flags parsed: memorystorage=%t tlsonly=%t profileaddress=%q protocol=%q address=%q config=%q lbacachelimit=%d logfile=%q id=%q",
 		inMemoryStorage, tlsonly,
 		profileAddress,
 		protocol, address,
-		configInfo.String(),
+		sourceConfig.String(),
 		lbacachelimit,
 		logPath,
+		serverID,
 	)
 
-	// let's ping config resource immediately,
-	// as to make sure we can fetch resources
-	if err := configInfo.Ping(); err != nil {
+	// let's create the source and defer close it
+	configSource, err := config.NewSource(sourceConfig)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer configSource.Close()
+	// let's now also ensure that the configuration is valid
+	err = config.ValidateNBDServerConfigs(configSource, serverID)
+	if err != nil {
 		log.Fatal(err)
 	}
 
@@ -123,7 +133,7 @@ func main() {
 
 	backendFactory, err := newBackendFactory(backendFactoryConfig{
 		PoolFactory:   redisPoolFactory,
-		ConfigInfo:    configInfo,
+		ConfigSource:  configSource,
 		LBACacheLimit: lbacachelimit,
 	})
 	handleSigterm(backendFactory, cancelFunc)
@@ -142,8 +152,9 @@ func main() {
 
 	exportController, err := NewExportController(
 		ctx,
-		configInfo,
+		configSource,
 		tlsonly,
+		serverID,
 	)
 	if err != nil {
 		log.Fatal(err)

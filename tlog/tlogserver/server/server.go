@@ -11,6 +11,7 @@ import (
 	"os/signal"
 
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
@@ -30,7 +31,7 @@ type Server struct {
 }
 
 // NewServer creates a new tlog server
-func NewServer(conf *Config, poolFactory tlog.RedisPoolFactory) (*Server, error) {
+func NewServer(conf *Config, configSource config.Source, poolFactory tlog.RedisPoolFactory) (*Server, error) {
 	if conf == nil {
 		return nil, errors.New("tlogserver requires a non-nil config")
 	}
@@ -69,7 +70,7 @@ func NewServer(conf *Config, poolFactory tlog.RedisPoolFactory) (*Server, error)
 	}
 
 	vdiskManager := newVdiskManager(
-		conf.AggMq, conf.BlockSize, conf.FlushSize, conf.ConfigInfo)
+		conf.AggMq, conf.BlockSize, conf.FlushSize, configSource)
 	return &Server{
 		poolFactory:          poolFactory,
 		listener:             listener,

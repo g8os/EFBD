@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
@@ -17,8 +17,8 @@ type backendFactoryConfig struct {
 	// a factory is used, rather than a shared redis pool,
 	// such that each vdisk (session) will get its own redis pool.
 	PoolFactory   ardb.RedisPoolFactory
-	LBACacheLimit int64               // min-capped to LBA.BytesPerSector
-	ConfigInfo    zerodisk.ConfigInfo // config source info
+	LBACacheLimit int64         // min-capped to LBA.BytesPerSector
+	ConfigSource  config.Source // config source
 }
 
 // Validate all the parameters of this BackendFactoryConfig,
@@ -27,9 +27,8 @@ func (cfg *backendFactoryConfig) Validate() error {
 	if cfg.PoolFactory == nil {
 		return errors.New("BackendFactory requires a non-nil RedisPoolFactory")
 	}
-	if err := cfg.ConfigInfo.Validate(); err != nil {
-		return errors.New(
-			"BackendFactory requires valid config info: " + err.Error())
+	if cfg.ConfigSource == nil {
+		return errors.New("BackendFactory requires a non-nil config source")
 	}
 
 	return nil
@@ -47,7 +46,7 @@ func newBackendFactory(cfg backendFactoryConfig) (*backendFactory, error) {
 	return &backendFactory{
 		poolFactory:   cfg.PoolFactory,
 		lbaCacheLimit: cfg.LBACacheLimit,
-		configInfo:    cfg.ConfigInfo,
+		configSource:  cfg.ConfigSource,
 		vdiskComp:     &vdiskCompletion{},
 	}, nil
 }
@@ -58,7 +57,7 @@ func newBackendFactory(cfg backendFactoryConfig) (*backendFactory, error) {
 type backendFactory struct {
 	poolFactory   ardb.RedisPoolFactory
 	lbaCacheLimit int64
-	configInfo    zerodisk.ConfigInfo
+	configSource  config.Source
 	vdiskComp     *vdiskCompletion
 }
 
@@ -66,8 +65,8 @@ type backendFactory struct {
 func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (backend nbd.Backend, err error) {
 	vdiskID := ec.Name
 
-	// fetch base config
-	baseCfg, nbdCfg, err := zerodisk.ReadNBDConfig(vdiskID, f.configInfo)
+	// fetch static config
+	staticConfig, err := config.ReadVdiskStaticConfig(f.configSource, vdiskID)
 	if err != nil {
 		log.Error(err)
 		return
@@ -78,23 +77,23 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	// The redisProvider takes care of closing the created redisPool.
 	// The redisProvider created here also supports hot reloading.
 	redisPool := f.poolFactory()
-	redisProvider, err := ardb.DynamicProvider(ctx, vdiskID, f.configInfo, redisPool)
+	redisProvider, err := ardb.DynamicProvider(ctx, vdiskID, f.configSource, redisPool)
 	if err != nil {
 		log.Error(err)
 		return
 	}
 
-	blockSize := int64(baseCfg.BlockSize)
+	blockSize := int64(staticConfig.BlockSize)
 
 	// The NBDServer config defines the vdisk size in GiB,
 	// (go)nbdserver however expects it in bytes, thus we have to convert it.
-	vdiskSize := int64(baseCfg.Size) * ardb.GibibyteAsBytes
+	vdiskSize := int64(staticConfig.Size) * ardb.GibibyteAsBytes
 
 	blockStorage, err := storage.NewBlockStorage(
 		storage.BlockStorageConfig{
 			VdiskID:         vdiskID,
-			TemplateVdiskID: nbdCfg.TemplateVdiskID,
-			VdiskType:       baseCfg.Type,
+			TemplateVdiskID: staticConfig.TemplateVdiskID,
+			VdiskType:       staticConfig.Type,
 			VdiskSize:       vdiskSize,
 			BlockSize:       blockSize,
 			LBACacheLimit:   f.lbaCacheLimit,
@@ -110,17 +109,25 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	// which sends all write transactions to the tlog server via an embbed tlog client.
 	// One tlog client can define multiple tlog server connections,
 	// but only one will be used at a time, the others merely serve as backup servers.
-	if baseCfg.Type.TlogSupport() {
-		if nbdCfg.TlogServerAddresses != nil {
-			log.Debugf("creating tlogStorage for backend %v (%v)", vdiskID, baseCfg.Type)
-			blockStorage, err = newTlogStorage(
-				vdiskID, nbdCfg.TlogServerAddresses, &f.configInfo, blockSize, blockStorage)
+	if staticConfig.Type.TlogSupport() {
+		vdiskNBDConfig, err := config.ReadVdiskNBDConfig(f.configSource, vdiskID)
+		if err != nil && vdiskNBDConfig.TlogServerClusterID != "" {
+			log.Debugf("creating tlogStorage for backend %v (%v)", vdiskID, staticConfig.Type)
+			blockStorage, err = newTlogStorage(ctx,
+				vdiskID, vdiskNBDConfig.TlogServerClusterID,
+				f.configSource, blockSize, blockStorage, nil)
 			if err != nil {
 				blockStorage.Close()
 				redisProvider.Close()
 				log.Infof("couldn't create tlog storage: %s", err.Error())
-				return
+				return nil, err
 			}
+		}
+		if err != nil {
+			blockStorage.Close()
+			redisProvider.Close()
+			log.Infof("couldn't create tlog storage: %s", err.Error())
+			return nil, err
 		}
 	}
 

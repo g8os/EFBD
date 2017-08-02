@@ -10,7 +10,7 @@ func ValidateNBDServerConfigs(source Source, serverID string) error {
 
 	var errs validateErrors
 	for _, vdiskID := range cfg.Vdisks {
-		_, err = ReadNBDStorageConfig(source, vdiskID)
+		_, err = ReadNBDStorageConfig(source, vdiskID, nil)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -33,7 +33,7 @@ func ValidateTlogServerConfigs(source Source, serverID string) error {
 
 	var errs validateErrors
 	for _, vdiskID := range cfg.Vdisks {
-		_, err = ReadTlogStorageConfig(source, vdiskID)
+		_, err = ReadTlogStorageConfig(source, vdiskID, nil)
 		if err != nil {
 			errs = append(errs, err)
 		}

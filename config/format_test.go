@@ -116,7 +116,7 @@ func TestTlogServerConfigStrictYamlUnmarshal(t *testing.T) {
 
 	for _, validCase := range validTlogServerConfigYAML {
 		var cfg TlogServerConfig
-		err := yaml.UnmarshalStrict([]byte(validCase), &cfg)
+		err := yaml.Unmarshal([]byte(validCase), &cfg)
 		if assert.NoErrorf(err, "'%v'", validCase) {
 			_, err = valid.ValidateStruct(&cfg)
 			assert.NoErrorf(err, "'%v'", validCase)
@@ -125,7 +125,7 @@ func TestTlogServerConfigStrictYamlUnmarshal(t *testing.T) {
 
 	for _, invalidCase := range invalidTlogServerConfigYAML {
 		var cfg TlogServerConfig
-		err := yaml.UnmarshalStrict([]byte(invalidCase), &cfg)
+		err := yaml.Unmarshal([]byte(invalidCase), &cfg)
 		if err == nil {
 			_, err = valid.ValidateStruct(&cfg)
 			if assert.Errorf(err, "'%v' -> %v'", invalidCase, cfg) {
@@ -143,7 +143,7 @@ func TestStorageServerConfigStrictYamlUnmarshal(t *testing.T) {
 
 	for _, validCase := range validStorageServerConfigYAML {
 		var cfg StorageServerConfig
-		err := yaml.UnmarshalStrict([]byte(validCase), &cfg)
+		err := yaml.Unmarshal([]byte(validCase), &cfg)
 		if assert.NoErrorf(err, "'%v'", validCase) {
 			_, err = valid.ValidateStruct(&cfg)
 			assert.NoErrorf(err, "'%v'", validCase)
@@ -152,7 +152,7 @@ func TestStorageServerConfigStrictYamlUnmarshal(t *testing.T) {
 
 	for _, invalidCase := range invalidStorageServerConfigYAML {
 		var cfg TlogServerConfig
-		err := yaml.UnmarshalStrict([]byte(invalidCase), &cfg)
+		err := yaml.Unmarshal([]byte(invalidCase), &cfg)
 		if err == nil {
 			_, err = valid.ValidateStruct(&cfg)
 			if assert.Errorf(err, "'%v' -> %v'", invalidCase, cfg) {

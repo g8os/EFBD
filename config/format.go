@@ -23,7 +23,7 @@ type FormatValidator interface {
 // NewNBDVdisksConfig creates a new NBDVdisksConfig from a given YAML slice.
 func NewNBDVdisksConfig(data []byte) (*NBDVdisksConfig, error) {
 	vdiskscfg := new(NBDVdisksConfig)
-	err := yaml.UnmarshalStrict(data, &vdiskscfg)
+	err := yaml.Unmarshal(data, &vdiskscfg)
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +45,7 @@ type NBDVdisksConfig struct {
 // NewVdiskStaticConfig creates a new VdiskStaticConfig from a given YAML slice.
 func NewVdiskStaticConfig(data []byte) (*VdiskStaticConfig, error) {
 	staticfg := new(VdiskStaticConfig)
-	err := yaml.UnmarshalStrict(data, &staticfg)
+	err := yaml.Unmarshal(data, &staticfg)
 	if err != nil {
 		return nil, err
 	}
@@ -74,10 +74,11 @@ func (cfg *NBDVdisksConfig) Validate() error {
 
 // VdiskStaticConfig represents the static info of a vdisk.
 type VdiskStaticConfig struct {
-	BlockSize uint64    `yaml:"blockSize" valid:"required"`
-	ReadOnly  bool      `yaml:"readOnly" valid:"optional"`
-	Size      uint64    `yaml:"size" valid:"required"`
-	Type      VdiskType `yaml:"type" valid:"required"`
+	BlockSize       uint64    `yaml:"blockSize" valid:"required"`
+	ReadOnly        bool      `yaml:"readOnly" valid:"optional"`
+	Size            uint64    `yaml:"size" valid:"required"`
+	Type            VdiskType `yaml:"type" valid:"required"`
+	TemplateVdiskID string    `yaml:"templateVdiskID" valid:"optional"`
 }
 
 // Validate implements FormatValidator.Validate.
@@ -114,7 +115,7 @@ func (cfg *VdiskStaticConfig) Validate() error {
 func NewVdiskNBDConfig(data []byte) (*VdiskNBDConfig, error) {
 	nbdcfg := new(VdiskNBDConfig)
 
-	err := yaml.UnmarshalStrict(data, nbdcfg)
+	err := yaml.Unmarshal(data, nbdcfg)
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +132,6 @@ func NewVdiskNBDConfig(data []byte) (*VdiskNBDConfig, error) {
 type VdiskNBDConfig struct {
 	StorageClusterID         string `yaml:"storageClusterID" valid:"required"`
 	TemplateStorageClusterID string `yaml:"templateStorageClusterID" valid:"optional"`
-	TemplateVdiskID          string `yaml:"templateVdiskID" valid:"optional"`
 	TlogServerClusterID      string `yaml:"tlogServerClusterID" valid:"optional"`
 }
 
@@ -146,13 +146,6 @@ func (cfg *VdiskNBDConfig) Validate() error {
 		return fmt.Errorf("invalid VdiskNBDConfig: %v", err)
 	}
 
-	if cfg.TemplateVdiskID != "" && cfg.TemplateStorageClusterID == "" {
-		return fmt.Errorf(
-			"invalid VdiskNBDConfig: 'templateVdiskID' field is defined (%s)"+
-				"while 'templateStorageClusterID' field is undefined",
-			cfg.TemplateVdiskID)
-	}
-
 	return nil
 }
 
@@ -160,7 +153,7 @@ func (cfg *VdiskNBDConfig) Validate() error {
 func NewVdiskTlogConfig(data []byte) (*VdiskTlogConfig, error) {
 	tlogcfg := new(VdiskTlogConfig)
 
-	err := yaml.UnmarshalStrict(data, tlogcfg)
+	err := yaml.Unmarshal(data, tlogcfg)
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +190,7 @@ func (cfg *VdiskTlogConfig) Validate() error {
 func NewStorageClusterConfig(data []byte) (*StorageClusterConfig, error) {
 	clustercfg := new(StorageClusterConfig)
 
-	err := yaml.UnmarshalStrict(data, clustercfg)
+	err := yaml.Unmarshal(data, clustercfg)
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +247,7 @@ func (cfg *StorageClusterConfig) Clone() StorageClusterConfig {
 func NewTlogClusterConfig(data []byte) (*TlogClusterConfig, error) {
 	clustercfg := new(TlogClusterConfig)
 
-	err := yaml.UnmarshalStrict(data, clustercfg)
+	err := yaml.Unmarshal(data, clustercfg)
 	if err != nil {
 		return nil, err
 	}

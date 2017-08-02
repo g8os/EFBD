@@ -11,7 +11,7 @@ import (
 
 	"github.com/emirpasic/gods/sets/treeset"
 
-	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
@@ -51,7 +51,7 @@ type vdisk struct {
 	lastHashKey []byte              // redis key of the last hash
 	respChan    chan *BlockResponse // channel of responses to be sent to client
 
-	configInfo zerodisk.ConfigInfo
+	configSource config.Source
 
 	// channels for block receiver
 	blockInputChan       chan *schema.TlogBlock // input channel of block received from client
@@ -93,7 +93,7 @@ func (vd *vdisk) ResponseChan() <-chan *BlockResponse {
 // creates vdisk with given vdiskID, flusher, and first sequence.
 // firstSequence is the very first sequence that this vdisk will receive.
 // blocks with sequence < firstSequence are going to be ignored.
-func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, configInfo zerodisk.ConfigInfo, f *flusher,
+func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, configSource config.Source, f *flusher,
 	firstSequence uint64, flusherConf *flusherConfig, segmentBufLen int, cleanup vdiskCleanupFunc) (*vdisk, error) {
 
 	var aggComm *aggmq.AggComm
@@ -116,11 +116,11 @@ func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, config
 	maxTlbInBuffer := f.flushSize * tlogBlockFactorSize
 
 	vd := &vdisk{
-		id:          vdiskID,
-		lastHashKey: decoder.GetLashHashKey(vdiskID),
-		lastHash:    lastHash,
-		respChan:    make(chan *BlockResponse, respChanSize),
-		configInfo:  configInfo,
+		id:           vdiskID,
+		lastHashKey:  decoder.GetLashHashKey(vdiskID),
+		lastHash:     lastHash,
+		respChan:     make(chan *BlockResponse, respChanSize),
+		configSource: configSource,
 
 		// block receiver
 		blockInputChan:       make(chan *schema.TlogBlock, maxTlbInBuffer),
@@ -564,13 +564,13 @@ func (vd *vdisk) manageSlaveSync() error {
 	}
 
 	// read config
-	conf, err := zerodisk.ReadTlogConfig(vd.id, vd.configInfo)
+	conf, err := config.ReadVdiskTlogConfig(vd.configSource, vd.id)
 	if err != nil {
 		return err
 	}
 
 	// it shouldn't be exist, simply return
-	if !conf.SlaveSync {
+	if conf.SlaveStorageClusterID != "" {
 		// kill the slave syncer first
 		if vd.withSlaveSyncer {
 			vd.aggComm.Destroy()

@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"github.com/garyburd/redigo/redis"
-	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 )
@@ -39,7 +38,7 @@ type MetadataConnProvider interface {
 }
 
 // StaticProvider creates a Static Provider using the given NBD Config.
-func StaticProvider(cfg config.NBDConfig, pool *RedisPool) (ConnProvider, error) {
+func StaticProvider(cfg config.NBDStorageConfig, pool *RedisPool) (ConnProvider, error) {
 	if pool == nil {
 		pool = NewRedisPool(nil)
 	}
@@ -51,7 +50,7 @@ func StaticProvider(cfg config.NBDConfig, pool *RedisPool) (ConnProvider, error)
 
 // DynamicProvider creates a provider which always
 // has the most up to date config it can know about.
-func DynamicProvider(ctx context.Context, vdiskID string, configInfo zerodisk.ConfigInfo, pool *RedisPool) (ConnProvider, error) {
+func DynamicProvider(ctx context.Context, vdiskID string, source config.Source, pool *RedisPool) (ConnProvider, error) {
 	if pool == nil {
 		pool = NewRedisPool(nil)
 	}
@@ -64,7 +63,7 @@ func DynamicProvider(ctx context.Context, vdiskID string, configInfo zerodisk.Co
 	// Start listen goroutine, which gives the initial config (if successfull,
 	// as well as provide the future updates of that config.
 	// If the config could not be fetch initially, an error will be returned instead.
-	err := provider.listen(ctx, vdiskID, configInfo)
+	err := provider.listen(ctx, vdiskID, source)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +125,7 @@ func (rp *staticRedisProvider) Close() error {
 	return nil
 }
 
-func (rp *staticRedisProvider) setConfig(cfg *config.NBDConfig) {
+func (rp *staticRedisProvider) setConfig(cfg *config.NBDStorageConfig) {
 	rp.dataConnectionConfigs = cfg.StorageCluster.DataStorage
 	rp.numberOfServers = int64(len(rp.dataConnectionConfigs))
 
@@ -178,11 +177,11 @@ func (rp *redisProvider) MetadataConnection() (redis.Conn, error) {
 // spawns listen goroutine which gives the initial config (if successfull,
 // as well as provide the future updates of that config.
 // If the config could not be fetch initially, an error will be returned instead.
-func (rp *redisProvider) listen(ctx context.Context, vdiskID string, configInfo zerodisk.ConfigInfo) error {
+func (rp *redisProvider) listen(ctx context.Context, vdiskID string, source config.Source) error {
 	ctx, cancelFunc := context.WithCancel(ctx)
 
 	log.Debug("create nbd config listener for ", vdiskID)
-	ch, err := zerodisk.WatchNBDConfig(ctx, vdiskID, configInfo)
+	ch, err := config.WatchNBDStorageConfig(ctx, source, vdiskID)
 	if err != nil {
 		cancelFunc()
 		return err

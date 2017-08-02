@@ -6,8 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/zero-os/0-Disk"
-	zerodiskcfg "github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/tlog"
@@ -36,13 +35,13 @@ func onReplayCbNone(seq uint64) error {
 }
 
 // NewPlayer creates new tlog player
-func NewPlayer(ctx context.Context, configInfo zerodisk.ConfigInfo, serverConfigs []zerodiskcfg.StorageServerConfig,
+func NewPlayer(ctx context.Context, source config.Source, serverConfigs []config.StorageServerConfig,
 	vdiskID, privKey, hexNonce string, k, m int) (*Player, error) {
 	// create tlog redis pool
 	pool, err := tlog.AnyRedisPool(tlog.RedisPoolConfig{
 		VdiskID:                 vdiskID,
 		RequiredDataServerCount: k + m,
-		ConfigInfo:              configInfo,
+		Source:                  source,
 		ServerConfigs:           serverConfigs,
 		AutoFill:                true,
 		AllowInMemory:           false,
@@ -52,7 +51,12 @@ func NewPlayer(ctx context.Context, configInfo zerodisk.ConfigInfo, serverConfig
 	}
 
 	// get config to create block storage
-	baseCfg, nbdCfg, err := zerodisk.ReadNBDConfig(vdiskID, configInfo)
+	vdiskCfg, err := config.ReadVdiskStaticConfig(source, vdiskID)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	nbdCfg, err := config.ReadNBDStorageConfig(source, vdiskID, vdiskCfg)
 	if err != nil {
 		pool.Close()
 		return nil, err
@@ -69,9 +73,9 @@ func NewPlayer(ctx context.Context, configInfo zerodisk.ConfigInfo, serverConfig
 	blockStorage, err := storage.NewBlockStorage(storage.BlockStorageConfig{
 		VdiskID:         vdiskID,
 		TemplateVdiskID: nbdCfg.TemplateVdiskID,
-		VdiskType:       baseCfg.Type,
-		VdiskSize:       int64(baseCfg.Size) * ardb.GibibyteAsBytes,
-		BlockSize:       int64(baseCfg.BlockSize),
+		VdiskType:       vdiskCfg.Type,
+		VdiskSize:       int64(vdiskCfg.Size) * ardb.GibibyteAsBytes,
+		BlockSize:       int64(vdiskCfg.BlockSize),
 	}, ardbProvider)
 	if err != nil {
 		pool.Close()

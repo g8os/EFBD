@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/tlog"
@@ -24,25 +24,33 @@ const (
 
 // newTlogStorage creates a tlog storage BlockStorage,
 // wrapping around a given backend storage,
-// piggy backing on the newTlogStorageWithClient function for the actual logic.
-func newTlogStorage(vdiskID string, tlogserverAddresses []string, configInfo *zerodisk.ConfigInfo, blockSize int64, storage storage.BlockStorage) (storage.BlockStorage, error) {
-	client, err := tlogclient.New(tlogserverAddresses, vdiskID, 0, true)
-	if err != nil {
-		return nil, fmt.Errorf("tlogStorage requires a valid tlogclient: %s", err.Error())
-	}
-
-	return newTlogStorageWithClient(vdiskID, configInfo, blockSize, client, storage)
-}
-
-// newTlogStorage creates a tlog storage BlockStorage,
-// wrapping around a given backend storage,
 // using the given tlog client to send its write transactions to the tlog server.
-func newTlogStorageWithClient(vdiskID string, configInfo *zerodisk.ConfigInfo, blockSize int64, client tlogClient, storage storage.BlockStorage) (storage.BlockStorage, error) {
+func newTlogStorage(ctx context.Context, vdiskID, clusterID string, configSource config.Source, blockSize int64, storage storage.BlockStorage, client *tlogclient.Client) (storage.BlockStorage, error) {
 	if storage == nil {
 		return nil, errors.New("tlogStorage requires a non-nil BlockStorage")
 	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	tlogClusterCh, err := config.WatchTlogClusterConfig(ctx, configSource, clusterID)
+	if err != nil {
+		cancel()
+		return nil, errors.New("tlogStorage requires a valid config source: " + err.Error())
+	}
+
+	var tlogClusterConfig config.TlogClusterConfig
+	select {
+	case tlogClusterConfig = <-tlogClusterCh:
+	case <-ctx.Done():
+		cancel()
+		return nil, errors.New("tlogStorage requires active context")
+	}
+
 	if client == nil {
-		return nil, errors.New("tlogStorage requires a non-nil tlogClient")
+		client, err = tlogclient.New(tlogClusterConfig.Servers, vdiskID, 0, true)
+		if err != nil {
+			cancel()
+			return nil, errors.New("tlogStorage requires valid tlogclient: " + err.Error())
+		}
 	}
 
 	tlogStorage := &tlogStorage{
@@ -58,11 +66,13 @@ func newTlogStorageWithClient(vdiskID string, configInfo *zerodisk.ConfigInfo, b
 		done:           make(chan struct{}, 1),
 	}
 
-	err := tlogStorage.spawnBackgroundGoroutine(configInfo)
+	err = tlogStorage.spawnBackgroundGoroutine(ctx)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 
+	go tlogStorage.goTlogRPCReloader(ctx, tlogClusterCh, cancel)
 	return tlogStorage, nil
 }
 
@@ -268,18 +278,8 @@ func (tls *tlogStorage) Close() (err error) {
 	return
 }
 
-func (tls *tlogStorage) spawnBackgroundGoroutine(configInfo *zerodisk.ConfigInfo) error {
-	ctx, cancelFunc := context.WithCancel(context.Background())
-
-	// optional: watcher used for tlogrpc config reloading
-	if configInfo != nil {
-		err := tls.spawnTlogRPCReloader(ctx, *configInfo)
-		if err != nil {
-			cancelFunc()
-			return fmt.Errorf("couldn't spawn tlogstorage background goroutine: %v", err)
-		}
-	}
-
+func (tls *tlogStorage) spawnBackgroundGoroutine(ctx context.Context) error {
+	ctx, cancelFunc := context.WithCancel(ctx)
 	recvCh := tls.tlog.Recv()
 
 	// used for sending our transactions
@@ -398,33 +398,25 @@ func (tls *tlogStorage) flusher(ctx context.Context) {
 
 }
 
-func (tls *tlogStorage) spawnTlogRPCReloader(ctx context.Context, configInfo zerodisk.ConfigInfo) error {
-	// create nbd config watcher
-	nbdCh, err := zerodisk.WatchNBDConfig(ctx, tls.vdiskID, configInfo)
-	if err != nil {
-		return err // reloader is no longer optional
-	}
+func (tls *tlogStorage) goTlogRPCReloader(ctx context.Context, ch <-chan config.TlogClusterConfig, cancel func()) {
+	defer cancel()
 
-	// spawn listener on seperate goroutine
-	go func() {
-		for {
-			select {
-			case cfg := <-nbdCh:
-				if cfg.TlogServerAddresses == nil {
-					log.Errorf(
-						"nbd config for vdisk %s no longer specifies tlog rpcs", tls.vdiskID)
-					continue
-				}
-
-				tls.tlog.ChangeServerAddrs(cfg.TlogServerAddresses)
-
-			case <-ctx.Done():
-				return
+	for {
+		select {
+		case cfg := <-ch:
+			if len(cfg.Servers) == 0 {
+				// TODO: notify 0-orchestrator
+				log.Errorf(
+					"nbd config for vdisk %s no longer specifies tlog rpcs", tls.vdiskID)
+				continue
 			}
-		}
-	}()
 
-	return nil
+			tls.tlog.ChangeServers(cfg.Servers)
+
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 // switch to ardb slave if possible
@@ -623,7 +615,7 @@ type tlogClient interface {
 	Send(op uint8, seq uint64, index int64, timestamp uint64, data []byte) error
 	ForceFlushAtSeq(uint64) error
 	WaitNbdSlaveSync() error
-	ChangeServerAddrs([]string)
+	ChangeServers([]config.TlogServerConfig)
 	Recv() <-chan *tlogclient.Result
 	Close() error
 }

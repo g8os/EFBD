@@ -10,7 +10,6 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"zombiezen.com/go/capnproto2"
 
-	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
@@ -22,20 +21,20 @@ import (
 
 // Manager defines slave syncer manager
 type Manager struct {
-	apMq       *aggmq.MQ
-	syncers    map[string]*slaveSyncer
-	configInfo zerodisk.ConfigInfo
-	mux        sync.Mutex
-	ctx        context.Context
+	apMq         *aggmq.MQ
+	syncers      map[string]*slaveSyncer
+	configSource config.Source
+	mux          sync.Mutex
+	ctx          context.Context
 }
 
 // NewManager creates new slave syncer manager
-func NewManager(ctx context.Context, apMq *aggmq.MQ, configInfo zerodisk.ConfigInfo) *Manager {
+func NewManager(ctx context.Context, apMq *aggmq.MQ, configSource config.Source) *Manager {
 	m := &Manager{
-		apMq:       apMq,
-		configInfo: configInfo,
-		syncers:    make(map[string]*slaveSyncer),
-		ctx:        ctx,
+		apMq:         apMq,
+		configSource: configSource,
+		syncers:      make(map[string]*slaveSyncer),
+		ctx:          ctx,
 	}
 	return m
 }
@@ -66,7 +65,7 @@ func (m *Manager) handleReq(apr aggmq.AggProcessorReq) {
 	}
 
 	// create slave syncer
-	ss, err := newSlaveSyncer(m.ctx, m.configInfo, apr.Config, apr.Comm, m)
+	ss, err := newSlaveSyncer(m.ctx, m.configSource, apr.Config, apr.Comm, m)
 	if err != nil {
 		log.Errorf("slavesync mgr: failed to create syncer for vdisk: %v, err: %v", apr.Config.VdiskID, err)
 		m.apMq.NeedProcessorResp <- err
@@ -97,7 +96,7 @@ type slaveSyncer struct {
 	metaPool         *ardb.RedisPool             // ardb meta redis pool
 	metaConf         *config.StorageServerConfig // ardb meta redis config
 	lastSeqSyncedKey string                      // key of the last sequence synced
-	configInfo       zerodisk.ConfigInfo
+	configSource     config.Source
 	apc              aggmq.AggProcessorConfig
 
 	// we put these three  variables here
@@ -108,7 +107,7 @@ type slaveSyncer struct {
 }
 
 // newSlaveSyncer creates a new slave syncer
-func newSlaveSyncer(ctx context.Context, configInfo zerodisk.ConfigInfo, apc aggmq.AggProcessorConfig,
+func newSlaveSyncer(ctx context.Context, configSource config.Source, apc aggmq.AggProcessorConfig,
 	aggComm *aggmq.AggComm, mgr *Manager) (*slaveSyncer, error) {
 
 	ss := &slaveSyncer{
@@ -116,7 +115,7 @@ func newSlaveSyncer(ctx context.Context, configInfo zerodisk.ConfigInfo, apc agg
 		ctx:              ctx,
 		aggComm:          aggComm,
 		mgr:              mgr,
-		configInfo:       configInfo,
+		configSource:     configSource,
 		apc:              apc,
 		lastSeqSyncedKey: "tlog:last_slave_sync_seq:" + apc.VdiskID,
 	}
@@ -125,7 +124,7 @@ func newSlaveSyncer(ctx context.Context, configInfo zerodisk.ConfigInfo, apc agg
 
 func (ss *slaveSyncer) init() error {
 	// tlog replay player
-	player, err := player.NewPlayer(ss.ctx, ss.configInfo, nil, ss.apc.VdiskID, ss.apc.PrivKey,
+	player, err := player.NewPlayer(ss.ctx, ss.configSource, nil, ss.apc.VdiskID, ss.apc.PrivKey,
 		ss.apc.HexNonce, ss.apc.K, ss.apc.M)
 	if err != nil {
 		return err
@@ -313,7 +312,7 @@ func (ss *slaveSyncer) getLastSyncedSeq() (uint64, error) {
 // initialize redis pool for metadata connection
 func (ss *slaveSyncer) initMetaRedisPool() error {
 	// get meta storage config
-	_, conf, err := zerodisk.ReadNBDConfig(ss.vdiskID, ss.configInfo)
+	conf, err := config.ReadNBDStorageConfig(ss.configSource, ss.vdiskID, nil)
 	if err != nil {
 		return err
 	}

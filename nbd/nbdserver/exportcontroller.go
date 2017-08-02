@@ -4,21 +4,20 @@ import (
 	"context"
 	"sync"
 
-	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/gonbdserver/nbd"
 )
 
 // NewExportController creates a new export config manager.
-func NewExportController(ctx context.Context, configInfo zerodisk.ConfigInfo, tlsOnly bool) (*ExportController, error) {
+func NewExportController(ctx context.Context, configSource config.Source, tlsOnly bool, serverID string) (*ExportController, error) {
 	exportController := &ExportController{
-		configInfo: configInfo,
-		tlsOnly:    tlsOnly,
-		done:       make(chan struct{}),
+		configSource: configSource,
+		tlsOnly:      tlsOnly,
+		done:         make(chan struct{}),
 	}
 
-	err := exportController.spawnBackground(ctx, configInfo)
+	err := exportController.spawnBackground(ctx, serverID)
 	if err != nil {
 		return nil, err
 	}
@@ -29,9 +28,9 @@ func NewExportController(ctx context.Context, configInfo zerodisk.ConfigInfo, tl
 // ExportController implements nbd.ExportConfigManager
 // reading the BaseConfig when a config is required
 type ExportController struct {
-	configInfo zerodisk.ConfigInfo
+	configSource config.Source
 
-	vdisksConfig config.VdisksConfig
+	vdisksConfig config.NBDVdisksConfig
 	vdisksMux    sync.RWMutex
 	done         chan struct{}
 
@@ -43,8 +42,8 @@ func (c *ExportController) ListConfigNames() (exports []string) {
 	c.vdisksMux.RLock()
 	defer c.vdisksMux.RUnlock()
 
-	exports = make([]string, len(c.vdisksConfig.List))
-	copy(exports, c.vdisksConfig.List)
+	exports = make([]string, len(c.vdisksConfig.Vdisks))
+	copy(exports, c.vdisksConfig.Vdisks)
 	return
 }
 
@@ -52,7 +51,7 @@ func (c *ExportController) ListConfigNames() (exports []string) {
 func (c *ExportController) GetConfig(name string) (*nbd.ExportConfig, error) {
 	log.Infof("Getting vdisk %q", name)
 
-	cfg, err := zerodisk.ReadBaseConfig(name, c.configInfo)
+	cfg, err := config.ReadVdiskStaticConfig(c.configSource, name)
 	if err != nil {
 		return nil, err
 	}
@@ -85,14 +84,14 @@ func (c *ExportController) Close() error {
 	return nil
 }
 
-func (c *ExportController) reloadVdisksConfig(cfg config.VdisksConfig) {
+func (c *ExportController) reloadVdisksConfig(cfg config.NBDVdisksConfig) {
 	c.vdisksMux.Lock()
 	defer c.vdisksMux.Unlock()
 	c.vdisksConfig = cfg
 }
 
-func (c *ExportController) spawnBackground(ctx context.Context, configInfo zerodisk.ConfigInfo) error {
-	ch, err := zerodisk.WatchVdisksConfig(ctx, configInfo)
+func (c *ExportController) spawnBackground(ctx context.Context, serverID string) error {
+	ch, err := config.WatchNBDVdisksConfig(ctx, c.configSource, serverID)
 	if err != nil {
 		return err
 	}

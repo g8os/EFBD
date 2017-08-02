@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
@@ -13,13 +12,13 @@ import (
 )
 
 var vdiskCmdCfg struct {
-	ConfigInfo              zerodisk.ConfigInfo
+	SourceConfig            config.SourceConfig
 	ForceSameStorageCluster bool
 }
 
 // VdiskCmd represents the vdisk copy subcommand
 var VdiskCmd = &cobra.Command{
-	Use:   "vdisk source_vdiskid target_vdiskid",
+	Use:   "vdisk source_vdiskid target_vdiskid [target_clusterid]",
 	Short: "Copy a vdisk configured in the config file",
 	RunE:  copyVdisk,
 }
@@ -31,42 +30,67 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 	}
 	log.SetLevel(logLevel)
 
+	// create config source
+	configSource, err := config.NewSource(vdiskCmdCfg.SourceConfig)
+	if err != nil {
+		return err
+	}
+	defer configSource.Close()
+
 	log.Info("parsing positional arguments...")
 
 	// validate pos arg length
 	argn := len(args)
 	if argn < 2 {
 		return errors.New("not enough arguments")
-	} else if argn > 2 {
+	} else if argn > 3 {
 		return errors.New("too many arguments")
 	}
 
 	// store pos arguments in named variables
 	sourceVdiskID, targetVdiskID := args[0], args[1]
+	var targetClusterID string
+	if argn == 3 {
+		targetClusterID = args[2]
+	}
 
 	var sourceClusterConfig, targetClusterConfig *config.StorageClusterConfig
 
-	// try to read the NBD config of source vdisk
-	sourceBaseCfg, sourceNBDCfg, err := zerodisk.ReadNBDConfig(
-		sourceVdiskID, vdiskCmdCfg.ConfigInfo)
+	// try to read the Vdisk+NBD config of source vdisk
+	sourceStaticConfig, err := config.ReadVdiskStaticConfig(configSource, sourceVdiskID)
 	if err != nil {
 		return fmt.Errorf(
-			"couldn't read source vdisk %s's config: %v", sourceVdiskID, err)
+			"couldn't read source vdisk %s's static config: %v", sourceVdiskID, err)
 	}
-	sourceClusterConfig = &sourceNBDCfg.StorageCluster
+	sourceStorageConfig, err := config.ReadNBDStorageConfig(
+		configSource, sourceVdiskID, sourceStaticConfig)
+	if err != nil {
+		return fmt.Errorf(
+			"couldn't read source vdisk %s's storage config: %v", sourceVdiskID, err)
+	}
 
-	if !vdiskCmdCfg.ForceSameStorageCluster {
-		// try to read the NBD config of target vdisk
-		// if it exist,
-		_, targetNBDConfig, err := zerodisk.ReadNBDConfig(
-			targetVdiskID, vdiskCmdCfg.ConfigInfo)
-		if err == nil {
-			targetClusterConfig = &targetNBDConfig.StorageCluster
+	sourceClusterConfig = &sourceStorageConfig.StorageCluster
+
+	// if a targetClusterID is given, check if it's not the same as the source cluster ID,
+	// and if it is not, get its config
+	if targetClusterID != "" {
+		sourceVdiskNBDConfig, err := config.ReadVdiskNBDConfig(configSource, sourceVdiskID)
+		if err != nil {
+			return fmt.Errorf(
+				"couldn't read source vdisk %s's storage config: %v", sourceVdiskID, err)
+		}
+
+		if sourceVdiskNBDConfig.StorageClusterID != targetClusterID {
+			targetClusterConfig, err = config.ReadStorageClusterConfig(configSource, targetClusterID)
+			if err != nil {
+				return fmt.Errorf(
+					"couldn't read target vdisk %s's storage config: %v", targetVdiskID, err)
+			}
 		}
 	}
 
 	// copy the vdisk
-	switch stype := sourceBaseCfg.Type.StorageType(); stype {
+	switch stype := sourceStaticConfig.Type.StorageType(); stype {
 	case config.StorageDeduped:
 		return storage.CopyDeduped(
 			sourceVdiskID, targetVdiskID,
@@ -107,7 +131,7 @@ WARNING: when copying nondeduped vdisks,
 `
 
 	VdiskCmd.Flags().Var(
-		&vdiskCmdCfg.ConfigInfo, "config",
+		&vdiskCmdCfg.SourceConfig, "config",
 		"config resource: dialstrings (etcd cluster) or path (yaml file)")
 	VdiskCmd.Flags().BoolVar(
 		&vdiskCmdCfg.ForceSameStorageCluster, "same", false,

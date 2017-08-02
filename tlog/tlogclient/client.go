@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
@@ -54,7 +55,7 @@ type Result struct {
 // Client defines a Tlog Client.
 // This client is not thread/goroutine safe.
 type Client struct {
-	addrs           []string
+	servers         []config.TlogServerConfig
 	vdiskID         string
 	conn            *net.TCPConn
 	bw              writerFlusher
@@ -86,10 +87,10 @@ type Client struct {
 // 'firstSequence' is the first sequence number this client is going to send.
 // Set 'resetFirstSeq' to true to force reset the vdisk first/expected sequence.
 // The client is not goroutine safe.
-func New(addrs []string, vdiskID string, firstSequence uint64, resetFirstSeq bool) (*Client, error) {
+func New(servers []config.TlogServerConfig, vdiskID string, firstSequence uint64, resetFirstSeq bool) (*Client, error) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	client := &Client{
-		addrs:             addrs,
+		servers:           servers,
 		vdiskID:           vdiskID,
 		blockBuffer:       blockbuffer.NewBuffer(resendTimeoutDur),
 		ctx:               ctx,
@@ -105,28 +106,27 @@ func New(addrs []string, vdiskID string, firstSequence uint64, resetFirstSeq boo
 	return client, nil
 }
 
-// ChangeServerAddrs change server addresses to the
-// given addresses addrs
-func (c *Client) ChangeServerAddrs(addrs []string) {
+// ChangeServers change servers to the given servers
+func (c *Client) ChangeServers(servers []config.TlogServerConfig) {
 	c.serverAddrLock.Lock()
 	c.serverAddrLock.Unlock()
 
-	if len(addrs) == 0 {
+	if len(servers) == 0 {
 		return
 	}
-	log.Infof("tlogclient vdisk '%v' change server addrs to '%v'", c.vdiskID, addrs)
+	log.Infof("tlogclient vdisk '%v' change server addrs to '%v'", c.vdiskID, servers)
 
 	// reconnect client if current server not exist in the
 	// new addresses
 	curExist := func() bool {
-		for _, addr := range addrs {
-			if c.addrs[0] == addr {
+		for _, server := range servers {
+			if c.servers[0] == server {
 				return true
 			}
 		}
 		return false
 	}()
-	c.addrs = addrs
+	c.servers = servers
 
 	if !curExist {
 		log.Infof("tlogclient vdisk '%v' current server is not in new address, close it", c.vdiskID)
@@ -137,18 +137,18 @@ func (c *Client) ChangeServerAddrs(addrs []string) {
 
 // shift server address move current active client to the back
 // and use 2nd entry as main server
-func (c *Client) shiftServerAddr() {
+func (c *Client) shiftServer() {
 	c.serverAddrLock.Lock()
 	c.serverAddrLock.Unlock()
 
-	c.addrs = append(c.addrs[1:], c.addrs[0])
+	c.servers = append(c.servers[1:], c.servers[0])
 }
 
-func (c *Client) curServerAddr() string {
+func (c *Client) curServer() config.TlogServerConfig {
 	c.serverAddrLock.Lock()
 	c.serverAddrLock.Unlock()
 
-	return c.addrs[0]
+	return c.servers[0]
 }
 
 // reconnect to server
@@ -168,7 +168,7 @@ func (c *Client) reconnect(closedTime time.Time) error {
 
 	for {
 		// try other server
-		c.shiftServerAddr()
+		c.shiftServer()
 
 		if err = c.connect(c.blockBuffer.LastFlushed()+1, false); err == nil {
 			c.lastConnected = time.Now()
@@ -370,7 +370,7 @@ func (c *Client) recvOne() (*Response, error) {
 }
 
 func (c *Client) createConn() error {
-	genericConn, err := net.DialTimeout("tcp", c.curServerAddr(), time.Second)
+	genericConn, err := net.DialTimeout("tcp", c.curServer().Address, time.Second)
 	if err != nil {
 		return err
 	}

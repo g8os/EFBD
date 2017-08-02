@@ -9,7 +9,7 @@ import (
 	"os"
 
 	"github.com/zero-os/0-Disk"
-	zerodiskcfg "github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/aggmq"
@@ -26,6 +26,8 @@ func main() {
 	var storageAddresses string
 	var withSlaveSync bool
 	var logPath string
+	var sourceConfig config.SourceConfig
+	var serverID string
 
 	flag.StringVar(&conf.ListenAddr, "address", conf.ListenAddr, "Address to listen on")
 	flag.IntVar(&conf.FlushSize, "flush-size", conf.FlushSize, "flush size")
@@ -36,15 +38,14 @@ func main() {
 	flag.StringVar(&conf.PrivKey, "priv-key", conf.PrivKey, "private key")
 	flag.StringVar(&conf.HexNonce, "nonce", conf.HexNonce, "hex nonce used for encryption")
 	flag.StringVar(&profileAddr, "profile-address", "", "Enables profiling of this server as an http service")
-
 	flag.BoolVar(&inMemoryStorage, "memorystorage", false, "Stores the (meta)data in memory only, usefull for testing or benchmarking (overwrites the storage-addresses flag)")
-	flag.Var(&conf.ConfigInfo, "config", "config resource: dialstrings (etcd cluster) or path (yaml file)")
+	flag.Var(&sourceConfig, "config", "config resource: dialstrings (etcd cluster) or path (yaml file)")
 	flag.StringVar(&storageAddresses, "storage-addresses", "",
 		"comma seperated list of redis compatible connectionstrings (format: '<ip>:<port>[@<db>]', eg: 'localhost:16379,localhost:6379@2'), if given, these are used for all vdisks, ignoring the given config")
-
 	flag.BoolVar(&withSlaveSync, "with-slave-sync", false, "sync to ardb slave")
 	flag.BoolVar(&verbose, "v", false, "log verbose (debug) statements")
 	flag.StringVar(&logPath, "logfile", "", "optionally log to the specified file, instead of the stderr")
+	flag.StringVar(&serverID, "id", "default", "The server ID (default: default)")
 
 	// parse flags
 	flag.Parse()
@@ -64,7 +65,7 @@ func main() {
 		log.SetHandlers(handler)
 	}
 
-	log.Debugf("flags parsed: address=%q flush-size=%d flush-time=%d block-size=%d k=%d m=%d priv-key=%q nonce=%q profile-address=%q memorystorage=%t config=%q storage-addresses=%q logfile=%q",
+	log.Debugf("flags parsed: address=%q flush-size=%d flush-time=%d block-size=%d k=%d m=%d priv-key=%q nonce=%q profile-address=%q memorystorage=%t config=%q storage-addresses=%q logfile=%q id=%q",
 		conf.ListenAddr,
 		conf.FlushSize,
 		conf.FlushTime,
@@ -75,14 +76,21 @@ func main() {
 		conf.HexNonce,
 		profileAddr,
 		inMemoryStorage,
-		conf.ConfigInfo.String(),
+		sourceConfig.String(),
 		storageAddresses,
 		logPath,
+		serverID,
 	)
 
-	// let's ping config resource immediately,
-	// as to make sure we can fetch resources
-	if err := conf.ConfigInfo.Ping(); err != nil {
+	// let's create the source and defer close it
+	configSource, err := config.NewSource(sourceConfig)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer configSource.Close()
+	// let's now also ensure that the configuration is valid
+	err = config.ValidateNBDServerConfigs(configSource, serverID)
+	if err != nil {
 		log.Fatal(err)
 	}
 
@@ -100,7 +108,7 @@ func main() {
 	defer cancelFunc()
 
 	// return server configs based on the given storage addresses
-	serverConfigs, err := zerodiskcfg.ParseCSStorageServerConfigStrings(storageAddresses)
+	serverConfigs, err := config.ParseCSStorageServerConfigStrings(storageAddresses)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -108,7 +116,7 @@ func main() {
 	// create any kind of valid pool factory
 	poolFactory, err := tlog.AnyRedisPoolFactory(ctx, tlog.RedisPoolFactoryConfig{
 		RequiredDataServerCount: conf.RequiredDataServers(),
-		ConfigInfo:              conf.ConfigInfo,
+		Source:                  configSource,
 		ServerConfigs:           serverConfigs,
 		AutoFill:                true,
 		AllowInMemory:           true,
@@ -124,12 +132,12 @@ func main() {
 		conf.AggMq = aggmq.NewMQ()
 
 		// slave syncer manager
-		ssm := slavesync.NewManager(ctx, conf.AggMq, conf.ConfigInfo)
+		ssm := slavesync.NewManager(ctx, conf.AggMq, configSource)
 		go ssm.Run()
 	}
 
 	// create server
-	server, err := server.NewServer(conf, poolFactory)
+	server, err := server.NewServer(conf, configSource, poolFactory)
 	if err != nil {
 		log.Fatalf("failed to create server: %v", err)
 	}

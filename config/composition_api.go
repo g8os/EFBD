@@ -12,7 +12,7 @@ import (
 // from a given source, or returns an error in case something went wrong along the way.
 // The NBDStorageConfig is composed out of several subconfigs,
 // and thus reading this Config might require multiple roundtrips.
-func ReadNBDStorageConfig(source Source, vdiskID string) (*NBDStorageConfig, error) {
+func ReadNBDStorageConfig(source Source, vdiskID string, staticConfig *VdiskStaticConfig) (*NBDStorageConfig, error) {
 	if source == nil {
 		return nil, ErrNilSource
 	}
@@ -39,9 +39,7 @@ func ReadNBDStorageConfig(source Source, vdiskID string) (*NBDStorageConfig, err
 	nbdStorageConfig.StorageCluster = *storageClusterConfig
 
 	// if template storage ID is given, fetch it
-	if nbdConfig.TemplateStorageClusterID != "" {
-		nbdStorageConfig.TemplateVdiskID = nbdConfig.TemplateVdiskID
-
+	if nbdConfig.TlogServerClusterID != "" {
 		// Fetch Template Storage Cluster Config
 		nbdStorageConfig.TemplateStorageCluster, err = ReadStorageClusterConfig(
 			source, nbdConfig.TemplateStorageClusterID)
@@ -53,10 +51,12 @@ func ReadNBDStorageConfig(source Source, vdiskID string) (*NBDStorageConfig, err
 
 	// validate optional properties of NBD Storage Config
 	// based on the storage type of this vdisk
-	staticConfig, err := ReadVdiskStaticConfig(source, vdiskID)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"ReadNBDStorageConfig failed, invalid VdiskStaticConfig: %v", err)
+	if staticConfig == nil {
+		staticConfig, err = ReadVdiskStaticConfig(source, vdiskID)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"ReadNBDStorageConfig failed, invalid VdiskStaticConfig: %v", err)
+		}
 	}
 	err = nbdStorageConfig.ValidateOptional(staticConfig.Type.StorageType())
 	if err != nil {
@@ -70,7 +70,7 @@ func ReadNBDStorageConfig(source Source, vdiskID string) (*NBDStorageConfig, err
 // from a given source, or returns an error in case something went wrong along the way.
 // The TlogStorageConfig is composed out of several subconfigs,
 // and thus reading this Config might require multiple roundtrips.
-func ReadTlogStorageConfig(source Source, vdiskID string) (*TlogStorageConfig, error) {
+func ReadTlogStorageConfig(source Source, vdiskID string, staticConfig *VdiskStaticConfig) (*TlogStorageConfig, error) {
 	if source == nil {
 		return nil, ErrNilSource
 	}
@@ -107,10 +107,12 @@ func ReadTlogStorageConfig(source Source, vdiskID string) (*TlogStorageConfig, e
 
 		// validate optional properties of NBD Storage Config
 		// based on the storage type of this vdisk
-		staticConfig, err := ReadVdiskStaticConfig(source, vdiskID)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"ReadTlogStorageConfig failed, invalid VdiskStaticConfig: %v", err)
+		if staticConfig == nil {
+			staticConfig, err = ReadVdiskStaticConfig(source, vdiskID)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"ReadTlogStorageConfig failed, invalid VdiskStaticConfig: %v", err)
+			}
 		}
 		err = tlogStorageConfig.ValidateOptional(staticConfig.Type.StorageType())
 		if err != nil {
@@ -433,7 +435,6 @@ type nbdStorageConfigWatcher struct {
 	templateChan    <-chan StorageClusterConfig
 	templateCancel  func()
 	templateStorage *StorageClusterConfig
-	templateVdiskID string
 }
 
 func (w *nbdStorageConfigWatcher) Watch(ctx context.Context) (<-chan NBDStorageConfig, error) {
@@ -538,7 +539,6 @@ func (w *nbdStorageConfigWatcher) sendOutput() error {
 	if w.templateStorage != nil {
 		templateCluster := w.templateStorage.Clone()
 		cfg.TemplateStorageCluster = &templateCluster
-		cfg.TemplateVdiskID = w.templateVdiskID
 	}
 
 	select {
@@ -561,13 +561,7 @@ func (w *nbdStorageConfigWatcher) applyClusterInfo(info VdiskNBDConfig) (bool, e
 		return primaryChanged, nil
 	}
 
-	var templateVdiskIDChanged bool
-	if w.templateVdiskID != info.TemplateVdiskID {
-		templateVdiskIDChanged = true
-		w.templateVdiskID = info.TemplateVdiskID
-	}
-
-	changed := primaryChanged || templateClusterChanged || templateVdiskIDChanged
+	changed := primaryChanged || templateClusterChanged
 	return changed, nil
 }
 

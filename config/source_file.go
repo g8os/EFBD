@@ -169,7 +169,7 @@ func (s *fileSource) readFullFile() (*fileFormatCompleteConfig, error) {
 	}
 
 	var cfg fileFormatCompleteConfig
-	err = yaml.UnmarshalStrict(bytes, &cfg)
+	err = yaml.Unmarshal(bytes, &cfg)
 	if err != nil {
 		return nil, err
 	}

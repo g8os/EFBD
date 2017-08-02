@@ -122,11 +122,6 @@ var invalidVdiskNBDConfigYAML = []string{
 	`
 templateStorageClusterID: foo
 templateVdiskID: bar
-`, // if templateVdiskID is given,
-	// templateStorageClusterID has to be given as well
-	`
-storageClusterID: baz
-templateVdiskID: foo
 `,
 }
 
@@ -222,13 +217,7 @@ dataStorage:
 	`
 dataStorage:
   address: localhost:16379
-`, // dataStorage given but invalid metadataStorage (1)
-	`
-dataStorage:
-  - address: localhost:16379
-metadataStorage:
-  foo: bar
-`, // dataStorage given but invalid metadataStorage (2)
+`, // dataStorage given but invalid metadataStorage
 	`
 dataStorage:
   - address: localhost:16379
@@ -280,9 +269,5 @@ var invalidStorageServerConfigYAML = append(invalidTlogServerConfigYAML, []strin
 	// only db given
 	`
 db: 3
-`, // invalid db given
-	`
-address: localhost:16379
-db: foo
 `,
 }...)

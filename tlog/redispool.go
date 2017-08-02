@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/garyburd/redigo/redis"
-	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/redisstub"
@@ -45,8 +44,8 @@ func AnyRedisPoolFactory(ctx context.Context, cfg RedisPoolFactoryConfig) (Redis
 	}
 
 	// most desired option: config-based storage
-	if err := cfg.ConfigInfo.Validate(); err == nil {
-		return ConfigRedisPoolFactory(ctx, cfg.ConfigInfo, cfg.RequiredDataServerCount)
+	if cfg.Source != nil {
+		return ConfigRedisPoolFactory(ctx, cfg.Source, cfg.RequiredDataServerCount)
 	}
 
 	// final resort: inmemory storage
@@ -79,10 +78,10 @@ func StaticRedisPoolFactory(requiredDataServerCount int, storageServers []config
 // The required amount of data servers is specified upfront,
 // such that at creation of a RedisPool, it is validated that the
 // storage cluster in question has sufficient data servers available.
-func ConfigRedisPoolFactory(ctx context.Context, configInfo zerodisk.ConfigInfo, requiredDataServerCount int) (RedisPoolFactory, error) {
+func ConfigRedisPoolFactory(ctx context.Context, source config.Source, requiredDataServerCount int) (RedisPoolFactory, error) {
 	return &configRedisPoolFactory{
 		ctx:                     ctx,
-		configInfo:              configInfo,
+		source:                  source,
 		requiredDataServerCount: requiredDataServerCount,
 	}, nil
 }
@@ -115,8 +114,8 @@ func AnyRedisPool(cfg RedisPoolConfig) (RedisPool, error) {
 	}
 
 	// most desired option: config-based storage
-	if err := cfg.ConfigInfo.Validate(); err == nil {
-		return RedisPoolFromConfig(cfg.VdiskID, cfg.ConfigInfo, cfg.RequiredDataServerCount)
+	if cfg.Source != nil {
+		return RedisPoolFromConfig(cfg.VdiskID, cfg.Source, cfg.RequiredDataServerCount)
 	}
 
 	// more of a test (or dev) option: simply use in-memory storage
@@ -165,8 +164,8 @@ func InMemoryRedisPool(requiredDataServerCount int) RedisPool {
 // RedisPoolFromConfig creates a redis pool for a vdisk,
 // using the storage cluster defined in the given Blokstor config file,
 // for that vdisk.
-func RedisPoolFromConfig(vdiskID string, configInfo zerodisk.ConfigInfo, requiredDataServerCount int) (RedisPool, error) {
-	cfg, err := zerodisk.ReadTlogConfig(vdiskID, configInfo)
+func RedisPoolFromConfig(vdiskID string, source config.Source, requiredDataServerCount int) (RedisPool, error) {
+	cfg, err := config.ReadTlogStorageConfig(source, vdiskID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -193,9 +192,9 @@ type RedisPoolConfig struct {
 	// of storage servers.
 	RequiredDataServerCount int
 
-	// When ConfigInfo is set and valid, and no ServerConfigs have been specified,
+	// When Source is set and valid, and no ServerConfigs have been specified,
 	// the config will be read from the specified config source.
-	ConfigInfo zerodisk.ConfigInfo
+	Source config.Source
 
 	// The vdisk ID to use,
 	// only required in case the config path is given.
@@ -230,7 +229,7 @@ type RedisPoolFactoryConfig struct {
 	// When ConfigResource is set (valid), and no ServerConfigs have been specified,
 	// the redis pool factory will be created using the specified config info,
 	// and thus the created pools will read configs from the specified config source.
-	ConfigInfo zerodisk.ConfigInfo
+	Source config.Source
 
 	// Create a redis pool factory straight from these server configs,
 	// the redis pool factor) requires RequiredDataServerCount+1 configs to be specified
@@ -284,7 +283,7 @@ func (factory *staticRedisPoolFactory) Close() error { return nil }
 
 type configRedisPoolFactory struct {
 	ctx                     context.Context
-	configInfo              zerodisk.ConfigInfo
+	source                  config.Source
 	requiredDataServerCount int
 }
 
@@ -292,7 +291,7 @@ type configRedisPoolFactory struct {
 func (factory *configRedisPoolFactory) NewRedisPool(vdiskID string) (RedisPool, error) {
 	return newDynamicRedisPool(
 		factory.ctx,
-		factory.configInfo,
+		factory.source,
 		vdiskID,
 		factory.requiredDataServerCount,
 	)
@@ -371,7 +370,7 @@ func (p *staticRedisPool) Close() {
 
 // newDynamicRedisPool creates a new pool for multiple redis servers,
 // the number of pools defined by the number of given connection strings.
-func newDynamicRedisPool(ctx context.Context, configInfo zerodisk.ConfigInfo, vdiskID string, requiredNumberOfDataPools int) (RedisPool, error) {
+func newDynamicRedisPool(ctx context.Context, source config.Source, vdiskID string, requiredNumberOfDataPools int) (RedisPool, error) {
 	redisPool := &dynamicRedisPool{
 		requiredNumberOfDataPools: requiredNumberOfDataPools,
 		dataPools:                 make(map[int]*redisPool),
@@ -379,7 +378,7 @@ func newDynamicRedisPool(ctx context.Context, configInfo zerodisk.ConfigInfo, vd
 	}
 
 	// start background thread (for config updates)
-	err := redisPool.listen(ctx, configInfo, vdiskID)
+	err := redisPool.listen(ctx, source, vdiskID)
 	if err != nil {
 		return nil, err
 	}
@@ -443,7 +442,7 @@ func (p *dynamicRedisPool) Close() {
 	}
 }
 
-func (p *dynamicRedisPool) reloadConfig(cfg *config.TlogConfig) error {
+func (p *dynamicRedisPool) reloadConfig(cfg *config.TlogStorageConfig) error {
 	numServers := len(cfg.StorageCluster.DataStorage)
 	if numServers < p.requiredNumberOfDataPools {
 		return errors.New("not enough tlog servers defined")
@@ -476,12 +475,12 @@ func (p *dynamicRedisPool) reloadConfig(cfg *config.TlogConfig) error {
 	return nil
 }
 
-func (p *dynamicRedisPool) listen(ctx context.Context, configInfo zerodisk.ConfigInfo, vdiskID string) error {
+func (p *dynamicRedisPool) listen(ctx context.Context, source config.Source, vdiskID string) error {
 	ctx, cancelFunc := context.WithCancel(ctx)
 	defer cancelFunc()
 
 	log.Debug("creating tlog config watch for ", vdiskID)
-	ch, err := zerodisk.WatchTlogConfig(ctx, vdiskID, configInfo)
+	ch, err := config.WatchTlogStorageConfig(ctx, source, vdiskID)
 	if err != nil {
 		return err
 	}
