@@ -128,21 +128,21 @@ templateVdiskID: bar
 var validVdiskTlogConfigYAML = []string{
 	// complete example
 	`
-storageClusterID: foo
+zeroStorClusterID: foo
 slaveStorageClusterID: bar
 `, // minimal example of above
 	`
-storageClusterID: foo
+zeroStorClusterID: foo
 `, // more variations...
 	`
-storageClusterID: bar
 slaveStorageClusterID: foo
+zeroStorClusterID: bar
 `,
 }
 
 var invalidVdiskTlogConfigYAML = []string{
 	"",
-	// storageClusterID not given
+	// ZeroStorClusterID not given
 	`
 slaveStorageClusterID: bar
 `,
@@ -252,5 +252,139 @@ var invalidStorageServerConfigYAML = []string{
 	// only db given
 	`
 db: 3
+`,
+}
+
+var validZeroStorClusterConfigYAML = []string{
+	// complete example
+	`
+iyo:
+  org: "foo org"
+  namespace: "foo namespace"
+  clientID: "foo client"
+  secret: "foo secret"
+servers:
+  - address: "1.1.1.1:11"
+  - address: "2.2.2.2:22"
+metadataServers:
+  - address: "3.3.3.3:33"
+`, // minimal example
+	`
+iyo:
+  org: "foo org"
+  namespace: "foo namespace"
+  clientID: "foo client"
+  secret: "foo secret"
+servers:
+  - address: "1.1.1.1:11"
+metadataServers:
+  - address: "2.2.2.2:22"
+`,
+}
+
+var invalidZeroStorClusterConfigYAML = []string{
+	``, // missing org
+	`
+iyo:
+  namespace: "foo namespace"
+  clientID: "foo client"
+  secret: "foo secret"
+servers:
+  - address: "1.1.1.1:11"
+metadataServers:
+  - address: "3.3.3.3:33"
+`, // missing namespace
+	`
+iyo:
+  org: "foo org"
+  clientID: "foo client"
+  secret: "foo secret"
+servers:
+  - address: "1.1.1.1:11"
+metadataServers:
+  - address: "3.3.3.3:33"
+`, // missing clienid
+	`
+iyo:
+  org: "foo org"
+  namespace: "foo namespace"
+  secret: "foo secret"
+servers:
+  - address: "1.1.1.1:11"
+metadataServers:
+  - address: "3.3.3.3:33"
+`, // missing secret
+	`
+iyo:
+  org: "foo org"
+  namespace: "foo namespace"
+  clientID: "foo client"
+servers:
+  - address: "1.1.1.1:11"
+metadataServers:
+  - address: "3.3.3.3:33"
+`, // missing server addresses
+	`
+iyo:
+  org: "foo org"
+  namespace: "foo namespace"
+  clientID: "foo client"
+  secret: "foo secret"
+metadataServers:
+  - address: "3.3.3.3:33"
+`, // empty server address
+	`
+iyo:
+  org: "foo org"
+  namespace: "foo namespace"
+  clientID: "foo client"
+  secret: "foo secret"
+servers:
+  - address: ""
+metadataServers:
+  - address: "3.3.3.3:33"
+`, // invalid server address
+	`
+iyo:
+  org: "foo org"
+  namespace: "foo namespace"
+  clientID: "foo client"
+  secret: "foo secret"
+servers:
+  - address: "foo address"
+metadataServers:
+  - address: "3.3.3.3:33"
+`,
+	// missing metadataserver addresses
+	`
+iyo:
+  org: "foo org"
+  namespace: "foo namespace"
+  clientID: "foo client"
+  secret: "foo secret"
+servers:
+  - address: "1.1.1.1:11"
+`, // empty metadataserver address
+	`
+iyo:
+  org: "foo org"
+  namespace: "foo namespace"
+  clientID: "foo client"
+  secret: "foo secret"
+servers:
+  - address: "1.1.1.1:11"
+metadataServers:
+  - address: ""
+`, // invalid metadataserver address
+	`
+iyo:
+  org: "foo org"
+  namespace: "foo namespace"
+  clientID: "foo client"
+  secret: "foo secret"
+servers:
+  - address: "1.1.1.1:11"
+metadataServers:
+  - address: "foo address"
 `,
 }

@@ -91,6 +91,23 @@ func ReadStorageClusterConfig(source Source, clusterID string) (*StorageClusterC
 	return cfg, nil
 }
 
+// ReadZeroStoreClusterConfig returns requested ZeroStorClusterConfig
+// from a given config source
+func ReadZeroStoreClusterConfig(source Source, clusterID string) (*ZeroStorClusterConfig, error) {
+	bytes, err := ReadConfig(source, clusterID, KeyClusterZeroStor)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg, err := NewZeroStorClusterConfig(bytes)
+	if err != nil {
+		source.MarkInvalidKey(Key{ID: clusterID, Type: KeyClusterZeroStor}, "")
+		return nil, err
+	}
+
+	return cfg, nil
+}
+
 // ReadTlogClusterConfig returns the requested TlogClusterConfig
 // from a given config source.
 func ReadTlogClusterConfig(source Source, clusterID string) (*TlogClusterConfig, error) {
@@ -380,6 +397,71 @@ func WatchStorageClusterConfig(ctx context.Context, source Source, clusterID str
 					clusterID)
 
 				cfg, err := NewStorageClusterConfig(bytes)
+				if err != nil {
+					source.MarkInvalidKey(configKey, "")
+					continue
+				}
+
+				select {
+				case updater <- *cfg:
+				// ensure we can't get stuck in a deadlock for this goroutine
+				case <-ctx.Done():
+					log.Errorf("timed out (ctx) while sending update for %v",
+						clusterID)
+					return
+				}
+			}
+		}
+	}()
+
+	return updater, nil
+}
+
+// WatchZeroStorClusterConfig watches a given source for ZeroStorClusterConfig updates.
+// Sends the initial config to the channel when created,
+// as well as any future updated versions of that config,
+// for as long as the given context allows it.
+// An error is returned in case the watcher couldn't be started.
+func WatchZeroStorClusterConfig(ctx context.Context, source Source, clusterID string) (<-chan ZeroStorClusterConfig, error) {
+	cfg, err := ReadZeroStoreClusterConfig(source, clusterID)
+	if err != nil {
+		log.Debugf("Could not fetch initial config for ZeroStorClusterConfig watcher: %s", err)
+		return nil, err
+	}
+
+	// setup channel and send initial config value
+	updater := make(chan ZeroStorClusterConfig, 1)
+	updater <- *cfg
+
+	ctx = watchContext(ctx)
+	configKey := Key{ID: clusterID, Type: KeyClusterZeroStor}
+	inputCh, err := source.Watch(ctx, configKey)
+	if err != nil {
+		log.Debugf("Could not create ZeroStorClusterConfig watcher: %s", err)
+		return nil, err
+	}
+	go func() {
+		log.Debugf("WatchZeroStorClusterConfig for cluster %s started", clusterID)
+		defer close(updater)
+		defer log.Debugf("WatchZeroStorClusterConfig cluster for %s stopped", clusterID)
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+
+			case bytes, ok := <-inputCh:
+				if !ok {
+					log.Debugf(
+						"WatchZeroStorClusterConfig for %s aborting due to closed input ch",
+						clusterID)
+					return
+				}
+				log.Debugf(
+					"WatchZeroStorClusterConfig for %s received config bytes from source",
+					clusterID)
+
+				cfg, err := NewZeroStorClusterConfig(bytes)
 				if err != nil {
 					source.MarkInvalidKey(configKey, "")
 					continue

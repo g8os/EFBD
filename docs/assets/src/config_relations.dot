@@ -38,7 +38,7 @@ digraph {
                 shape = "record"
                 label = "VdiskTlogConfig | <key> myvdisk:vdisk:conf:storage:tlog |
                         <s> SlaveStorageClusterID (baz) |
-                        <t> TlogStorageClusterID (pon)"
+                        <t> ZeroStorClusterID (pon)"
             ]
         }
     }
@@ -67,9 +67,9 @@ digraph {
             label = "StorageClusterConfig | <key> yo:cluster:conf:storage"
         ]
 
-        TlogClusterConfig [
+        ZeroStorClusterConfig [
             shape = "record"
-            label = "<header> TlogClusterConfig | <key> pon:cluster:conf:tlog"
+            label = "<header> ZeroStorClusterConfig | <key> pon:cluster:conf:zerostor"
         ]
     }
 
@@ -82,6 +82,6 @@ digraph {
     VdiskNBDConfig:s -> SlaveStorageConfig:key [ style = "dashed" ]
     VdiskNBDConfig:tl -> TlogStorageConfig:key [ style = "dashed" ]
 
-    VdiskTlogConfig:t -> TlogClusterConfig:key
+    VdiskTlogConfig:t -> ZeroStorClusterConfig:key
     VdiskTlogConfig:s -> SlaveStorageConfig:key [ style = "dashed" ]
 }

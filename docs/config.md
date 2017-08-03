@@ -12,7 +12,6 @@ Each vdisk has 2 required configurations, [VdiskStaticConfig](#VdiskStaticConfig
 
 There is one last type of configuration, [NBDVdisksConfig](#NBDVdisksConfig), which contains the identifiers of all vdisks used by a [nbdserver][nbdserver]+[tlogserver][tlogserver] group.
 
-
 > NOTE: both the [nbdserver][nbdserver] and [tlogserver][tlogserver] also require you to specify the shared server id in using the `-id` flag. This is the same id as the one you used to list all vdisks in the [NBDVdisksConfig](#NBDVdisksConfig). By default it is assumed this id is `default`, but this should probably always be overwritten by the 0-Orchestrator.
 
 The data is split up in this way so that for the use cases of 0-Disk, most of the time only one (sub)config is required. Should another (sub)config be required as well, it can easily be fetched from a source (e.g. [etcd](#etcd)) and stored together with the former (sub)config.
@@ -113,14 +112,14 @@ Stores [storage(1)][storage]/[tlog][tlog] cluster references for a [vdisk][vdisk
 * Properties supported only by [boot][boot]- and [db][db]- [vdisks][vdisk]:
   * TemplateStorageClusterID: identifier of [template storage][template] cluster;
   * SlaveStorageClusterID: identifier of [slave storage][slave] cluster, should only ever be used in combination with a [tlog server][tlogserver] cluster;
-  * TlogServerClusterID: Tidentifier of [tlog server][tlogserver] cluster, when given it enabled tlog storage;
+  * TlogServerClusterID: identifier of [tlog server][tlogserver] cluster, when given it enabled tlog storage;
 
 Example Config:
 
 ```yaml
-storageClusterID: dasdaf # required, id of primary storage cluster
-templateStorageClusterID: dsadad # optional, id of template storage cluster
-slaveStorageClusterID: fdfsfsfs # optional, id of slave storage cluster
+storageClusterID: testStorage # required, id of primary storage cluster
+templateStorageClusterID: testTemplate # optional, id of template storage cluster
+slaveStorageClusterID: testSlaveStorage # optional, id of slave storage cluster
                                 # (only supported for tlog-supported vdisks: db and boot)
                                 # (only used by tlog-supported vdisks which have specified a tlogServerClusterID)
 tlogServerClusterID: db	# optional, id of a tlog server cluster
@@ -137,16 +136,14 @@ See the [VdiskNBDConfig Godoc][VdiskNBDConfigGodoc] for more information.
 
 Stores [storage(1)][storage] cluster references for a ([boot][boot]- or [db][db]-) [vdisk][vdisk]:
 
-* StorageClusterID: identifier of [tlog storage][tlog] cluster;
+* ZeroStorClusterID: identifier of [0-Stor server][zerostorserver] cluster;
 * SlaveStorageClusterID: identifier of [slave storage][slave] cluster (the same id as given to the [VdiskNBDConfig](#VdiskNBDConfig));
 
 Example Config:
 
 ```yaml
-storageClusterID: dasdaf # required, id of primary storage cluster
-                         # the cluster linked, requires m+k
-                         # data storage servers to be specified
-slaveStorageClusterID: fdfsfsfs # optional, id of slave storage cluster
+zeroStorClusterID: foo # required, id of primary 0-stor storage cluster
+slaveStorageClusterID: bar # optional, id of slave storage cluster
 ```
 
 Used by the [TLog Server][tlogServerConfig].
@@ -175,9 +172,36 @@ metadataStorage: # not used for nondeduped vdisks and template storage,
   db: 11
 ```
 
-Used by both the [NBD Server][nbdServerConfig] and the [TLog Server][tlogServerConfig].
+Used by the [NBD Server][nbdServerConfig].
 
 See the [StorageClusterConfig Godoc][StorageClusterConfigGodoc] for more information.
+
+<a id="ZeroStorClusterConfig"></a>
+### ZeroStorClusterConfig
+
+Stores [0-Stor][zerostorserver] cluster information, referenced by one or multiple [vdisks][vdisk]:
+
+* iyo: itsyou.online credentials used for [namespacing of the the 0-stor][zeroStorNamespacing];
+* servers: 0-stor server addresses;
+* metadataServers: metadata server addresses;
+
+Example Config:
+```yaml
+iyo: #all iyo fields are required
+  org: "foo org" # iyo organisation
+  namespace: "foo namespace" #iyo namespace 
+  clientID: "foo client" #iyo client id
+  secret: "foo secret" #iyo secret
+servers: # required, at least 1 server is required
+  - address: "1.1.1.1:11" # has to be valid dial string
+  - address: "2.2.2.2:22"
+metadataServers: # required, at least 1 server is required
+  - address: "3.3.3.3:33" # has to be valid dial string
+```
+
+Used by the [TLog Server][tlogServerConfig].
+
+See the [ZerostorClusterConfig Godoc][ZerostorClusterConfigGodoc] for more information.
 
 <a id="TlogClusterConfig"></a>
 ### TlogClusterConfig
@@ -234,6 +258,7 @@ In the etcd cluster it will look for the following subconfig keys:
 * [VdiskNBDConfig](#VdiskNBDConfig): `<vdiskID>:vdisk:conf:storage:nbd`;
 * [VdiskTlogConfig](#VdiskTlogConfig): `<vdiskID>:vdisk:conf:storage:tlog`;
 * [StorageClusterConfig](#StorageClusterConfig): `<clusterID>:cluster:conf:storage`;
+* [ZeroStorClusterConfig](#ZeroStorClusterConfig): `<clusterID>:cluster:conf:zerostor`;
 * [TlogClusterConfig](#TlogClusterConfig): `<clusterID>:cluster:conf:tlog`;
 * [NBDVdisksConfig](#NBDVdisksConfig): `<serverID>:nbdserver:conf:vdisks`;
 
@@ -249,7 +274,7 @@ Read [the internal Godoc documentation][configGodoc] for more technical details.
 
 ## file
 
-Configuration of 0-Disk services using a single config file is also supported. **This should never be used for production**, and is only really meant for use by developers working on the 0-Disk repository. Because of this, no guarantees are made about backwards compatibility of its format. If you're using 0-Disk services in an ecosystem of things, or in production, you should be realy using the [etcd][etcd]-based configuration. Please take a lookg at the [etcd section](#etcd) section for more information on how to use and enable it.
+Configuration of 0-Disk services using a single config file is also supported. **This should never be used for production**, and is only really meant for use by developers working on the 0-Disk repository. Because of this, no guarantees are made about backwards compatibility of its format. If you're using 0-Disk services in an ecosystem of things, or in production, you should be realy using the [etcd][etcd]-based configuration. Please take a look at the [etcd section](#etcd) section for more information on how to use and enable it.
 
 ### Reading data
 
@@ -280,13 +305,18 @@ storageClusters:
     metadataStorage:
       address: localhost:16312
       db: 1
-  tlogcluster:
-    dataStorage:
-      - address: localhost:10001
-      - address: localhost:10002
-      - address: localhost:10003
-      - address: localhost:10004
-      - address: localhost:10005
+zeroStorClusters:
+  zerostorcluster:
+    iyo:
+      org: "foo org"
+      namespace: "foo namespace"
+      clientID: "foo client"
+      secret: "foo secret"
+    servers:
+      - address: "1.1.1.1:11"
+      - address: "2.2.2.2:22"
+    metadataServers:
+      - address: "3.3.3.3:33"
 tlogClusters:
   main:
     servers:
@@ -301,7 +331,7 @@ vdisks:
       storageClusterID: mycluster
       tlogServerClusterID: main
     tlog:
-      storageClusterID: tlogcluster
+      zeroStorClusterID: zerostorcluster
   mini:
     type: boot
     blockSize: 4096
@@ -312,7 +342,7 @@ vdisks:
       slaveStorageClusterID: slavecluster
       tlogServerClusterID: main
     tlog:
-      storageClusterID: tlogcluster
+      zeroStorClusterID: zerostorcluster
       slaveStorageClusterID: slavecluster
 ```
 
@@ -371,6 +401,7 @@ Learn more about:
 [tlog]: glossary.md#TLog
 [nbdserver]: nbd/nbd.md
 [tlogserver]: tlog/server.md
+[zerostorserver]: https://github.com/zero-os/0-stor/
 [slave]: glossary.md#slave
 [nbd]: nbd/nbd.md
 [nbdServerConfig]: nbd/config.md
@@ -384,3 +415,5 @@ Learn more about:
 [VdiskTlogConfigGodoc]: https://godoc.org/github.com/zero-os/0-Disk/config#VdiskTlogConfig
 [StorageClusterConfigGodoc]: https://godoc.org/github.com/zero-os/0-Disk/config#StorageClusterConfig
 [TlogClusterConfigGodoc]: https://godoc.org/github.com/zero-os/0-Disk/config#TlogClusterConfig
+[ZerostorClusterConfigGodoc]: https://godoc.org/github.com/zero-os/0-Disk/config#ZeroStorClusterConfig
+[zeroStorNamespacing]: https://github.com/zero-os/0-stor/blob/master/specs/concept.md#namespaces-concept
