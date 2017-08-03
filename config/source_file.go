@@ -118,7 +118,7 @@ func (s *fileSource) Close() error {
 
 // read the entire config from file,
 // and take out a specific vdisk config
-func (s *fileSource) readVdiskConfig(vdiskID string) (*fileFormatVdiskConfig, error) {
+func (s *fileSource) readVdiskConfig(vdiskID string) (*FileFormatVdiskConfig, error) {
 	cfg, err := s.readFullFile()
 	if err != nil {
 		return nil, err
@@ -161,13 +161,13 @@ func (s *fileSource) readTlogClusterConfig(clusterID string) (*TlogClusterConfig
 }
 
 // read the entire config from file
-func (s *fileSource) readFullFile() (*fileFormatCompleteConfig, error) {
+func (s *fileSource) readFullFile() (*FileFormatCompleteConfig, error) {
 	bytes, err := s.reader(s.path)
 	if err != nil {
 		return nil, err
 	}
 
-	var cfg fileFormatCompleteConfig
+	var cfg FileFormatCompleteConfig
 	err = yaml.Unmarshal(bytes, &cfg)
 	if err != nil {
 		return nil, err
@@ -176,17 +176,17 @@ func (s *fileSource) readFullFile() (*fileFormatCompleteConfig, error) {
 	return &cfg, nil
 }
 
-// fileFormatCompleteConfig is the YAML format struct
+// FileFormatCompleteConfig is the YAML format struct
 // used for a zerodisk config file.
-type fileFormatCompleteConfig struct {
-	Vdisks          map[string]fileFormatVdiskConfig `yaml:"vdisks" valid:"required"`
+type FileFormatCompleteConfig struct {
+	Vdisks          map[string]FileFormatVdiskConfig `yaml:"vdisks" valid:"required"`
 	StorageClusters map[string]StorageClusterConfig  `yaml:"storageClusters" valid:"required"`
 	TlogClusters    map[string]TlogClusterConfig     `yaml:"tlogClusters" valid:"optional"`
 }
 
 // NBDVdisksConfig returns the NBD Vdisks configuration embedded in
 // the YAML zerodisk config file.
-func (cfg *fileFormatCompleteConfig) NBDVdisksConfig() (*NBDVdisksConfig, error) {
+func (cfg *FileFormatCompleteConfig) NBDVdisksConfig() (*NBDVdisksConfig, error) {
 	if len(cfg.Vdisks) == 0 {
 		return nil, errors.New("file config has no vdisks specified")
 	}
@@ -200,7 +200,7 @@ func (cfg *fileFormatCompleteConfig) NBDVdisksConfig() (*NBDVdisksConfig, error)
 
 // VdiskConfig returns the full vdisk configuration embedded in
 // the YAML zerodisk config file.
-func (cfg *fileFormatCompleteConfig) VdiskConfig(id string) (*fileFormatVdiskConfig, error) {
+func (cfg *FileFormatCompleteConfig) VdiskConfig(id string) (*FileFormatVdiskConfig, error) {
 	vdiskConfig, ok := cfg.Vdisks[id]
 	if !ok {
 		return nil, errors.New("file config has no vdisk config under the id " + id)
@@ -210,7 +210,7 @@ func (cfg *fileFormatCompleteConfig) VdiskConfig(id string) (*fileFormatVdiskCon
 
 // StorageClusterConfig returns the StorageCluster configuration embedded in
 // the YAML zerodisk config file.
-func (cfg *fileFormatCompleteConfig) StorageClusterConfig(id string) (*StorageClusterConfig, error) {
+func (cfg *FileFormatCompleteConfig) StorageClusterConfig(id string) (*StorageClusterConfig, error) {
 	storageClusterConfig, ok := cfg.StorageClusters[id]
 	if !ok {
 		return nil, errors.New("file config has no storage cluster config under the id " + id)
@@ -220,7 +220,7 @@ func (cfg *fileFormatCompleteConfig) StorageClusterConfig(id string) (*StorageCl
 
 // TlogClusterConfig returns the TlogCluster configuration embedded in
 // the YAML zerodisk config file.
-func (cfg *fileFormatCompleteConfig) TlogClusterConfig(id string) (*TlogClusterConfig, error) {
+func (cfg *FileFormatCompleteConfig) TlogClusterConfig(id string) (*TlogClusterConfig, error) {
 	tlogClusterConfig, ok := cfg.TlogClusters[id]
 	if !ok {
 		return nil, errors.New("file config has no tlog cluster config under the id " + id)
@@ -228,9 +228,9 @@ func (cfg *fileFormatCompleteConfig) TlogClusterConfig(id string) (*TlogClusterC
 	return &tlogClusterConfig, nil
 }
 
-// fileFormatVdiskConfig is the YAML format struct
+// FileFormatVdiskConfig is the YAML format struct
 // used for all vdisk file-originated configurations.
-type fileFormatVdiskConfig struct {
+type FileFormatVdiskConfig struct {
 	BlockSize       uint64    `yaml:"blockSize" valid:"required"`
 	ReadOnly        bool      `yaml:"readOnly" valid:"optional"`
 	Size            uint64    `yaml:"size" valid:"required"`
@@ -243,7 +243,7 @@ type fileFormatVdiskConfig struct {
 
 // StaticConfig returns the vdisk's Static configuration embedded in
 // the vdisk config file format.
-func (cfg *fileFormatVdiskConfig) StaticConfig() (*VdiskStaticConfig, error) {
+func (cfg *FileFormatVdiskConfig) StaticConfig() (*VdiskStaticConfig, error) {
 	static := &VdiskStaticConfig{
 		BlockSize:       cfg.BlockSize,
 		ReadOnly:        cfg.ReadOnly,
@@ -261,7 +261,7 @@ func (cfg *fileFormatVdiskConfig) StaticConfig() (*VdiskStaticConfig, error) {
 
 // NBDConfig returns the vdisk's NBD configuration embedded in
 // the vdisk config file format.
-func (cfg *fileFormatVdiskConfig) NBDConfig() (*VdiskNBDConfig, error) {
+func (cfg *FileFormatVdiskConfig) NBDConfig() (*VdiskNBDConfig, error) {
 	if cfg.NBD == nil {
 		return nil, errors.New("vdisk has no NBD configuration")
 	}
@@ -270,7 +270,7 @@ func (cfg *fileFormatVdiskConfig) NBDConfig() (*VdiskNBDConfig, error) {
 
 // TlogConfig returns the vdisk's Tlog configuration embedded in
 // the vdisk config file format.
-func (cfg *fileFormatVdiskConfig) TlogConfig() (*VdiskTlogConfig, error) {
+func (cfg *FileFormatVdiskConfig) TlogConfig() (*VdiskTlogConfig, error) {
 	if cfg.Tlog == nil {
 		return nil, errors.New("vdisk has no Tlog configuration")
 	}

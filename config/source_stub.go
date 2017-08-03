@@ -19,7 +19,7 @@ func NewStubSource() *StubSource {
 // used for testing purposes only.
 type StubSource struct {
 	fileSource
-	cfg *fileFormatCompleteConfig
+	cfg *FileFormatCompleteConfig
 	mux sync.Mutex
 }
 
@@ -179,7 +179,7 @@ func (s *StubSource) SetStorageCluster(clusterID string, cfg *StorageClusterConf
 
 func (s *StubSource) setStorageCluster(clusterID string, cfg *StorageClusterConfig) bool {
 	if s.cfg == nil {
-		s.cfg = &fileFormatCompleteConfig{
+		s.cfg = &FileFormatCompleteConfig{
 			StorageClusters: make(map[string]StorageClusterConfig),
 		}
 	} else if s.cfg.StorageClusters == nil {
@@ -205,7 +205,7 @@ func (s *StubSource) SetTlogCluster(clusterID string, cfg *TlogClusterConfig) {
 
 func (s *StubSource) setTlogCluster(clusterID string, cfg *TlogClusterConfig) bool {
 	if s.cfg == nil {
-		s.cfg = &fileFormatCompleteConfig{
+		s.cfg = &FileFormatCompleteConfig{
 			TlogClusters: make(map[string]TlogClusterConfig),
 		}
 	} else if s.cfg.TlogClusters == nil {
@@ -221,13 +221,13 @@ func (s *StubSource) setTlogCluster(clusterID string, cfg *TlogClusterConfig) bo
 	return true
 }
 
-func (s *StubSource) getVdiskCfg(vdiskID string) fileFormatVdiskConfig {
+func (s *StubSource) getVdiskCfg(vdiskID string) FileFormatVdiskConfig {
 	if s.cfg == nil {
-		s.cfg = &fileFormatCompleteConfig{
-			Vdisks: make(map[string]fileFormatVdiskConfig),
+		s.cfg = &FileFormatCompleteConfig{
+			Vdisks: make(map[string]FileFormatVdiskConfig),
 		}
 	} else if s.cfg.Vdisks == nil {
-		s.cfg.Vdisks = make(map[string]fileFormatVdiskConfig)
+		s.cfg.Vdisks = make(map[string]FileFormatVdiskConfig)
 	}
 
 	vdiskCfg, ok := s.cfg.Vdisks[vdiskID]

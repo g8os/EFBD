@@ -111,7 +111,7 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	// but only one will be used at a time, the others merely serve as backup servers.
 	if staticConfig.Type.TlogSupport() {
 		vdiskNBDConfig, err := config.ReadVdiskNBDConfig(f.configSource, vdiskID)
-		if err != nil && vdiskNBDConfig.TlogServerClusterID != "" {
+		if err == nil && vdiskNBDConfig.TlogServerClusterID != "" {
 			log.Debugf("creating tlogStorage for backend %v (%v)", vdiskID, staticConfig.Type)
 			blockStorage, err = newTlogStorage(ctx,
 				vdiskID, vdiskNBDConfig.TlogServerClusterID,

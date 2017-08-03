@@ -62,7 +62,7 @@ func init() {
 		if len(os.Args) > 0 {
 			exe = path.Base(os.Args[0])
 		} else {
-			exe = "data_migration_milestone_5_to_6"
+			exe = "key_rename_milestone_6"
 		}
 
 		fmt.Fprintln(os.Stderr, `

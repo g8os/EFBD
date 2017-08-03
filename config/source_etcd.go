@@ -35,7 +35,7 @@ func (s *etcdv3Source) Get(key Key) ([]byte, error) {
 	defer cancel()
 
 	// convert our internal key type to an etcd key
-	keyString, err := etcdKey(key.ID, key.Type)
+	keyString, err := ETCDKey(key.ID, key.Type)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +63,7 @@ func (s *etcdv3Source) Get(key Key) ([]byte, error) {
 // Watch implements Source.Watch
 func (s *etcdv3Source) Watch(ctx context.Context, key Key) (<-chan []byte, error) {
 	// convert our internal key type to an etcd key
-	keyString, err := etcdKey(key.ID, key.Type)
+	keyString, err := ETCDKey(key.ID, key.Type)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +126,8 @@ func (s *etcdv3Source) Close() error {
 	return s.client.Close()
 }
 
-func etcdKey(id string, ktype KeyType) (string, error) {
+// ETCDKey returns the etcd key for a given type and unique id.
+func ETCDKey(id string, ktype KeyType) (string, error) {
 	suffix, ok := etcdKeySuffixes[ktype]
 	if !ok {
 		return "", fmt.Errorf("%v is not a supported key type", ktype)

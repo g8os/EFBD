@@ -22,7 +22,7 @@ func TestETCDKey(t *testing.T) {
 	}
 
 	for _, validCase := range validCases {
-		output, err := etcdKey("foo", validCase.Type)
+		output, err := ETCDKey("foo", validCase.Type)
 		if assert.NoError(err, "input: %v", validCase.Type) {
 			assert.Equal(validCase.Expected, output)
 		}

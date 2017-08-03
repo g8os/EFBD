@@ -1,6 +1,4 @@
-# Tools
-
-## Milestone 6: Key Rename
+# Milestone 6: Key Rename
 
 This tool is meant to apply the ([meta][metadata])[data][data] key renaming, due to the fact that redis hashmap keys are prefixed since milstone 6, while they weren't prefixed before. The reason they are prefixed now is to avoid name colissions between [nondeduped][nondeduped] [data][data] and [deduped][deduped] ([LBA][lba]) [metadata][metadata]. Such name colissions were unavoidable when using the [semideduped][semideduped] storage, as uses both [nondeduped][nondeduped] and [deduped][deduped] storage under the hood.
 
@@ -12,7 +10,7 @@ Executing this tool can take several minutes(!) to finish, depending on the (tot
 
 > (!!!) Warning: Currently this tool will rename all (filtered) legacy hashmaps found on a given redis server, even those that do not belong to the given [vdisk][vdisk] type. Please open a feature request in case you require the migration of ([meta][metadata])[data][data] on servers which have [vdisks][vdisk] of multiple types. For example servers which have both [db][db]- and [boot][boot] [vdisks][vdisk] stored. You have been warned!
 
-### Usage
+## Usage
 
 ```
 Usage: key_rename_milestone_6 [flags] storage_address...
@@ -35,17 +33,17 @@ At least one storage address has to be given!
 You can simply run the tool using:
 
 ```
-$ go run tools/key_rename_milestone_6.go --help
+$ go run tools/key_rename_milestone_6 --help
 ```
 
 Or you can first build it, and than use it:
 
 ```
-$ go build tools/key_rename_milestone_6.go
+$ go build tools/key_rename_milestone_6
 ./key_rename_milestone_6 --help
 ```
 
-### Examples
+## Examples
 
 Preview the renaming of all [boot][boot] [vdisks][vdisk]' hashmaps on `localhost:16379`:
 

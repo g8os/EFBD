@@ -6,3 +6,4 @@ config.yml
 bin
 *.swp
 key_rename_milestone_6
+import_file_into_etcd_config

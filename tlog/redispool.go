@@ -477,11 +477,11 @@ func (p *dynamicRedisPool) reloadConfig(cfg *config.TlogStorageConfig) error {
 
 func (p *dynamicRedisPool) listen(ctx context.Context, source config.Source, vdiskID string) error {
 	ctx, cancelFunc := context.WithCancel(ctx)
-	defer cancelFunc()
 
 	log.Debug("creating tlog config watch for ", vdiskID)
 	ch, err := config.WatchTlogStorageConfig(ctx, source, vdiskID)
 	if err != nil {
+		cancelFunc()
 		return err
 	}
 
@@ -490,11 +490,13 @@ func (p *dynamicRedisPool) listen(ctx context.Context, source config.Source, vdi
 	// which should be given if the watch was created correctly.
 	cfg := <-ch
 	if err = p.reloadConfig(&cfg); err != nil {
+		cancelFunc()
 		return err
 	}
 
 	log.Debug("listen (async) for incoming tlog config updates for ", vdiskID)
 	go func() {
+		defer cancelFunc()
 		for {
 			select {
 			case cfg := <-ch:
