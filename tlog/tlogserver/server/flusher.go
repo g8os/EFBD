@@ -83,7 +83,7 @@ func (f *flusher) flush(blocks []*schema.TlogBlock, vd *vdisk) ([]uint64, []byte
 	finalData := append(buf.Bytes(), encrypted...)
 
 	// erasure
-	erEncoded, err := f.erasure.Encode(vd.vdiskID, finalData[:])
+	erEncoded, err := f.erasure.Encode(vd.ID(), finalData[:])
 	if err != nil {
 		return nil, nil, err
 	}
@@ -120,7 +120,7 @@ func (f *flusher) encodeCapnp(blocks []*schema.TlogBlock, vd *vdisk) ([]byte, er
 	agg.SetSize(uint64(len(blocks)))
 	agg.SetTimestamp(uint64(time.Now().UnixNano()))
 	agg.SetPrev(vd.lastHash)
-	agg.SetVdiskID(vd.vdiskID)
+	agg.SetVdiskID(vd.ID())
 
 	blockList, err := agg.NewBlocks(int32(len(blocks)))
 	if err != nil {
@@ -170,8 +170,8 @@ func (f *flusher) storeEncoded(vd *vdisk, key []byte, encoded [][]byte) error {
 	wg.Wait()
 
 	if len(allErr) > 0 {
-		log.Infof("flush of vdiskID=%s failed: %v", vd.vdiskID, allErr)
-		return fmt.Errorf("flush vdiskID=%s failed", vd.vdiskID)
+		log.Infof("flush of vdiskID=%s failed: %v", vd.ID(), allErr)
+		return fmt.Errorf("flush ofvdiskID=%s failed", vd.ID())
 	}
 
 	return nil

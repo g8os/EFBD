@@ -16,11 +16,9 @@ type backendFactoryConfig struct {
 	// Redis pool factory used to create the redis (= storage servers) pool
 	// a factory is used, rather than a shared redis pool,
 	// such that each vdisk (session) will get its own redis pool.
-	PoolFactory       ardb.RedisPoolFactory
-	ConfigHotReloader config.HotReloader // NBDServer Config Hotreloader
-	TLogRPCAddress    string             // address of tlog server
-	LBACacheLimit     int64              // min-capped to LBA.BytesPerSector
-	ConfigPath        string             // path to the NBDServer's YAML Config
+	PoolFactory   ardb.RedisPoolFactory
+	LBACacheLimit int64         // min-capped to LBA.BytesPerSector
+	ConfigSource  config.Source // config source
 }
 
 // Validate all the parameters of this BackendFactoryConfig,
@@ -29,8 +27,8 @@ func (cfg *backendFactoryConfig) Validate() error {
 	if cfg.PoolFactory == nil {
 		return errors.New("BackendFactory requires a non-nil RedisPoolFactory")
 	}
-	if cfg.ConfigHotReloader == nil {
-		return errors.New("BackendFactory requires a non-nil config.HotReloader")
+	if cfg.ConfigSource == nil {
+		return errors.New("BackendFactory requires a non-nil config source")
 	}
 
 	return nil
@@ -46,12 +44,10 @@ func newBackendFactory(cfg backendFactoryConfig) (*backendFactory, error) {
 	}
 
 	return &backendFactory{
-		poolFactory:       cfg.PoolFactory,
-		cfgHotReloader:    cfg.ConfigHotReloader,
-		cmdTlogRPCAddress: cfg.TLogRPCAddress,
-		lbaCacheLimit:     cfg.LBACacheLimit,
-		configPath:        cfg.ConfigPath,
-		vdiskComp:         &vdiskCompletion{},
+		poolFactory:   cfg.PoolFactory,
+		lbaCacheLimit: cfg.LBACacheLimit,
+		configSource:  cfg.ConfigSource,
+		vdiskComp:     &vdiskCompletion{},
 	}, nil
 }
 
@@ -59,50 +55,51 @@ func newBackendFactory(cfg backendFactoryConfig) (*backendFactory, error) {
 // that can not be passed in the exportconfig like the pool of ardb connections.
 // Its NewBackend method is used as the ardb backend generator.
 type backendFactory struct {
-	poolFactory       ardb.RedisPoolFactory
-	cfgHotReloader    config.HotReloader
-	cmdTlogRPCAddress string
-	lbaCacheLimit     int64
-	configPath        string
-	vdiskComp         *vdiskCompletion
+	poolFactory   ardb.RedisPoolFactory
+	lbaCacheLimit int64
+	configSource  config.Source
+	vdiskComp     *vdiskCompletion
 }
 
 // NewBackend generates a new ardb backend
 func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (backend nbd.Backend, err error) {
 	vdiskID := ec.Name
 
-	// get the vdisk- and used storage servers configs,
-	// which thanks to the hotreloading feature is always up to date
-	cfg, err := f.cfgHotReloader.VdiskClusterConfig(vdiskID)
+	// fetch static config
+	staticConfig, err := config.ReadVdiskStaticConfig(f.configSource, vdiskID)
 	if err != nil {
 		log.Error(err)
 		return
 	}
-	vdisk := &cfg.Vdisk
 
 	// Create a redis provider (with a unique pool),
 	// and the found vdisk config.
 	// The redisProvider takes care of closing the created redisPool.
+	// The redisProvider created here also supports hot reloading.
 	redisPool := f.poolFactory()
-	redisProvider, err := ardb.RedisProvider(cfg, redisPool)
+	redisProvider, err := ardb.DynamicProvider(ctx, vdiskID, f.configSource, redisPool)
 	if err != nil {
 		log.Error(err)
 		return
 	}
-	go redisProvider.Listen(ctx, vdiskID, f.cfgHotReloader)
 
-	blockSize := int64(vdisk.BlockSize)
+	blockSize := int64(staticConfig.BlockSize)
 
 	// The NBDServer config defines the vdisk size in GiB,
 	// (go)nbdserver however expects it in bytes, thus we have to convert it.
-	vdiskSize := int64(vdisk.Size) * ardb.GibibyteAsBytes
+	vdiskSize := int64(staticConfig.Size) * ardb.GibibyteAsBytes
 
 	blockStorage, err := storage.NewBlockStorage(
-		vdiskID, storage.BlockStorageConfig{
-			Vdisk:         *vdisk,
-			LBACacheLimit: f.lbaCacheLimit,
+		storage.BlockStorageConfig{
+			VdiskID:         vdiskID,
+			TemplateVdiskID: staticConfig.TemplateVdiskID,
+			VdiskType:       staticConfig.Type,
+			VdiskSize:       vdiskSize,
+			BlockSize:       blockSize,
+			LBACacheLimit:   f.lbaCacheLimit,
 		}, redisProvider)
 	if err != nil {
+		redisProvider.Close()
 		log.Error(err)
 		return
 	}
@@ -112,14 +109,25 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	// which sends all write transactions to the tlog server via an embbed tlog client.
 	// One tlog client can define multiple tlog server connections,
 	// but only one will be used at a time, the others merely serve as backup servers.
-	if vdisk.TlogSupport() {
-		if tlogRPCAddrs := f.tlogRPCAddrs(); tlogRPCAddrs != "" {
-			log.Debugf("creating tlogStorage for backend %v (%v)", vdiskID, vdisk.Type)
-			blockStorage, err = newTlogStorage(vdiskID, tlogRPCAddrs, f.configPath, blockSize, blockStorage)
+	if staticConfig.Type.TlogSupport() {
+		vdiskNBDConfig, err := config.ReadVdiskNBDConfig(f.configSource, vdiskID)
+		if err != nil && vdiskNBDConfig.TlogServerClusterID != "" {
+			log.Debugf("creating tlogStorage for backend %v (%v)", vdiskID, staticConfig.Type)
+			blockStorage, err = newTlogStorage(ctx,
+				vdiskID, vdiskNBDConfig.TlogServerClusterID,
+				f.configSource, blockSize, blockStorage, nil)
 			if err != nil {
+				blockStorage.Close()
+				redisProvider.Close()
 				log.Infof("couldn't create tlog storage: %s", err.Error())
-				return
+				return nil, err
 			}
+		}
+		if err != nil {
+			blockStorage.Close()
+			redisProvider.Close()
+			log.Infof("couldn't create tlog storage: %s", err.Error())
+			return nil, err
 		}
 	}
 
@@ -142,28 +150,4 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 // because of context cancellation.
 func (f backendFactory) Wait() []error {
 	return f.vdiskComp.Wait()
-}
-
-// Get the tlog server(s) address(es),
-// if tlog rpc addresses are defined via a CLI flag we use those,
-// otherwise we try to get it from the latest config.
-func (f backendFactory) tlogRPCAddrs() string {
-	// return the addresses defined as a CLI flag
-	if f.cmdTlogRPCAddress != "" {
-		return f.cmdTlogRPCAddress
-	}
-
-	// no addresses defined
-	if f.configPath == "" {
-		return ""
-	}
-
-	// return the addresses defined in the TlogServer config,
-	// it is however possible that no addresses are defined at all,
-	// in which case the returned string will be empty.
-	cfg, err := config.ReadConfig(f.configPath, config.TlogServer)
-	if err != nil {
-		return ""
-	}
-	return cfg.TlogRPC
 }

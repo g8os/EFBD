@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
@@ -140,7 +141,14 @@ func testTlogStorage(ctx context.Context, t *testing.T, vdiskID string, blockSiz
 		return
 	}
 
-	storage, err := newTlogStorage(vdiskID, tlogrpc, "", blockSize, storage)
+	source := config.NewStubSource()
+	source.SetTlogServerCluster(vdiskID, "tlogcluster", &config.TlogClusterConfig{
+		Servers: []string{tlogrpc},
+	})
+	defer source.Close()
+
+	storage, err := newTlogStorage(
+		ctx, vdiskID, "tlogcluster", source, blockSize, storage, nil)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}
@@ -154,7 +162,14 @@ func testTlogStorageForceFlush(ctx context.Context, t *testing.T, vdiskID string
 		return
 	}
 
-	storage, err := newTlogStorage(vdiskID, tlogrpc, "", blockSize, storage)
+	source := config.NewStubSource()
+	source.SetTlogServerCluster(vdiskID, "tlogcluster", &config.TlogClusterConfig{
+		Servers: []string{tlogrpc},
+	})
+	defer source.Close()
+
+	storage, err := newTlogStorage(
+		ctx, vdiskID, "tlogcluster", source, blockSize, storage, nil)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}
@@ -180,7 +195,7 @@ func newTlogTestServer(ctx context.Context, t *testing.T) string {
 	}
 
 	// start the server
-	s, err := server.NewServer(testConf, poolFactory)
+	s, err := server.NewServer(testConf, nil, poolFactory)
 	if !assert.NoError(t, err) {
 		return ""
 	}
@@ -255,7 +270,7 @@ func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
 	poolFactory := tlog.InMemoryRedisPoolFactory(testConf.RequiredDataServers())
 
 	t.Log("start the server")
-	s, err := server.NewServer(testConf, poolFactory)
+	s, err := server.NewServer(testConf, nil, poolFactory)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -283,7 +298,14 @@ func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
 		return
 	}
 
-	storage, err := newTlogStorage(vdiskID, tlogrpc, "", blockSize, internalStorage)
+	source := config.NewStubSource()
+	source.SetTlogServerCluster(vdiskID, "tlogcluster", &config.TlogClusterConfig{
+		Servers: []string{tlogrpc},
+	})
+	defer source.Close()
+
+	storage, err := newTlogStorage(
+		ctx, vdiskID, "tlogcluster", source, blockSize, internalStorage, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -381,7 +403,7 @@ func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
 	}
 
 	t.Log("replay from tlog except the last block")
-	player, err := player.NewPlayerWithPoolAndStorage(ctx, tlogRedisPool, storage, vdiskID,
+	player, err := player.NewPlayerWithPoolAndStorage(ctx, tlogRedisPool, nil, storage, vdiskID,
 		testConf.PrivKey, testConf.HexNonce, testConf.K, testConf.M)
 	if !assert.NoError(t, err) {
 		return

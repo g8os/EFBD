@@ -19,8 +19,6 @@ import (
 	"github.com/zero-os/0-Disk/nbd/ardb/storage/lba"
 	"github.com/zero-os/0-Disk/nbd/gonbdserver/nbd"
 	"github.com/zero-os/0-Disk/redisstub"
-	"github.com/zero-os/0-Disk/tlog"
-	tlogserver "github.com/zero-os/0-Disk/tlog/tlogserver/server"
 )
 
 func main() {
@@ -31,9 +29,9 @@ func main() {
 	var profileAddress string
 	var protocol string
 	var address string
-	var tlogrpcaddress string
-	var configPath string
+	var sourceConfig config.SourceConfig
 	var logPath string
+	var serverID string
 	flag.BoolVar(&verbose, "v", false, "when false, only log warnings and errors")
 	flag.StringVar(&logPath, "logfile", "", "optionally log to the specified file, instead of the stderr")
 	flag.BoolVar(&inMemoryStorage, "memorystorage", false, "Stores the data in memory only, usefull for testing or benchmarking")
@@ -41,10 +39,10 @@ func main() {
 	flag.StringVar(&profileAddress, "profile-address", "", "Enables profiling of this server as an http service")
 	flag.StringVar(&protocol, "protocol", "unix", "Protocol to listen on, 'tcp' or 'unix'")
 	flag.StringVar(&address, "address", "/tmp/nbd-socket", "Address to listen on, unix socket or tcp address, ':6666' for example")
-	flag.StringVar(&tlogrpcaddress, "tlogrpc", "", "Addresses of the tlog server, set to 'auto' to use the inmemory version (test/dev only)")
-	flag.StringVar(&configPath, "config", "config.yml", "NBDServer Config YAML File")
+	flag.Var(&sourceConfig, "config", "config resource: dialstrings (etcd cluster) or path (yaml file)")
 	flag.Int64Var(&lbacachelimit, "lbacachelimit", ardb.DefaultLBACacheLimit,
 		fmt.Sprintf("Cache limit of LBA in bytes, needs to be higher then %d (bytes in 1 sector)", lba.BytesPerSector))
+	flag.StringVar(&serverID, "id", "default", "The server ID (default: default)")
 	flag.Parse()
 
 	logLevel := log.InfoLevel
@@ -64,15 +62,27 @@ func main() {
 		log.SetHandlers(logHandlers...)
 	}
 
-	log.Debugf("flags parsed: memorystorage=%t tlsonly=%t profileaddress=%q protocol=%q address=%q tlogrpc=%q config=%q lbacachelimit=%d logfile=%q",
+	log.Debugf("flags parsed: memorystorage=%t tlsonly=%t profileaddress=%q protocol=%q address=%q config=%q lbacachelimit=%d logfile=%q id=%q",
 		inMemoryStorage, tlsonly,
 		profileAddress,
 		protocol, address,
-		tlogrpcaddress,
-		configPath,
+		sourceConfig.String(),
 		lbacachelimit,
 		logPath,
+		serverID,
 	)
+
+	// let's create the source and defer close it
+	configSource, err := config.NewSource(sourceConfig)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer configSource.Close()
+	// let's now also ensure that the configuration is valid
+	err = config.ValidateNBDServerConfigs(configSource, serverID)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	if len(profileAddress) > 0 {
 		go func() {
@@ -85,46 +95,11 @@ func main() {
 	}
 
 	ctx, cancelFunc := context.WithCancel(context.Background())
-	// create embedded tlog api if needed
-	if tlogrpcaddress == "auto" {
-		log.Info("Starting embedded (in-memory) tlogserver")
-		config := tlogserver.DefaultConfig()
-
-		var err error
-		var poolFactory tlog.RedisPoolFactory
-
-		requiredDataServers := config.RequiredDataServers()
-
-		if inMemoryStorage {
-			poolFactory = tlog.InMemoryRedisPoolFactory(requiredDataServers)
-		} else {
-			poolFactory, err = tlog.ConfigRedisPoolFactory(ctx, requiredDataServers, configPath)
-			if err != nil {
-				log.Fatalf("couldn't create embedded tlogserver: %v", err)
-			}
-		}
-
-		// create server
-		server, err := tlogserver.NewServer(config, poolFactory)
-		if err != nil {
-			log.Fatalf("couldn't create embedded tlogserver: %v", err)
-		}
-
-		tlogrpcaddress = server.ListenAddr()
-
-		log.Debug("embedded (in-memory) tlogserver up and running")
-		go server.Listen(ctx)
-	}
-	if tlogrpcaddress != "" {
-		log.Info("Using tlog server at", tlogrpcaddress)
-	}
 
 	var sessionWaitGroup sync.WaitGroup
 
-	configCtx, configCancelFunc := context.WithCancel(ctx)
 	defer func() {
 		log.Info("Shutting down")
-		configCancelFunc()
 		cancelFunc()
 		sessionWaitGroup.Wait()
 		log.Info("Shutdown complete")
@@ -156,19 +131,10 @@ func main() {
 	// between all vdisks ever...
 	redisPoolFactory := ardb.NewRedisPoolFactory(poolDial)
 
-	configHotReloader, err := config.NewHotReloader(configPath, config.NBDServer)
-	if err != nil {
-		log.Fatal(err)
-	}
-	go configHotReloader.Listen(configCtx)
-	defer configHotReloader.Close()
-
 	backendFactory, err := newBackendFactory(backendFactoryConfig{
-		PoolFactory:       redisPoolFactory,
-		ConfigHotReloader: configHotReloader,
-		TLogRPCAddress:    tlogrpcaddress,
-		LBACacheLimit:     lbacachelimit,
-		ConfigPath:        configPath,
+		PoolFactory:   redisPoolFactory,
+		ConfigSource:  configSource,
+		LBACacheLimit: lbacachelimit,
 	})
 	handleSigterm(backendFactory, cancelFunc)
 
@@ -185,12 +151,15 @@ func main() {
 	}
 
 	exportController, err := NewExportController(
-		configHotReloader,
+		ctx,
+		configSource,
 		tlsonly,
+		serverID,
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer exportController.Close()
 
 	// set export config controller,
 	// so we can generate the ExportConfig,
@@ -198,7 +167,7 @@ func main() {
 	l.SetExportConfigManager(exportController)
 
 	// listen to requests
-	l.Listen(configCtx, ctx, &sessionWaitGroup)
+	l.Listen(ctx, ctx, &sessionWaitGroup)
 }
 
 // handle sigterm
@@ -239,7 +208,7 @@ func init() {
 
 		fmt.Fprintln(os.Stderr, "nbdserver", zerodisk.CurrentVersion)
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Usage of", exe+":")
+		fmt.Fprintln(os.Stderr, fmt.Sprintf("usage: %s [flags] config_resource", exe))
 		flag.PrintDefaults()
 	}
 }

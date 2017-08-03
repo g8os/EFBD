@@ -1,8 +1,8 @@
 package main
 
 import (
-	"errors"
-	"fmt"
+	"context"
+	"sync"
 
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
@@ -10,29 +10,40 @@ import (
 )
 
 // NewExportController creates a new export config manager.
-func NewExportController(cfg config.HotReloader, tlsOnly bool) (controller *ExportController, err error) {
-	if cfg == nil {
-		err = errors.New("ExportController requires a non-nil config.HotReloader")
-		return
+func NewExportController(ctx context.Context, configSource config.Source, tlsOnly bool, serverID string) (*ExportController, error) {
+	exportController := &ExportController{
+		configSource: configSource,
+		tlsOnly:      tlsOnly,
+		done:         make(chan struct{}),
 	}
 
-	controller = &ExportController{
-		cfg:     cfg,
-		tlsOnly: tlsOnly,
+	err := exportController.spawnBackground(ctx, serverID)
+	if err != nil {
+		return nil, err
 	}
-	return
+
+	return exportController, nil
 }
 
 // ExportController implements nbd.ExportConfigManager
-// using the NBDServer HotReloader internally.
+// reading the BaseConfig when a config is required
 type ExportController struct {
-	cfg     config.HotReloader
+	configSource config.Source
+
+	vdisksConfig config.NBDVdisksConfig
+	vdisksMux    sync.RWMutex
+	done         chan struct{}
+
 	tlsOnly bool
 }
 
 // ListConfigNames implements nbd.ExportConfigManager.ListConfigNames
 func (c *ExportController) ListConfigNames() (exports []string) {
-	exports = c.cfg.VdiskIdentifiers()
+	c.vdisksMux.RLock()
+	defer c.vdisksMux.RUnlock()
+
+	exports = make([]string, len(c.vdisksConfig.Vdisks))
+	copy(exports, c.vdisksConfig.Vdisks)
 	return
 }
 
@@ -40,16 +51,16 @@ func (c *ExportController) ListConfigNames() (exports []string) {
 func (c *ExportController) GetConfig(name string) (*nbd.ExportConfig, error) {
 	log.Infof("Getting vdisk %q", name)
 
-	cfg, err := c.cfg.VdiskClusterConfig(name)
+	cfg, err := config.ReadVdiskStaticConfig(c.configSource, name)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't read zerodisk config: %s", err.Error())
+		return nil, err
 	}
 
 	return &nbd.ExportConfig{
 		Name:               name,
 		Description:        "Deduped g8os zerodisk",
 		Driver:             "ardb",
-		ReadOnly:           cfg.Vdisk.ReadOnly,
+		ReadOnly:           cfg.ReadOnly,
 		TLSOnly:            c.tlsOnly,
 		MinimumBlockSize:   0, // use size given by ArdbBackend.Geometry
 		PreferredBlockSize: 0, // use size given by ArdbBackend.Geometry
@@ -61,4 +72,53 @@ func (c *ExportController) GetConfig(name string) (*nbd.ExportConfig, error) {
 		// They are related in a way that we would need a way to have
 		// a map[string[string] object generated
 	}, nil
+}
+
+// Close any open resources.
+func (c *ExportController) Close() error {
+	if c.done == nil {
+		return nil
+	}
+
+	close(c.done)
+	return nil
+}
+
+func (c *ExportController) reloadVdisksConfig(cfg config.NBDVdisksConfig) {
+	c.vdisksMux.Lock()
+	defer c.vdisksMux.Unlock()
+	c.vdisksConfig = cfg
+}
+
+func (c *ExportController) spawnBackground(ctx context.Context, serverID string) error {
+	ch, err := config.WatchNBDVdisksConfig(ctx, c.configSource, serverID)
+	if err != nil {
+		return err
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil
+	case c.vdisksConfig = <-ch:
+	}
+
+	go func() {
+		log.Debug("started ExportController background thread (config hot reloading)")
+		for {
+			select {
+			case <-ctx.Done():
+				log.Debug("abort ExportController background thread")
+				return
+
+			case <-c.done:
+				log.Debug("exit ExportController background thread")
+				return
+
+			case cfg := <-ch:
+				c.reloadVdisksConfig(cfg)
+			}
+		}
+	}()
+
+	return nil
 }

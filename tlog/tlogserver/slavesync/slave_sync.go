@@ -3,6 +3,7 @@ package slavesync
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -20,20 +21,20 @@ import (
 
 // Manager defines slave syncer manager
 type Manager struct {
-	apMq       *aggmq.MQ
-	syncers    map[string]*slaveSyncer
-	configPath string
-	mux        sync.Mutex
-	ctx        context.Context
+	apMq         *aggmq.MQ
+	syncers      map[string]*slaveSyncer
+	configSource config.Source
+	mux          sync.Mutex
+	ctx          context.Context
 }
 
 // NewManager creates new slave syncer manager
-func NewManager(ctx context.Context, apMq *aggmq.MQ, configPath string) *Manager {
+func NewManager(ctx context.Context, apMq *aggmq.MQ, configSource config.Source) *Manager {
 	m := &Manager{
-		apMq:       apMq,
-		configPath: configPath,
-		syncers:    make(map[string]*slaveSyncer),
-		ctx:        ctx,
+		apMq:         apMq,
+		configSource: configSource,
+		syncers:      make(map[string]*slaveSyncer),
+		ctx:          ctx,
 	}
 	return m
 }
@@ -64,7 +65,7 @@ func (m *Manager) handleReq(apr aggmq.AggProcessorReq) {
 	}
 
 	// create slave syncer
-	ss, err := newSlaveSyncer(m.ctx, m.configPath, apr.Config, apr.Comm, m)
+	ss, err := newSlaveSyncer(m.ctx, m.configSource, apr.Config, apr.Comm, m)
 	if err != nil {
 		log.Errorf("slavesync mgr: failed to create syncer for vdisk: %v, err: %v", apr.Config.VdiskID, err)
 		m.apMq.NeedProcessorResp <- err
@@ -95,7 +96,7 @@ type slaveSyncer struct {
 	metaPool         *ardb.RedisPool             // ardb meta redis pool
 	metaConf         *config.StorageServerConfig // ardb meta redis config
 	lastSeqSyncedKey string                      // key of the last sequence synced
-	configPath       string
+	configSource     config.Source
 	apc              aggmq.AggProcessorConfig
 
 	// we put these three  variables here
@@ -106,7 +107,7 @@ type slaveSyncer struct {
 }
 
 // newSlaveSyncer creates a new slave syncer
-func newSlaveSyncer(ctx context.Context, configPath string, apc aggmq.AggProcessorConfig,
+func newSlaveSyncer(ctx context.Context, configSource config.Source, apc aggmq.AggProcessorConfig,
 	aggComm *aggmq.AggComm, mgr *Manager) (*slaveSyncer, error) {
 
 	ss := &slaveSyncer{
@@ -114,7 +115,7 @@ func newSlaveSyncer(ctx context.Context, configPath string, apc aggmq.AggProcess
 		ctx:              ctx,
 		aggComm:          aggComm,
 		mgr:              mgr,
-		configPath:       configPath,
+		configSource:     configSource,
 		apc:              apc,
 		lastSeqSyncedKey: "tlog:last_slave_sync_seq:" + apc.VdiskID,
 	}
@@ -122,9 +123,8 @@ func newSlaveSyncer(ctx context.Context, configPath string, apc aggmq.AggProcess
 }
 
 func (ss *slaveSyncer) init() error {
-
 	// tlog replay player
-	player, err := player.NewPlayer(ss.ctx, ss.configPath, nil, ss.apc.VdiskID, ss.apc.PrivKey,
+	player, err := player.NewPlayer(ss.ctx, ss.configSource, nil, ss.apc.VdiskID, ss.apc.PrivKey,
 		ss.apc.HexNonce, ss.apc.K, ss.apc.M)
 	if err != nil {
 		return err
@@ -312,30 +312,21 @@ func (ss *slaveSyncer) getLastSyncedSeq() (uint64, error) {
 // initialize redis pool for metadata connection
 func (ss *slaveSyncer) initMetaRedisPool() error {
 	// get meta storage config
-	metaStorConf, err := func(vdiskID string) (*config.StorageServerConfig, error) {
-		// read config
-		conf, err := config.ReadConfig(ss.configPath, config.TlogServer)
-		if err != nil {
-			return nil, err
-		}
-		// get storage config for this vdisk
-		vdiskConf, ok := conf.Vdisks[ss.vdiskID]
-		if !ok {
-			return nil, fmt.Errorf("config for vdisk '%v' not found", vdiskID)
-		}
+	conf, err := config.ReadNBDStorageConfig(ss.configSource, ss.vdiskID, nil)
+	if err != nil {
+		return err
+	}
 
-		storClust, ok := conf.StorageClusters[vdiskConf.StorageCluster]
-		if !ok {
-			return nil, fmt.Errorf("no storageCluster for vdisk '%v", vdiskID)
-		}
-		return storClust.MetadataStorage, nil
-	}(ss.vdiskID)
+	if conf.StorageCluster.MetadataStorage == nil {
+		return errors.New(
+			"no meta storage cluster configured for vdisk " + ss.vdiskID)
+	}
 
 	if err != nil {
 		return err
 	}
 
-	ss.metaConf = metaStorConf
+	ss.metaConf = conf.StorageCluster.MetadataStorage
 	ss.metaPool = ardb.NewRedisPool(nil)
 	return nil
 }

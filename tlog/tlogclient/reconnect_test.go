@@ -185,6 +185,6 @@ func createTestServer() (*server.Server, *server.Config, error) {
 	poolFactory := tlog.InMemoryRedisPoolFactory(conf.RequiredDataServers())
 
 	// start the server
-	serv, err := server.NewServer(conf, poolFactory)
+	serv, err := server.NewServer(conf, nil, poolFactory)
 	return serv, conf, err
 }

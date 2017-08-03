@@ -4,13 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"math"
-	"os"
-	"os/signal"
-	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/zero-os/0-Disk/config"
@@ -29,26 +24,33 @@ const (
 
 // newTlogStorage creates a tlog storage BlockStorage,
 // wrapping around a given backend storage,
-// piggy backing on the newTlogStorageWithClient function for the actual logic.
-func newTlogStorage(vdiskID, tlogrpc, configPath string, blockSize int64, storage storage.BlockStorage) (storage.BlockStorage, error) {
-	client, err := tlogclient.New(strings.Split(tlogrpc, ","), vdiskID, 0, true)
-	if err != nil {
-		return nil, fmt.Errorf("tlogStorage requires a valid tlogclient: %s", err.Error())
-	}
-
-	return newTlogStorageWithClient(vdiskID, configPath, blockSize, client, storage)
-}
-
-// newTlogStorage creates a tlog storage BlockStorage,
-// wrapping around a given backend storage,
 // using the given tlog client to send its write transactions to the tlog server.
-func newTlogStorageWithClient(vdiskID, configPath string, blockSize int64, client tlogClient,
-	storage storage.BlockStorage) (storage.BlockStorage, error) {
+func newTlogStorage(ctx context.Context, vdiskID, clusterID string, configSource config.Source, blockSize int64, storage storage.BlockStorage, client tlogClient) (storage.BlockStorage, error) {
 	if storage == nil {
 		return nil, errors.New("tlogStorage requires a non-nil BlockStorage")
 	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	tlogClusterCh, err := config.WatchTlogClusterConfig(ctx, configSource, clusterID)
+	if err != nil {
+		cancel()
+		return nil, errors.New("tlogStorage requires a valid config source: " + err.Error())
+	}
+
+	var tlogClusterConfig config.TlogClusterConfig
+	select {
+	case tlogClusterConfig = <-tlogClusterCh:
+	case <-ctx.Done():
+		cancel()
+		return nil, errors.New("tlogStorage requires active context")
+	}
+
 	if client == nil {
-		return nil, errors.New("tlogStorage requires a non-nil tlogClient")
+		client, err = tlogclient.New(tlogClusterConfig.Servers, vdiskID, 0, true)
+		if err != nil {
+			cancel()
+			return nil, errors.New("tlogStorage requires valid tlogclient: " + err.Error())
+		}
 	}
 
 	tlogStorage := &tlogStorage{
@@ -61,11 +63,16 @@ func newTlogStorageWithClient(vdiskID, configPath string, blockSize int64, clien
 		transactionCh:  make(chan *transaction, transactionChCapacity),
 		toFlushCh:      make(chan []uint64, toFlushChCapacity),
 		cacheEmptyCond: sync.NewCond(&sync.Mutex{}),
-		configPath:     configPath,
 		done:           make(chan struct{}, 1),
 	}
 
-	go tlogStorage.background()
+	err = tlogStorage.spawnBackgroundGoroutine(ctx)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+
+	go tlogStorage.goTlogRPCReloader(ctx, tlogClusterCh, cancel)
 	return tlogStorage, nil
 }
 
@@ -94,8 +101,6 @@ type tlogStorage struct {
 
 	// condition variable used to signal when the cache is empty
 	cacheEmptyCond *sync.Cond
-
-	configPath string
 
 	done chan struct{}
 }
@@ -174,17 +179,23 @@ func (tls *tlogStorage) GetBlock(blockIndex int64) (content []byte, err error) {
 	defer tls.mux.Unlock()
 
 	content, err = tls.get(blockIndex)
-	if err == nil {
-		return
-	}
+	return
+	/*
+		// ARDB SLAVE SWAP IS DISABLED SINCE MILESTONE 6
+		// SEE: https://github.com/zero-os/0-Disk/issues/357
 
-	// there is issue with master, switch to ardb slave if possible
-	if errSwitch := tls.switchToArdbSlave(); errSwitch != nil {
-		log.Errorf("Failed to switchToArdbSlave: %v", errSwitch)
-		return
-	}
+		if err == nil {
+			return
+		}
 
-	return tls.get(blockIndex)
+		// there is issue with master, switch to ardb slave if possible
+		if errSwitch := tls.switchToArdbSlave(); errSwitch != nil {
+			log.Errorf("Failed to switchToArdbSlave: %v", errSwitch)
+			return
+		}
+
+		return tls.get(blockIndex)
+	*/
 }
 
 // DeleteBlock implements BlockStorage.DeleteBlock
@@ -267,22 +278,9 @@ func (tls *tlogStorage) Close() (err error) {
 	return
 }
 
-// GoBackground implements BlockStorage.GoBackground
-func (tls *tlogStorage) background() {
-	defer func() {
-		log.Infof("GoBackground exited for vdisk: %v", tls.vdiskID)
-		err := tls.tlog.Close()
-		if err != nil {
-			log.Info("error while closing tlog client: ", err)
-		}
-	}()
-	sigHup := make(chan os.Signal, 1)
-	signal.Notify(sigHup, syscall.SIGHUP)
-
+func (tls *tlogStorage) spawnBackgroundGoroutine(ctx context.Context) error {
+	ctx, cancelFunc := context.WithCancel(ctx)
 	recvCh := tls.tlog.Recv()
-
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	defer cancelFunc()
 
 	// used for sending our transactions
 	go tls.transactionSender(ctx)
@@ -290,45 +288,59 @@ func (tls *tlogStorage) background() {
 	// used for flushing from sequence cache
 	go tls.flusher(ctx)
 
-	for {
-		select {
-		case <-sigHup:
-			tls.handleSighup()
+	go func() {
+		log.Debug("background goroutine spawned for tlogstorage ", tls.vdiskID)
 
-		case res := <-recvCh:
-			if res.Err != nil {
-				panic(fmt.Errorf(
-					"tlog server resulted in error for vdisk %s: %s",
-					tls.vdiskID, res.Err))
+		defer func() {
+			log.Infof("GoBackground exited for vdisk: %v", tls.vdiskID)
+			err := tls.tlog.Close()
+			if err != nil {
+				log.Info("error while closing tlog client: ", err)
 			}
-			if res.Resp == nil {
-				log.Info(
-					"tlog server returned nil-response for vdisk: ", tls.vdiskID)
-				continue
+		}()
+
+		defer log.Debug("background goroutine exiting for tlogstorage ", tls.vdiskID)
+		defer cancelFunc()
+
+		for {
+			select {
+			case res := <-recvCh:
+				if res.Err != nil {
+					panic(fmt.Errorf(
+						"tlog server resulted in error for vdisk %s: %s",
+						tls.vdiskID, res.Err))
+				}
+				if res.Resp == nil {
+					log.Info(
+						"tlog server returned nil-response for vdisk: ", tls.vdiskID)
+					continue
+				}
+
+				switch res.Resp.Status {
+				case tlog.BlockStatusRecvOK:
+					// nothing to do, logging would be way too verbose
+
+				case tlog.BlockStatusForceFlushReceived:
+					log.Debugf("vdisk %s's tlog server has received force flush message", tls.vdiskID)
+
+				case tlog.BlockStatusFlushOK:
+					tls.toFlushCh <- res.Resp.Sequences
+				case tlog.BlockStatusWaitNbdSlaveSyncReceived:
+
+				default:
+					panic(fmt.Errorf(
+						"tlog server had fatal failure for vdisk %s: %s",
+						tls.vdiskID, res.Resp.Status))
+				}
+
+			case <-tls.done:
+				tls.done = nil
+				return
 			}
-
-			switch res.Resp.Status {
-			case tlog.BlockStatusRecvOK:
-				// nothing to do, logging would be way too verbose
-
-			case tlog.BlockStatusForceFlushReceived:
-				log.Debugf("vdisk %s's tlog server has received force flush message", tls.vdiskID)
-
-			case tlog.BlockStatusFlushOK:
-				tls.toFlushCh <- res.Resp.Sequences
-			case tlog.BlockStatusWaitNbdSlaveSyncReceived:
-
-			default:
-				panic(fmt.Errorf(
-					"tlog server had fatal failure for vdisk %s: %s",
-					tls.vdiskID, res.Resp.Status))
-			}
-
-		case <-tls.done:
-			tls.done = nil
-			return
 		}
-	}
+	}()
+
+	return nil
 }
 
 // transactionSender is spawned by the `GoBackground` method,
@@ -386,8 +398,32 @@ func (tls *tlogStorage) flusher(ctx context.Context) {
 
 }
 
+func (tls *tlogStorage) goTlogRPCReloader(ctx context.Context, ch <-chan config.TlogClusterConfig, cancel func()) {
+	defer cancel()
+
+	for {
+		select {
+		case cfg := <-ch:
+			if len(cfg.Servers) == 0 {
+				// TODO: notify 0-orchestrator
+				log.Errorf(
+					"nbd config for vdisk %s no longer specifies tlog rpcs", tls.vdiskID)
+				continue
+			}
+
+			tls.tlog.ChangeServerAddresses(cfg.Servers)
+
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
 // switch to ardb slave if possible
-func (tls *tlogStorage) switchToArdbSlave() error {
+//
+// Disabled since Milestone 6!
+// See: https://github.com/zero-os/0-Disk/issues/357
+/*func (tls *tlogStorage) switchToArdbSlave() error {
 	if tls.configPath == "" {
 		return fmt.Errorf("no config found")
 	}
@@ -446,20 +482,7 @@ func (tls *tlogStorage) switchToArdbSlave() error {
 
 	// TODO : notify the orchestrator or ays or any other interested parties
 	return nil
-}
-
-// see if there is a change in the tlogrpc
-func (tls *tlogStorage) handleSighup() {
-	conf, err := config.ReadConfig(tls.configPath, config.NBDServer)
-	if err != nil {
-		log.Errorf("handleSighup failed to read config: %v", err)
-		return
-	}
-
-	if conf.TlogRPC != "" {
-		tls.tlog.ChangeServerAddrs(strings.Split(conf.TlogRPC, ","))
-	}
-}
+}*/
 
 func (tls *tlogStorage) flushCachedContent(sequences []uint64) error {
 	defer func() {
@@ -501,16 +524,22 @@ func (tls *tlogStorage) flushAContent(blockIndex int64, data []byte) error {
 		}
 		return tls.storage.SetBlock(blockIndex, data)
 	}
-	err := flush()
-	if err == nil {
-		return nil
-	}
 
-	// there is issue with master, switch to ardb slave if possible
-	if errSwitch := tls.switchToArdbSlave(); errSwitch != nil {
-		log.Errorf("Failed to switchToArdbSlave: %v", errSwitch)
-		return err
-	}
+	/*
+		// SWITCH ARDB SLAVE DISABLED SINCE MILESTONE 6
+		// SEE: https://github.com/zero-os/0-Disk/issues/357
+
+		err := flush()
+		if err == nil {
+			return nil
+		}
+
+		// there is issue with master, switch to ardb slave if possible
+		if errSwitch := tls.switchToArdbSlave(); errSwitch != nil {
+			log.Errorf("Failed to switchToArdbSlave: %v", errSwitch)
+			return err
+		}
+	*/
 
 	return flush()
 }
@@ -586,7 +615,7 @@ type tlogClient interface {
 	Send(op uint8, seq uint64, index int64, timestamp uint64, data []byte) error
 	ForceFlushAtSeq(uint64) error
 	WaitNbdSlaveSync() error
-	ChangeServerAddrs([]string)
+	ChangeServerAddresses([]string)
 	Recv() <-chan *tlogclient.Result
 	Close() error
 }

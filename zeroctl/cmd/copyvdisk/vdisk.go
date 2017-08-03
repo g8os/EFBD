@@ -11,13 +11,14 @@ import (
 	cmdconfig "github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
 
-var vdiskCfg struct {
-	ConfigPath string
+var vdiskCmdCfg struct {
+	SourceConfig            config.SourceConfig
+	ForceSameStorageCluster bool
 }
 
 // VdiskCmd represents the vdisk copy subcommand
 var VdiskCmd = &cobra.Command{
-	Use:   "vdisk source_vdiskid target_vdiskid [target_cluster]",
+	Use:   "vdisk source_vdiskid target_vdiskid [target_clusterid]",
 	Short: "Copy a vdisk configured in the config file",
 	RunE:  copyVdisk,
 }
@@ -28,6 +29,13 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 		logLevel = log.InfoLevel
 	}
 	log.SetLevel(logLevel)
+
+	// create config source
+	configSource, err := config.NewSource(vdiskCmdCfg.SourceConfig)
+	if err != nil {
+		return err
+	}
+	defer configSource.Close()
 
 	log.Info("parsing positional arguments...")
 
@@ -41,45 +49,48 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 
 	// store pos arguments in named variables
 	sourceVdiskID, targetVdiskID := args[0], args[1]
-	var targetStorageCluster string
+	var targetClusterID string
 	if argn == 3 {
-		targetStorageCluster = args[2]
-	}
-
-	log.Infof("loading config %s...", vdiskCfg.ConfigPath)
-
-	cfg, err := config.ReadConfig(vdiskCfg.ConfigPath, config.NBDServer)
-	if err != nil {
-		return err
+		targetClusterID = args[2]
 	}
 
 	var sourceClusterConfig, targetClusterConfig *config.StorageClusterConfig
 
-	// get source vdisk and storage cluster
-	// when the vdisk exists, it is guaranteed that its storage cluster exists to,
-	// as this is validated by the config module
-	sourceVdisk, ok := cfg.Vdisks[sourceVdiskID]
-	if !ok {
-		return fmt.Errorf("vdisk %s could not be found in config %s",
-			sourceVdiskID, vdiskCfg.ConfigPath)
+	// try to read the Vdisk+NBD config of source vdisk
+	sourceStaticConfig, err := config.ReadVdiskStaticConfig(configSource, sourceVdiskID)
+	if err != nil {
+		return fmt.Errorf(
+			"couldn't read source vdisk %s's static config: %v", sourceVdiskID, err)
+	}
+	sourceStorageConfig, err := config.ReadNBDStorageConfig(
+		configSource, sourceVdiskID, sourceStaticConfig)
+	if err != nil {
+		return fmt.Errorf(
+			"couldn't read source vdisk %s's storage config: %v", sourceVdiskID, err)
 	}
 
-	cluster := cfg.StorageClusters[sourceVdisk.StorageCluster]
-	sourceClusterConfig = &cluster
+	sourceClusterConfig = &sourceStorageConfig.StorageCluster
 
-	// if the targetStorageCluster is given,
-	// try to find it its configuration in the config,
-	// but as it is given by the user, it might not exist
-	if targetStorageCluster != "" {
-		cluster, ok := cfg.StorageClusters[targetStorageCluster]
-		if !ok {
-			return fmt.Errorf("targetCluster %v does not exist", targetStorageCluster)
+	// if a targetClusterID is given, check if it's not the same as the source cluster ID,
+	// and if it is not, get its config
+	if targetClusterID != "" {
+		sourceVdiskNBDConfig, err := config.ReadVdiskNBDConfig(configSource, sourceVdiskID)
+		if err != nil {
+			return fmt.Errorf(
+				"couldn't read source vdisk %s's storage config: %v", sourceVdiskID, err)
 		}
-		targetClusterConfig = &cluster
+
+		if sourceVdiskNBDConfig.StorageClusterID != targetClusterID {
+			targetClusterConfig, err = config.ReadStorageClusterConfig(configSource, targetClusterID)
+			if err != nil {
+				return fmt.Errorf(
+					"couldn't read target vdisk %s's storage config: %v", targetVdiskID, err)
+			}
+		}
 	}
 
 	// copy the vdisk
-	switch stype := sourceVdisk.StorageType(); stype {
+	switch stype := sourceStaticConfig.Type.StorageType(); stype {
 	case config.StorageDeduped:
 		return storage.CopyDeduped(
 			sourceVdiskID, targetVdiskID,
@@ -119,7 +130,10 @@ WARNING: when copying nondeduped vdisks,
   See issue #206 for more information.
 `
 
-	VdiskCmd.Flags().StringVar(
-		&vdiskCfg.ConfigPath, "config", "config.yml",
-		"zeroctl config file")
+	VdiskCmd.Flags().Var(
+		&vdiskCmdCfg.SourceConfig, "config",
+		"config resource: dialstrings (etcd cluster) or path (yaml file)")
+	VdiskCmd.Flags().BoolVar(
+		&vdiskCmdCfg.ForceSameStorageCluster, "same", false,
+		"enable flag to force copy within the same nbd servers")
 }

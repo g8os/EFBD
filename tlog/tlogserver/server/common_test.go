@@ -20,7 +20,7 @@ func createTestServer(t *testing.T, flushTime int) (*Server, *Config, error) {
 	// create inmemory redis pool factory
 	poolFactory := tlog.InMemoryRedisPoolFactory(conf.RequiredDataServers())
 
-	s, err := NewServer(conf, poolFactory)
+	s, err := NewServer(conf, nil, poolFactory)
 	return s, conf, err
 }
 

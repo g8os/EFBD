@@ -1,25 +1,8 @@
 package main
 
-import (
-	"context"
-	"io/ioutil"
-	"os"
-	"testing"
-
-	crand "crypto/rand"
-	mrand "math/rand"
-
-	"github.com/siddontang/go/log"
-	"github.com/stretchr/testify/assert"
-	"github.com/zero-os/0-Disk/config"
-	"github.com/zero-os/0-Disk/nbd/ardb"
-	"github.com/zero-os/0-Disk/nbd/ardb/storage"
-	"github.com/zero-os/0-Disk/redisstub"
-	"github.com/zero-os/0-Disk/tlog"
-	"github.com/zero-os/0-Disk/tlog/tlogserver/aggmq"
-	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
-	"github.com/zero-os/0-Disk/tlog/tlogserver/slavesync"
-)
+/*
+		// ARDB SLAVE SWAP IS DISABLED SINCE MILESTONE 6
+		// SEE: https://github.com/zero-os/0-Disk/issues/357
 
 // TestSlaveSyncWrite test the tlogserver ability to sync the ardb slave.
 // With failed operation during writing to master
@@ -64,8 +47,11 @@ func testSlaveSyncReal(t *testing.T, isRead bool) {
 
 	// slave syncer manager
 	tlogConf.AggMq = aggmq.NewMQ()
-	tlogConf.ConfigPath = slavePoolConfPath
-	ssm := slavesync.NewManager(ctx, tlogConf.AggMq, tlogConf.ConfigPath)
+	tlogConf.ConfigInfo = zerodisk.ConfigInfo{
+		Resource:     slavePoolConfPath,
+		ResourceType: zerodisk.FileConfigResource,
+	}
+	ssm := slavesync.NewManager(ctx, tlogConf.AggMq, tlogConf.ConfigInfo)
 	go ssm.Run()
 
 	t.Log("create inmemory redis pool for tlog")
@@ -83,7 +69,7 @@ func testSlaveSyncReal(t *testing.T, isRead bool) {
 	t.Logf("listen addr = %v", tlogrpc)
 
 	t.Logf("== start tlog storage with tlogrcp=%v and slave pool", tlogrpc)
-	storage1, masterProvider, err := newTlogWithDedupedStorage(ctx, vdiskID, slavePoolConfPath, size, blockSize, tlogrpc)
+	storage1, masterProvider, err := newTlogWithNonDedupedStorage(ctx, vdiskID, slavePoolConfPath, size, blockSize, tlogrpc)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -203,14 +189,17 @@ func TestSlaveSyncRestart(t *testing.T) {
 	tlogConf.ListenAddr = ""
 	tlogConf.K = 1
 	tlogConf.M = 1
-	tlogConf.ConfigPath = tlogConfPath
+	tlogConf.ConfigInfo = zerodisk.ConfigInfo{
+		Resource:     tlogConfPath,
+		ResourceType: zerodisk.FileConfigResource,
+	}
 
 	t.Log("create inmemory redis pool for tlog")
 
 	// create any kind of valid pool factory
 	tlogPoolFact, err := tlog.AnyRedisPoolFactory(ctx, tlog.RedisPoolFactoryConfig{
 		RequiredDataServerCount: tlogConf.RequiredDataServers(),
-		ConfigPath:              tlogConf.ConfigPath,
+		ConfigInfo:              tlogConf.ConfigInfo,
 		AutoFill:                true,
 		AllowInMemory:           true,
 	})
@@ -233,7 +222,8 @@ func TestSlaveSyncRestart(t *testing.T) {
 	master, nbdConfPath, err := newRedisPoolAndConfig(vdiskID, blockSize, size, slavePool)
 	assert.NoError(t, err)
 
-	storage1, masterProvider, err := newTlogWithDedupedStorage(ctx, vdiskID, nbdConfPath, size, blockSize, tlogrpc)
+	storage1, masterProvider, err := newTlogWithNonDedupedStorage(
+		ctx, vdiskID, tlogConf.ConfigInfo, size, blockSize, tlogrpc)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -303,7 +293,7 @@ func TestSlaveSyncRestart(t *testing.T) {
 
 	// slave syncer manager
 	tlogConf.AggMq = aggmq.NewMQ()
-	ssm := slavesync.NewManager(ctx, tlogConf.AggMq, tlogConf.ConfigPath)
+	ssm := slavesync.NewManager(ctx, tlogConf.AggMq, tlogConf.ConfigInfo)
 	go ssm.Run()
 
 	tlogS2, err := server.NewServer(tlogConf, tlogPoolFact)
@@ -312,7 +302,8 @@ func TestSlaveSyncRestart(t *testing.T) {
 	}
 	go tlogS2.Listen(ctx)
 
-	storage2, masterProvider, err := newTlogWithDedupedStorage(ctx, vdiskID, nbdConfPath, size, blockSize, tlogS2.ListenAddr())
+	storage2, masterProvider, err := newTlogWithNonDedupedStorage(
+		ctx, vdiskID, tlogConf.ConfigInfo, size, blockSize, tlogS2.ListenAddr())
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -337,25 +328,12 @@ func TestSlaveSyncRestart(t *testing.T) {
 	}
 }
 
-func newTlogWithDedupedStorage(ctx context.Context, vdiskID, configPath string, vdiskSize, blockSize int64, tlogrpc string) (storage.BlockStorage, ardb.ConnProvider, error) {
-	// get vdiskCfg (required by redisprovider)
-	hotreloader, err := config.NewHotReloader(configPath, config.NBDServer)
-	if err != nil {
-		return nil, nil, err
-	}
-	go hotreloader.Listen(ctx)
-
-	vdiskClusterCfg, err := hotreloader.VdiskClusterConfig(vdiskID)
-	if err != nil {
-		return nil, nil, err
-	}
-
+func newTlogWithNonDedupedStorage(ctx context.Context, vdiskID string, configInfo zerodisk.ConfigInfo, vdiskSize, blockSize int64, tlogrpc string) (storage.BlockStorage, ardb.ConnProvider, error) {
 	// create redis provider
-	redisProvider, err := ardb.RedisProvider(vdiskClusterCfg, nil)
+	redisProvider, err := ardb.DynamicProvider(ctx, vdiskID, configInfo, nil)
 	if err != nil {
 		return nil, nil, err
 	}
-	go redisProvider.Listen(ctx, vdiskID, hotreloader)
 
 	storage, err := storage.NonDeduped(
 		vdiskID, "", blockSize, false, redisProvider)
@@ -364,7 +342,7 @@ func newTlogWithDedupedStorage(ctx context.Context, vdiskID, configPath string, 
 		return nil, nil, err
 	}
 
-	storage, err = newTlogStorage(vdiskID, tlogrpc, configPath, blockSize, storage)
+	storage, err = newTlogStorage(vdiskID, tlogrpc, nil, blockSize, storage)
 	if err != nil {
 		redisProvider.Close()
 		return nil, nil, err
@@ -395,7 +373,7 @@ func newTlogRedisPoolAndConfig(vdiskID string, blockSize, size uint64) (*redisst
 				StorageCluster:     "mycluster",
 				Type:               config.VdiskTypeDB,
 				TlogSlaveSync:      true,
-				TlogStorageCluster: "tlogCluster",
+				StorageCluster: "tlogCluster",
 			},
 		},
 		StorageClusters: map[string]config.StorageClusterConfig{
@@ -444,7 +422,7 @@ func newRedisPoolAndConfig(vdiskID string, blockSize, size uint64,
 				StorageCluster:     "mycluster",
 				Type:               config.VdiskTypeDB,
 				TlogSlaveSync:      true,
-				TlogStorageCluster: "tlogCluster",
+				StorageCluster: "tlogCluster",
 			},
 		},
 		StorageClusters: map[string]config.StorageClusterConfig{
@@ -484,3 +462,5 @@ func newRedisPoolAndConfig(vdiskID string, blockSize, size uint64,
 	}
 	return stor, nbdConfFile.Name(), nil
 }
+
+*/

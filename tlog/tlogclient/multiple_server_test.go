@@ -164,9 +164,12 @@ func testTwoServers(t *testing.T, ttConf testTwoServerConf) {
 
 	t.Log("connect client")
 
-	tlogAddrs := []string{t1.ListenAddr(), t2.ListenAddr()}
+	tlogAddrs := []string{
+		t1.ListenAddr(),
+		t2.ListenAddr(),
+	}
 	if ttConf.hotReload {
-		tlogAddrs = []string{t1.ListenAddr()}
+		tlogAddrs = tlogAddrs[0:1]
 	}
 
 	client, err := New(tlogAddrs, vdiskID, 0, false)
@@ -193,7 +196,7 @@ func testTwoServers(t *testing.T, ttConf testTwoServerConf) {
 	case ttConf.masterStopped:
 		// simulate stopping server 1
 		// - remove server 1 from client's addrs and disconnect the socket
-		client.addrs = client.addrs[1:]
+		client.servers = client.servers[1:]
 		client.conn.Close()
 
 	case ttConf.masterFailedToFlush:
@@ -201,7 +204,9 @@ func testTwoServers(t *testing.T, ttConf testTwoServerConf) {
 		pool1.Close()
 	case ttConf.hotReload:
 		cancelFunc1()
-		client.ChangeServerAddrs([]string{t2.ListenAddr()})
+		client.ChangeServerAddresses([]string{
+			t2.ListenAddr(),
+		})
 	}
 
 	log.Info("write data again, should be handled by server #2")
@@ -284,7 +289,7 @@ func createTestTlogServer(ctx context.Context, vdiskID string,
 		return nil, nil, nil, err
 	}
 
-	server, err := server.NewServer(conf, poolFact)
+	server, err := server.NewServer(conf, nil, poolFact)
 	if err != nil {
 		return nil, nil, nil, err
 	}

@@ -1,0 +1,87 @@
+digraph {
+    rankdir = "LR"
+    
+    subgraph clusterVdisks {
+        label = "specific to one nbd+tlog collection"
+        style = "dotted"
+
+        NBDVdisksConfig [
+            shape = "record"
+            label = "NBDVdisksConfig | myserver:nbdserver:conf:vdisks |
+                    <1> myvdisk | <m> [more vdisks...]"
+        ]
+    }
+
+    subgraph clusterVdiskSpecific {
+        label = "Vdisk Specific Configs"
+        style = "dotted"
+
+        VdiskStaticConfig [
+            shape = "record"
+            label = "VdiskStaticConfig | <key> myvdisk:vdisk:conf:static"
+        ]
+
+        subgraph clusterHotReloading {
+            label = "(support hot reloading)"
+            style = "dotted"
+
+            VdiskNBDConfig [
+                shape = "record"
+                label = "VdiskNBDConfig | <key> myvdisk:vdisk:conf:storage:nbd |
+                        <p> PrimaryStorageClusterID (foo) |
+                        <te> TemplateStorageClusterID (bar) |
+                        <tl> TlogServerClusterID (yo) |
+                        <s> SlaveStorageClusterID (baz)"
+            ]
+
+            VdiskTlogConfig [
+                shape = "record"
+                label = "VdiskTlogConfig | <key> myvdisk:vdisk:conf:storage:tlog |
+                        <s> SlaveStorageClusterID (baz) |
+                        <t> TlogStorageClusterID (pon)"
+            ]
+        }
+    }
+
+    subgraph clusterClusters {
+        label = "configs shared between vdisks\n(support hot reloading)"
+        style = "dotted"
+
+        PrimaryStorageConfig [
+            shape = "record"
+            label = "StorageClusterConfig | <key> foo:cluster:conf:storage"
+        ]
+
+        TemplateStorageConfig [
+            shape = "record"
+            label = "StorageClusterConfig | <key> bar:cluster:conf:storage"
+        ]
+
+        SlaveStorageConfig [
+            shape = "record"
+            label = "StorageClusterConfig | <key> baz:cluster:conf:storage"
+        ]
+
+        TlogStorageConfig [
+            shape = "record"
+            label = "StorageClusterConfig | <key> yo:cluster:conf:storage"
+        ]
+
+        TlogClusterConfig [
+            shape = "record"
+            label = "<header> TlogClusterConfig | <key> pon:cluster:conf:tlog"
+        ]
+    }
+
+    NBDVdisksConfig:1 -> VdiskStaticConfig:key
+    NBDVdisksConfig:1 -> VdiskNBDConfig:key
+    NBDVdisksConfig:1 -> VdiskTlogConfig:key [ style = "dashed" ]
+
+    VdiskNBDConfig:p -> PrimaryStorageConfig:key
+    VdiskNBDConfig:te -> TemplateStorageConfig:key [ style = "dashed" ]
+    VdiskNBDConfig:s -> SlaveStorageConfig:key [ style = "dashed" ]
+    VdiskNBDConfig:tl -> TlogStorageConfig:key [ style = "dashed" ]
+
+    VdiskTlogConfig:t -> TlogClusterConfig:key
+    VdiskTlogConfig:s -> SlaveStorageConfig:key [ style = "dashed" ]
+}

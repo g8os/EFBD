@@ -346,6 +346,10 @@ func testBlockStorageDeadlock(t *testing.T, blockSize, blockCount int64, storage
 	wg.Wait()
 }
 
+func TestBockStorageConfig(t *testing.T) {
+	// todo
+}
+
 func TestPipelineErrors(t *testing.T) {
 	assert := assert.New(t)
 

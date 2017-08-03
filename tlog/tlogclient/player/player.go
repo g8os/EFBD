@@ -2,10 +2,11 @@ package player
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
-	zerodiskcfg "github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/tlog"
@@ -20,6 +21,7 @@ type Player struct {
 	vdiskID      string
 	dec          *decoder.Decoder
 	blockStorage storage.BlockStorage
+	connProvider ardb.ConnProvider
 	ctx          context.Context
 }
 
@@ -33,13 +35,13 @@ func onReplayCbNone(seq uint64) error {
 }
 
 // NewPlayer creates new tlog player
-func NewPlayer(ctx context.Context, configPath string, serverConfigs []zerodiskcfg.StorageServerConfig,
+func NewPlayer(ctx context.Context, source config.Source, serverConfigs []config.StorageServerConfig,
 	vdiskID, privKey, hexNonce string, k, m int) (*Player, error) {
 	// create tlog redis pool
 	pool, err := tlog.AnyRedisPool(tlog.RedisPoolConfig{
 		VdiskID:                 vdiskID,
 		RequiredDataServerCount: k + m,
-		ConfigPath:              configPath,
+		Source:                  source,
 		ServerConfigs:           serverConfigs,
 		AutoFill:                true,
 		AllowInMemory:           false,
@@ -48,34 +50,46 @@ func NewPlayer(ctx context.Context, configPath string, serverConfigs []zerodiskc
 		return nil, err
 	}
 
-	cfg, err := zerodiskcfg.ReadConfig(configPath, zerodiskcfg.NBDServer)
+	// get config to create block storage
+	vdiskCfg, err := config.ReadVdiskStaticConfig(source, vdiskID)
 	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	nbdCfg, err := config.ReadNBDStorageConfig(source, vdiskID, vdiskCfg)
+	if err != nil {
+		pool.Close()
 		return nil, err
 	}
 
-	vdiskCfg, err := cfg.VdiskClusterConfig(vdiskID)
+	// create static provider,
+	// as the tlog player does not require hot reloading.
+	ardbProvider, err := ardb.StaticProvider(*nbdCfg, nil)
 	if err != nil {
+		pool.Close()
 		return nil, err
 	}
 
-	ardbProvider, err := ardb.RedisProvider(vdiskCfg, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	blockStorage, err := storage.NewBlockStorage(vdiskID, storage.BlockStorageConfig{
-		Vdisk: vdiskCfg.Vdisk,
+	blockStorage, err := storage.NewBlockStorage(storage.BlockStorageConfig{
+		VdiskID:         vdiskID,
+		TemplateVdiskID: vdiskCfg.TemplateVdiskID,
+		VdiskType:       vdiskCfg.Type,
+		VdiskSize:       int64(vdiskCfg.Size) * ardb.GibibyteAsBytes,
+		BlockSize:       int64(vdiskCfg.BlockSize),
 	}, ardbProvider)
 	if err != nil {
+		pool.Close()
+		ardbProvider.Close()
 		return nil, err
 	}
 
-	return NewPlayerWithPoolAndStorage(ctx, pool, blockStorage, vdiskID, privKey, hexNonce, k, m)
+	return NewPlayerWithPoolAndStorage(ctx, pool, ardbProvider, blockStorage, vdiskID, privKey, hexNonce, k, m)
 }
 
 // NewPlayerWithPoolAndStorage create new tlog player
 // with given redis pool and BlockStorage
-func NewPlayerWithPoolAndStorage(ctx context.Context, pool tlog.RedisPool, storage storage.BlockStorage,
+func NewPlayerWithPoolAndStorage(ctx context.Context, pool tlog.RedisPool,
+	connProvider ardb.ConnProvider, storage storage.BlockStorage,
 	vdiskID, privKey, hexNonce string, k, m int) (*Player, error) {
 
 	dec, err := decoder.New(pool, k, m, vdiskID, privKey, hexNonce)
@@ -86,6 +100,7 @@ func NewPlayerWithPoolAndStorage(ctx context.Context, pool tlog.RedisPool, stora
 	return &Player{
 		dec:          dec,
 		blockStorage: storage,
+		connProvider: connProvider,
 		ctx:          ctx,
 		vdiskID:      vdiskID,
 	}, nil
@@ -95,7 +110,26 @@ func NewPlayerWithPoolAndStorage(ctx context.Context, pool tlog.RedisPool, stora
 // Close releases all its resources
 func (p *Player) Close() error {
 	p.dec.Close()
-	return p.blockStorage.Close()
+
+	// TODO:
+	// choose a universal error combinator solution
+	// as code like this is a mess
+
+	if p.connProvider == nil {
+		return p.blockStorage.Close()
+	}
+
+	errA := p.connProvider.Close()
+	errB := p.blockStorage.Close()
+	if errA != nil {
+		if errB != nil {
+			return errors.New(errA.Error() + "; " + errB.Error())
+		}
+
+		return errA
+	}
+
+	return errB
 }
 
 // Replay replays the tlog by decoding data from the tlog blockchains.

@@ -11,6 +11,7 @@ import (
 	"os/signal"
 
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
@@ -30,7 +31,7 @@ type Server struct {
 }
 
 // NewServer creates a new tlog server
-func NewServer(conf *Config, poolFactory tlog.RedisPoolFactory) (*Server, error) {
+func NewServer(conf *Config, configSource config.Source, poolFactory tlog.RedisPoolFactory) (*Server, error) {
 	if conf == nil {
 		return nil, errors.New("tlogserver requires a non-nil config")
 	}
@@ -68,12 +69,14 @@ func NewServer(conf *Config, poolFactory tlog.RedisPoolFactory) (*Server, error)
 		HexNonce:  conf.HexNonce,
 	}
 
+	vdiskManager := newVdiskManager(
+		conf.AggMq, conf.BlockSize, conf.FlushSize, configSource)
 	return &Server{
 		poolFactory:          poolFactory,
 		listener:             listener,
 		flusherConf:          flusherConf,
 		maxRespSegmentBufLen: schema.RawTlogRespLen(conf.FlushSize),
-		vdiskMgr:             newVdiskManager(conf.AggMq, conf.BlockSize, conf.FlushSize, conf.ConfigPath),
+		vdiskMgr:             vdiskManager,
 	}, nil
 }
 
@@ -305,7 +308,7 @@ func (s *Server) handleBlock(vd *vdisk, br *bufio.Reader) error {
 	}
 
 	// check hash
-	if err := s.hash(block, vd.vdiskID); err != nil {
+	if err := s.hash(block, vd.ID()); err != nil {
 		log.Debugf("hash check failed:%v\n", err)
 		return err
 	}

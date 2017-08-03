@@ -28,7 +28,6 @@ type Config struct {
 	FlushTime  int
 	PrivKey    string
 	HexNonce   string
-	ConfigPath string // config file path
 	AggMq      *aggmq.MQ
 }
 

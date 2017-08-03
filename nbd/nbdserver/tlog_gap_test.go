@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/zero-os/0-Disk/config"
 )
 
 // to easily reproduce and test:
@@ -38,7 +39,14 @@ func TestTlogStorageSlow(t *testing.T) {
 		return
 	}
 
-	storage, err := newTlogStorage(vdiskID, tlogrpc, "", blockSize, slowStorage)
+	source := config.NewStubSource()
+	source.SetTlogServerCluster(vdiskID, "tlogcluster", &config.TlogClusterConfig{
+		Servers: []string{tlogrpc},
+	})
+	defer source.Close()
+
+	storage, err := newTlogStorage(
+		ctx, vdiskID, "tlogcluster", source, blockSize, slowStorage, nil)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}

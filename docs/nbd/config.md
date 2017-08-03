@@ -1,63 +1,71 @@
 # NBD Server Configuration
 
-The NBD server and its backend is configured using a YAML configuration file.
+The [NBD Server][nbd] and its components are normally configured using an [etcd][configetcd] distributed key-value store. For 0-Disk development purposes, one can also use a [file-based][configfile]-based configuration. As you should however use the [etcd-based][configetcd] configuration, especially in production, we'll use it in all examples that follow.
 
-The [`ClusterClientFactory`][clusterclientfactory], [`BackendFactory`][backendfactory] and so on, all take a file path to this YAML configuration file.
-The `nbdserver` executable as well takes a `--config path`, which is then delegated to the factories mentioned above, among other objects.
-Therefore it is important to understand this configuration well, as it controls most of the NBD server behavior.
+See [the 0-Disk config overview page][configDoc] for a more high level overview.
 
-Here's the `config.yml` file:
+For more information about how to configure the [NBD Server][nbd] using [etcd][etcd], check out [the etcd config docs][configetcd].
+
+## NBDVdisksConfig
+
+This config is used so that the [nbdserver][nbdserver] can list all available [vdisks][vdisks] to an NBD Client, as well as to validate all (potentially) used configurations immediately when starting up the [nbdserver][nbdserver].
+
+> This config is **REQUIRED**. Failing to list all available vdisks you wish to use, will result in undefined behaviour.
+
+The vdisks config's purpose is to list all available [vdisks][vdisk]. Available in this context means, all [vdisks][vdisk] which have at least all required subconfigs stored in the same [etcd][etcd] cluster as this vdisks config, and you wish to actually use at some point of the [NBD Server][nbd]'s lifetime. This is required due to the `NBD_OPT_LIST` option of the NBD Protocol, as described in the [NBD Protocol docs][nbdprotocol]. This option is used to list all [vdisks][vdisk], and without it, some clients (such as `qemu`), do not want to load a vdisk, even though you give its ID explicitly for every command you issue.
+
+This config requires you to also give the unique id of the [nbdserver][nbdserver] (shared with any linked [tlogserver][tlogserver]), as this config can only be found using that id as the prefix for the config key.
+
+This config is stored in etcd under the `<serverID>:nbdserver:conf:vdisks` key. An example of its YAML-formatted value could look as follows:
 
 ```yaml
-storageClusters: # A required map of storage clusters,
-                 # only 1 storage cluster is required
-  mycluster: # Required (string) ID of this storage cluster,
-             # you are free to name the cluster however you want
-    dataStorage: # A required array of connection (dial)strings, used to store data
-      - address: 192.168.58.146:2000 # At least 1 connection (dial)string is required
-        db: 0                        # database is optional, 0 by default
-      - address: 192.123.123.123:2001 # more connections are optional
-    metadataStorage: # Required ONLY when used as the (Template)StorageCluster of a `boot` vdisk
-      address: 192.168.58.146:2001 # Required connection (dial)string,
-                                   # used to store meta data (LBA indices)
-  templatecluster: # Required (string) ID of this (optional) storage cluster,
-               # you are free to name the cluster however you want
-    dataStorage: # A required array of connection (dial)strings, used to store data
-      - address: 192.168.58.147:2000 # only 1 connection (dial)string is required
-        db: 1                        # database is optional, 0 by default
-    metadataStorage: # Required ONLY when used as the (Template)StorageCluster of a `boot` vdisk
-      address: 192.168.58.147:2001 # Required connection (dial)string
-  # ... more (optional) storage clusters
-vdisks: # A required map of vdisks,
-        # only 1 vdisk is required,
-        # the ID of the vdisk is the same one that the user of this vdisk (nbd client)
-        # used to connect to this nbdserver
-  myvdisk: # Required (string) ID of this vdisk
-    blockSize: 4096 # Required static (uint64) size of each block
-    readOnly: false # Defines if this vdisk can be written to or not
-                    # (optional, false by default)
-    size: 10 # Required (uint64) total size in GiB of this vdisk
-    storageCluster: mycluster # Required (string) ID of the storage cluster to use
-                              # for this vdisk's storage, has to be a storage cluster
-                              # defined in the `storageClusters` section of THIS config file
-    templateStorageCluster: template # Optional (string) ID of the template storage cluster to use
-                                    # for this vdisk's template storage, has to be
-                                    # a storage cluster defined in the `storageClusters` section
-                                    # of THIS config file
-    templateVdiskID: mytemplate # Optional (string) ID of the template vdisk,
-                                # only used for `db` vdisks
-    type: boot # Required (VdiskType) type of this vdisk
-               # which also defines if its deduped or nondeduped,
-               # valid types are: `boot`, `db`, `cache` and `tmp`
-  # ... more (optional) vdisks
+vdisks: # required
+  - ubuntu:latest # only 1 is required, however.
+  - arch:1992     # you should list all vdisks you wish to use
 ```
 
-As you can see, both the storage clusters and vdisks are configured in
-and within the same NBD server `config.yml` file.
+It is only loaded at startup, and each time it is updated in the [etcd][etcd] cluster. A cached version is used each time a new [vdisk][vdisk] is mounted and  consequently the `NBD_OPT_LIST` NBD option is triggered.
 
-By default the `nbdserver` executable assumes the `config.yml` file
-exists within the working directory of its process. This location can be defined
-using the `--config path` optional CLI flag.
+> NOTE that this config cannot be specified when using a [file-based][configfile] configuration. The vdisk identifiers are instead implicitly inferred using the root keys of the YAML config. See the [file-based configuration docs][configfile] for more information about this, in case (and only in case) you are a 0-Disk developer using it for development purposes.
 
-[clusterclientfactory]: /storagecluster/cluster.go#L32-#L40
-[backendfactory]: /nbdserver/ardb/ardb.go#L67-L75
+See the [vdisks config docs][nbdVdisksConfig] on the [0-Disk config overview page][configDoc] for more information.
+
+## Vdisk-specific Configurations
+
+For each [vdisk][vdisk] that is to be mounted by the [nbdserver][nbdserver], there _has_ to be 2 configs. A [VdiskStaticConfig][vdiskStaticConfig] and a [VdiskNBDConfig][vdiskNBDConfig]. The former contains all static properties of a vdisk, while the latter contains the references (identifiers) of any used cluster. Only the primary storage cluster is required.
+
+> NOTE: for each mounted [vdisk][vdisk], a [VdiskStaticConfig][vdiskStaticConfig] and a [VdiskNBDConfig][vdiskNBDConfig] config is **REQUIRED**. Failing to give those (correctly) will prevent you from mounting a [vdisk][vdisk].
+
+> NOTE: make sure to define a [metadata][metadata] storage cluster for any primary/[slave storage][slave] cluster which is used for storing a ([semi][semideduped])[deduped][deduped] [vdisk][vdisk].
+
+Some features are only supported by the [boot][boot]- and [db][db]- [vdisk][vdisk] types:
+
++ the template storage cluster is optional, and can be given in case the vdisk is to be based upon a [template][template];
++ the [tlog][tlog]- and [slave][slave]- clusters can be given and help make the data [redundant][redundant].
+
+[nbd]: nbd.md
+[nbdprotocol]: https://github.com/NetworkBlockDevice/nbd/blob/master/doc/proto.md
+
+[etcd]: https://github.com/coreos/etcd
+
+[configDoc]: /docs/config.md
+[configetcd]: /docs/config.md#etcd
+[configfile]: /docs/config.md#file
+[nbdVdisksConfig]: /docs/config.md#NBDVdisksConfig
+[vdiskStaticConfig]: /docs/config.md#VdiskStaticConfig
+[vdiskNBDConfig]: /docs/config.md#VdiskNBDConfig
+[storageClusterConfig]: /docs/config.md#StorageClusterConfig
+
+[nbdserver]: /docs/nbd/nbd.md
+
+[metadata]: glossary.md#metadata
+[redundant]: glossary.md#redundant
+[data]: glossary.md#data
+[vdisk]: /docs/glossary.md#vdisk
+[template]: /docs/glossary.md#template
+[tlog]: /docs/glossary.md#tlog
+[slave]: /docs/glossary.md#slave
+[boot]: /docs/glossary.md#boot
+[db]: /docs/glossary.md#db
+[deduped]: /docs/glossary.md#deduped
+[semideduped]: /docs/glossary.md#semideduped

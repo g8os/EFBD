@@ -34,7 +34,7 @@ func TestResetFirstSequence(t *testing.T) {
 	poolFactory := tlog.InMemoryRedisPoolFactory(conf.RequiredDataServers())
 
 	// start the server
-	s, err := NewServer(conf, poolFactory)
+	s, err := NewServer(conf, nil, poolFactory)
 	assert.Nil(t, err)
 
 	go s.Listen(ctx)

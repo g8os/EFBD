@@ -5,19 +5,18 @@ import (
 	"errors"
 	"fmt"
 
-	zerodiskcfg "github.com/zero-os/0-Disk/config"
-
 	"github.com/spf13/cobra"
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/player"
-	"github.com/zero-os/0-Disk/zeroctl/cmd/config"
+	cmdConf "github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
 
 // vdiskCfg is the configuration used for the restore vdisk command
-var vdiskCfg struct {
+var vdiskCmdCfg struct {
 	TlogObjStorAddresses string
-	ConfigPath           string
+	SourceConfig         config.SourceConfig
 	K, M                 int
 	PrivKey, HexNonce    string
 	StartTs              uint64 // start timestamp
@@ -32,8 +31,15 @@ var VdiskCmd = &cobra.Command{
 }
 
 func restoreVdisk(cmd *cobra.Command, args []string) error {
-	argn := len(args)
+	// create config source
+	configSource, err := config.NewSource(vdiskCmdCfg.SourceConfig)
+	if err != nil {
+		return err
+	}
+	defer configSource.Close()
 
+	// parse positional args
+	argn := len(args)
 	if argn < 1 {
 		return errors.New("not enough arguments")
 	}
@@ -44,7 +50,7 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 	vdiskID := args[0]
 
 	logLevel := log.ErrorLevel
-	if config.Verbose {
+	if cmdConf.Verbose {
 		logLevel = log.DebugLevel
 	}
 	log.SetLevel(logLevel)
@@ -52,54 +58,53 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
 	// parse optional server configs
-	serverConfigs, err := zerodiskcfg.ParseCSStorageServerConfigStrings(vdiskCfg.TlogObjStorAddresses)
+	serverConfigs, err := config.ParseCSStorageServerConfigStrings(vdiskCmdCfg.TlogObjStorAddresses)
 	if err != nil {
 		return fmt.Errorf(
 			"failed to parse given connection strings %q: %s",
-			vdiskCfg.TlogObjStorAddresses, err.Error())
+			vdiskCmdCfg.TlogObjStorAddresses, err.Error())
 	}
 
-	player, err := player.NewPlayer(ctx, vdiskCfg.ConfigPath, serverConfigs, vdiskID,
-		vdiskCfg.PrivKey, vdiskCfg.HexNonce, vdiskCfg.K, vdiskCfg.M)
+	player, err := player.NewPlayer(ctx, configSource, serverConfigs, vdiskID,
+		vdiskCmdCfg.PrivKey, vdiskCmdCfg.HexNonce, vdiskCmdCfg.K, vdiskCmdCfg.M)
 	if err != nil {
 		return err
 	}
 
-	_, err = player.Replay(decoder.NewLimitByTimestamp(vdiskCfg.StartTs, vdiskCfg.EndTs))
+	_, err = player.Replay(decoder.NewLimitByTimestamp(vdiskCmdCfg.StartTs, vdiskCmdCfg.EndTs))
 	return err
 }
 
 func init() {
 	VdiskCmd.Flags().StringVar(
-		&vdiskCfg.TlogObjStorAddresses,
+		&vdiskCmdCfg.TlogObjStorAddresses,
 		"storage-addresses", "",
 		"comma seperated list of redis compatible connectionstrings (format: '<ip>:<port>[@<db>]', eg: 'localhost:16379,localhost:6379@2'), if given, these are used for all vdisks, ignoring the given config")
-	VdiskCmd.Flags().StringVar(
-		&vdiskCfg.ConfigPath, "config", "config.yml",
-		"zeroctl config file")
+	VdiskCmd.Flags().Var(
+		&vdiskCmdCfg.SourceConfig, "config",
+		"config resource: dialstrings (etcd cluster) or path (yaml file)")
 	VdiskCmd.Flags().IntVar(
-		&vdiskCfg.K,
+		&vdiskCmdCfg.K,
 		"k", 4,
 		"K variable of erasure encoding")
 	VdiskCmd.Flags().IntVar(
-		&vdiskCfg.M,
+		&vdiskCmdCfg.M,
 		"m", 2,
 		"M variable of erasure encoding")
 	VdiskCmd.Flags().StringVar(
-		&vdiskCfg.PrivKey,
+		&vdiskCmdCfg.PrivKey,
 		"priv-key", "12345678901234567890123456789012",
 		"private key")
 	VdiskCmd.Flags().StringVar(
-		&vdiskCfg.HexNonce,
+		&vdiskCmdCfg.HexNonce,
 		"nonce", "37b8e8a308c354048d245f6d",
 		"hex nonce used for encryption")
 	VdiskCmd.Flags().Uint64Var(
-		&vdiskCfg.StartTs,
+		&vdiskCmdCfg.StartTs,
 		"start-timestamp", 0,
 		"start timestamp in nanosecond(default 0: since beginning)")
-
 	VdiskCmd.Flags().Uint64Var(
-		&vdiskCfg.EndTs,
+		&vdiskCmdCfg.EndTs,
 		"end-timestamp", 0,
 		"end timestamp in nanosecond(default 0: until the end)")
 }

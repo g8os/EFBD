@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/redisstub"
@@ -55,7 +56,15 @@ func TestBackendSigtermHandler(t *testing.T) {
 			return nil
 		}
 
-		tls, err := newTlogStorage(vdiskID, tlogrpc, "", blockSize, storage)
+		source := config.NewStubSource()
+		defer source.Close()
+		source.SetTlogServerCluster(vdiskID, "tlogcluster", &config.TlogClusterConfig{
+			Servers: []string{tlogrpc},
+		})
+
+		// TODO: set addresses into source...
+
+		tls, err := newTlogStorage(ctx, vdiskID, "tlogcluster", source, blockSize, storage, nil)
 		if !assert.NoError(t, err) || !assert.NotNil(t, tls) {
 			return nil
 		}
