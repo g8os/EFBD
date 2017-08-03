@@ -82,7 +82,6 @@ func (s *fileSource) Watch(ctx context.Context, key Key) (<-chan []byte, error) 
 	log.Debug("Started watch goroutine for SIGHUP")
 	go func() {
 		defer signal.Stop(sighup)
-		defer close(sighup)
 		defer close(ch)
 		defer log.Debugf("Closing SIGHUP watch goroutine for %s", s.path)
 
@@ -93,14 +92,14 @@ func (s *fileSource) Watch(ctx context.Context, key Key) (<-chan []byte, error) 
 			case <-sighup:
 				log.Debug("Received SIGHUP for: ", s.path)
 				// read, deserialize and serialize sub config
-				bytes, err := s.Get(key)
+				output, err := s.Get(key)
 				if err != nil {
 					log.Errorf("Could not read config (%d): %s", key.Type, err)
 					continue
 				}
 
 				select {
-				case ch <- bytes:
+				case ch <- output:
 				case <-ctx.Done():
 					log.Errorf(
 						"timed out while attempting to send updated config (%d)", key.Type)
@@ -232,10 +231,11 @@ func (cfg *fileFormatCompleteConfig) TlogClusterConfig(id string) (*TlogClusterC
 // fileFormatVdiskConfig is the YAML format struct
 // used for all vdisk file-originated configurations.
 type fileFormatVdiskConfig struct {
-	BlockSize uint64    `yaml:"blockSize" valid:"required"`
-	ReadOnly  bool      `yaml:"readOnly" valid:"optional"`
-	Size      uint64    `yaml:"size" valid:"required"`
-	VdiskType VdiskType `yaml:"type" valid:"required"`
+	BlockSize       uint64    `yaml:"blockSize" valid:"required"`
+	ReadOnly        bool      `yaml:"readOnly" valid:"optional"`
+	Size            uint64    `yaml:"size" valid:"required"`
+	VdiskType       VdiskType `yaml:"type" valid:"required"`
+	TemplateVdiskID string    `yaml:"vdiskTemplateID" valid:"required"`
 
 	NBD  *VdiskNBDConfig  `yaml:"nbd" valid:"optional"`
 	Tlog *VdiskTlogConfig `yaml:"tlog" valid:"optional"`
@@ -245,10 +245,11 @@ type fileFormatVdiskConfig struct {
 // the vdisk config file format.
 func (cfg *fileFormatVdiskConfig) StaticConfig() (*VdiskStaticConfig, error) {
 	static := &VdiskStaticConfig{
-		BlockSize: cfg.BlockSize,
-		ReadOnly:  cfg.ReadOnly,
-		Size:      cfg.Size,
-		Type:      cfg.VdiskType,
+		BlockSize:       cfg.BlockSize,
+		ReadOnly:        cfg.ReadOnly,
+		Size:            cfg.Size,
+		Type:            cfg.VdiskType,
+		TemplateVdiskID: cfg.TemplateVdiskID,
 	}
 	err := static.Validate()
 	if err != nil {

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 
 	valid "github.com/asaskevich/govalidator"
@@ -225,6 +226,25 @@ func (cfg *StorageClusterConfig) Validate() error {
 	return nil
 }
 
+// ValidateStorageType is an extra validation method,
+// allowing you to check if this cluster is valid for a certain storage type.
+func (cfg *StorageClusterConfig) ValidateStorageType(t StorageType) error {
+	if cfg == nil {
+		return errors.New("nil StorageClusterConfig is not valid")
+	}
+
+	// both deduped and semideduped storage types require
+	// a metadata server to be defined
+	if t != StorageNonDeduped && cfg.MetadataStorage == nil {
+		return fmt.Errorf(
+			"invalid StorageClusterConfig: "+
+				"storage type %s requires a storage server for metadata", t)
+	}
+
+	// config is valid
+	return nil
+}
+
 // Clone implements Cloner.Clone
 func (cfg *StorageClusterConfig) Clone() StorageClusterConfig {
 	var clone StorageClusterConfig
@@ -232,7 +252,7 @@ func (cfg *StorageClusterConfig) Clone() StorageClusterConfig {
 		return clone
 	}
 
-	clone.DataStorage = make([]StorageServerConfig, len(clone.DataStorage))
+	clone.DataStorage = make([]StorageServerConfig, len(cfg.DataStorage))
 	copy(clone.DataStorage, cfg.DataStorage)
 
 	if cfg.MetadataStorage != nil {
@@ -241,6 +261,38 @@ func (cfg *StorageClusterConfig) Clone() StorageClusterConfig {
 	}
 
 	return clone
+}
+
+// Equal checks if the 2 configs are equal.
+// Note that the order of data storage servers matters,
+// as this order defines where vdisk's data will end up being.
+func (cfg *StorageClusterConfig) Equal(other *StorageClusterConfig) bool {
+	// check if both configs are given or not
+	if cfg == nil {
+		if other == nil {
+			return true
+		}
+		return false
+	} else if other == nil {
+		return false
+	}
+
+	// check if the data storage length is equal,
+	// if not than the configs can't be equal
+	if len(cfg.DataStorage) != len(other.DataStorage) {
+		return false
+	}
+	// check if all data storages are equal
+	for i := range cfg.DataStorage {
+		if !cfg.DataStorage[i].Equal(&other.DataStorage[i]) {
+			return false
+		}
+	}
+
+	// all data storages are equal,
+	// if their metadata storage is equal as well,
+	// than we are dealing with the same storage cluster
+	return cfg.MetadataStorage.Equal(other.MetadataStorage)
 }
 
 // NewTlogClusterConfig creates a new TlogClusterConfig from a given YAML slice.
@@ -280,6 +332,18 @@ func (cfg *TlogClusterConfig) Validate() error {
 	return nil
 }
 
+// Clone implements Cloner.Clone
+func (cfg *TlogClusterConfig) Clone() TlogClusterConfig {
+	var clone TlogClusterConfig
+	if cfg == nil || cfg.Servers == nil {
+		return clone
+	}
+
+	clone.Servers = make([]TlogServerConfig, len(cfg.Servers))
+	copy(clone.Servers, cfg.Servers)
+	return clone
+}
+
 // TlogServerConfig defines the config for a Tlog server
 type TlogServerConfig struct {
 	Address string `yaml:"address" valid:"dialstring,required"`
@@ -290,6 +354,31 @@ type StorageServerConfig struct {
 	Address string `yaml:"address" valid:"dialstring,required"`
 	// Database '0' is assumed, in case no value is given.
 	Database int `yaml:"db" valid:"optional"`
+}
+
+// Equal checks if the 2 configs are equal.
+// Note that the order of data storage servers matters,
+// as this order defines where vdisk's data will end up being.
+func (cfg *StorageServerConfig) Equal(other *StorageServerConfig) bool {
+	// check if both configs are given or not
+	if cfg == nil {
+		if other == nil {
+			return true
+		}
+		return false
+	} else if other == nil {
+		return false
+	}
+
+	// both configs are given
+
+	// last cheap test, are their databases equal?
+	if cfg.Database != other.Database {
+		return false
+	}
+
+	// it now all depends on whether or not their address is equal
+	return cfg.Address == other.Address
 }
 
 const (

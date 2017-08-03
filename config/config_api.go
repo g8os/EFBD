@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/siddontang/go/log"
+	"github.com/zero-os/0-Disk/log"
 )
 
 // ReadNBDVdisksConfig returns the requested NBDVdisksConfig
@@ -93,7 +93,6 @@ func ReadConfig(source Source, id string, keyType KeyType) ([]byte, error) {
 // as well as any future updated versions of that config,
 // for as long as the given context allows it.
 // An error is returned in case the watcher couldn't be started.
-// The source given is NOT closed by this function.
 func WatchNBDVdisksConfig(ctx context.Context, source Source, serverID string) (<-chan NBDVdisksConfig, error) {
 	// fetch current data
 	cfg, err := ReadNBDVdisksConfig(source, serverID)
@@ -103,7 +102,7 @@ func WatchNBDVdisksConfig(ctx context.Context, source Source, serverID string) (
 	}
 
 	// setup channel
-	updater := make(chan NBDVdisksConfig, 1)
+	updater := make(chan NBDVdisksConfig, 2)
 	updater <- *cfg
 
 	ctx = watchContext(ctx)
@@ -113,6 +112,8 @@ func WatchNBDVdisksConfig(ctx context.Context, source Source, serverID string) (
 	}
 
 	go func() {
+		defer close(updater)
+
 		for {
 			select {
 			case bytes, ok := <-bytesCh:
@@ -152,7 +153,6 @@ func WatchNBDVdisksConfig(ctx context.Context, source Source, serverID string) (
 // as well as any future updated versions of that config,
 // for as long as the given context allows it.
 // An error is returned in case the watcher couldn't be started.
-// The source given is NOT closed by this function.
 func WatchVdiskNBDConfig(ctx context.Context, source Source, vdiskID string) (<-chan VdiskNBDConfig, error) {
 	cfg, err := ReadVdiskNBDConfig(source, vdiskID)
 	if err != nil {
@@ -161,7 +161,7 @@ func WatchVdiskNBDConfig(ctx context.Context, source Source, vdiskID string) (<-
 	}
 
 	// setup channel and send initial config value
-	updater := make(chan VdiskNBDConfig, 1)
+	updater := make(chan VdiskNBDConfig, 2)
 	updater <- *cfg
 
 	ctx = watchContext(ctx)
@@ -171,21 +171,26 @@ func WatchVdiskNBDConfig(ctx context.Context, source Source, vdiskID string) (<-
 	}
 
 	go func() {
+		defer close(updater)
+
 		for {
 			select {
 			case bytes, ok := <-inputCh:
 				if !ok {
 					log.Debugf(
-						"watchVdiskNBDConfig for %v aborting due to closed input ch",
+						"watchVdiskNBDConfig for %s aborting due to closed input ch",
 						vdiskID)
 					return
 				}
+				log.Debugf(
+					"watchVdiskNBDConfig for %s received config bytes from source",
+					vdiskID)
 
 				cfg, err := NewVdiskNBDConfig(bytes)
 				if err != nil {
 					// TODO: Notify 0-Orchestrator
 					log.Errorf(
-						"watchVdiskNBDConfig for %v received invalid config: %v",
+						"watchVdiskNBDConfig for %s received invalid config: %v",
 						vdiskID, err)
 					continue
 				}
@@ -194,7 +199,7 @@ func WatchVdiskNBDConfig(ctx context.Context, source Source, vdiskID string) (<-
 				case updater <- *cfg:
 				// ensure we can't get stuck in a deadlock for this goroutine
 				case <-ctx.Done():
-					log.Errorf("timed out (ctx) while sending update for %v",
+					log.Errorf("timed out (ctx) while sending update for %s",
 						vdiskID)
 					continue
 				}
@@ -210,7 +215,6 @@ func WatchVdiskNBDConfig(ctx context.Context, source Source, vdiskID string) (<-
 // as well as any future updated versions of that config,
 // for as long as the given context allows it.
 // An error is returned in case the watcher couldn't be started.
-// The source given is NOT closed by this function.
 func WatchVdiskTlogConfig(ctx context.Context, source Source, vdiskID string) (<-chan VdiskTlogConfig, error) {
 	cfg, err := ReadVdiskTlogConfig(source, vdiskID)
 	if err != nil {
@@ -219,7 +223,7 @@ func WatchVdiskTlogConfig(ctx context.Context, source Source, vdiskID string) (<
 	}
 
 	// setup channel and send initial config value
-	updater := make(chan VdiskTlogConfig, 1)
+	updater := make(chan VdiskTlogConfig, 2)
 	updater <- *cfg
 
 	ctx = watchContext(ctx)
@@ -229,21 +233,26 @@ func WatchVdiskTlogConfig(ctx context.Context, source Source, vdiskID string) (<
 	}
 
 	go func() {
+		defer close(updater)
+
 		for {
 			select {
 			case bytes, ok := <-inputCh:
 				if !ok {
 					log.Debugf(
-						"WatchVdiskTlogConfig for %v aborting due to closed input ch",
+						"WatchVdiskTlogConfig for %s aborting due to closed input ch",
 						vdiskID)
 					return
 				}
+				log.Debugf(
+					"WatchVdiskTlogConfig for %s received config bytes from source",
+					vdiskID)
 
 				cfg, err := NewVdiskTlogConfig(bytes)
 				if err != nil {
 					// TODO: Notify 0-Orchestrator
 					log.Errorf(
-						"WatchVdiskTlogConfig for %v received invalid config: %v",
+						"WatchVdiskTlogConfig for %s received invalid config: %v",
 						vdiskID, err)
 					continue
 				}
@@ -252,7 +261,7 @@ func WatchVdiskTlogConfig(ctx context.Context, source Source, vdiskID string) (<
 				case updater <- *cfg:
 				// ensure we can't get stuck in a deadlock for this goroutine
 				case <-ctx.Done():
-					log.Errorf("timed out (ctx) while sending update for %v",
+					log.Errorf("timed out (ctx) while sending update for %s",
 						vdiskID)
 					continue
 				}
@@ -268,7 +277,6 @@ func WatchVdiskTlogConfig(ctx context.Context, source Source, vdiskID string) (<
 // as well as any future updated versions of that config,
 // for as long as the given context allows it.
 // An error is returned in case the watcher couldn't be started.
-// The source given is NOT closed by this function.
 func WatchStorageClusterConfig(ctx context.Context, source Source, clusterID string) (<-chan StorageClusterConfig, error) {
 	cfg, err := ReadStorageClusterConfig(source, clusterID)
 	if err != nil {
@@ -277,7 +285,7 @@ func WatchStorageClusterConfig(ctx context.Context, source Source, clusterID str
 	}
 
 	// setup channel and send initial config value
-	updater := make(chan StorageClusterConfig, 1)
+	updater := make(chan StorageClusterConfig, 2)
 	updater <- *cfg
 
 	ctx = watchContext(ctx)
@@ -287,21 +295,26 @@ func WatchStorageClusterConfig(ctx context.Context, source Source, clusterID str
 	}
 
 	go func() {
+		defer close(updater)
+
 		for {
 			select {
 			case bytes, ok := <-inputCh:
 				if !ok {
 					log.Debugf(
-						"StorageClusterConfig for %v aborting due to closed input ch",
+						"StorageClusterConfig for %s aborting due to closed input ch",
 						clusterID)
 					return
 				}
+				log.Debugf(
+					"StorageClusterConfig for %s received config bytes from source",
+					clusterID)
 
 				cfg, err := NewStorageClusterConfig(bytes)
 				if err != nil {
 					// TODO: Notify 0-Orchestrator
 					log.Errorf(
-						"StorageClusterConfig for %v received invalid config: %v",
+						"StorageClusterConfig for %s received invalid config: %v",
 						clusterID, err)
 					continue
 				}
@@ -326,7 +339,6 @@ func WatchStorageClusterConfig(ctx context.Context, source Source, clusterID str
 // as well as any future updated versions of that config,
 // for as long as the given context allows it.
 // An error is returned in case the watcher couldn't be started.
-// The source given is NOT closed by this function.
 func WatchTlogClusterConfig(ctx context.Context, source Source, clusterID string) (<-chan TlogClusterConfig, error) {
 	cfg, err := ReadTlogClusterConfig(source, clusterID)
 	if err != nil {
@@ -335,7 +347,7 @@ func WatchTlogClusterConfig(ctx context.Context, source Source, clusterID string
 	}
 
 	// setup channel and send initial config value
-	updater := make(chan TlogClusterConfig, 1)
+	updater := make(chan TlogClusterConfig, 2)
 	updater <- *cfg
 
 	ctx = watchContext(ctx)
@@ -345,21 +357,26 @@ func WatchTlogClusterConfig(ctx context.Context, source Source, clusterID string
 	}
 
 	go func() {
+		defer close(updater)
+
 		for {
 			select {
 			case bytes, ok := <-inputCh:
 				if !ok {
 					log.Debugf(
-						"TlogClusterConfig for %v aborting due to closed input ch",
+						"TlogClusterConfig for %s aborting due to closed input ch",
 						clusterID)
 					return
 				}
+				log.Debugf(
+					"TlogClusterConfig for %s received config bytes from source",
+					clusterID)
 
 				cfg, err := NewTlogClusterConfig(bytes)
 				if err != nil {
 					// TODO: Notify 0-Orchestrator
 					log.Errorf(
-						"TlogClusterConfig for %v received invalid config: %v",
+						"TlogClusterConfig for %s received invalid config: %v",
 						clusterID, err)
 					continue
 				}
@@ -368,7 +385,7 @@ func WatchTlogClusterConfig(ctx context.Context, source Source, clusterID string
 				case updater <- *cfg:
 				// ensure we can't get stuck in a deadlock for this goroutine
 				case <-ctx.Done():
-					log.Errorf("timed out (ctx) while sending update for %v",
+					log.Errorf("timed out (ctx) while sending update for %s",
 						clusterID)
 					continue
 				}

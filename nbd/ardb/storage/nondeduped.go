@@ -65,9 +65,6 @@ func (ss *nonDedupedStorage) SetBlock(blockIndex int64, content []byte) (err err
 	// don't store zero blocks,
 	// and delete existing ones if they already existed
 	if ss.isZeroContent(content) {
-		log.Debugf(
-			"deleting content @ %d for vdisk %s as it's an all zeroes block",
-			blockIndex, ss.vdiskID)
 		_, err = conn.Do("HDEL", ss.storageKey, blockIndex)
 		return
 	}
@@ -132,9 +129,6 @@ func (ss *nonDedupedStorage) getPrimaryOrTemplateContent(blockIndex int64) (cont
 		// get a connection to a template data storage server, based on the modulo blockIndex
 		conn, err := ss.provider.TemplateConnection(blockIndex)
 		if err != nil {
-			log.Debugf(
-				"block %d not available in primary storage and no template storage available: %s",
-				blockIndex, err.Error())
 			return
 		}
 		defer conn.Close()

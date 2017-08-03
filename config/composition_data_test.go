@@ -27,7 +27,6 @@ var validNBDStorageConfigs = []NBDStorageConfig{
 				},
 			},
 		},
-		TemplateVdiskID: "archlinux",
 	},
 	// minimal example
 	NBDStorageConfig{
@@ -96,15 +95,6 @@ var invalidNBDStorageConfigs = []NBDStorageConfig{
 		StorageCluster: StorageClusterConfig{
 			MetadataStorage: &StorageServerConfig{Address: "localhost:16379"},
 		},
-	},
-	// template vdiskID given, without template being given)
-	NBDStorageConfig{
-		StorageCluster: StorageClusterConfig{
-			DataStorage: []StorageServerConfig{
-				StorageServerConfig{Address: "localhost:16380"},
-			},
-		},
-		TemplateVdiskID: "foo",
 	},
 	// template storage given, but is invalid
 	NBDStorageConfig{

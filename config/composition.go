@@ -14,7 +14,6 @@ import (
 type NBDStorageConfig struct {
 	StorageCluster         StorageClusterConfig
 	TemplateStorageCluster *StorageClusterConfig
-	TemplateVdiskID        string
 }
 
 // Validate all properties of this config,
@@ -26,14 +25,9 @@ func (cfg *NBDStorageConfig) Validate(storageType StorageType) error {
 		return fmt.Errorf(
 			"invalid NBDStorageConfig, invalid primary storage cluster: %v", err)
 	}
-
-	// ensure that if optional template info is is given that the
-	// required template info is also given
-	if cfg.TemplateVdiskID != "" && cfg.TemplateStorageCluster == nil {
-		return fmt.Errorf(
-			"invalid NBDStorageConfig: 'TemplateVdiskID' is defined (%s)"+
-				"while 'TemplateStorageCluster' is <nil>",
-			cfg.TemplateVdiskID)
+	err = cfg.StorageCluster.ValidateStorageType(storageType)
+	if err != nil {
+		return fmt.Errorf("invalid NBDStorageConfig.PrimaryStorage: %v", err)
 	}
 
 	// otherwise ensire that if the template cluster is given, it is valid
@@ -45,7 +39,7 @@ func (cfg *NBDStorageConfig) Validate(storageType StorageType) error {
 		}
 	}
 
-	return cfg.ValidateOptional(storageType)
+	return nil
 }
 
 // ValidateOptional validates the optional properties of this config,
@@ -76,7 +70,6 @@ func (cfg *NBDStorageConfig) Clone() NBDStorageConfig {
 	if cfg.TemplateStorageCluster != nil {
 		templateClone := cfg.TemplateStorageCluster.Clone()
 		clone.TemplateStorageCluster = &templateClone
-		clone.TemplateVdiskID = cfg.TemplateVdiskID
 	}
 
 	return clone

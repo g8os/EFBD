@@ -3,7 +3,6 @@ package main
 import (
 	"sync"
 
-	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 )
 
@@ -37,9 +36,6 @@ func (ms *inMemoryStorage) SetBlock(blockIndex int64, content []byte) (err error
 	// don't store zero blocks,
 	// and delete existing ones if they already existed
 	if ms.isZeroContent(content) {
-		log.Debugf(
-			"deleting content @ %d for vdisk %s as it's an all zeroes block",
-			blockIndex, ms.vdiskID)
 		delete(ms.vdisk, blockIndex)
 		return
 	}

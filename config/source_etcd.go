@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/coreos/etcd/clientv3"
-	"github.com/siddontang/go/log"
+	"github.com/zero-os/0-Disk/log"
 )
 
 // ETCDV3Source creates a config source,
@@ -72,7 +72,7 @@ func (s *etcdv3Source) Watch(ctx context.Context, key Key) (<-chan []byte, error
 	watch := s.client.Watch(ctx, keyString)
 
 	log.Debugf("watch channel for etcd key '%s' started", keyString)
-	ch := make(chan []byte)
+	ch := make(chan []byte, 1)
 
 	go func() {
 		defer cancel()

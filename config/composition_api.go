@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/siddontang/go/log"
+	"github.com/zero-os/0-Disk/log"
 )
 
 // ReadNBDStorageConfig reads, validates and returns the requested NBDStorageConfig
@@ -84,7 +84,7 @@ func ReadTlogStorageConfig(source Source, vdiskID string, staticConfig *VdiskSta
 			"ReadTlogStorageConfig failed, invalid VdiskTlogConfig: %v", err)
 	}
 
-	// Create NBD Storage config
+	// Create TLog Storage config
 	tlogStorageConfig := new(TlogStorageConfig)
 
 	// Fetch Tlog Storage Cluster Config
@@ -133,6 +133,7 @@ func WatchTlogStorageConfig(ctx context.Context, source Source, vdiskID string) 
 		return nil, err
 	}
 
+	ctx = watchContext(ctx)
 	return watcher.Watch(ctx)
 }
 
@@ -170,12 +171,12 @@ type tlogStorageConfigWatcher struct {
 	// tlog storage cluster
 	tlogChan    <-chan StorageClusterConfig
 	tlogCancel  func()
-	tlogStorage *StorageClusterConfig
+	tlogCluster *StorageClusterConfig
 
 	// slave storage cluster
 	slaveChan    <-chan StorageClusterConfig
 	slaveCancel  func()
-	slaveStorage *StorageClusterConfig
+	slaveCluster *StorageClusterConfig
 }
 
 func (w *tlogStorageConfigWatcher) Watch(ctx context.Context) (<-chan TlogStorageConfig, error) {
@@ -191,20 +192,21 @@ func (w *tlogStorageConfigWatcher) Watch(ctx context.Context) (<-chan TlogStorag
 	if err != nil {
 		cancelWatch()
 		return nil, fmt.Errorf(
-			"TlogStorageConfigWatcher failed, invalid VdiskTlogConfig: %v", err)
+			"TlogStorageConfigWatcher (%s) failed, invalid VdiskTlogConfig: %v", w.vdiskID, err)
 	}
 	select {
 	case <-ctx.Done():
 		cancelWatch()
 		return nil, fmt.Errorf(
-			"TlogStorageConfigWatcher failed: %v", ErrContextDone)
+			"TlogStorageConfigWatcher (%s) failed: %v", w.vdiskID, ErrContextDone)
 
 	case clusterInfo := <-clusterChan:
 		_, err = w.applyClusterInfo(clusterInfo)
 		if err != nil {
 			cancelWatch()
 			return nil, fmt.Errorf(
-				"TlogStorageConfigWatcher failed, err with initial config: %v", err)
+				"TlogStorageConfigWatcher (%s) failed, err with initial config: %v",
+				w.vdiskID, err)
 		}
 	}
 
@@ -227,16 +229,14 @@ func (w *tlogStorageConfigWatcher) Watch(ctx context.Context) (<-chan TlogStorag
 			case <-ctx.Done():
 				return // done
 
-			// update tlog cluster
-			case cluster := <-w.tlogChan:
-				w.tlogStorage = &cluster
-
-			// update slave cluster
-			case cluster := <-w.slaveChan:
-				w.slaveStorage = &cluster
-
 			// update cluster config
-			case clusterInfo := <-clusterChan:
+			case clusterInfo, open := <-clusterChan:
+				if !open {
+					log.Debugf(
+						"close TlogStorageConfigWatcher (%s) because of closed cluster chan", w.vdiskID)
+					return
+				}
+				log.Debugf("TlogStorageConfigWatcher (%s) receives cluster info", w.vdiskID)
 				changed, err := w.applyClusterInfo(clusterInfo)
 				if err != nil {
 					// TODO: notify 0-orchestrator
@@ -246,13 +246,52 @@ func (w *tlogStorageConfigWatcher) Watch(ctx context.Context) (<-chan TlogStorag
 				if !changed {
 					continue
 				}
+
+			// update tlog cluster
+			case cluster, open := <-w.tlogChan:
+				if !open {
+					log.Debugf(
+						"close TlogStorageConfigWatcher (%s) because of closed tlog chan", w.vdiskID)
+					return
+				}
+				log.Debugf("TlogStorageConfigWatcher (%s) receives tlog cluster", w.vdiskID)
+				if w.tlogCluster.Equal(&cluster) {
+					log.Debugf(
+						"TlogStorageConfigWatcher (%s) received nop-update for primary cluster (%s)",
+						w.vdiskID, w.tlogClusterID)
+					continue
+				}
+				w.tlogCluster = &cluster
+
+			// update slave cluster
+			case cluster, open := <-w.slaveChan:
+				log.Debugf("TlogStorageConfigWatcher (%s) receives slave info", w.vdiskID)
+				if !open {
+					log.Debugf(
+						"close TlogStorageConfigWatcher (%s) because of closed slave chan", w.vdiskID)
+					return
+				}
+				if w.slaveCluster.Equal(&cluster) {
+					log.Debugf(
+						"TlogStorageConfigWatcher (%s) received nop-update for primary cluster (%s)",
+						w.vdiskID, w.slaveClusterID)
+					continue
+				}
+				err := cluster.ValidateStorageType(w.vdiskType.StorageType())
+				if err != nil {
+					// TODO: Notify 0-Orchestrator
+					log.Errorf(
+						"TlogStorageConfigWatcher failed, err with slave cluster config: %v", err)
+					continue
+				}
+				w.slaveCluster = &cluster
 			}
 
 			// send new output, as a cluster has been updated
 			if err := w.sendOutput(); err != nil {
+				// TODO: ootify 0-orchestrator
 				log.Errorf(
 					"TlogStorageConfigWatcher failed to send value: %v", err)
-				return
 			}
 		}
 	}()
@@ -272,14 +311,19 @@ func (w *tlogStorageConfigWatcher) fetchVdiskType() error {
 }
 
 func (w *tlogStorageConfigWatcher) sendOutput() error {
-	if w.tlogStorage == nil {
+	if w.tlogCluster == nil {
 		return errors.New("tlog storage is nil, while it is required")
 	}
 
-	cfg := TlogStorageConfig{StorageCluster: w.tlogStorage.Clone()}
-	if w.slaveStorage != nil {
-		slaveCluster := w.slaveStorage.Clone()
+	cfg := TlogStorageConfig{StorageCluster: w.tlogCluster.Clone()}
+	if w.slaveCluster != nil {
+		slaveCluster := w.slaveCluster.Clone()
 		cfg.SlaveStorageCluster = &slaveCluster
+	}
+
+	err := cfg.Validate(w.vdiskType.StorageType())
+	if err != nil {
+		return err
 	}
 
 	select {
@@ -291,11 +335,17 @@ func (w *tlogStorageConfigWatcher) sendOutput() error {
 }
 
 func (w *tlogStorageConfigWatcher) applyClusterInfo(info VdiskTlogConfig) (bool, error) {
+	log.Debugf(
+		"TlogStorageConfigWatcher (%s) loading tlog storage cluster: %s",
+		w.vdiskID, info.StorageClusterID)
 	tlogChanged, err := w.loadTlogChan(info.StorageClusterID)
 	if err != nil {
 		return false, err
 	}
 
+	log.Debugf(
+		"TlogStorageConfigWatcher (%s) loading slave storage cluster: %s",
+		w.vdiskID, info.SlaveStorageClusterID)
 	slaveChanged, err := w.loadSlaveChan(info.SlaveStorageClusterID)
 	if err != nil {
 		log.Errorf("error occured in TlogStorageConfigWatcher, slave is invalid: %v", err)
@@ -308,9 +358,15 @@ func (w *tlogStorageConfigWatcher) applyClusterInfo(info VdiskTlogConfig) (bool,
 
 func (w *tlogStorageConfigWatcher) loadTlogChan(clusterID string) (bool, error) {
 	if w.tlogClusterID == clusterID {
+		log.Debugf(
+			"TlogStorageConfigWatcher (%s) already watches tlog cluster: %s",
+			w.vdiskID, clusterID)
 		return false, nil // nothing to do
 	}
 	if clusterID == "" {
+		log.Errorf(
+			"TlogStorageConfigWatcher (%s) received tlog-storage-load request using a nil-id",
+			w.vdiskID)
 		return false, ErrNilID
 	}
 
@@ -319,7 +375,8 @@ func (w *tlogStorageConfigWatcher) loadTlogChan(clusterID string) (bool, error) 
 	if err != nil {
 		cancel()
 		return false, fmt.Errorf(
-			"TlogStorageConfigWatcher failed, invalid TLogStorageClusterConfig: %v", err)
+			"TlogStorageConfigWatcher (%s) failed, invalid TLogStorageClusterConfig: %v",
+			w.vdiskID, err)
 	}
 
 	// read initial value
@@ -328,19 +385,22 @@ func (w *tlogStorageConfigWatcher) loadTlogChan(clusterID string) (bool, error) 
 	case <-ctx.Done():
 		cancel()
 		return false, ErrContextDone
-	case config = <-w.tlogChan:
+	case config = <-ch:
 	}
 
 	// tlog cluster has been switched successfully
 	w.tlogChan = ch
 	w.tlogCancel = cancel
-	w.tlogStorage = &config
+	w.tlogCluster = &config
 	w.tlogClusterID = clusterID
 	return true, nil
 }
 
 func (w *tlogStorageConfigWatcher) loadSlaveChan(clusterID string) (bool, error) {
 	if w.slaveClusterID == clusterID {
+		log.Debugf(
+			"TlogStorageConfigWatcher (%s) already watches slave cluster: %s",
+			w.vdiskID, clusterID)
 		return false, nil // nothing to do
 	}
 
@@ -350,9 +410,10 @@ func (w *tlogStorageConfigWatcher) loadSlaveChan(clusterID string) (bool, error)
 			clusterID, w.vdiskID)
 		// meaning we want to delete slave cluster
 		w.slaveClusterID = ""
+		w.slaveChan = nil
 		w.slaveCancel()
 		w.slaveCancel = nil
-		w.slaveStorage = nil // make sure storage is set to nil
+		w.slaveCluster = nil // make sure storage is set to nil
 		return true, nil
 	}
 
@@ -362,7 +423,8 @@ func (w *tlogStorageConfigWatcher) loadSlaveChan(clusterID string) (bool, error)
 	if err != nil {
 		cancel()
 		return false, fmt.Errorf(
-			"TlogStorageConfigWatcher failed, invalid TLogStorageClusterConfig: %v", err)
+			"TlogStorageConfigWatcher (%s) failed, invalid TLogStorageClusterConfig: %v",
+			w.vdiskID, err)
 	}
 
 	// read initial value
@@ -371,13 +433,20 @@ func (w *tlogStorageConfigWatcher) loadSlaveChan(clusterID string) (bool, error)
 	case <-ctx.Done():
 		cancel()
 		return false, ErrContextDone
-	case config = <-w.slaveChan:
+	case config = <-ch:
+	}
+
+	// ensure slave cluster is valid for this storage Type
+	err = config.ValidateStorageType(w.vdiskType.StorageType())
+	if err != nil {
+		cancel()
+		return false, err
 	}
 
 	// slave cluster has been switched successfully
 	w.slaveChan = ch
 	w.slaveCancel = cancel
-	w.slaveStorage = &config
+	w.slaveCluster = &config
 	w.slaveClusterID = clusterID
 	return true, nil
 }
@@ -392,6 +461,7 @@ func WatchNBDStorageConfig(ctx context.Context, source Source, vdiskID string) (
 		return nil, err
 	}
 
+	ctx = watchContext(ctx)
 	return watcher.Watch(ctx)
 }
 
@@ -429,12 +499,12 @@ type nbdStorageConfigWatcher struct {
 	// primary storage cluster
 	primaryChan    <-chan StorageClusterConfig
 	primaryCancel  func()
-	primaryStorage *StorageClusterConfig
+	primaryCluster *StorageClusterConfig
 
 	// template storage cluster
 	templateChan    <-chan StorageClusterConfig
 	templateCancel  func()
-	templateStorage *StorageClusterConfig
+	templateCluster *StorageClusterConfig
 }
 
 func (w *nbdStorageConfigWatcher) Watch(ctx context.Context) (<-chan NBDStorageConfig, error) {
@@ -486,32 +556,77 @@ func (w *nbdStorageConfigWatcher) Watch(ctx context.Context) (<-chan NBDStorageC
 			case <-ctx.Done():
 				return // done
 
-			// update primary cluster
-			case cluster := <-w.primaryChan:
-				w.primaryStorage = &cluster
-
-			// update template cluster
-			case cluster := <-w.templateChan:
-				w.templateStorage = &cluster
-
 			// update cluster config
-			case clusterInfo := <-clusterChan:
+			case clusterInfo, open := <-clusterChan:
+				if !open {
+					log.Debugf(
+						"close nbdStorageConfigWatcher (%s) because of closed cluster chan", w.vdiskID)
+					return
+				}
+				log.Debugf("nbdStorageConfigWatcher (%s) receives cluster info", w.vdiskID)
 				changed, err := w.applyClusterInfo(clusterInfo)
 				if err != nil {
 					// TODO: notify 0-orchestrator
 					log.Errorf(
 						"nbdStorageConfigWatcher failed, err with update config: %v", err)
+					changed = false
 				}
 				if !changed {
 					continue
 				}
+
+			// update primary cluster
+			case cluster, open := <-w.primaryChan:
+				if !open {
+					log.Debugf(
+						"close nbdStorageConfigWatcher (%s) because of closed primary chan", w.vdiskID)
+					return
+				}
+				log.Debugf("nbdStorageConfigWatcher (%s) receives primary cluster", w.vdiskID)
+				if w.primaryCluster.Equal(&cluster) {
+					log.Debugf(
+						"nbdStorageConfigWatcher (%s) received nop-update for primary cluster (%s)",
+						w.vdiskID, w.primaryClusterID)
+					continue
+				}
+				err := cluster.ValidateStorageType(w.vdiskType.StorageType())
+				if err != nil {
+					// TODO: Notify 0-Orchestrator
+					log.Errorf(
+						"nbdStorageConfigWatcher failed, err with primary cluster config: %v", err)
+					continue
+				}
+				w.primaryCluster = &cluster
+
+			// update template cluster
+			case cluster, open := <-w.templateChan:
+				if !open {
+					log.Debugf(
+						"close nbdStorageConfigWatcher (%s) because of closed template chan", w.vdiskID)
+					return
+				}
+				log.Debugf("nbdStorageConfigWatcher (%s) receives template cluster", w.vdiskID)
+				if w.templateCluster.Equal(&cluster) {
+					log.Debugf(
+						"nbdStorageConfigWatcher (%s) received nop-update for template cluster (%s)",
+						w.vdiskID, w.templateClusterID)
+					continue
+				}
+				err := cluster.ValidateStorageType(w.vdiskType.StorageType())
+				if err != nil {
+					// TODO: Notify 0-Orchestrator
+					log.Errorf(
+						"nbdStorageConfigWatcher failed, err with template cluster config: %v", err)
+					continue
+				}
+				w.templateCluster = &cluster
 			}
 
 			// send new output, as a cluster has been updated
 			if err := w.sendOutput(); err != nil {
+				// TODO: ootify 0-orchestrator
 				log.Errorf(
 					"nbdStorageConfigWatcher failed to send value: %v", err)
-				return
 			}
 		}
 	}()
@@ -531,14 +646,19 @@ func (w *nbdStorageConfigWatcher) fetchVdiskType() error {
 }
 
 func (w *nbdStorageConfigWatcher) sendOutput() error {
-	if w.primaryStorage == nil {
+	if w.primaryCluster == nil {
 		return errors.New("primary storage is nil, while it is required")
 	}
 
-	cfg := NBDStorageConfig{StorageCluster: w.primaryStorage.Clone()}
-	if w.templateStorage != nil {
-		templateCluster := w.templateStorage.Clone()
+	cfg := NBDStorageConfig{StorageCluster: w.primaryCluster.Clone()}
+	if w.templateCluster != nil {
+		templateCluster := w.templateCluster.Clone()
 		cfg.TemplateStorageCluster = &templateCluster
+	}
+
+	err := cfg.Validate(w.vdiskType.StorageType())
+	if err != nil {
+		return err
 	}
 
 	select {
@@ -550,11 +670,17 @@ func (w *nbdStorageConfigWatcher) sendOutput() error {
 }
 
 func (w *nbdStorageConfigWatcher) applyClusterInfo(info VdiskNBDConfig) (bool, error) {
+	log.Debugf(
+		"nbdStorageConfigWatcher (%s) loading primary storage cluster: %s",
+		w.vdiskID, info.StorageClusterID)
 	primaryChanged, err := w.loadPrimaryChan(info.StorageClusterID)
 	if err != nil {
 		return false, err
 	}
 
+	log.Debugf(
+		"nbdStorageConfigWatcher (%s) loading template storage cluster: %s",
+		w.vdiskID, info.TemplateStorageClusterID)
 	templateClusterChanged, err := w.loadTemplateChan(info.TemplateStorageClusterID)
 	if err != nil {
 		log.Errorf("error occured in nbdStorageConfigWatcher, slave is invalid: %v", err)
@@ -567,9 +693,15 @@ func (w *nbdStorageConfigWatcher) applyClusterInfo(info VdiskNBDConfig) (bool, e
 
 func (w *nbdStorageConfigWatcher) loadPrimaryChan(clusterID string) (bool, error) {
 	if w.primaryClusterID == clusterID {
+		log.Debugf(
+			"nbdStorageConfigWatcher (%s) already watches primary cluster: %s",
+			w.vdiskID, clusterID)
 		return false, nil // nothing to do
 	}
 	if clusterID == "" {
+		log.Errorf(
+			"nbdStorageConfigWatcher (%s) received request to load primary cluster using a nil-id",
+			w.vdiskID)
 		return false, ErrNilID
 	}
 
@@ -587,19 +719,29 @@ func (w *nbdStorageConfigWatcher) loadPrimaryChan(clusterID string) (bool, error
 	case <-ctx.Done():
 		cancel()
 		return false, ErrContextDone
-	case config = <-w.primaryChan:
+	case config = <-ch:
+	}
+
+	// validate primary storage cluster
+	err = config.ValidateStorageType(w.vdiskType.StorageType())
+	if err != nil {
+		cancel()
+		return false, err
 	}
 
 	// primary cluster has been switched successfully
 	w.primaryChan = ch
 	w.primaryCancel = cancel
-	w.primaryStorage = &config
+	w.primaryCluster = &config
 	w.primaryClusterID = clusterID
 	return true, nil
 }
 
 func (w *nbdStorageConfigWatcher) loadTemplateChan(clusterID string) (bool, error) {
 	if w.templateClusterID == clusterID {
+		log.Debugf(
+			"nbdStorageConfigWatcher (%s) already watches template cluster: %s",
+			w.vdiskID, clusterID)
 		return false, nil // nothing to do
 	}
 
@@ -610,8 +752,9 @@ func (w *nbdStorageConfigWatcher) loadTemplateChan(clusterID string) (bool, erro
 		// meaning we want to delete template cluster
 		w.templateClusterID = ""
 		w.templateCancel()
+		w.templateChan = nil
 		w.templateCancel = nil
-		w.templateStorage = nil // make sure storage is set to nil
+		w.templateCluster = nil // make sure storage is set to nil
 		return true, nil
 	}
 
@@ -630,13 +773,20 @@ func (w *nbdStorageConfigWatcher) loadTemplateChan(clusterID string) (bool, erro
 	case <-ctx.Done():
 		cancel()
 		return false, ErrContextDone
-	case config = <-w.templateChan:
+	case config = <-ch:
+	}
+
+	// validate template storage cluster
+	err = config.ValidateStorageType(w.vdiskType.StorageType())
+	if err != nil {
+		cancel()
+		return false, err
 	}
 
 	// template cluster has been switched successfully
 	w.templateChan = ch
 	w.templateCancel = cancel
-	w.templateStorage = &config
+	w.templateCluster = &config
 	w.templateClusterID = clusterID
 	return true, nil
 }
