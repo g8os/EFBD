@@ -112,10 +112,15 @@ func WatchNBDVdisksConfig(ctx context.Context, source Source, serverID string) (
 	}
 
 	go func() {
+		log.Debugf("WatchNBDVdisksConfig for server %s started", serverID)
 		defer close(updater)
+		defer log.Debugf("WatchNBDVdisksConfig server for %s stopped", serverID)
 
 		for {
 			select {
+			case <-ctx.Done():
+				return
+
 			case bytes, ok := <-bytesCh:
 				if !ok {
 					log.Debugf(
@@ -139,7 +144,7 @@ func WatchNBDVdisksConfig(ctx context.Context, source Source, serverID string) (
 				case <-ctx.Done():
 					log.Errorf("timed out (ctx) while sending update for %v",
 						serverID)
-					continue
+					return
 				}
 			}
 		}
@@ -171,10 +176,15 @@ func WatchVdiskNBDConfig(ctx context.Context, source Source, vdiskID string) (<-
 	}
 
 	go func() {
+		log.Debugf("watchVdiskNBDConfig for vdisk %s started", vdiskID)
 		defer close(updater)
+		defer log.Debugf("watchVdiskNBDConfig for vdisk %s stopped", vdiskID)
 
 		for {
 			select {
+			case <-ctx.Done():
+				return
+
 			case bytes, ok := <-inputCh:
 				if !ok {
 					log.Debugf(
@@ -201,7 +211,7 @@ func WatchVdiskNBDConfig(ctx context.Context, source Source, vdiskID string) (<-
 				case <-ctx.Done():
 					log.Errorf("timed out (ctx) while sending update for %s",
 						vdiskID)
-					continue
+					return
 				}
 			}
 		}
@@ -233,10 +243,15 @@ func WatchVdiskTlogConfig(ctx context.Context, source Source, vdiskID string) (<
 	}
 
 	go func() {
+		log.Debugf("WatchVdiskTlogConfig for vdisk %s started", vdiskID)
 		defer close(updater)
+		defer log.Debugf("WatchVdiskTlogConfig for vdisk %s stopped", vdiskID)
 
 		for {
 			select {
+			case <-ctx.Done():
+				return
+
 			case bytes, ok := <-inputCh:
 				if !ok {
 					log.Debugf(
@@ -263,7 +278,7 @@ func WatchVdiskTlogConfig(ctx context.Context, source Source, vdiskID string) (<
 				case <-ctx.Done():
 					log.Errorf("timed out (ctx) while sending update for %s",
 						vdiskID)
-					continue
+					return
 				}
 			}
 		}
@@ -295,26 +310,31 @@ func WatchStorageClusterConfig(ctx context.Context, source Source, clusterID str
 	}
 
 	go func() {
+		log.Debugf("WatchStorageClusterConfig for cluster %s started", clusterID)
 		defer close(updater)
+		defer log.Debugf("WatchStorageClusterConfig cluster for %s stopped", clusterID)
 
 		for {
 			select {
+			case <-ctx.Done():
+				return
+
 			case bytes, ok := <-inputCh:
 				if !ok {
 					log.Debugf(
-						"StorageClusterConfig for %s aborting due to closed input ch",
+						"WatchStorageClusterConfig for %s aborting due to closed input ch",
 						clusterID)
 					return
 				}
 				log.Debugf(
-					"StorageClusterConfig for %s received config bytes from source",
+					"WatchStorageClusterConfig for %s received config bytes from source",
 					clusterID)
 
 				cfg, err := NewStorageClusterConfig(bytes)
 				if err != nil {
 					// TODO: Notify 0-Orchestrator
 					log.Errorf(
-						"StorageClusterConfig for %s received invalid config: %v",
+						"WatchStorageClusterConfig for %s received invalid config: %v",
 						clusterID, err)
 					continue
 				}
@@ -325,7 +345,7 @@ func WatchStorageClusterConfig(ctx context.Context, source Source, clusterID str
 				case <-ctx.Done():
 					log.Errorf("timed out (ctx) while sending update for %v",
 						clusterID)
-					continue
+					return
 				}
 			}
 		}
@@ -357,26 +377,31 @@ func WatchTlogClusterConfig(ctx context.Context, source Source, clusterID string
 	}
 
 	go func() {
+		log.Debugf("WatchTlogClusterConfig for cluster %s started", clusterID)
 		defer close(updater)
+		defer log.Debugf("WatchTlogClusterConfig cluster for %s stopped", clusterID)
 
 		for {
 			select {
+			case <-ctx.Done():
+				return
+
 			case bytes, ok := <-inputCh:
 				if !ok {
 					log.Debugf(
-						"TlogClusterConfig for %s aborting due to closed input ch",
+						"WatchTlogClusterConfig for %s aborting due to closed input ch",
 						clusterID)
 					return
 				}
 				log.Debugf(
-					"TlogClusterConfig for %s received config bytes from source",
+					"WatchTlogClusterConfig for %s received config bytes from source",
 					clusterID)
 
 				cfg, err := NewTlogClusterConfig(bytes)
 				if err != nil {
 					// TODO: Notify 0-Orchestrator
 					log.Errorf(
-						"TlogClusterConfig for %s received invalid config: %v",
+						"WatchTlogClusterConfig for %s received invalid config: %v",
 						clusterID, err)
 					continue
 				}

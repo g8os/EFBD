@@ -401,6 +401,9 @@ func (w *tlogStorageConfigWatcher) loadTlogChan(clusterID string) (bool, error) 
 
 	// tlog cluster has been switched successfully
 	w.tlogChan = ch
+	if w.tlogCancel != nil {
+		w.tlogCancel()
+	}
 	w.tlogCancel = cancel
 	w.tlogCluster = &config
 	w.tlogClusterID = clusterID
@@ -456,6 +459,9 @@ func (w *tlogStorageConfigWatcher) loadSlaveChan(clusterID string) (bool, error)
 
 	// slave cluster has been switched successfully
 	w.slaveChan = ch
+	if w.slaveCancel != nil {
+		w.slaveCancel()
+	}
 	w.slaveCancel = cancel
 	w.slaveCluster = &config
 	w.slaveClusterID = clusterID
@@ -778,6 +784,9 @@ func (w *nbdStorageConfigWatcher) loadPrimaryChan(clusterID string) (bool, error
 
 	// primary cluster has been switched successfully
 	w.primaryChan = ch
+	if w.primaryCancel != nil {
+		w.primaryCancel()
+	}
 	w.primaryCancel = cancel
 	w.primaryCluster = &config
 	w.primaryClusterID = clusterID
@@ -832,6 +841,9 @@ func (w *nbdStorageConfigWatcher) loadTemplateChan(clusterID string) (bool, erro
 
 	// template cluster has been switched successfully
 	w.templateChan = ch
+	if w.templateCancel != nil {
+		w.templateCancel()
+	}
 	w.templateCancel = cancel
 	w.templateCluster = &config
 	w.templateClusterID = clusterID
@@ -886,6 +898,9 @@ func (w *nbdStorageConfigWatcher) loadSlaveChan(clusterID string) (bool, error) 
 
 	// slave cluster has been switched successfully
 	w.slaveChan = ch
+	if w.slaveCancel != nil {
+		w.slaveCancel()
+	}
 	w.slaveCancel = cancel
 	w.slaveCluster = &config
 	w.slaveClusterID = clusterID
