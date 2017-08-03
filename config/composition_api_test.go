@@ -39,13 +39,83 @@ func TestReadNBDStorageConfig(t *testing.T) {
 	})
 	nbdStorageCfg, err := ReadNBDStorageConfig(source, "a", nil)
 	if assert.NoError(err, "should be fine as both the vdisk and storage are properly configured") {
-		assert.Subset(
+		assert.Equal(
 			[]StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
 			nbdStorageCfg.StorageCluster.DataStorage)
 		if assert.NotNil(nbdStorageCfg.StorageCluster.MetadataStorage) {
 			assert.Equal(
 				StorageServerConfig{Address: "localhost:16379"},
 				*nbdStorageCfg.StorageCluster.MetadataStorage)
+		}
+	}
+
+	source.SetTemplateStorageCluster("a", "templateCluster", &StorageClusterConfig{
+		DataStorage: []StorageServerConfig{
+			StorageServerConfig{Address: "localhost:16380"},
+			StorageServerConfig{Address: "localhost:16381"},
+			StorageServerConfig{Address: "localhost:16382"},
+		},
+	})
+	nbdStorageCfg, err = ReadNBDStorageConfig(source, "a", nil)
+	if assert.NoError(err, "should be fine as both the vdisk and storage are properly configured") {
+		assert.Equal(
+			[]StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
+			nbdStorageCfg.StorageCluster.DataStorage)
+		if assert.NotNil(nbdStorageCfg.StorageCluster.MetadataStorage) {
+			assert.Equal(
+				StorageServerConfig{Address: "localhost:16379"},
+				*nbdStorageCfg.StorageCluster.MetadataStorage)
+		}
+		if assert.NotNil(nbdStorageCfg.TemplateStorageCluster) {
+			assert.Equal(
+				[]StorageServerConfig{
+					StorageServerConfig{Address: "localhost:16380"},
+					StorageServerConfig{Address: "localhost:16381"},
+					StorageServerConfig{Address: "localhost:16382"},
+				},
+				nbdStorageCfg.TemplateStorageCluster.DataStorage)
+		}
+	}
+
+	source.SetSlaveStorageCluster("a", "slaveCluster", &StorageClusterConfig{
+		DataStorage: []StorageServerConfig{
+			StorageServerConfig{Address: "localhost:16379"},
+			StorageServerConfig{Address: "localhost:16380"},
+		},
+		MetadataStorage: &StorageServerConfig{Address: "localhost:16379"},
+	})
+
+	nbdStorageCfg, err = ReadNBDStorageConfig(source, "a", nil)
+	if assert.NoError(err, "should be fine as both the vdisk and storage are properly configured") {
+		assert.Equal(
+			[]StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
+			nbdStorageCfg.StorageCluster.DataStorage)
+		if assert.NotNil(nbdStorageCfg.StorageCluster.MetadataStorage) {
+			assert.Equal(
+				StorageServerConfig{Address: "localhost:16379"},
+				*nbdStorageCfg.StorageCluster.MetadataStorage)
+		}
+		if assert.NotNil(nbdStorageCfg.TemplateStorageCluster) {
+			assert.Equal(
+				[]StorageServerConfig{
+					StorageServerConfig{Address: "localhost:16380"},
+					StorageServerConfig{Address: "localhost:16381"},
+					StorageServerConfig{Address: "localhost:16382"},
+				},
+				nbdStorageCfg.TemplateStorageCluster.DataStorage)
+		}
+		if assert.NotNil(nbdStorageCfg.SlaveStorageCluster) {
+			assert.Equal(
+				[]StorageServerConfig{
+					StorageServerConfig{Address: "localhost:16379"},
+					StorageServerConfig{Address: "localhost:16380"},
+				},
+				nbdStorageCfg.SlaveStorageCluster.DataStorage)
+			if assert.NotNil(nbdStorageCfg.SlaveStorageCluster.MetadataStorage) {
+				assert.Equal(
+					StorageServerConfig{Address: "localhost:16379"},
+					*nbdStorageCfg.SlaveStorageCluster.MetadataStorage)
+			}
 		}
 	}
 }
@@ -228,6 +298,7 @@ func TestWatchNBDStorageConfig_ChangeClusterReference(t *testing.T) {
 	}
 
 	var templateStoragecluster *StorageClusterConfig
+	var slaveStoragecluster *StorageClusterConfig
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -244,6 +315,8 @@ func TestWatchNBDStorageConfig_ChangeClusterReference(t *testing.T) {
 			"unexpected primary cluster: %v", output.StorageCluster)
 		assert.True(output.TemplateStorageCluster.Equal(templateStoragecluster),
 			"unexpected template cluster: %v", output.TemplateStorageCluster)
+		assert.True(output.SlaveStorageCluster.Equal(slaveStoragecluster),
+			"unexpected slave cluster: %v", output.SlaveStorageCluster)
 	}
 
 	testValue()
@@ -289,14 +362,39 @@ func TestWatchNBDStorageConfig_ChangeClusterReference(t *testing.T) {
 	source.TriggerReload()
 	testValue()
 
-	// setting an invalid template Storage cluster should not be possible
+	// metadata server is not required for template storage
 	templateStoragecluster.MetadataStorage = nil
 	source.SetStorageCluster("master", templateStoragecluster)
 	source.TriggerReload()
-	testTimeout() // error value should not be updated
+	testValue()
 
+	// but can be given, and it will be ignored by any user
 	templateStoragecluster.MetadataStorage = &StorageServerConfig{Address: "localhost:300"}
 	source.SetStorageCluster("master", templateStoragecluster)
+	source.TriggerReload()
+	testValue()
+
+	// now let's set slave cluster
+	slaveStoragecluster = &StorageClusterConfig{
+		DataStorage: []StorageServerConfig{
+			StorageServerConfig{Address: "slave:200"},
+			StorageServerConfig{Address: "slave:201"},
+		},
+		MetadataStorage: &StorageServerConfig{Address: "slave:200", Database: 42},
+	}
+	source.SetSlaveStorageCluster("a", "slave", slaveStoragecluster)
+	source.TriggerReload()
+	testValue()
+
+	// metadata server is required for slave storage
+	slaveStoragecluster.MetadataStorage = nil
+	source.SetStorageCluster("slave", slaveStoragecluster)
+	source.TriggerReload()
+	testTimeout() // error value should not be updated
+
+	// even after, error, we can set a good value
+	slaveStoragecluster.MetadataStorage = &StorageServerConfig{Address: "localhost:300"}
+	source.SetStorageCluster("slave", slaveStoragecluster)
 	source.TriggerReload()
 	testValue()
 

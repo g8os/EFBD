@@ -14,6 +14,7 @@ import (
 type NBDStorageConfig struct {
 	StorageCluster         StorageClusterConfig
 	TemplateStorageCluster *StorageClusterConfig
+	SlaveStorageCluster    *StorageClusterConfig
 }
 
 // Validate all properties of this config,
@@ -30,12 +31,26 @@ func (cfg *NBDStorageConfig) Validate(storageType StorageType) error {
 		return fmt.Errorf("invalid NBDStorageConfig.PrimaryStorage: %v", err)
 	}
 
-	// otherwise ensire that if the template cluster is given, it is valid
+	// ensure that if the template cluster is given, it is valid
 	if cfg.TemplateStorageCluster != nil {
 		err = cfg.TemplateStorageCluster.Validate()
 		if err != nil {
 			return fmt.Errorf(
 				"invalid NBDStorageConfig, invalid template storage cluster: %v", err)
+		}
+	}
+
+	// ensure that if the slave cluster is given, it is valid
+	if cfg.SlaveStorageCluster != nil {
+		err = cfg.SlaveStorageCluster.Validate()
+		if err != nil {
+			return fmt.Errorf(
+				"invalid NBDStorageConfig, invalid slave storage cluster: %v", err)
+		}
+
+		err = cfg.SlaveStorageCluster.ValidateStorageType(storageType)
+		if err != nil {
+			return fmt.Errorf("invalid NBDStorageConfig.SlaveStorage: %v", err)
 		}
 	}
 
@@ -47,10 +62,19 @@ func (cfg *NBDStorageConfig) Validate(storageType StorageType) error {
 func (cfg *NBDStorageConfig) ValidateOptional(storageType StorageType) error {
 	// both deduped and semideduped storage types require
 	// a metadata server to be defined
-	if storageType != StorageNonDeduped &&
-		cfg.StorageCluster.MetadataStorage == nil {
+	if storageType == StorageNonDeduped {
+		return nil
+	}
+
+	if cfg.StorageCluster.MetadataStorage == nil {
 		return fmt.Errorf(
-			"invalid NBDStorageConfig: storage type %s requires a storage server for metadata",
+			"invalid NBDStorageConfig: storage type %s requires a storage server for (primary) metadata",
+			storageType)
+	}
+
+	if cfg.SlaveStorageCluster != nil && cfg.SlaveStorageCluster.MetadataStorage == nil {
+		return fmt.Errorf(
+			"invalid NBDStorageConfig: storage type %s requires a storage server for (slave) metadata",
 			storageType)
 	}
 
@@ -70,6 +94,11 @@ func (cfg *NBDStorageConfig) Clone() NBDStorageConfig {
 	if cfg.TemplateStorageCluster != nil {
 		templateClone := cfg.TemplateStorageCluster.Clone()
 		clone.TemplateStorageCluster = &templateClone
+	}
+
+	if cfg.SlaveStorageCluster != nil {
+		slaveClone := cfg.SlaveStorageCluster.Clone()
+		clone.SlaveStorageCluster = &slaveClone
 	}
 
 	return clone

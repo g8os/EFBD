@@ -133,6 +133,7 @@ func NewVdiskNBDConfig(data []byte) (*VdiskNBDConfig, error) {
 type VdiskNBDConfig struct {
 	StorageClusterID         string `yaml:"storageClusterID" valid:"required"`
 	TemplateStorageClusterID string `yaml:"templateStorageClusterID" valid:"optional"`
+	SlaveStorageClusterID    string `yaml:"slaveStorageClusterID" valid:"optional"`
 	TlogServerClusterID      string `yaml:"tlogServerClusterID" valid:"optional"`
 }
 

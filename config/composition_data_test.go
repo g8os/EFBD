@@ -27,6 +27,18 @@ var validNBDStorageConfigs = []NBDStorageConfig{
 				},
 			},
 		},
+		SlaveStorageCluster: &StorageClusterConfig{
+			DataStorage: []StorageServerConfig{
+				StorageServerConfig{
+					Address:  "foo:16320",
+					Database: 4,
+				},
+				StorageServerConfig{
+					Address:  "foo:16321",
+					Database: 5,
+				},
+			},
+		},
 	},
 	// minimal example
 	NBDStorageConfig{
@@ -71,6 +83,22 @@ var validNBDStorageConfigsDeduped = []NBDStorageConfig{
 				},
 			},
 		},
+		SlaveStorageCluster: &StorageClusterConfig{
+			DataStorage: []StorageServerConfig{
+				StorageServerConfig{
+					Address:  "slave:16379",
+					Database: 5,
+				},
+				StorageServerConfig{
+					Address:  "slave:16380",
+					Database: 3,
+				},
+			},
+			MetadataStorage: &StorageServerConfig{
+				Address:  "slave:16378",
+				Database: 1,
+			},
+		},
 	},
 	// minimal example
 	NBDStorageConfig{
@@ -105,12 +133,37 @@ var invalidNBDStorageConfigs = []NBDStorageConfig{
 		},
 		TemplateStorageCluster: new(StorageClusterConfig),
 	},
+	// template storage given, but is invalid
+	NBDStorageConfig{
+		StorageCluster: StorageClusterConfig{
+			DataStorage: []StorageServerConfig{
+				StorageServerConfig{Address: "localhost:16381"},
+			},
+		},
+		SlaveStorageCluster: new(StorageClusterConfig),
+	},
 }
 
 var invalidNBDStorageConfigsDeduped = append(invalidNBDStorageConfigs,
-	// missing metadata server
+	// missing metadata server (primary)
 	NBDStorageConfig{
 		StorageCluster: StorageClusterConfig{
+			DataStorage: []StorageServerConfig{
+				StorageServerConfig{Address: "localhost:16379"},
+			},
+		},
+	},
+	// missing metadata server (slave)
+	NBDStorageConfig{
+		StorageCluster: StorageClusterConfig{
+			DataStorage: []StorageServerConfig{
+				StorageServerConfig{Address: "localhost:16379"},
+			},
+			MetadataStorage: &StorageServerConfig{
+				Address: "localhost:16379",
+			},
+		},
+		SlaveStorageCluster: &StorageClusterConfig{
 			DataStorage: []StorageServerConfig{
 				StorageServerConfig{Address: "localhost:16379"},
 			},
