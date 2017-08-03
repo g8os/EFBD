@@ -229,33 +229,6 @@ func TestStorageClusterConfigClone(t *testing.T) {
 	assert.True(a.Equal(&b), "should be equal")
 }
 
-// tests TlogServerConfig manual unmarshalling
-func TestTlogServerConfigYamlUnmarshal(t *testing.T) {
-	assert := assert.New(t)
-
-	for _, validCase := range validTlogServerConfigYAML {
-		var cfg TlogServerConfig
-		err := yaml.Unmarshal([]byte(validCase), &cfg)
-		if assert.NoErrorf(err, "'%v'", validCase) {
-			_, err = valid.ValidateStruct(&cfg)
-			assert.NoErrorf(err, "'%v'", validCase)
-		}
-	}
-
-	for _, invalidCase := range invalidTlogServerConfigYAML {
-		var cfg TlogServerConfig
-		err := yaml.Unmarshal([]byte(invalidCase), &cfg)
-		if err == nil {
-			_, err = valid.ValidateStruct(&cfg)
-			if assert.Errorf(err, "'%v' -> %v'", invalidCase, cfg) {
-				t.Logf("TlogServerConfig error: %v", err)
-			}
-		} else {
-			t.Logf("TlogServerConfig error: %v", err)
-		}
-	}
-}
-
 // tests StorageServerConfig manual unmarshalling
 func TestStorageServerConfigYamlUnmarshal(t *testing.T) {
 	assert := assert.New(t)
@@ -270,7 +243,7 @@ func TestStorageServerConfigYamlUnmarshal(t *testing.T) {
 	}
 
 	for _, invalidCase := range invalidStorageServerConfigYAML {
-		var cfg TlogServerConfig
+		var cfg StorageServerConfig
 		err := yaml.Unmarshal([]byte(invalidCase), &cfg)
 		if err == nil {
 			_, err = valid.ValidateStruct(&cfg)
@@ -291,17 +264,17 @@ func TestTlogClusterConfigClone(t *testing.T) {
 	a := nilCluster.Clone()
 	assert.Empty(a.Servers)
 
-	a.Servers = []TlogServerConfig{
-		TlogServerConfig{Address: "localhost:16379"},
-		TlogServerConfig{Address: "localhost:16380"},
-		TlogServerConfig{Address: "localhost:16381"},
+	a.Servers = []string{
+		"localhost:16379",
+		"localhost:16380",
+		"localhost:16381",
 	}
 
 	b := a.Clone()
 	assert.Equal(a.Servers, b.Servers, "should be equal")
 
-	b.Servers[0].Address = "localhost:200"
+	b.Servers[0] = "localhost:200"
 	assert.NotEqual(a.Servers, b.Servers, "one server isn't equal any longer")
-	a.Servers[0].Address = "localhost:200"
+	a.Servers[0] = "localhost:200"
 	assert.Equal(a.Servers, b.Servers, "should be equal")
 }

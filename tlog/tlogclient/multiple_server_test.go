@@ -164,9 +164,9 @@ func testTwoServers(t *testing.T, ttConf testTwoServerConf) {
 
 	t.Log("connect client")
 
-	tlogAddrs := []config.TlogServerConfig{
-		config.TlogServerConfig{Address: t1.ListenAddr()},
-		config.TlogServerConfig{Address: t2.ListenAddr()},
+	tlogAddrs := []string{
+		t1.ListenAddr(),
+		t2.ListenAddr(),
 	}
 	if ttConf.hotReload {
 		tlogAddrs = tlogAddrs[0:1]
@@ -204,8 +204,8 @@ func testTwoServers(t *testing.T, ttConf testTwoServerConf) {
 		pool1.Close()
 	case ttConf.hotReload:
 		cancelFunc1()
-		client.ChangeServerAddrs([]config.TlogServerConfig{
-			config.TlogServerConfig{Address: t2.ListenAddr()},
+		client.ChangeServerAddresses([]string{
+			t2.ListenAddr(),
 		})
 	}
 
@@ -289,7 +289,7 @@ func createTestTlogServer(ctx context.Context, vdiskID string,
 		return nil, nil, nil, err
 	}
 
-	server, err := server.NewServer(conf, poolFact)
+	server, err := server.NewServer(conf, nil, poolFact)
 	if err != nil {
 		return nil, nil, nil, err
 	}

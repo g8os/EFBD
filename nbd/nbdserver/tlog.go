@@ -25,7 +25,7 @@ const (
 // newTlogStorage creates a tlog storage BlockStorage,
 // wrapping around a given backend storage,
 // using the given tlog client to send its write transactions to the tlog server.
-func newTlogStorage(ctx context.Context, vdiskID, clusterID string, configSource config.Source, blockSize int64, storage storage.BlockStorage, client *tlogclient.Client) (storage.BlockStorage, error) {
+func newTlogStorage(ctx context.Context, vdiskID, clusterID string, configSource config.Source, blockSize int64, storage storage.BlockStorage, client tlogClient) (storage.BlockStorage, error) {
 	if storage == nil {
 		return nil, errors.New("tlogStorage requires a non-nil BlockStorage")
 	}
@@ -411,7 +411,7 @@ func (tls *tlogStorage) goTlogRPCReloader(ctx context.Context, ch <-chan config.
 				continue
 			}
 
-			tls.tlog.ChangeServers(cfg.Servers)
+			tls.tlog.ChangeServerAddresses(cfg.Servers)
 
 		case <-ctx.Done():
 			return
@@ -615,7 +615,7 @@ type tlogClient interface {
 	Send(op uint8, seq uint64, index int64, timestamp uint64, data []byte) error
 	ForceFlushAtSeq(uint64) error
 	WaitNbdSlaveSync() error
-	ChangeServers([]config.TlogServerConfig)
+	ChangeServerAddresses([]string)
 	Recv() <-chan *tlogclient.Result
 	Close() error
 }

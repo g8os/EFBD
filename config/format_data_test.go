@@ -226,24 +226,7 @@ metadataStorage:
 `,
 }
 
-var validTlogServerConfigYAML = []string{
-	`address: 127.0.0.1:42`,
-	`address: localhost:16379`,
-	`address: "[2001:db8:0:3:3:3:3:3]:33"`,
-}
-
-var invalidTlogServerConfigYAML = []string{
-	"",
-	"foo: bar",
-	"address: bar",
-	"address: localhost",
-	"localhost:16379",
-	// valid, but because of the IPv6 formatting
-	// it requires quotes
-	"address: [2001:db8:0:3:3:3:3:3]:33",
-}
-
-var validStorageServerConfigYAML = append(validTlogServerConfigYAML, []string{
+var validStorageServerConfigYAML = []string{
 	// complete example (1)
 	`
 address: localhost:16379
@@ -263,11 +246,11 @@ db: 3
 	`
    address: "[2001:db8:0:3:3:3:3:3]:33"
 `,
-}...)
+}
 
-var invalidStorageServerConfigYAML = append(invalidTlogServerConfigYAML, []string{
+var invalidStorageServerConfigYAML = []string{
 	// only db given
 	`
 db: 3
 `,
-}...)
+}

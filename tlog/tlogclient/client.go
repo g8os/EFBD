@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/zero-os/0-Disk"
-	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
@@ -55,7 +54,7 @@ type Result struct {
 // Client defines a Tlog Client.
 // This client is not thread/goroutine safe.
 type Client struct {
-	servers         []config.TlogServerConfig
+	servers         []string
 	vdiskID         string
 	conn            *net.TCPConn
 	bw              writerFlusher
@@ -87,7 +86,7 @@ type Client struct {
 // 'firstSequence' is the first sequence number this client is going to send.
 // Set 'resetFirstSeq' to true to force reset the vdisk first/expected sequence.
 // The client is not goroutine safe.
-func New(servers []config.TlogServerConfig, vdiskID string, firstSequence uint64, resetFirstSeq bool) (*Client, error) {
+func New(servers []string, vdiskID string, firstSequence uint64, resetFirstSeq bool) (*Client, error) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	client := &Client{
 		servers:           servers,
@@ -106,8 +105,8 @@ func New(servers []config.TlogServerConfig, vdiskID string, firstSequence uint64
 	return client, nil
 }
 
-// ChangeServers change servers to the given servers
-func (c *Client) ChangeServers(servers []config.TlogServerConfig) {
+// ChangeServerAddresses change servers to the given servers
+func (c *Client) ChangeServerAddresses(servers []string) {
 	c.serverAddrLock.Lock()
 	c.serverAddrLock.Unlock()
 
@@ -144,7 +143,7 @@ func (c *Client) shiftServer() {
 	c.servers = append(c.servers[1:], c.servers[0])
 }
 
-func (c *Client) curServer() config.TlogServerConfig {
+func (c *Client) curServerAddress() string {
 	c.serverAddrLock.Lock()
 	c.serverAddrLock.Unlock()
 
@@ -370,7 +369,7 @@ func (c *Client) recvOne() (*Response, error) {
 }
 
 func (c *Client) createConn() error {
-	genericConn, err := net.DialTimeout("tcp", c.curServer().Address, time.Second)
+	genericConn, err := net.DialTimeout("tcp", c.curServerAddress(), time.Second)
 	if err != nil {
 		return err
 	}

@@ -315,7 +315,7 @@ func NewTlogClusterConfig(data []byte) (*TlogClusterConfig, error) {
 // TlogClusterConfig defines the config for a Tlog Server Custer.
 // A Tlog Server cluster is composed out of one or more Tlog servers.
 type TlogClusterConfig struct {
-	Servers []TlogServerConfig `yaml:"servers" valid:"required"`
+	Servers []string `yaml:"servers" valid:"required"`
 }
 
 // Validate implements FormatValidator.Validate.
@@ -329,6 +329,12 @@ func (cfg *TlogClusterConfig) Validate() error {
 		return fmt.Errorf("invalid TlogClusterConfig: %v", err)
 	}
 
+	for _, server := range cfg.Servers {
+		if !valid.IsDialString(server) {
+			return fmt.Errorf("%s is not a valid dial string", server)
+		}
+	}
+
 	return nil
 }
 
@@ -339,14 +345,9 @@ func (cfg *TlogClusterConfig) Clone() TlogClusterConfig {
 		return clone
 	}
 
-	clone.Servers = make([]TlogServerConfig, len(cfg.Servers))
+	clone.Servers = make([]string, len(cfg.Servers))
 	copy(clone.Servers, cfg.Servers)
 	return clone
-}
-
-// TlogServerConfig defines the config for a Tlog server
-type TlogServerConfig struct {
-	Address string `yaml:"address" valid:"dialstring,required"`
 }
 
 // StorageServerConfig defines the config for a storage server

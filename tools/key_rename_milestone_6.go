@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/garyburd/redigo/redis"
-	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/config"
 )
 
@@ -323,7 +322,7 @@ func parseFlagsAndArgs() error {
 
 	// parse and validate all given storage servers
 	for _, arg := range args {
-		serverCfg, err = zerodisk.ParseStorageServerConfigString(arg)
+		serverCfg, err = config.ParseStorageServerConfigString(arg)
 		if err != nil {
 			return err
 		}

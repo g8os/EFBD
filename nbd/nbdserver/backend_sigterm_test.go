@@ -22,9 +22,6 @@ func TestBackendSigtermHandler(t *testing.T) {
 		blockCount = size / blockSize
 	)
 
-	source := config.NewStubSource()
-	defer source.Close()
-
 	var err error
 	var blockStorage storage.BlockStorage
 	ctx := context.Background()
@@ -59,9 +56,15 @@ func TestBackendSigtermHandler(t *testing.T) {
 			return nil
 		}
 
+		source := config.NewStubSource()
+		defer source.Close()
+		source.SetTlogServerCluster(vdiskID, "tlogcluster", &config.TlogClusterConfig{
+			Servers: []string{tlogrpc},
+		})
+
 		// TODO: set addresses into source...
 
-		tls, err := newTlogStorage(ctx, vdiskID, "TODO", source, blockSize, storage, nil)
+		tls, err := newTlogStorage(ctx, vdiskID, "tlogcluster", source, blockSize, storage, nil)
 		if !assert.NoError(t, err) || !assert.NotNil(t, tls) {
 			return nil
 		}

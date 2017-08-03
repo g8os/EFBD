@@ -140,9 +140,9 @@ func TestReadTlogClusterConfig(t *testing.T) {
 	assert.Error(err, "should trigger error due to invalid config")
 
 	inputCfg := TlogClusterConfig{
-		Servers: []TlogServerConfig{
-			TlogServerConfig{Address: "localhost:2001"},
-			TlogServerConfig{Address: "localhost:2002"},
+		Servers: []string{
+			"localhost:2001",
+			"localhost:2002",
 		},
 	}
 	source.SetTlogCluster("foo", &inputCfg)
@@ -173,9 +173,9 @@ func TestWatchTlogClusterConfig(t *testing.T) {
 	assert.Error(err, "should trigger error due to invalid config")
 
 	inputCfg := TlogClusterConfig{
-		Servers: []TlogServerConfig{
-			TlogServerConfig{Address: "localhost:2001"},
-			TlogServerConfig{Address: "localhost:2002"},
+		Servers: []string{
+			"localhost:2001",
+			"localhost:2002",
 		},
 	}
 	source.SetTlogCluster("foo", &inputCfg)
@@ -203,7 +203,7 @@ func TestWatchTlogClusterConfig(t *testing.T) {
 	testValue(inputCfg)
 
 	// add one server
-	inputCfg.Servers = append(inputCfg.Servers, TlogServerConfig{Address: "localhost:16379"})
+	inputCfg.Servers = append(inputCfg.Servers, "localhost:16379")
 	source.SetTlogCluster("foo", &inputCfg)
 	source.TriggerReload()
 	testValue(inputCfg)
