@@ -56,7 +56,7 @@ A hash function is any function that can be used to map data of arbitrary size t
 
 ### hotreload
 
-Any 0-Disk config supports hot reloading as an optional feature, for where it is needed. Meaning that the config can be reloaded without having to restart the application using it. See the [config docs][config] for more info.
+Any 0-Disk config supports hot reloading as an optional feature, for where it is needed. Meaning that the config can be reloaded without having to restart the application/process using it. See the [config docs][config] for more info.
 
 ### index
 

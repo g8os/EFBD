@@ -1,0 +1,100 @@
+digraph {
+    rankdir = "LR"
+    label = "hot reload NBD Storage config example"
+
+    subgraph clusterETCD {
+        label = "etcd"
+        style = "dotted"
+        vdStatic [
+            shape = "cylinder"
+            label = "<id>:vdisk:conf:static"
+        ]
+        vdStorageNBD [
+            shape = "cylinder"
+            label = "<id>:vdisk:conf:storage:nbd"
+        ]
+        storagePrimary [
+            shape = "cylinder"
+            label = "<id>:cluster:conf:storage\n(primary)"
+        ]
+        storageTemplate [
+            shape = "cylinder"
+            label = "<id>:cluster:conf:storage\n(template)"
+        ]
+        storageSlave [
+            shape = "cylinder"
+            label = "<id>:cluster:conf:storage\n(slave)"
+        ]
+    }
+
+    subgraph clusterOrchestrator {
+        label = "0-orchestrator"
+        style = "dotted"
+        controller [ shape = "egg" ]
+    }
+
+    subgraph clusterZeroDisk {
+        label = "0-Disk"
+        style = "dotted"
+
+        watcherVdStorageNBD [
+            shape = "oval"
+            label = "vdiskStorageNBD\nwatcher"
+        ]
+        watcherClusterPrimary [
+            shape = "oval"
+            label = "clusterPrimary\nwatcher"
+        ]
+        watcherClusterTemplate [
+            shape = "oval"
+            label = "clusterTemplate\nwatcher"
+        ]
+        watcherClusterSlave [
+            shape = "oval"
+            label = "clusterSlave\nwatcher"
+        ]
+        watcherNBDStorage [
+            shape = "oval"
+            label = "NBD Storage\nwatcher"
+        ]
+
+        user [
+            shape = "rectangle"
+            label ="use:\n - PrimaryStorageCluster\n - TemplateStorageCluster\n - SlaveStorageCluster"
+        ]
+
+        watcherVdStorageNBD -> watcherNBDStorage [
+            label = "update id references"
+        ]
+        watcherClusterPrimary -> watcherNBDStorage [
+            label = "update primary cluster"
+        ]
+        watcherClusterTemplate -> watcherNBDStorage [
+            label = "update template cluster"
+            style = "dashed"
+        ]
+        watcherClusterSlave -> watcherNBDStorage [
+            label = "update slave cluster"
+            style = "dashed"
+        ]
+
+        watcherNBDStorage -> user [ label = "always use\nup-to-date config" ]
+    }
+
+    controller -> vdStorageNBD [ label = "PUT cluster id reference" ]
+    controller -> storagePrimary [ label = "PUT primary cluster" ]
+    controller -> storageTemplate [ label = "PUT template cluster" ]
+    controller -> storageSlave [ label = "PUT slave cluster" ]
+
+    vdStatic -> watcherNBDStorage [ label = "GET" ]
+    vdStorageNBD -> watcherVdStorageNBD [ label = "GET+WATCH" ]
+    storagePrimary -> watcherClusterPrimary [ label = "GET+WATCH" ]
+    storageTemplate -> watcherClusterTemplate [
+        label = "GET+WATCH"
+        style = "dashed"
+    ]
+    storageSlave -> watcherClusterSlave [
+        label = "GET+WATCH"
+        style = "dashed"
+    ]
+}

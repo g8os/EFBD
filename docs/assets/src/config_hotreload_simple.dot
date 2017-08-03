@@ -1,0 +1,35 @@
+digraph {
+    rankdir = "LR"
+    label = "hot reload NBD Vdisks config example"
+
+    subgraph clusterETCD {
+        label = "etcd"
+        style = "dotted"
+        config [
+            shape = "cylinder"
+            label = "<id>:nbdserver:conf:vdisks"
+        ]
+    }
+
+    subgraph clusterOrchestrator {
+        label = "0-orchestrator"
+        style = "dotted"
+        controller [ shape = "egg" ]
+    }
+
+    subgraph clusterZeroDisk {
+        label = "0-Disk"
+        style = "dotted"
+
+        watcher
+        user [
+            label = "use config"
+            shape = "rectangle"
+        ]
+    }
+
+    controller -> config [ label = "PUT new version" ]
+    config -> watcher [ label = "GET initial version" ]
+    config -> watcher [ label = "WATCH config" ]
+    watcher -> user [ label = "receive initial+\nnew version(s)" ]
+}
