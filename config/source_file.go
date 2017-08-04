@@ -74,16 +74,16 @@ func (s *fileSource) Get(key Key) ([]byte, error) {
 // Watch implements Source.Watch
 func (s *fileSource) Watch(ctx context.Context, key Key) (<-chan []byte, error) {
 	// setup SIGHUP
-	sighup := make(chan os.Signal)
+	sighup := make(chan os.Signal, 1)
 	signal.Notify(sighup, syscall.SIGHUP)
 
 	ch := make(chan []byte)
 
-	log.Debug("Started watch goroutine for SIGHUP")
 	go func() {
+		log.Debugf("Started (SIGHUP) watch goroutine for: %v", key)
 		defer signal.Stop(sighup)
 		defer close(ch)
-		defer log.Debugf("Closing SIGHUP watch goroutine for %s", s.path)
+		defer log.Debugf("Closing (SIGHUP) watch goroutine for %v", key)
 
 		for {
 			select {

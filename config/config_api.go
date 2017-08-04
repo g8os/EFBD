@@ -102,7 +102,7 @@ func WatchNBDVdisksConfig(ctx context.Context, source Source, serverID string) (
 	}
 
 	// setup channel
-	updater := make(chan NBDVdisksConfig, 2)
+	updater := make(chan NBDVdisksConfig, 1)
 	updater <- *cfg
 
 	ctx = watchContext(ctx)
@@ -166,7 +166,7 @@ func WatchVdiskNBDConfig(ctx context.Context, source Source, vdiskID string) (<-
 	}
 
 	// setup channel and send initial config value
-	updater := make(chan VdiskNBDConfig, 2)
+	updater := make(chan VdiskNBDConfig, 1)
 	updater <- *cfg
 
 	ctx = watchContext(ctx)
@@ -233,7 +233,7 @@ func WatchVdiskTlogConfig(ctx context.Context, source Source, vdiskID string) (<
 	}
 
 	// setup channel and send initial config value
-	updater := make(chan VdiskTlogConfig, 2)
+	updater := make(chan VdiskTlogConfig, 1)
 	updater <- *cfg
 
 	ctx = watchContext(ctx)
@@ -300,7 +300,7 @@ func WatchStorageClusterConfig(ctx context.Context, source Source, clusterID str
 	}
 
 	// setup channel and send initial config value
-	updater := make(chan StorageClusterConfig, 2)
+	updater := make(chan StorageClusterConfig, 1)
 	updater <- *cfg
 
 	ctx = watchContext(ctx)
@@ -367,7 +367,7 @@ func WatchTlogClusterConfig(ctx context.Context, source Source, clusterID string
 	}
 
 	// setup channel and send initial config value
-	updater := make(chan TlogClusterConfig, 2)
+	updater := make(chan TlogClusterConfig, 1)
 	updater <- *cfg
 
 	ctx = watchContext(ctx)
