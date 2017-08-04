@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/zero-os/0-Disk/log"
 )
 
 func TestReadNBDStorageConfig(t *testing.T) {
@@ -409,11 +410,10 @@ func TestWatchNBDStorageConfig_ChangeClusterReference(t *testing.T) {
 	source.TriggerReload()
 	testValue() // updating a storage cluster should be ok
 
-	// TODO: figure out why this part of the test fails sometimes
-	//templateStoragecluster = nil
-	//source.SetTemplateStorageCluster("a", "", templateStoragecluster)
-	//source.TriggerReload()
-	//testValue() // and template storage cluster can even be dereferenced
+	templateStoragecluster = nil
+	source.SetTemplateStorageCluster("a", "", templateStoragecluster)
+	source.TriggerReload()
+	testValue() // and template storage cluster can even be dereferenced
 
 	// when updating a cluster, which makes the cluster not valid for the used vdisk,
 	// it should not apply the update either
@@ -665,4 +665,8 @@ func TestWatchTlogStorageConfig_ChangeClusterReference(t *testing.T) {
 			assert.FailNow("channel should have been closed")
 		}
 	}
+}
+
+func init() {
+	log.SetLevel(log.DebugLevel)
 }
