@@ -33,7 +33,7 @@ Who uses what:
 * [Tlog Server][tlogserver] (which itself is optional) uses:
   * [NBDVdisksConfig](#NBDVdisksConfig): required;
   * for each [VDisk][vdisk]:
-    * [VdiskTlogConf](#VdiskTlogConfig): required (some fields are optional);
+    * [VdiskTlogConfig](#VdiskTlogConfig): required (some fields are optional);
   * for each referenced storage cluster:
     * [StorageClusterConfig](#StorageClusterConfig):
       * required for [tlog storage (1)][storage] (some fields are not used);
@@ -76,6 +76,7 @@ In this example the final configuration is updated in 2 different scenarios:
 
 ## Sub Configs
 
+<a id="VdiskStaticConfig"></a>
 ### VdiskStaticConfig
 
 Stores static [VDisk][vdisk] information:
@@ -101,6 +102,7 @@ Used by the [NBD Server][nbdServerConfig].
 
 See the [VdiskStaticConfig Godoc][VdiskStaticConfigGodoc] for more information.
 
+<a id="VdiskNBDConfig"></a>
 ### VdiskNBDConfig
 
 Stores [storage(1)][storage]/[tlog][tlog] cluster references for a [vdisk][vdisk]:
@@ -128,6 +130,7 @@ Used by the [NBD Server][nbdServerConfig].
 
 See the [VdiskNBDConfig Godoc][VdiskNBDConfigGodoc] for more information.
 
+<a id="VdiskTlogConfig"></a>
 ### VdiskTlogConfig
 
 Stores [storage(1)][storage] cluster references for a ([boot][boot]- or [db][db]-) [vdisk][vdisk]:
@@ -148,6 +151,7 @@ Used by the [TLog Server][tlogServerConfig].
 
 See the [VdiskTlogConfig Godoc][VdiskTlogConfigGodoc] for more information.
 
+<a id="StorageClusterConfig"></a>
 ### StorageClusterConfig
 
 Stores [storage(1)][storage] cluster information, referenced by one or multiple [vdisks][vdisk]:
@@ -174,6 +178,7 @@ Used by both the [NBD Server][nbdServerConfig] and the [TLog Server][tlogServerC
 
 See the [StorageClusterConfig Godoc][StorageClusterConfigGodoc] for more information.
 
+<a id="TlogClusterConfig"></a>
 ### TlogClusterConfig
 
 Stores [tlog][tlog] cluster information, referenced by one or multiple [vdisks][vdisk] (on a single [nbdserver][nbdserver]):
@@ -193,6 +198,7 @@ Used by the [NBD Server][nbdServerConfig].
 
 See the [TlogClusterConfig Godoc][TlogClusterConfigGodoc] for more information.
 
+<a id="NBDVdisksConfig"></a>
 ### NBDVDisksConfig
 
 Stores a list of identifiers of all available [vdisks][vdisk]:
@@ -219,7 +225,7 @@ See the [NBDVDisksConfig Godoc][NBDVDisksConfigGodoc] for more information.
 
 ### Reading data
 
-The source implementation for [etcd][etcd] provides methodes to read and watch subconfigs from an etcd cluster. 
+The source implementation for [etcd][etcd] provides methodes to read and watch subconfigs from an etcd cluster.
 In the etcd cluster it will look for the following subconfig keys:
 
 
