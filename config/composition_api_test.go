@@ -256,13 +256,8 @@ func TestWatchNBDStorageConfig_FailAfterSuccess(t *testing.T) {
 		}
 	}
 
-	// trigger reload
-	source.TriggerReload()
-	testTimeout() // shouldn't do something, as nothing is changed
-
 	// now let's break it
 	source.SetStorageCluster("mycluster", nil)
-	source.TriggerReload()
 	testTimeout()
 
 	// now let's fix it again
@@ -274,7 +269,6 @@ func TestWatchNBDStorageConfig_FailAfterSuccess(t *testing.T) {
 	})
 
 	// trigger reload (even though it was broken before)
-	source.TriggerReload()
 	output = <-ch
 	assert.Nil(output.TemplateStorageCluster)
 	assert.Equal(
@@ -330,13 +324,8 @@ func TestWatchNBDStorageConfig_ChangeClusterReference(t *testing.T) {
 		}
 	}
 
-	// trigger reload
-	source.TriggerReload()
-	testTimeout() // shouldn't do something, as nothing is changed
-
 	source.SetPrimaryStorageCluster("a", "foocluster", nil)
 	// trigger reload
-	source.TriggerReload()
 	testTimeout() // error value should not be updated
 
 	primaryStorageCluster = &StorageClusterConfig{
@@ -348,7 +337,6 @@ func TestWatchNBDStorageConfig_ChangeClusterReference(t *testing.T) {
 
 	// now let's actually set the storage cluster
 	source.SetPrimaryStorageCluster("a", "foocluster", primaryStorageCluster)
-	source.TriggerReload()
 	testValue()
 
 	// now let's set template cluster
@@ -360,19 +348,16 @@ func TestWatchNBDStorageConfig_ChangeClusterReference(t *testing.T) {
 		MetadataStorage: &StorageServerConfig{Address: "123.123.13.13:40"},
 	}
 	source.SetTemplateStorageCluster("a", "master", templateStoragecluster)
-	source.TriggerReload()
 	testValue()
 
 	// metadata server is not required for template storage
 	templateStoragecluster.MetadataStorage = nil
 	source.SetStorageCluster("master", templateStoragecluster)
-	source.TriggerReload()
 	testValue()
 
 	// but can be given, and it will be ignored by any user
 	templateStoragecluster.MetadataStorage = &StorageServerConfig{Address: "localhost:300"}
 	source.SetStorageCluster("master", templateStoragecluster)
-	source.TriggerReload()
 	testValue()
 
 	// now let's set slave cluster
@@ -384,42 +369,35 @@ func TestWatchNBDStorageConfig_ChangeClusterReference(t *testing.T) {
 		MetadataStorage: &StorageServerConfig{Address: "slave:200", Database: 42},
 	}
 	source.SetSlaveStorageCluster("a", "slave", slaveStoragecluster)
-	source.TriggerReload()
 	testValue()
 
 	// metadata server is required for slave storage
 	slaveStoragecluster.MetadataStorage = nil
 	source.SetStorageCluster("slave", slaveStoragecluster)
-	source.TriggerReload()
 	testTimeout() // error value should not be updated
 
 	// even after, error, we can set a good value
 	slaveStoragecluster.MetadataStorage = &StorageServerConfig{Address: "localhost:300"}
 	source.SetStorageCluster("slave", slaveStoragecluster)
-	source.TriggerReload()
 	testValue()
 
 	// do another stupid illegal action
 	source.SetPrimaryStorageCluster("a", "foocluster", nil)
 	// trigger reload
-	source.TriggerReload()
 	testTimeout() // error value should not be updated
 
 	primaryStorageCluster.MetadataStorage.Database = 3
 	source.SetStorageCluster("foocluster", primaryStorageCluster)
-	source.TriggerReload()
 	testValue() // updating a storage cluster should be ok
 
 	templateStoragecluster = nil
 	source.SetTemplateStorageCluster("a", "", templateStoragecluster)
-	source.TriggerReload()
 	testValue() // and template storage cluster can even be dereferenced
 
 	// when updating a cluster, which makes the cluster not valid for the used vdisk,
 	// it should not apply the update either
 	primaryStorageCluster.MetadataStorage = nil
 	source.SetStorageCluster("foocluster", primaryStorageCluster)
-	source.TriggerReload()
 	testTimeout() // no update should happen
 
 	// updating a cluster in a valid way should still be possible
@@ -429,7 +407,6 @@ func TestWatchNBDStorageConfig_ChangeClusterReference(t *testing.T) {
 	primaryStorageCluster.DataStorage = append(primaryStorageCluster.DataStorage,
 		StorageServerConfig{Address: "localhost:2000", Database: 5})
 	source.SetStorageCluster("foocluster", primaryStorageCluster)
-	source.TriggerReload()
 	testValue() // updating a storage cluster should be ok
 
 	// cancel context
@@ -509,13 +486,8 @@ func TestWatchTlogStorageConfig_FailAfterSuccess(t *testing.T) {
 		}
 	}
 
-	// trigger reload
-	source.TriggerReload()
-	testTimeout() // shouldn't do something, as nothing is changed
-
 	// now let's break it
 	source.SetStorageCluster("mycluster", nil)
-	source.TriggerReload()
 	testTimeout()
 
 	// now let's fix it again
@@ -526,7 +498,6 @@ func TestWatchTlogStorageConfig_FailAfterSuccess(t *testing.T) {
 	})
 
 	// trigger reload (even though it was broken before)
-	source.TriggerReload()
 	output = <-ch
 	assert.Nil(output.SlaveStorageCluster)
 	assert.Nil(output.StorageCluster.MetadataStorage)
@@ -578,13 +549,8 @@ func TestWatchTlogStorageConfig_ChangeClusterReference(t *testing.T) {
 		}
 	}
 
-	// trigger reload
-	source.TriggerReload()
-	testTimeout() // shouldn't do something, as nothing is changed
-
 	source.SetTlogStorageCluster("a", "foocluster", nil)
 	// trigger reload
-	source.TriggerReload()
 	testTimeout() // error value should not be updated
 
 	tlogStorageCluster = &StorageClusterConfig{
@@ -595,7 +561,6 @@ func TestWatchTlogStorageConfig_ChangeClusterReference(t *testing.T) {
 
 	// now let's actually set the storage cluster
 	source.SetTlogStorageCluster("a", "foocluster", tlogStorageCluster)
-	source.TriggerReload()
 	testValue()
 
 	// now let's set template cluster
@@ -607,41 +572,34 @@ func TestWatchTlogStorageConfig_ChangeClusterReference(t *testing.T) {
 		MetadataStorage: &StorageServerConfig{Address: "123.123.13.13:40"},
 	}
 	source.SetSlaveStorageCluster("a", "slave", slaveStoragecluster)
-	source.TriggerReload()
 	testValue()
 
 	// setting an invalid slave Storage cluster should not be possible
 	slaveStoragecluster.MetadataStorage = nil
 	source.SetStorageCluster("slave", slaveStoragecluster)
-	source.TriggerReload()
 	testTimeout() // error value should not be updated
 
 	slaveStoragecluster.MetadataStorage = &StorageServerConfig{Address: "localhost:300"}
 	source.SetStorageCluster("slave", slaveStoragecluster)
-	source.TriggerReload()
 	testValue()
 
 	// do another stupid illegal action
 	source.SetTlogStorageCluster("a", "foocluster", nil)
 	// trigger reload
-	source.TriggerReload()
 	testTimeout() // error value should not be updated
 
 	tlogStorageCluster.DataStorage[0].Database = 3
 	source.SetStorageCluster("foocluster", tlogStorageCluster)
-	source.TriggerReload()
 	testValue() // updating a storage cluster should be ok
 
 	slaveStoragecluster = nil
 	source.SetSlaveStorageCluster("a", "", slaveStoragecluster)
-	source.TriggerReload()
 	testValue() // and slave storage cluster can even be dereferenced
 
 	// when updating a cluster, which makes the cluster not valid for the used vdisk,
 	// it should not apply the update either
 	tlogStorageCluster.DataStorage = nil
 	source.SetStorageCluster("foocluster", tlogStorageCluster)
-	source.TriggerReload()
 	testTimeout() // no update should happen
 
 	// updating a cluster in a valid way should still be possible
@@ -651,7 +609,6 @@ func TestWatchTlogStorageConfig_ChangeClusterReference(t *testing.T) {
 	tlogStorageCluster.DataStorage = append(tlogStorageCluster.DataStorage,
 		StorageServerConfig{Address: "localhost:2000", Database: 5})
 	source.SetStorageCluster("foocluster", tlogStorageCluster)
-	source.TriggerReload()
 	testValue() // updating a storage cluster should be ok
 
 	// cancel context

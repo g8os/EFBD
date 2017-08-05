@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"syscall"
@@ -19,21 +20,33 @@ func NewStubSource() *StubSource {
 // used for testing purposes only.
 type StubSource struct {
 	fileSource
+
 	cfg *FileFormatCompleteConfig
 	mux sync.Mutex
+
+	watchCounter    int
+	watchCounterMux sync.RWMutex
 }
 
-// TriggerReload triggers a reload of the config of this source.
-func (s *StubSource) TriggerReload() {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	syscall.Kill(syscall.Getpid(), syscall.SIGHUP)
+// Watch implements Source.Watch
+func (s *StubSource) Watch(ctx context.Context, key Key) (<-chan []byte, error) {
+	s.watchCounterMux.Lock()
+	s.watchCounter++
+	s.watchCounterMux.Unlock()
+	go func() {
+		<-ctx.Done()
+		s.watchCounterMux.Lock()
+		s.watchCounter--
+		s.watchCounterMux.Unlock()
+	}()
+	return s.fileSource.Watch(ctx, key)
 }
 
 // SetVdiskConfig is a utility function to set a vdisk config, thread-safe.
 func (s *StubSource) SetVdiskConfig(vdiskID string, cfg *VdiskStaticConfig) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
+	defer s.triggerReload()
 
 	vdiskCfg := s.getVdiskCfg(vdiskID)
 
@@ -55,6 +68,7 @@ func (s *StubSource) SetVdiskConfig(vdiskID string, cfg *VdiskStaticConfig) {
 func (s *StubSource) SetPrimaryStorageCluster(vdiskID, clusterID string, cfg *StorageClusterConfig) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
+	defer s.triggerReload()
 
 	if cfg != nil {
 		s.setStorageCluster(clusterID, cfg)
@@ -77,6 +91,7 @@ func (s *StubSource) SetPrimaryStorageCluster(vdiskID, clusterID string, cfg *St
 func (s *StubSource) SetTemplateStorageCluster(vdiskID, clusterID string, cfg *StorageClusterConfig) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
+	defer s.triggerReload()
 
 	if cfg != nil {
 		s.setStorageCluster(clusterID, cfg)
@@ -99,6 +114,7 @@ func (s *StubSource) SetTemplateStorageCluster(vdiskID, clusterID string, cfg *S
 func (s *StubSource) SetTlogStorageCluster(vdiskID, clusterID string, cfg *StorageClusterConfig) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
+	defer s.triggerReload()
 
 	if cfg != nil {
 		s.setStorageCluster(clusterID, cfg)
@@ -121,6 +137,7 @@ func (s *StubSource) SetTlogStorageCluster(vdiskID, clusterID string, cfg *Stora
 func (s *StubSource) SetSlaveStorageCluster(vdiskID, clusterID string, cfg *StorageClusterConfig) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
+	defer s.triggerReload()
 
 	if cfg != nil {
 		s.setStorageCluster(clusterID, cfg)
@@ -151,6 +168,7 @@ func (s *StubSource) SetSlaveStorageCluster(vdiskID, clusterID string, cfg *Stor
 func (s *StubSource) SetTlogServerCluster(vdiskID, clusterID string, cfg *TlogClusterConfig) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
+	defer s.triggerReload()
 
 	if cfg != nil {
 		s.setTlogCluster(clusterID, cfg)
@@ -173,8 +191,27 @@ func (s *StubSource) SetTlogServerCluster(vdiskID, clusterID string, cfg *TlogCl
 func (s *StubSource) SetStorageCluster(clusterID string, cfg *StorageClusterConfig) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
+	defer s.triggerReload()
 
 	s.setStorageCluster(clusterID, cfg)
+}
+
+// SetTlogCluster is a utility function to set a tlog cluster config, thread-safe.
+func (s *StubSource) SetTlogCluster(clusterID string, cfg *TlogClusterConfig) {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+	defer s.triggerReload()
+
+	s.setTlogCluster(clusterID, cfg)
+}
+
+// triggerReload triggers a reload of the config of this source.
+func (s *StubSource) triggerReload() {
+	s.watchCounterMux.RLock()
+	defer s.watchCounterMux.RUnlock()
+	if s.watchCounter > 0 {
+		syscall.Kill(syscall.Getpid(), syscall.SIGHUP)
+	}
 }
 
 func (s *StubSource) setStorageCluster(clusterID string, cfg *StorageClusterConfig) bool {
@@ -193,14 +230,6 @@ func (s *StubSource) setStorageCluster(clusterID string, cfg *StorageClusterConf
 
 	s.cfg.StorageClusters[clusterID] = cfg.Clone()
 	return true
-}
-
-// SetTlogCluster is a utility function to set a tlog cluster config, thread-safe.
-func (s *StubSource) SetTlogCluster(clusterID string, cfg *TlogClusterConfig) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-
-	s.setTlogCluster(clusterID, cfg)
 }
 
 func (s *StubSource) setTlogCluster(clusterID string, cfg *TlogClusterConfig) bool {

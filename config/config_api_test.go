@@ -205,12 +205,10 @@ func TestWatchTlogClusterConfig(t *testing.T) {
 	// add one server
 	inputCfg.Servers = append(inputCfg.Servers, "localhost:16379")
 	source.SetTlogCluster("foo", &inputCfg)
-	source.TriggerReload()
 	testValue(inputCfg)
 
 	// delete cluster
 	source.SetTlogCluster("foo", nil)
-	source.TriggerReload()
 	// now no config should be send, as the new config is invalid
 	testTimeout()
 
@@ -280,25 +278,21 @@ func TestWatchStorageClusterConfig(t *testing.T) {
 	// delete meta Data Storage Server
 	inputCfg.MetadataStorage = nil
 	source.SetStorageCluster("foo", &inputCfg)
-	source.TriggerReload()
 	testValue(inputCfg)
 
 	// delete one Data Storage Server
 	inputCfg.DataStorage = inputCfg.DataStorage[0:1]
 	source.SetStorageCluster("foo", &inputCfg)
-	source.TriggerReload()
 	testValue(inputCfg)
 
 	// make invalid, this should make it timeout
 	inputCfg.DataStorage = nil
 	source.SetStorageCluster("foo", &inputCfg)
-	source.TriggerReload()
 	testTimeout()
 
 	// delete cluster
 	source.SetStorageCluster("foo", nil)
 	// now no config should be send, as the new config is invalid
-	source.TriggerReload()
 	testTimeout()
 
 	// cancel context
@@ -373,18 +367,15 @@ func TestWatchNBDVdisksConfig(t *testing.T) {
 		Size:      1,
 		Type:      VdiskTypeDB,
 	})
-	source.TriggerReload()
 	testValue([]string{"a", "b", "c"})
 
 	// delete 2 vdisks
 	source.SetVdiskConfig("a", nil)
 	source.SetVdiskConfig("b", nil)
-	source.TriggerReload()
 	testValue([]string{"c"})
 
 	// make invalid, this should make it timeout
 	source.SetVdiskConfig("c", nil)
-	source.TriggerReload()
 	testTimeout()
 
 	// cancel context
