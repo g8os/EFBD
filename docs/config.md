@@ -336,19 +336,16 @@ You can do so using the [import_file_into_etcd_config tool](/tools/import_file_i
 
 ```shell
 $ import_file_into_etcd_config \
-  -id myserver \ # id of nbd/tlog server group
-  -config /my/path/to/config.yml \
-  localhost:20039 # one or more endpoints to the etcd
-                  # server(s) you wish to import the config into
+  -id myserver -path ./config.yml \
+  127.0.0.1:2379
 ```
 
-This command will import the yaml config located at `/my/path/to/config.yml`
-into the etcd server listening for incoming requests at `localhost:20039`.
+This command will import the yaml config located at `./config.yml`
+into the etcd server listening for incoming requests at `127.0.0.1:2379`.
 
-Note that just as file based configs are just meant for quick development and testing,
-so is this tool meant for development purposes only.
+Note that just as file based configs are just meant for quick development and testing, so is this tool meant for development purposes only.
 
-Please read [the import_file_into_etcd_config tool README](/tools/import_file_into_etcd_config/README.md) for more information.
+Please read [the import_file_into_etcd_config tool README](/tools/import_file_into_etcd_config/README.md) for more information about this tool, how to use it, what each flag does exactly, and more.
 
 ## Where to go from here
 
