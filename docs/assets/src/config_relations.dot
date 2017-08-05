@@ -2,7 +2,7 @@ digraph {
     rankdir = "LR"
     
     subgraph clusterVdisks {
-        label = "specific to one nbd+tlog collection"
+        label = "specific to one \nnbd+tlog server collection\n(supports hot reloading)"
         style = "dotted"
 
         NBDVdisksConfig [

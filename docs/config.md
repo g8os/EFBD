@@ -17,6 +17,8 @@ There is one last type of configuration, [NBDVdisksConfig](#NBDVdisksConfig), wh
 
 The data is split up in this way so that for the use cases of 0-Disk, most of the time only one (sub)config is required. Should another (sub)config be required as well, it can easily be fetched from a source (e.g. [etcd](#etcd)) and stored together with the former (sub)config.
 
+On top of that it is designed to avoid duplication of data as much as possible. Should a specific [storage cluster](#StorageClusterConfig) be used by multiple [vdisks][vdisk], it would only have to be defined once, and can be referenced by all these vdisks simply using its identifier. This has the additional advantage that if this cluster should have to be updated due to one or multiple unreachable servers, it will be fixed for all these [vdisks][vdisk] at once.
+
 Who uses what:
 
 * [NBD Server][nbdserver] uses:
@@ -39,7 +41,7 @@ Who uses what:
       * required for [tlog storage (1)][storage] (some fields are not used);
       * optional for [slave storage][slave] (some fields are optional);
 * [zeroctl][zeroctl] (copy/delete/restore) uses:
-  * for most [VDisks][vdisk]:
+  * for most [VDisk][vdisk] operations:
     * [VdiskStaticConfig](#VdiskStaticConfig): required (some fields are optional);
     * [VdiskNBDConfig](#VdiskNBDConfig): required (some fields are optional);
   * for each referenced storage cluster:
@@ -51,13 +53,13 @@ Normally the configurations are stored in [etcd][etcd], and fetched from the use
 
 > _All_ 0-Disk services expose a `-config` flag.
 
-This flag is optional and will by default assume you are using a file config `config.yml` stored in the working dir. However in reality you will almost always want to use configuration originating from [etcd][etcd] instead. To use [etcd][etcd] configuration you can pass one or multiple dialstrings to the `-config` flag instead. e.g. `-config 127.0.0.1:2379`, would fetch the config values of a single [etcd][etcd] server, while `-config 232.201.201.101:2379,230.100.10.50:2379` would fetch it from an [etcd][etcd] cluster. Both IPv4 and IPv6 are supported.
+This flag is optional and will by default assume you are using a file config `config.yml` stored in the working dir. However in reality you will almost always want to use configuration originating from [etcd][etcd] instead. To use [etcd configuration](#etcd) you can pass one or multiple dialstrings to the `-config` flag instead. e.g. `-config 127.0.0.1:2379`, would fetch the config values of a single [etcd][etcd] server, while `-config 232.201.201.101:2379,230.100.10.50:2379` would fetch it from an [etcd][etcd] cluster. Both IPv4 and IPv6 are supported.
 
-Where important, any subconfig which supports hot reloading and is currently in use (by an active vdisks), will be automatically updated whenever a new revision of such config is written by the [0-orchestrator][orchestrator]. This is automatically done using the [etcd Watch API][etcdwatch]. No `SIGHUP` signal is required, unless you are using a file-originated config, instead of an [etcd][etcd]-originated config.
+Where important, any subconfig which supports hot reloading and is currently in use (by any active vdisks), will be automatically updated whenever a new revision of such config is written by the [0-orchestrator][orchestrator]. This is automatically done using the [etcd Watch API][etcdwatch]. No `SIGHUP` signal is required to trigger the reloading of any watched config, unless you are using a [file-originated config](#file) instead of an [etcd-originated config](#etcd).
 
 ## Config Hot Reloading
 
-As mentioned before, some configs support [hot reloading][hotreload]. That is to say, they allow a controller to update the configuration and have it be used by any active [vdisks][vdisk], without having to reboot these [vdisks][vdisk]. Configs supporting hot reloading are: [NBDVdisksConfig](#NBDVdisksConfig), [VdiskNBDConfig](#VdiskNBDConfig), [VdiskTlogConfig](#VdiskTlogConfig), [StorageClusterConfig](#StorageClusterConfig) and [TlogClusterConfig](#TlogClusterConfig).
+As mentioned before, some configs support [hot reloading][hotreload]. That is to say, they allow a controller to update the configuration and have it be used by any active [vdisks][vdisk], without having to reboot such [vdisks][vdisk]. Configs supporting hot reloading are: [NBDVdisksConfig](#NBDVdisksConfig), [VdiskNBDConfig](#VdiskNBDConfig), [VdiskTlogConfig](#VdiskTlogConfig), [StorageClusterConfig](#StorageClusterConfig) and [TlogClusterConfig](#TlogClusterConfig).
 
 Because of self-healing for example it is required that a primary storage cluster can be updated, or to be able to start using a slave storage cluster as the primary storage cluster. This is however just one example of many where hot reloading is a very useful feature to have.
 
@@ -67,12 +69,12 @@ For a simple configuration such as the [NBDVdisksConfig](#NBDVdisksConfig), its 
 
 ![hotreload composition](/docs/assets/config_hotreload_composition.png)
 
-For composed configurations the situation is however a bit more complex. Here we have a composed configuration, called `NBDstorage`, which collects the primary-, template- and slave storage cluster, as well as the tlog clustet. All fields are optional except for the primary storage cluster.
+For composed configurations the situation is however a bit more complex. Here we have a composed configuration, called `NBDstorage`, which collects the primary-, template- and slave storage cluster, as well as the tlog cluster. All subconfigs (and thus subwatchers) are optional except for the primary storage cluster.
 
 In this example the final configuration is updated in 2 different scenarios:
 
 + The vdisk's NBD config is updated. In this case, the referenced ids are checked against the once already used (and watched). If a referenced id is different, it is recreated. If the update makes an id reference no longer exist, the previous used watcher is deleted. If no id reference is different, there is no update send to the user;
-+ A storage cluster is used, if the new storage cluster is different and valid, it is used, and send in updated form to the user;
++ A referenced cluster is update, if the new cluster is different and valid, it is send in updated form to the user (of that config);
 
 ## Sub Configs
 
@@ -324,6 +326,29 @@ NOTE that the [NBDVdisksConfig](#NBDVdisksConfig) does not have to be explicitly
 The source implementation for the file-based config also supports watching subconfigs. Reloading of a config file happens as soon as you trigger a `SIGHUP` signal AND a config is used by an active (mounted) [vdisk][vdisk].
 
 Read [the internal Godoc documentation][configGodoc] for more technical details.
+
+### Converting to an etcd config
+
+In case you would ever want to test during development on an etcd cluster,
+you can instantly import your file-based configuration into a(n) (local) etcd cluster.
+
+You can do so using the [import_file_into_etcd_config tool](/tools/import_file_into_etcd_config):
+
+```shell
+$ import_file_into_etcd_config \
+  -id myserver \ # id of nbd/tlog server group
+  -config /my/path/to/config.yml \
+  localhost:20039 # one or more endpoints to the etcd
+                  # server(s) you wish to import the config into
+```
+
+This command will import the yaml config located at `/my/path/to/config.yml`
+into the etcd server listening for incoming requests at `localhost:20039`.
+
+Note that just as file based configs are just meant for quick development and testing,
+so is this tool meant for development purposes only.
+
+Please read [the import_file_into_etcd_config tool README](/tools/import_file_into_etcd_config/README.md) for more information.
 
 ## Where to go from here
 
