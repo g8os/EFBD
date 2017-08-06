@@ -88,11 +88,8 @@ func (vdiskType *VdiskType) SetString(s string) error {
 
 // MarshalYAML implements yaml.Marshaler.MarshalYAML
 func (vdiskType VdiskType) MarshalYAML() (interface{}, error) {
-	if s := vdiskType.String(); s != vdiskTypeNilStr {
-		return s, nil
-	}
-
-	return nil, fmt.Errorf("%v is not a valid VdiskType", vdiskType)
+	// ignore invalid vdisk
+	return vdiskType.String(), nil
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.UnmarshalYAML

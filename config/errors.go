@@ -2,8 +2,6 @@ package config
 
 import "errors"
 
-// TODO deprecate or rethink these errors
-
 var (
 	// ErrNilSource is returned from any config API
 	// function which received a nil source as its parameter.

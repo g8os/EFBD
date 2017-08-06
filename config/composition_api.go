@@ -303,7 +303,6 @@ func (w *tlogStorageConfigWatcher) Watch(ctx context.Context) (<-chan TlogStorag
 
 			// send new output, as a cluster has been updated
 			if err := w.sendOutput(); err != nil {
-				// TODO: ootify 0-orchestrator
 				log.Errorf(
 					"TlogStorageConfigWatcher failed to send value: %v", err)
 			}
@@ -390,7 +389,6 @@ func (w *tlogStorageConfigWatcher) loadTlogChan(clusterID string) (bool, error) 
 	if err != nil {
 		cancel()
 		log.Debugf("TlogStorageConfigWatcher failed, invalid PrimaryStorageClusterConfig: %v", err)
-		w.source.MarkInvalidKey(Key{ID: clusterID, Type: KeyClusterStorage}, "")
 		return false, err
 	}
 
@@ -441,7 +439,6 @@ func (w *tlogStorageConfigWatcher) loadSlaveChan(clusterID string) (bool, error)
 	if err != nil {
 		cancel()
 		log.Debugf("TlogStorageConfigWatcher failed, invalid SlaveStorageClusterConfig: %v", err)
-		w.source.MarkInvalidKey(Key{ID: clusterID, Type: KeyClusterStorage}, "")
 		return false, err
 	}
 
@@ -763,7 +760,6 @@ func (w *nbdStorageConfigWatcher) loadPrimaryChan(clusterID string) (bool, error
 	if err != nil {
 		cancel()
 		log.Debugf("nbdStorageConfigWatcher failed, invalid PrimaryStorageClusterConfig: %v", err)
-		w.source.MarkInvalidKey(Key{ID: clusterID, Type: KeyClusterStorage}, "")
 		return false, err
 	}
 
@@ -822,7 +818,6 @@ func (w *nbdStorageConfigWatcher) loadTemplateChan(clusterID string) (bool, erro
 	if err != nil {
 		cancel()
 		log.Debugf("nbdStorageConfigWatcher failed, invalid TemplateStorageClusterConfig: %v", err)
-		w.source.MarkInvalidKey(Key{ID: clusterID, Type: KeyClusterStorage}, "")
 		return false, err
 	}
 
@@ -881,7 +876,6 @@ func (w *nbdStorageConfigWatcher) loadSlaveChan(clusterID string) (bool, error) 
 	if err != nil {
 		cancel()
 		log.Debugf("nbdStorageConfigWatcher failed, invalid SlaveStorageClusterConfig: %v", err)
-		w.source.MarkInvalidKey(Key{ID: clusterID, Type: KeyClusterStorage}, "")
 		return false, err
 	}
 

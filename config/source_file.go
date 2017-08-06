@@ -93,8 +93,11 @@ func (s *fileSource) Watch(ctx context.Context, key Key) (<-chan []byte, error) 
 				log.Debug("Received SIGHUP for: ", s.path)
 				// read, deserialize and serialize sub config
 				output, err := s.Get(key)
-				if err != nil {
-					log.Errorf("Could not read config (%d): %s", key.Type, err)
+				if err == ErrSourceUnavailable {
+					log.Errorf(
+						"getting key %v failed, due to the source being unavailable",
+						key)
+					return
 				}
 
 				select {
@@ -182,7 +185,7 @@ func (s *fileSource) readFullFile() (*FileFormatCompleteConfig, error) {
 	err = yaml.Unmarshal(bytes, &cfg)
 	if err != nil {
 		log.Errorf("invalid file config: %v", err)
-		return new(FileFormatCompleteConfig), nil
+		return nil, NewInvalidConfigError(err)
 	}
 
 	return &cfg, nil
@@ -211,7 +214,8 @@ func (cfg *FileFormatCompleteConfig) NBDVdisksConfig() (*NBDVdisksConfig, error)
 func (cfg *FileFormatCompleteConfig) VdiskConfig(id string) (*FileFormatVdiskConfig, error) {
 	vdiskConfig, ok := cfg.Vdisks[id]
 	if !ok {
-		return nil, errors.New("file config has no vdisk config under the id " + id)
+		return nil, NewInvalidConfigError(
+			errors.New("file config has no vdisk config under the id " + id))
 	}
 	return &vdiskConfig, nil
 }
@@ -232,7 +236,8 @@ func (cfg *FileFormatCompleteConfig) StorageClusterConfig(id string) (*StorageCl
 func (cfg *FileFormatCompleteConfig) TlogClusterConfig(id string) (*TlogClusterConfig, error) {
 	tlogClusterConfig, ok := cfg.TlogClusters[id]
 	if !ok {
-		return nil, errors.New("file config has no tlog cluster config under the id " + id)
+		return nil, NewInvalidConfigError(
+			errors.New("file config has no tlog cluster config under the id " + id))
 	}
 	return &tlogClusterConfig, nil
 }
@@ -268,7 +273,7 @@ func (cfg *FileFormatVdiskConfig) StaticConfig() (*VdiskStaticConfig, error) {
 // the vdisk config file format.
 func (cfg *FileFormatVdiskConfig) NBDConfig() (*VdiskNBDConfig, error) {
 	if cfg.NBD == nil {
-		return nil, errors.New("vdisk has no NBD configuration")
+		return nil, NewInvalidConfigError(errors.New("vdisk has no NBD configuration"))
 	}
 	return cfg.NBD, nil
 }
@@ -277,7 +282,7 @@ func (cfg *FileFormatVdiskConfig) NBDConfig() (*VdiskNBDConfig, error) {
 // the vdisk config file format.
 func (cfg *FileFormatVdiskConfig) TlogConfig() (*VdiskTlogConfig, error) {
 	if cfg.Tlog == nil {
-		return nil, errors.New("vdisk has no Tlog configuration")
+		return nil, NewInvalidConfigError(errors.New("vdisk has no Tlog configuration"))
 	}
 	return cfg.Tlog, nil
 }

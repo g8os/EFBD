@@ -14,7 +14,13 @@ func ReadNBDVdisksConfig(source Source, serverID string) (*NBDVdisksConfig, erro
 		return nil, err
 	}
 
-	return NewNBDVdisksConfig(bytes)
+	cfg, err := NewNBDVdisksConfig(bytes)
+	if err != nil {
+		source.MarkInvalidKey(Key{ID: serverID, Type: KeyNBDServerVdisks}, "")
+		return nil, err
+	}
+
+	return cfg, nil
 }
 
 // ReadVdiskStaticConfig returns the requested VdiskStaticConfig
@@ -25,7 +31,13 @@ func ReadVdiskStaticConfig(source Source, vdiskID string) (*VdiskStaticConfig, e
 		return nil, err
 	}
 
-	return NewVdiskStaticConfig(bytes)
+	cfg, err := NewVdiskStaticConfig(bytes)
+	if err != nil {
+		source.MarkInvalidKey(Key{ID: vdiskID, Type: KeyVdiskStatic}, "")
+		return nil, err
+	}
+
+	return cfg, nil
 }
 
 // ReadVdiskNBDConfig returns the requested VdiskNBDConfig
@@ -36,7 +48,13 @@ func ReadVdiskNBDConfig(source Source, vdiskID string) (*VdiskNBDConfig, error) 
 		return nil, err
 	}
 
-	return NewVdiskNBDConfig(bytes)
+	cfg, err := NewVdiskNBDConfig(bytes)
+	if err != nil {
+		source.MarkInvalidKey(Key{ID: vdiskID, Type: KeyVdiskNBD}, "")
+		return nil, err
+	}
+
+	return cfg, nil
 }
 
 // ReadVdiskTlogConfig returns the requested VdiskTlogConfig
@@ -47,7 +65,13 @@ func ReadVdiskTlogConfig(source Source, vdiskID string) (*VdiskTlogConfig, error
 		return nil, err
 	}
 
-	return NewVdiskTlogConfig(bytes)
+	cfg, err := NewVdiskTlogConfig(bytes)
+	if err != nil {
+		source.MarkInvalidKey(Key{ID: vdiskID, Type: KeyVdiskTlog}, "")
+		return nil, err
+	}
+
+	return cfg, nil
 }
 
 // ReadStorageClusterConfig returns the requested StorageClusterConfig
@@ -58,7 +82,13 @@ func ReadStorageClusterConfig(source Source, clusterID string) (*StorageClusterC
 		return nil, err
 	}
 
-	return NewStorageClusterConfig(bytes)
+	cfg, err := NewStorageClusterConfig(bytes)
+	if err != nil {
+		source.MarkInvalidKey(Key{ID: clusterID, Type: KeyClusterStorage}, "")
+		return nil, err
+	}
+
+	return cfg, nil
 }
 
 // ReadTlogClusterConfig returns the requested TlogClusterConfig
@@ -69,7 +99,13 @@ func ReadTlogClusterConfig(source Source, clusterID string) (*TlogClusterConfig,
 		return nil, err
 	}
 
-	return NewTlogClusterConfig(bytes)
+	cfg, err := NewTlogClusterConfig(bytes)
+	if err != nil {
+		source.MarkInvalidKey(Key{ID: clusterID, Type: KeyClusterTlog}, "")
+		return nil, err
+	}
+
+	return cfg, nil
 }
 
 // ReadConfig returns the requested config as a byte slice from the given source.
@@ -81,13 +117,22 @@ func ReadConfig(source Source, id string, keyType KeyType) ([]byte, error) {
 		return nil, ErrNilID
 	}
 
-	// TODO: notify 0-Orchestrator in case of ErrSourceUnavailable/ErrConfigUnavailable
-	//       which could be returned from source.Get
+	configKey := Key{ID: id, Type: keyType}
+	bytes, err := source.Get(configKey)
+	if err == nil {
+		return bytes, nil // config read successfully
+	}
 
-	return source.Get(Key{
-		ID:   id,
-		Type: keyType,
-	})
+	if err == ErrConfigUnavailable {
+		source.MarkInvalidKey(configKey, "")
+	} else if err == ErrSourceUnavailable {
+		// TODO: notify 0-Orchestrator that the etcd cluster is down
+		// see: https://github.com/zero-os/0-Disk/issues/370
+	} else if _, isInvalid := err.(*InvalidConfigError); isInvalid {
+		source.MarkInvalidKey(configKey, "")
+	}
+
+	return nil, err // config couldn't be read due to an error
 }
 
 // WatchNBDVdisksConfig watches a given source for NBDVdisksConfig updates.

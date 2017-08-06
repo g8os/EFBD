@@ -246,16 +246,36 @@ func (s *StubSource) triggerReload() {
 	s.submux.Lock()
 	defer s.submux.Unlock()
 
-	for ch, key := range s.subscribers {
-		bytes, _ := s.Get(key)
+	var wg sync.WaitGroup
 
-		select {
-		case ch <- bytes:
-			// ok (might send nil)
-		case <-time.After(time.Second):
-			log.Errorf("sending config for %v has timed out", key)
-		}
+	for ch, key := range s.subscribers {
+		wg.Add(1)
+
+		go func(ch chan []byte, key Key) {
+			defer wg.Done()
+
+			// we ignore any error cases which aren't
+			// due to the source being unavailable,
+			// as we want to be able to mark any invalid key
+			// for those other error cases (e.g. invalid key, invalid id, ...)
+			bytes, err := s.Get(key)
+			if err == ErrSourceUnavailable {
+				log.Errorf(
+					"getting key %v failed, due to the source being unavailable",
+					key)
+				return
+			}
+
+			select {
+			case ch <- bytes:
+				// ok (might send nil)
+			case <-time.After(time.Second):
+				log.Errorf("sending config for %v has timed out", key)
+			}
+		}(ch, key)
 	}
+
+	wg.Wait()
 }
 
 func (s *StubSource) setStorageCluster(clusterID string, cfg *StorageClusterConfig) bool {

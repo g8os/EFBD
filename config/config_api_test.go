@@ -17,12 +17,26 @@ func TestReadNBDVdisksConfig(t *testing.T) {
 	// create stub source, with no config, which will trigger errors
 	source := NewStubSource()
 
+	invalidKeyCh := source.InvalidKey()
+	testInvalidKey := func(id string) {
+		expected := Key{ID: id, Type: KeyNBDServerVdisks}
+		select {
+		case invalidKey := <-invalidKeyCh:
+			if !assert.Equal(expected, invalidKey) {
+				assert.FailNow("unexpected invalid key", "%v", invalidKey)
+			}
+		case <-time.After(time.Second):
+			assert.FailNow("timed out while waiting for invalid key", "%v", expected)
+		}
+	}
+
 	_, err = ReadNBDVdisksConfig(source, "foo")
 	assert.Error(err, "should trigger error due to nil config")
 
 	source.SetVdiskConfig("a", new(VdiskStaticConfig))
 	_, err = ReadNBDVdisksConfig(source, "foo")
 	assert.Error(err, "should trigger error due to invalid config")
+	testInvalidKey("foo")
 
 	source.SetVdiskConfig("a", nil) // delete it first, so we can properly create it by default
 	source.SetPrimaryStorageCluster("a", "mycluster", &StorageClusterConfig{
@@ -50,12 +64,26 @@ func TestReadVdiskStaticConfig(t *testing.T) {
 	// create stub source, with no config, which will trigger errors
 	source := NewStubSource()
 
+	invalidKeyCh := source.InvalidKey()
+	testInvalidKey := func(id string) {
+		expected := Key{ID: id, Type: KeyVdiskStatic}
+		select {
+		case invalidKey := <-invalidKeyCh:
+			if !assert.Equal(expected, invalidKey) {
+				assert.FailNow("unexpected invalid key", "%v", invalidKey)
+			}
+		case <-time.After(time.Second):
+			assert.FailNow("timed out while waiting for invalid key", "%v", expected)
+		}
+	}
+
 	_, err = ReadVdiskStaticConfig(source, "a")
 	assert.Error(err, "should trigger error due to nil config")
 
 	source.SetVdiskConfig("a", new(VdiskStaticConfig))
 	_, err = ReadVdiskStaticConfig(source, "a")
 	assert.Error(err, "should trigger error due to invalid config")
+	testInvalidKey("a")
 
 	source.SetVdiskConfig("a", nil) // delete it first, so we can properly create it by default
 	// add vdisk by default as deduped (boot)
@@ -91,12 +119,26 @@ func TestReadStorageClusterConfig(t *testing.T) {
 	// create stub source, with no config, which will trigger errors
 	source := NewStubSource()
 
+	invalidKeyCh := source.InvalidKey()
+	testInvalidKey := func(id string) {
+		expected := Key{ID: id, Type: KeyClusterStorage}
+		select {
+		case invalidKey := <-invalidKeyCh:
+			if !assert.Equal(expected, invalidKey) {
+				assert.FailNow("unexpected invalid key", "%v", invalidKey)
+			}
+		case <-time.After(time.Second):
+			assert.FailNow("timed out while waiting for invalid key", "%v", expected)
+		}
+	}
+
 	_, err = ReadStorageClusterConfig(source, "foo")
 	assert.Error(err, "should trigger error due to nil config")
 
 	source.SetStorageCluster("foo", new(StorageClusterConfig))
 	_, err = ReadStorageClusterConfig(source, "foo")
 	assert.Error(err, "should trigger error due to invalid config")
+	testInvalidKey("foo")
 
 	inputCfg := StorageClusterConfig{
 		DataStorage: []StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
@@ -107,6 +149,10 @@ func TestReadStorageClusterConfig(t *testing.T) {
 	if assert.NoError(err, "should be ok") {
 		assert.Equal(inputCfg, *outputCfg)
 	}
+
+	_, err = ReadStorageClusterConfig(source, "bar")
+	assert.Error(err, "should trigger error due to invalid config")
+	testInvalidKey("bar")
 
 	inputCfg = StorageClusterConfig{
 		DataStorage: []StorageServerConfig{
@@ -132,12 +178,26 @@ func TestReadTlogClusterConfig(t *testing.T) {
 	// create stub source, with no config, which will trigger errors
 	source := NewStubSource()
 
+	invalidKeyCh := source.InvalidKey()
+	testInvalidKey := func(id string) {
+		expected := Key{ID: id, Type: KeyClusterTlog}
+		select {
+		case invalidKey := <-invalidKeyCh:
+			if !assert.Equal(expected, invalidKey) {
+				assert.FailNow("unexpected invalid key", "%v", invalidKey)
+			}
+		case <-time.After(time.Second):
+			assert.FailNow("timed out while waiting for invalid key", "%v", expected)
+		}
+	}
+
 	_, err = ReadTlogClusterConfig(source, "foo")
 	assert.Error(err, "should trigger error due to nil config")
 
 	source.SetTlogCluster("foo", new(TlogClusterConfig))
 	_, err = ReadTlogClusterConfig(source, "foo")
 	assert.Error(err, "should trigger error due to invalid config")
+	testInvalidKey("foo")
 
 	inputCfg := TlogClusterConfig{
 		Servers: []string{
@@ -151,6 +211,10 @@ func TestReadTlogClusterConfig(t *testing.T) {
 	if assert.NoError(err, "should be ok") {
 		assert.Equal(inputCfg, *outputCfg)
 	}
+
+	_, err = ReadTlogClusterConfig(source, "bar")
+	assert.Error(err, "should trigger error due to invalid config")
+	testInvalidKey("bar")
 }
 
 func TestWatchTlogClusterConfig(t *testing.T) {
@@ -165,12 +229,26 @@ func TestWatchTlogClusterConfig(t *testing.T) {
 	// create stub source, with no config, which will trigger errors
 	source := NewStubSource()
 
+	invalidKeyCh := source.InvalidKey()
+	testInvalidKey := func(id string) {
+		expected := Key{ID: id, Type: KeyClusterTlog}
+		select {
+		case invalidKey := <-invalidKeyCh:
+			if !assert.Equal(expected, invalidKey) {
+				assert.FailNow("unexpected invalid key", "%v", invalidKey)
+			}
+		case <-time.After(time.Second):
+			assert.FailNow("timed out while waiting for invalid key", "%v", expected)
+		}
+	}
+
 	_, err = WatchTlogClusterConfig(ctx, source, "foo")
 	assert.Error(err, "should trigger error due to nil config")
 
 	source.SetTlogCluster("foo", new(TlogClusterConfig))
 	_, err = WatchTlogClusterConfig(ctx, source, "foo")
 	assert.Error(err, "should trigger error due to invalid config")
+	testInvalidKey("foo")
 
 	inputCfg := TlogClusterConfig{
 		Servers: []string{
@@ -192,20 +270,6 @@ func TestWatchTlogClusterConfig(t *testing.T) {
 		}
 	}
 
-	timeoutKey := Key{ID: "foo", Type: KeyClusterTlog}
-	invalidKeyCh := source.InvalidKey()
-
-	testTimeout := func() {
-		select {
-		case invalidKey := <-invalidKeyCh:
-			if !assert.Equal(timeoutKey, invalidKey) {
-				assert.FailNow("unexpected invalid key", "%v", invalidKey)
-			}
-		case output := <-ch:
-			assert.FailNow("received unexpected value", "%v", output)
-		}
-	}
-
 	testValue(inputCfg)
 
 	// add one server
@@ -216,7 +280,7 @@ func TestWatchTlogClusterConfig(t *testing.T) {
 	// delete cluster
 	source.SetTlogCluster("foo", nil)
 	// now no config should be send, as the new config is invalid
-	testTimeout()
+	testInvalidKey("foo")
 
 	// cancel context
 	cancel()
@@ -243,12 +307,26 @@ func TestWatchStorageClusterConfig(t *testing.T) {
 	// create stub source, with no config, which will trigger errors
 	source := NewStubSource()
 
+	invalidKeyCh := source.InvalidKey()
+	testInvalidKey := func(id string) {
+		expected := Key{ID: id, Type: KeyClusterStorage}
+		select {
+		case invalidKey := <-invalidKeyCh:
+			if !assert.Equal(expected, invalidKey) {
+				assert.FailNow("unexpected invalid key", "%v", invalidKey)
+			}
+		case <-time.After(time.Second):
+			assert.FailNow("timed out while waiting for invalid key", "%v", expected)
+		}
+	}
+
 	_, err = WatchStorageClusterConfig(ctx, source, "foo")
 	assert.Error(err, "should trigger error due to nil config")
 
 	source.SetStorageCluster("foo", new(StorageClusterConfig))
 	_, err = WatchStorageClusterConfig(ctx, source, "foo")
 	assert.Error(err, "should trigger error due to invalid config")
+	testInvalidKey("foo")
 
 	inputCfg := StorageClusterConfig{
 		DataStorage: []StorageServerConfig{
@@ -271,20 +349,6 @@ func TestWatchStorageClusterConfig(t *testing.T) {
 		}
 	}
 
-	timeoutKey := Key{ID: "foo", Type: KeyClusterStorage}
-	invalidKeyCh := source.InvalidKey()
-
-	testTimeout := func() {
-		select {
-		case invalidKey := <-invalidKeyCh:
-			if !assert.Equal(timeoutKey, invalidKey) {
-				assert.FailNow("unexpected invalid key", "%v", invalidKey)
-			}
-		case output := <-ch:
-			assert.FailNow("received unexpected value", "%v", output)
-		}
-	}
-
 	testValue(inputCfg)
 
 	// delete meta Data Storage Server
@@ -297,15 +361,15 @@ func TestWatchStorageClusterConfig(t *testing.T) {
 	source.SetStorageCluster("foo", &inputCfg)
 	testValue(inputCfg)
 
-	// make invalid, this should make it timeout
+	// make invalid, this should make it mark the key as invalid
 	inputCfg.DataStorage = nil
 	source.SetStorageCluster("foo", &inputCfg)
-	testTimeout()
+	testInvalidKey("foo")
 
 	// delete cluster
 	source.SetStorageCluster("foo", nil)
-	// now no config should be send, as the new config is invalid
-	testTimeout()
+	// this should make it also Invalid
+	testInvalidKey("foo")
 
 	// cancel context
 	cancel()
@@ -332,12 +396,26 @@ func TestWatchNBDVdisksConfig(t *testing.T) {
 	// create stub source, with no config, which will trigger errors
 	source := NewStubSource()
 
+	invalidKeyCh := source.InvalidKey()
+	testInvalidKey := func(id string) {
+		expected := Key{ID: id, Type: KeyNBDServerVdisks}
+		select {
+		case invalidKey := <-invalidKeyCh:
+			if !assert.Equal(expected, invalidKey) {
+				assert.FailNow("unexpected invalid key", "%v", invalidKey)
+			}
+		case <-time.After(time.Second):
+			assert.FailNow("timed out while waiting for invalid key", "%v", expected)
+		}
+	}
+
 	_, err = WatchNBDVdisksConfig(ctx, source, "foo")
 	assert.Error(err, "should trigger error due to nil config")
 
 	source.SetVdiskConfig("a", new(VdiskStaticConfig))
 	_, err = WatchNBDVdisksConfig(ctx, source, "foo")
 	assert.Error(err, "should trigger error due to invalid config")
+	testInvalidKey("foo")
 
 	source.SetVdiskConfig("a", &VdiskStaticConfig{
 		BlockSize: 4096,
@@ -363,20 +441,6 @@ func TestWatchNBDVdisksConfig(t *testing.T) {
 		}
 	}
 
-	timeoutKey := Key{ID: "foo", Type: KeyNBDServerVdisks}
-	invalidKeyCh := source.InvalidKey()
-
-	testTimeout := func() {
-		select {
-		case invalidKey := <-invalidKeyCh:
-			if !assert.Equal(timeoutKey, invalidKey) {
-				assert.FailNow("unexpected invalid key", "%v", invalidKey)
-			}
-		case output := <-ch:
-			assert.FailNow("received unexpected value", "%v", output)
-		}
-	}
-
 	testValue([]string{"a", "b"})
 
 	// add another vdisk ID
@@ -395,7 +459,7 @@ func TestWatchNBDVdisksConfig(t *testing.T) {
 
 	// make invalid, this should make it timeout
 	source.SetVdiskConfig("c", nil)
-	testTimeout()
+	testInvalidKey("foo")
 
 	// cancel context
 	cancel()

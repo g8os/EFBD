@@ -18,6 +18,8 @@ func ETCDV3Source(endpoints []string) (SourceCloser, error) {
 	})
 	if err != nil {
 		log.Errorf("ETCDV3Source requires valid etcd v3 client: %v", err)
+		// TODO: notify 0-Orchestrator that the etcd cluster is down
+		// see: https://github.com/zero-os/0-Disk/issues/370
 		return nil, ErrSourceUnavailable
 	}
 
@@ -96,28 +98,29 @@ func (s *etcdv3Source) Watch(ctx context.Context, key Key) (<-chan []byte, error
 					continue
 				}
 
+				var bytes []byte
+
+				// we want to send an update, no matter if the value is invalid,
+				// as it gives us a chance to mark the key as invalid
 				if err := resp.Err(); err != nil {
 					log.Errorf(
 						"watch channel for key '%s' encountered an error: %v", keyString, err)
-					// TODO: send a notification to 0-Orchestrator about the
-					//       fact that the etcd cluster in use seems to be not functioning anymore
-					continue
-				}
-
-				// ensure we have received events
-				eventCount := len(resp.Events)
-				if eventCount == 0 {
+				} else if len(resp.Events) == 0 {
 					log.Errorf("key '%s' was not found on the ETCD server", keyString)
-					continue
+				} else {
+					ev := resp.Events[len(resp.Events)-1]
+					if ev.Kv != nil {
+						bytes = ev.Kv.Value
+					} else {
+						log.Errorf("key '%s' was found, but value was nil", keyString)
+					}
 				}
 
-				// get latest event
-				ev := resp.Events[len(resp.Events)-1]
-				log.Debugf("value for %s received an update", ev.Kv.Key)
+				log.Debugf("value for %s received an update", keyString)
 
 				// send (updated) value
 				select {
-				case ch <- ev.Kv.Value:
+				case ch <- bytes:
 				case <-ctx.Done():
 					log.Errorf(
 						"timed out while attempting to send updated config (%s)", keyString)

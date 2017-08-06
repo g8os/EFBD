@@ -18,21 +18,36 @@ func TestReadNBDStorageConfig(t *testing.T) {
 	// create stub source, with no config, which will trigger errors
 	source := NewStubSource()
 
+	invalidKeyCh := source.InvalidKey()
+	testInvalidKey := func(expected Key) {
+		select {
+		case invalidKey := <-invalidKeyCh:
+			if !assert.Equal(expected, invalidKey) {
+				assert.FailNow("unexpected invalid key", "%v", invalidKey)
+			}
+		case <-time.After(time.Second):
+			assert.FailNow("timed out while waiting for invalid key", "%v", expected)
+		}
+	}
+
 	_, err = ReadNBDStorageConfig(source, "a", nil)
 	assert.Error(err, "should trigger error due to nil config")
 
 	source.SetVdiskConfig("a", new(VdiskStaticConfig))
 	_, err = ReadNBDStorageConfig(source, "a", nil)
 	assert.Error(err, "should trigger error due to invalid config")
+	testInvalidKey(Key{ID: "a", Type: KeyVdiskNBD})
 
 	source.SetVdiskConfig("a", nil) // delete it first, so we can properly create it by default
 	source.SetPrimaryStorageCluster("a", "mycluster", nil)
 	_, err = ReadNBDStorageConfig(source, "a", nil)
 	assert.Error(err, "should trigger error due to nil reference")
+	testInvalidKey(Key{ID: "mycluster", Type: KeyClusterStorage})
 
 	source.SetStorageCluster("mycluster", new(StorageClusterConfig))
 	_, err = ReadNBDStorageConfig(source, "a", nil)
 	assert.Error(err, "should trigger error due to invalid reference")
+	testInvalidKey(Key{ID: "mycluster", Type: KeyClusterStorage})
 
 	source.SetStorageCluster("mycluster", &StorageClusterConfig{
 		DataStorage:     []StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
@@ -130,21 +145,36 @@ func TestReadTlogStorageConfig(t *testing.T) {
 	// create stub source, with no config, which will trigger errors
 	source := NewStubSource()
 
+	invalidKeyCh := source.InvalidKey()
+	testInvalidKey := func(expected Key) {
+		select {
+		case invalidKey := <-invalidKeyCh:
+			if !assert.Equal(expected, invalidKey) {
+				assert.FailNow("unexpected invalid key", "%v", invalidKey)
+			}
+		case <-time.After(time.Second):
+			assert.FailNow("timed out while waiting for invalid key", "%v", expected)
+		}
+	}
+
 	_, err = ReadTlogStorageConfig(source, "a", nil)
 	assert.Error(err, "should trigger error due to nil config")
 
 	source.SetVdiskConfig("a", new(VdiskStaticConfig))
 	_, err = ReadTlogStorageConfig(source, "a", nil)
 	assert.Error(err, "should trigger error due to invalid config")
+	testInvalidKey(Key{ID: "a", Type: KeyVdiskTlog})
 
 	source.SetVdiskConfig("a", nil) // delete it first, so we can properly create it by default
 	source.SetTlogStorageCluster("a", "mycluster", nil)
 	_, err = ReadTlogStorageConfig(source, "a", nil)
 	assert.Error(err, "should trigger error due to nil reference")
+	testInvalidKey(Key{ID: "mycluster", Type: KeyClusterStorage})
 
 	source.SetStorageCluster("mycluster", new(StorageClusterConfig))
 	_, err = ReadTlogStorageConfig(source, "a", nil)
 	assert.Error(err, "should trigger error due to invalid reference")
+	testInvalidKey(Key{ID: "mycluster", Type: KeyClusterStorage})
 
 	source.SetStorageCluster("mycluster", &StorageClusterConfig{
 		DataStorage: []StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
@@ -192,6 +222,18 @@ func TestWatchNBDStorageConfig_FailAtStartup(t *testing.T) {
 
 	source := NewStubSource()
 
+	invalidKeyCh := source.InvalidKey()
+	testInvalidKey := func(expected Key) {
+		select {
+		case invalidKey := <-invalidKeyCh:
+			if !assert.Equal(expected, invalidKey) {
+				assert.FailNow("unexpected invalid key", "%v", invalidKey)
+			}
+		case <-time.After(time.Second):
+			assert.FailNow("timed out while waiting for invalid key", "%v", expected)
+		}
+	}
+
 	_, err = WatchNBDStorageConfig(ctx, source, "")
 	assert.Equal(err, ErrNilID)
 
@@ -201,6 +243,7 @@ func TestWatchNBDStorageConfig_FailAtStartup(t *testing.T) {
 	source.SetPrimaryStorageCluster("a", "mycluster", nil)
 	_, err = WatchNBDStorageConfig(ctx, source, "a")
 	assert.Error(err, "should trigger error due to missing/nil configs")
+	testInvalidKey(Key{ID: "mycluster", Type: KeyClusterStorage})
 
 	source.SetStorageCluster("mycluster", &StorageClusterConfig{
 		DataStorage: []StorageServerConfig{
@@ -209,6 +252,7 @@ func TestWatchNBDStorageConfig_FailAtStartup(t *testing.T) {
 	})
 	_, err = WatchNBDStorageConfig(ctx, source, "a")
 	assert.Error(err, "should trigger error due to missing metadata storage")
+	testInvalidKey(Key{ID: "mycluster", Type: KeyClusterStorage})
 
 	// last one is golden
 	source.SetStorageCluster("mycluster", &StorageClusterConfig{
@@ -236,7 +280,21 @@ func TestWatchNBDStorageConfig_FailAfterSuccess(t *testing.T) {
 		MetadataStorage: &StorageServerConfig{Address: "localhost:16379"},
 	})
 	ch, err := WatchNBDStorageConfig(ctx, source, "a")
-	assert.NoError(err, "should be valid")
+	if !assert.NoError(err, "should be valid") {
+		return
+	}
+
+	invalidKeyCh := source.InvalidKey()
+	testInvalidKey := func(expected Key) {
+		select {
+		case invalidKey := <-invalidKeyCh:
+			if !assert.Equal(expected, invalidKey) {
+				assert.FailNow("unexpected invalid key", "%v", invalidKey)
+			}
+		case output := <-ch:
+			assert.FailNow("received unexpected value", "%v", output)
+		}
+	}
 
 	output := <-ch
 	assert.Nil(output.TemplateStorageCluster)
@@ -248,22 +306,9 @@ func TestWatchNBDStorageConfig_FailAfterSuccess(t *testing.T) {
 			output.StorageCluster.DataStorage[0])
 	}
 
-	invalidKeyCh := source.InvalidKey()
-
-	testTimeout := func(expected Key) {
-		select {
-		case invalidKey := <-invalidKeyCh:
-			if !assert.Equal(expected, invalidKey) {
-				assert.FailNow("unexpected invalid key", "%v", invalidKey)
-			}
-		case output := <-ch:
-			assert.FailNow("received unexpected value", "%v", output)
-		}
-	}
-
 	// now let's break it
 	source.SetStorageCluster("mycluster", nil)
-	testTimeout(Key{ID: "mycluster", Type: KeyClusterStorage})
+	testInvalidKey(Key{ID: "mycluster", Type: KeyClusterStorage})
 
 	// now let's fix it again
 	source.SetStorageCluster("mycluster", &StorageClusterConfig{
@@ -310,6 +355,18 @@ func TestWatchNBDStorageConfig_ChangeClusterReference(t *testing.T) {
 	}
 
 	invalidKeyCh := source.InvalidKey()
+	testInvalidKey := func(expected Key) {
+		select {
+		case invalidKey := <-invalidKeyCh:
+			if !assert.Equal(expected, invalidKey) {
+				assert.FailNow("unexpected invalid key", "%v", invalidKey)
+			}
+		case output := <-ch:
+			assert.FailNow("received unexpected value", "%v", output)
+		case <-time.After(time.Second):
+			assert.FailNow("timed out while waiting for invalid key", "%v", expected)
+		}
+	}
 
 	testValue := func() {
 		select {
@@ -327,20 +384,8 @@ func TestWatchNBDStorageConfig_ChangeClusterReference(t *testing.T) {
 
 	testValue()
 
-	testTimeout := func(expected Key) {
-		select {
-		case invalidKey := <-invalidKeyCh:
-			if !assert.Equal(expected, invalidKey) {
-				assert.FailNow("unexpected invalid key", "%v", invalidKey)
-			}
-		case output := <-ch:
-			assert.FailNow("received unexpected value", "%v", output)
-		}
-	}
-
 	source.SetPrimaryStorageCluster("a", "foocluster", nil)
-	// trigger reload
-	testTimeout(Key{ID: "foocluster", Type: KeyClusterStorage}) // error value should not be updated
+	testInvalidKey(Key{ID: "foocluster", Type: KeyClusterStorage}) // error value should not be updated
 
 	primaryStorageCluster = &StorageClusterConfig{
 		DataStorage: []StorageServerConfig{
@@ -388,7 +433,7 @@ func TestWatchNBDStorageConfig_ChangeClusterReference(t *testing.T) {
 	// metadata server is required for slave storage
 	slaveStoragecluster.MetadataStorage = nil
 	source.SetStorageCluster("slave", slaveStoragecluster)
-	testTimeout(Key{ID: "slave", Type: KeyClusterStorage}) // error value should not be updated
+	testInvalidKey(Key{ID: "slave", Type: KeyClusterStorage}) // error value should not be updated
 
 	// even after, error, we can set a good value
 	slaveStoragecluster.MetadataStorage = &StorageServerConfig{Address: "localhost:300"}
@@ -398,7 +443,7 @@ func TestWatchNBDStorageConfig_ChangeClusterReference(t *testing.T) {
 	// do another stupid illegal action
 	source.SetPrimaryStorageCluster("a", "primary", nil)
 	// trigger reload
-	testTimeout(Key{ID: "primary", Type: KeyClusterStorage}) // error value should not be updated
+	testInvalidKey(Key{ID: "primary", Type: KeyClusterStorage}) // error value should not be updated
 
 	primaryStorageCluster.MetadataStorage.Database = 3
 	source.SetStorageCluster("primary", primaryStorageCluster)
@@ -412,7 +457,7 @@ func TestWatchNBDStorageConfig_ChangeClusterReference(t *testing.T) {
 	// it should not apply the update either
 	primaryStorageCluster.MetadataStorage = nil
 	source.SetStorageCluster("primary", primaryStorageCluster)
-	testTimeout(Key{ID: "primary", Type: KeyClusterStorage}) // no update should happen
+	testInvalidKey(Key{ID: "primary", Type: KeyClusterStorage}) // no update should happen
 
 	// updating a cluster in a valid way should still be possible
 	primaryStorageCluster.MetadataStorage = &StorageServerConfig{
@@ -447,6 +492,18 @@ func TestWatchTlogStorageConfig_FailAtStartup(t *testing.T) {
 
 	source := NewStubSource()
 
+	invalidKeyCh := source.InvalidKey()
+	testInvalidKey := func(expected Key) {
+		select {
+		case invalidKey := <-invalidKeyCh:
+			if !assert.Equal(expected, invalidKey) {
+				assert.FailNow("unexpected invalid key", "%v", invalidKey)
+			}
+		case <-time.After(time.Second):
+			assert.FailNow("timed out while waiting for invalid key", "%v", expected)
+		}
+	}
+
 	_, err = WatchTlogStorageConfig(ctx, source, "")
 	assert.Equal(err, ErrNilID)
 
@@ -456,6 +513,7 @@ func TestWatchTlogStorageConfig_FailAtStartup(t *testing.T) {
 	source.SetTlogStorageCluster("a", "mycluster", nil)
 	_, err = WatchTlogStorageConfig(ctx, source, "a")
 	assert.Error(err, "should trigger error due to missing/nil configs")
+	testInvalidKey(Key{ID: "mycluster", Type: KeyClusterStorage})
 
 	// last one is golden
 	source.SetStorageCluster("mycluster", &StorageClusterConfig{
@@ -493,8 +551,7 @@ func TestWatchTlogStorageConfig_FailAfterSuccess(t *testing.T) {
 	}
 
 	invalidKeyCh := source.InvalidKey()
-
-	testTimeout := func(expected Key) {
+	testInvalidKey := func(expected Key) {
 		select {
 		case invalidKey := <-invalidKeyCh:
 			if !assert.Equal(expected, invalidKey) {
@@ -502,12 +559,14 @@ func TestWatchTlogStorageConfig_FailAfterSuccess(t *testing.T) {
 			}
 		case output := <-ch:
 			assert.FailNow("received unexpected value", "%v", output)
+		case <-time.After(time.Second):
+			assert.FailNow("timed out while waiting for invalid key", "%v", expected)
 		}
 	}
 
 	// now let's break it
 	source.SetStorageCluster("mycluster", nil)
-	testTimeout(Key{ID: "mycluster", Type: KeyClusterStorage})
+	testInvalidKey(Key{ID: "mycluster", Type: KeyClusterStorage})
 
 	// now let's fix it again
 	source.SetStorageCluster("mycluster", &StorageClusterConfig{
@@ -551,6 +610,18 @@ func TestWatchTlogStorageConfig_ChangeClusterReference(t *testing.T) {
 	}
 
 	invalidKeyCh := source.InvalidKey()
+	testInvalidKey := func(expected Key) {
+		select {
+		case invalidKey := <-invalidKeyCh:
+			if !assert.Equal(expected, invalidKey) {
+				assert.FailNow("unexpected invalid key", "%v", invalidKey)
+			}
+		case output := <-ch:
+			assert.FailNow("received unexpected value", "%v", output)
+		case <-time.After(time.Second):
+			assert.FailNow("timed out while waiting for invalid key", "%v", expected)
+		}
+	}
 
 	testValue := func() {
 		select {
@@ -566,20 +637,8 @@ func TestWatchTlogStorageConfig_ChangeClusterReference(t *testing.T) {
 
 	testValue()
 
-	testTimeout := func(expected Key) {
-		select {
-		case invalidKey := <-invalidKeyCh:
-			if !assert.Equal(expected, invalidKey) {
-				assert.FailNow("unexpected invalid key", "%v", invalidKey)
-			}
-		case output := <-ch:
-			assert.FailNow("received unexpected value", "%v", output)
-		}
-	}
-
 	source.SetTlogStorageCluster("a", "foocluster", nil)
-	// trigger reload
-	testTimeout(Key{ID: "foocluster", Type: KeyClusterStorage}) // error value should not be updated
+	testInvalidKey(Key{ID: "foocluster", Type: KeyClusterStorage}) // error value should not be updated
 
 	tlogStorageCluster = &StorageClusterConfig{
 		DataStorage: []StorageServerConfig{
@@ -605,7 +664,7 @@ func TestWatchTlogStorageConfig_ChangeClusterReference(t *testing.T) {
 	// setting an invalid slave Storage cluster should not be possible
 	slaveStoragecluster.MetadataStorage = nil
 	source.SetStorageCluster("slave", slaveStoragecluster)
-	testTimeout(Key{ID: "slave", Type: KeyClusterStorage}) // error value should not be updated
+	testInvalidKey(Key{ID: "slave", Type: KeyClusterStorage}) // error value should not be updated
 
 	slaveStoragecluster.MetadataStorage = &StorageServerConfig{Address: "localhost:300"}
 	source.SetStorageCluster("slave", slaveStoragecluster)
@@ -614,7 +673,7 @@ func TestWatchTlogStorageConfig_ChangeClusterReference(t *testing.T) {
 	// do another stupid illegal action
 	source.SetTlogStorageCluster("a", "tlogcluster", nil)
 	// trigger reload
-	testTimeout(Key{ID: "tlogcluster", Type: KeyClusterStorage}) // error value should not be updated
+	testInvalidKey(Key{ID: "tlogcluster", Type: KeyClusterStorage}) // error value should not be updated
 
 	tlogStorageCluster.DataStorage[0].Database = 3
 	source.SetStorageCluster("tlogcluster", tlogStorageCluster)
@@ -628,7 +687,7 @@ func TestWatchTlogStorageConfig_ChangeClusterReference(t *testing.T) {
 	// it should not apply the update either
 	tlogStorageCluster.DataStorage = nil
 	source.SetStorageCluster("tlogcluster", tlogStorageCluster)
-	testTimeout(Key{ID: "tlogcluster", Type: KeyClusterStorage}) // no update should happen
+	testInvalidKey(Key{ID: "tlogcluster", Type: KeyClusterStorage}) // no update should happen
 
 	// updating a cluster in a valid way should still be possible
 	tlogStorageCluster.DataStorage = []StorageServerConfig{
