@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"sync"
-	"syscall"
+	"time"
+
+	"github.com/zero-os/0-Disk/log"
 )
 
 // NewStubSource create a new stub source, for testing purposes
@@ -12,6 +14,7 @@ func NewStubSource() *StubSource {
 	source := new(StubSource)
 	source.fileSource.path = "/tests/in/memory"
 	source.fileSource.reader = source.readConfig
+	source.subscribers = make(map[chan []byte]Key)
 
 	return source
 }
@@ -24,24 +27,27 @@ type StubSource struct {
 	cfg *FileFormatCompleteConfig
 	mux sync.Mutex
 
-	watchCounter    int
-	watchCounterMux sync.RWMutex
+	subscribers map[chan []byte]Key
+	submux      sync.Mutex
 
 	invalidConfigSender chan Key
 }
 
 // Watch implements Source.Watch
 func (s *StubSource) Watch(ctx context.Context, key Key) (<-chan []byte, error) {
-	s.watchCounterMux.Lock()
-	s.watchCounter++
-	s.watchCounterMux.Unlock()
+	output := make(chan []byte, 1)
+	s.submux.Lock()
+	s.subscribers[output] = key
+	s.submux.Unlock()
+
 	go func() {
 		<-ctx.Done()
-		s.watchCounterMux.Lock()
-		s.watchCounter--
-		s.watchCounterMux.Unlock()
+		s.submux.Lock()
+		delete(s.subscribers, output)
+		s.submux.Unlock()
 	}()
-	return s.fileSource.Watch(ctx, key)
+
+	return output, nil
 }
 
 // Close implements SourceCloser.Close
@@ -237,10 +243,18 @@ func (s *StubSource) SetTlogCluster(clusterID string, cfg *TlogClusterConfig) {
 
 // triggerReload triggers a reload of the config of this source.
 func (s *StubSource) triggerReload() {
-	s.watchCounterMux.RLock()
-	defer s.watchCounterMux.RUnlock()
-	if s.watchCounter > 0 {
-		syscall.Kill(syscall.Getpid(), syscall.SIGHUP)
+	s.submux.Lock()
+	defer s.submux.Unlock()
+
+	for ch, key := range s.subscribers {
+		bytes, _ := s.Get(key)
+
+		select {
+		case ch <- bytes:
+			// ok (might send nil)
+		case <-time.After(time.Second):
+			log.Errorf("sending config for %v has timed out", key)
+		}
 	}
 }
 
@@ -301,9 +315,6 @@ func (s *StubSource) getVdiskCfg(vdiskID string) FileFormatVdiskConfig {
 
 // readConfig
 func (s *StubSource) readConfig(string) ([]byte, error) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-
 	if s.cfg == nil {
 		return nil, errors.New("stub: no test config defined")
 	}
