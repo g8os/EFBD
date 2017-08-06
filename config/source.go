@@ -33,6 +33,13 @@ type Source interface {
 	// and receive its value each time it is updated,
 	// using a returned channel.
 	Watch(ctx context.Context, key Key) (<-chan []byte, error)
+	// MarkInvalidKey marks an invalid key,
+	// in the hope that it can be fixed in the source,
+	// and it becomes a valid key soon.
+	// Optionally a vdiskID can be given,
+	// in case the invalid state is related to
+	// it being used for a specific vdisk.
+	MarkInvalidKey(key Key, vdiskID string)
 }
 
 // SourceCloser defines a Source which

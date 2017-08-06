@@ -17,8 +17,8 @@ func ETCDV3Source(endpoints []string) (SourceCloser, error) {
 		DialTimeout: etcdDialTimeout,
 	})
 	if err != nil {
-		return nil, fmt.Errorf(
-			"ETCDV3Source requires valid etcd v3 client: %v", err)
+		log.Errorf("ETCDV3Source requires valid etcd v3 client: %v", err)
+		return nil, ErrSourceUnavailable
 	}
 
 	return &etcdv3Source{client}, nil
@@ -37,23 +37,22 @@ func (s *etcdv3Source) Get(key Key) ([]byte, error) {
 	// convert our internal key type to an etcd key
 	keyString, err := ETCDKey(key.ID, key.Type)
 	if err != nil {
-		return nil, err
+		log.Errorf("invalid config key: %v", err)
+		return nil, ErrInvalidKey
 	}
 
 	// get value
 	resp, err := s.client.Get(ctx, keyString)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"could not get key '%s' from ETCD: %v", keyString, err)
+		// TODO: could this also be because we lost connection to the ETCD cluster?
+		log.Errorf("could not get key '%s' from ETCD: %v", keyString, err)
+		return nil, ErrConfigUnavailable
 	}
 
 	// ensure value was found
 	if len(resp.Kvs) < 1 {
-		return nil, fmt.Errorf(
-			"key '%s' was not found on the ETCD server", keyString)
-	}
-	if len(resp.Kvs[0].Value) < 1 {
-		return nil, fmt.Errorf("value for %s is empty", keyString)
+		log.Errorf("key '%s' was not found on the ETCD server", keyString)
+		return nil, ErrConfigUnavailable
 	}
 
 	// return the value
@@ -65,18 +64,19 @@ func (s *etcdv3Source) Watch(ctx context.Context, key Key) (<-chan []byte, error
 	// convert our internal key type to an etcd key
 	keyString, err := ETCDKey(key.ID, key.Type)
 	if err != nil {
-		return nil, err
+		log.Errorf("invalid config key: %v", err)
+		return nil, ErrInvalidKey
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
 	watch := s.client.Watch(ctx, keyString)
 
-	log.Debugf("watch channel for etcd key '%s' started", keyString)
 	ch := make(chan []byte, 1)
 
 	go func() {
+		log.Debugf("watch goroutine for etcd key '%s' started", keyString)
 		defer cancel()
-		defer log.Debugf("watch channel for etcd key '%s' closed", keyString)
+		defer log.Debugf("watch goroutine for etcd key '%s' closed", keyString)
 		defer close(ch)
 
 		for {
@@ -84,29 +84,38 @@ func (s *etcdv3Source) Watch(ctx context.Context, key Key) (<-chan []byte, error
 			case <-ctx.Done():
 				return
 
-			case resp, ok := <-watch:
-				if !ok || resp.Err() != nil {
-					if ok {
-						err := resp.Err()
-						log.Errorf(
-							"Watch channel for key '%s' encountered an error: %v",
-							keyString, err)
-					}
-					return
+			case resp, open := <-watch:
+				if !open {
+					log.Debugf("watch channel for etcd key %s has closed, re-opening it", keyString)
+					watch = s.client.Watch(ctx, keyString)
+					continue
+				}
+
+				if resp.IsProgressNotify() {
+					log.Debugf("watch channel for etcd key %s skipping progress notification", keyString)
+					continue
+				}
+
+				if err := resp.Err(); err != nil {
+					log.Errorf(
+						"watch channel for key '%s' encountered an error: %v", keyString, err)
+					// TODO: send a notification to 0-Orchestrator about the
+					//       fact that the etcd cluster in use seems to be not functioning anymore
+					continue
+				}
+
+				// ensure we have received events
+				eventCount := len(resp.Events)
+				if eventCount == 0 {
+					log.Errorf("key '%s' was not found on the ETCD server", keyString)
+					continue
 				}
 
 				// get latest event
 				ev := resp.Events[len(resp.Events)-1]
 				log.Debugf("value for %s received an update", ev.Kv.Key)
 
-				// check if empty, if so log an error
-				if len(ev.Kv.Value) < 1 {
-					log.Errorf(
-						"key '%s' returned an empty value, keeping the old config",
-						keyString)
-					continue
-				}
-
+				// send (updated) value
 				select {
 				case ch <- ev.Kv.Value:
 				case <-ctx.Done():
@@ -119,6 +128,14 @@ func (s *etcdv3Source) Watch(ctx context.Context, key Key) (<-chan []byte, error
 
 	// watch function active
 	return ch, nil
+}
+
+// MarkInvalidKey implements Source.MarkInvalidKey
+func (s *etcdv3Source) MarkInvalidKey(key Key, vdiskID string) {
+	// TODO:
+	// use the 0-log library, to log this failure
+	// see: https://github.com/zero-os/0-Disk/issues/300
+	// and: https://github.com/zero-os/0-Disk/issues/363
 }
 
 // Close implements Source.Close

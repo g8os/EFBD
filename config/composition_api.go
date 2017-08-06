@@ -22,8 +22,8 @@ func ReadNBDStorageConfig(source Source, vdiskID string, staticConfig *VdiskStat
 
 	nbdConfig, err := ReadVdiskNBDConfig(source, vdiskID)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"ReadNBDStorageConfig failed, invalid VdiskNBDConfig: %v", err)
+		log.Debugf("ReadNBDStorageConfig failed, invalid VdiskNBDConfig: %v", err)
+		return nil, err
 	}
 
 	// Create NBD Storage config
@@ -33,8 +33,8 @@ func ReadNBDStorageConfig(source Source, vdiskID string, staticConfig *VdiskStat
 	storageClusterConfig, err := ReadStorageClusterConfig(
 		source, nbdConfig.StorageClusterID)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"ReadNBDStorageConfig failed, invalid StorageClusterConfig: %v", err)
+		log.Debugf("ReadNBDStorageConfig failed, invalid StorageClusterConfig: %v", err)
+		return nil, err
 	}
 	nbdStorageConfig.StorageCluster = *storageClusterConfig
 
@@ -44,8 +44,8 @@ func ReadNBDStorageConfig(source Source, vdiskID string, staticConfig *VdiskStat
 		nbdStorageConfig.TemplateStorageCluster, err = ReadStorageClusterConfig(
 			source, nbdConfig.TemplateStorageClusterID)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"ReadNBDStorageConfig failed, invalid TemplateStorageClusterConfig: %v", err)
+			log.Debugf("ReadNBDStorageConfig failed, invalid TemplateStorageClusterConfig: %v", err)
+			return nil, err
 		}
 	}
 
@@ -55,8 +55,8 @@ func ReadNBDStorageConfig(source Source, vdiskID string, staticConfig *VdiskStat
 		nbdStorageConfig.SlaveStorageCluster, err = ReadStorageClusterConfig(
 			source, nbdConfig.SlaveStorageClusterID)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"ReadNBDStorageConfig failed, invalid SlaveStorageClusterConfig: %v", err)
+			log.Debugf("ReadNBDStorageConfig failed, invalid SlaveStorageClusterConfig: %v", err)
+			return nil, err
 		}
 	}
 
@@ -65,13 +65,14 @@ func ReadNBDStorageConfig(source Source, vdiskID string, staticConfig *VdiskStat
 	if staticConfig == nil {
 		staticConfig, err = ReadVdiskStaticConfig(source, vdiskID)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"ReadNBDStorageConfig failed, invalid VdiskStaticConfig: %v", err)
+			log.Debugf("ReadNBDStorageConfig failed, invalid VdiskStaticConfig: %v", err)
+			return nil, err
 		}
 	}
 	err = nbdStorageConfig.ValidateOptional(staticConfig.Type.StorageType())
 	if err != nil {
-		return nil, fmt.Errorf("ReadNBDStorageConfig failed: %v", err)
+		log.Debugf("ReadNBDStorageConfig failed: %v", err)
+		return nil, NewInvalidConfigError(err)
 	}
 
 	return nbdStorageConfig, nil
@@ -91,8 +92,8 @@ func ReadTlogStorageConfig(source Source, vdiskID string, staticConfig *VdiskSta
 
 	tlogConfig, err := ReadVdiskTlogConfig(source, vdiskID)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"ReadTlogStorageConfig failed, invalid VdiskTlogConfig: %v", err)
+		log.Debugf("ReadTlogStorageConfig failed, invalid VdiskTlogConfig: %v", err)
+		return nil, err
 	}
 
 	// Create TLog Storage config
@@ -102,8 +103,8 @@ func ReadTlogStorageConfig(source Source, vdiskID string, staticConfig *VdiskSta
 	storageClusterConfig, err := ReadStorageClusterConfig(
 		source, tlogConfig.StorageClusterID)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"ReadTlogStorageConfig failed, invalid StorageClusterConfig: %v", err)
+		log.Debugf("ReadTlogStorageConfig failed, invalid StorageClusterConfig: %v", err)
+		return nil, err
 	}
 	tlogStorageConfig.StorageCluster = *storageClusterConfig
 
@@ -112,8 +113,8 @@ func ReadTlogStorageConfig(source Source, vdiskID string, staticConfig *VdiskSta
 		tlogStorageConfig.SlaveStorageCluster, err = ReadStorageClusterConfig(
 			source, tlogConfig.SlaveStorageClusterID)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"ReadTlogStorageConfig failed, invalid SlaveStorageCluster: %v", err)
+			log.Debugf("ReadTlogStorageConfig failed, invalid SlaveStorageCluster: %v", err)
+			return nil, err
 		}
 
 		// validate optional properties of NBD Storage Config
@@ -121,13 +122,14 @@ func ReadTlogStorageConfig(source Source, vdiskID string, staticConfig *VdiskSta
 		if staticConfig == nil {
 			staticConfig, err = ReadVdiskStaticConfig(source, vdiskID)
 			if err != nil {
-				return nil, fmt.Errorf(
-					"ReadTlogStorageConfig failed, invalid VdiskStaticConfig: %v", err)
+				log.Debugf("ReadTlogStorageConfig failed, invalid VdiskStaticConfig: %v", err)
+				return nil, err
 			}
 		}
 		err = tlogStorageConfig.ValidateOptional(staticConfig.Type.StorageType())
 		if err != nil {
-			return nil, fmt.Errorf("ReadTlogStorageConfig failed: %v", err)
+			log.Debugf("ReadTlogStorageConfig failed: %v", err)
+			return nil, NewInvalidConfigError(err)
 		}
 	}
 
@@ -202,8 +204,8 @@ func (w *tlogStorageConfigWatcher) Watch(ctx context.Context) (<-chan TlogStorag
 	clusterChan, err := WatchVdiskTlogConfig(ctx, w.source, w.vdiskID)
 	if err != nil {
 		cancelWatch()
-		return nil, fmt.Errorf(
-			"TlogStorageConfigWatcher (%s) failed, invalid VdiskTlogConfig: %v", w.vdiskID, err)
+		log.Debugf("TlogStorageConfigWatcher (%s) failed, invalid VdiskTlogConfig: %v", w.vdiskID, err)
+		return nil, err
 	}
 	select {
 	case <-ctx.Done():
@@ -215,9 +217,10 @@ func (w *tlogStorageConfigWatcher) Watch(ctx context.Context) (<-chan TlogStorag
 		_, err = w.applyClusterInfo(clusterInfo)
 		if err != nil {
 			cancelWatch()
-			return nil, fmt.Errorf(
+			log.Debugf(
 				"TlogStorageConfigWatcher (%s) failed, err with initial config: %v",
 				w.vdiskID, err)
+			return nil, err
 		}
 	}
 
@@ -227,8 +230,8 @@ func (w *tlogStorageConfigWatcher) Watch(ctx context.Context) (<-chan TlogStorag
 	err = w.sendOutput()
 	if err != nil {
 		cancelWatch()
-		return nil, fmt.Errorf(
-			"TlogStorageConfigWatcher failed, err with initial config: %v", err)
+		log.Debugf("TlogStorageConfigWatcher failed, err with initial config: %v", err)
+		return nil, err
 	}
 
 	go func() {
@@ -250,9 +253,9 @@ func (w *tlogStorageConfigWatcher) Watch(ctx context.Context) (<-chan TlogStorag
 				log.Debugf("TlogStorageConfigWatcher (%s) receives cluster info", w.vdiskID)
 				changed, err := w.applyClusterInfo(clusterInfo)
 				if err != nil {
-					// TODO: notify 0-orchestrator
 					log.Errorf(
 						"TlogStorageConfigWatcher failed, err with update config: %v", err)
+					changed = false
 				}
 				if !changed {
 					continue
@@ -290,9 +293,9 @@ func (w *tlogStorageConfigWatcher) Watch(ctx context.Context) (<-chan TlogStorag
 				}
 				err := cluster.ValidateStorageType(w.vdiskType.StorageType())
 				if err != nil {
-					// TODO: Notify 0-Orchestrator
 					log.Errorf(
 						"TlogStorageConfigWatcher failed, err with slave cluster config: %v", err)
+					w.source.MarkInvalidKey(Key{ID: w.slaveClusterID, Type: KeyClusterStorage}, w.vdiskID)
 					continue
 				}
 				w.slaveCluster = &cluster
@@ -313,8 +316,8 @@ func (w *tlogStorageConfigWatcher) Watch(ctx context.Context) (<-chan TlogStorag
 func (w *tlogStorageConfigWatcher) fetchVdiskType() error {
 	staticConfig, err := ReadVdiskStaticConfig(w.source, w.vdiskID)
 	if err != nil {
-		return fmt.Errorf(
-			"TlogStorageConfigWatcher failed, invalid VdiskStaticConfig: %v", err)
+		log.Debugf("TlogStorageConfigWatcher failed, invalid VdiskStaticConfig: %v", err)
+		return err
 	}
 
 	w.vdiskType = staticConfig.Type
@@ -334,6 +337,8 @@ func (w *tlogStorageConfigWatcher) sendOutput() error {
 
 	err := cfg.Validate(w.vdiskType.StorageType())
 	if err != nil {
+		err = NewInvalidConfigError(err)
+		log.Errorf("tlogStorageConfigWatcher: has unexpected invalid output to sent: %v", err)
 		return err
 	}
 
@@ -359,7 +364,6 @@ func (w *tlogStorageConfigWatcher) applyClusterInfo(info VdiskTlogConfig) (bool,
 		w.vdiskID, info.SlaveStorageClusterID)
 	slaveChanged, err := w.loadSlaveChan(info.SlaveStorageClusterID)
 	if err != nil {
-		log.Errorf("error occured in TlogStorageConfigWatcher, slave is invalid: %v", err)
 		return tlogChanged, nil
 	}
 
@@ -385,9 +389,9 @@ func (w *tlogStorageConfigWatcher) loadTlogChan(clusterID string) (bool, error) 
 	ch, err := WatchStorageClusterConfig(ctx, w.source, clusterID)
 	if err != nil {
 		cancel()
-		return false, fmt.Errorf(
-			"TlogStorageConfigWatcher (%s) failed, invalid TLogStorageClusterConfig: %v",
-			w.vdiskID, err)
+		log.Debugf("TlogStorageConfigWatcher failed, invalid PrimaryStorageClusterConfig: %v", err)
+		w.source.MarkInvalidKey(Key{ID: clusterID, Type: KeyClusterStorage}, "")
+		return false, err
 	}
 
 	// read initial value
@@ -436,9 +440,9 @@ func (w *tlogStorageConfigWatcher) loadSlaveChan(clusterID string) (bool, error)
 	ch, err := WatchStorageClusterConfig(ctx, w.source, clusterID)
 	if err != nil {
 		cancel()
-		return false, fmt.Errorf(
-			"TlogStorageConfigWatcher (%s) failed, invalid TLogStorageClusterConfig: %v",
-			w.vdiskID, err)
+		log.Debugf("TlogStorageConfigWatcher failed, invalid SlaveStorageClusterConfig: %v", err)
+		w.source.MarkInvalidKey(Key{ID: clusterID, Type: KeyClusterStorage}, "")
+		return false, err
 	}
 
 	// read initial value
@@ -454,7 +458,8 @@ func (w *tlogStorageConfigWatcher) loadSlaveChan(clusterID string) (bool, error)
 	err = config.ValidateStorageType(w.vdiskType.StorageType())
 	if err != nil {
 		cancel()
-		return false, err
+		w.source.MarkInvalidKey(Key{ID: clusterID, Type: KeyClusterStorage}, w.vdiskID)
+		return false, NewInvalidConfigError(err)
 	}
 
 	// slave cluster has been switched successfully
@@ -541,21 +546,21 @@ func (w *nbdStorageConfigWatcher) Watch(ctx context.Context) (<-chan NBDStorageC
 	clusterChan, err := WatchVdiskNBDConfig(ctx, w.source, w.vdiskID)
 	if err != nil {
 		cancelWatch()
-		return nil, fmt.Errorf(
-			"nbdStorageConfigWatcher failed, invalid VdiskNBDConfig: %v", err)
+		log.Errorf("nbdStorageConfigWatcher failed, invalid VdiskNBDConfig: %v", err)
+		return nil, err
 	}
 	select {
 	case <-ctx.Done():
 		cancelWatch()
-		return nil, fmt.Errorf(
-			"nbdStorageConfigWatcher failed: %v", ErrContextDone)
+		log.Debugf("nbdStorageConfigWatcher failed: %v", ErrContextDone)
+		return nil, ErrContextDone
 
 	case clusterInfo := <-clusterChan:
 		_, err = w.applyClusterInfo(clusterInfo)
 		if err != nil {
 			cancelWatch()
-			return nil, fmt.Errorf(
-				"nbdStorageConfigWatcher failed, err with initial config: %v", err)
+			log.Errorf("nbdStorageConfigWatcher failed, err with initial config: %v", err)
+			return nil, err
 		}
 	}
 
@@ -565,8 +570,8 @@ func (w *nbdStorageConfigWatcher) Watch(ctx context.Context) (<-chan NBDStorageC
 	err = w.sendOutput()
 	if err != nil {
 		cancelWatch()
-		return nil, fmt.Errorf(
-			"nbdStorageConfigWatcher failed, err with initial config: %v", err)
+		log.Errorf("nbdStorageConfigWatcher failed, err with initial config: %v", err)
+		return nil, err
 	}
 
 	go func() {
@@ -588,7 +593,6 @@ func (w *nbdStorageConfigWatcher) Watch(ctx context.Context) (<-chan NBDStorageC
 				log.Debugf("nbdStorageConfigWatcher (%s) receives cluster info", w.vdiskID)
 				changed, err := w.applyClusterInfo(clusterInfo)
 				if err != nil {
-					// TODO: notify 0-orchestrator
 					log.Errorf(
 						"nbdStorageConfigWatcher failed, err with update config: %v", err)
 					changed = false
@@ -613,9 +617,9 @@ func (w *nbdStorageConfigWatcher) Watch(ctx context.Context) (<-chan NBDStorageC
 				}
 				err := cluster.ValidateStorageType(w.vdiskType.StorageType())
 				if err != nil {
-					// TODO: Notify 0-Orchestrator
 					log.Errorf(
 						"nbdStorageConfigWatcher failed, err with primary cluster config: %v", err)
+					w.source.MarkInvalidKey(Key{ID: w.primaryClusterID, Type: KeyClusterStorage}, w.vdiskID)
 					continue
 				}
 				w.primaryCluster = &cluster
@@ -652,9 +656,9 @@ func (w *nbdStorageConfigWatcher) Watch(ctx context.Context) (<-chan NBDStorageC
 				}
 				err := cluster.ValidateStorageType(w.vdiskType.StorageType())
 				if err != nil {
-					// TODO: Notify 0-Orchestrator
 					log.Errorf(
 						"nbdStorageConfigWatcher failed, err with slave cluster config: %v", err)
+					w.source.MarkInvalidKey(Key{ID: w.slaveClusterID, Type: KeyClusterStorage}, w.vdiskID)
 					continue
 				}
 				w.slaveCluster = &cluster
@@ -662,9 +666,7 @@ func (w *nbdStorageConfigWatcher) Watch(ctx context.Context) (<-chan NBDStorageC
 
 			// send new output, as a cluster has been updated
 			if err := w.sendOutput(); err != nil {
-				// TODO: ootify 0-orchestrator
-				log.Errorf(
-					"nbdStorageConfigWatcher failed to send value: %v", err)
+				log.Errorf("nbdStorageConfigWatcher failed to send value: %v", err)
 			}
 		}
 	}()
@@ -675,8 +677,8 @@ func (w *nbdStorageConfigWatcher) Watch(ctx context.Context) (<-chan NBDStorageC
 func (w *nbdStorageConfigWatcher) fetchVdiskType() error {
 	staticConfig, err := ReadVdiskStaticConfig(w.source, w.vdiskID)
 	if err != nil {
-		return fmt.Errorf(
-			"nbdStorageConfigWatcher failed, invalid VdiskStaticConfig: %v", err)
+		log.Debugf("nbdStorageConfigWatcher failed, invalid VdiskStaticConfig: %v", err)
+		return err
 	}
 
 	w.vdiskType = staticConfig.Type
@@ -725,7 +727,6 @@ func (w *nbdStorageConfigWatcher) applyClusterInfo(info VdiskNBDConfig) (bool, e
 		w.vdiskID, info.TemplateStorageClusterID)
 	templateClusterChanged, err := w.loadTemplateChan(info.TemplateStorageClusterID)
 	if err != nil {
-		// TODO: Notify 0-Orchestrator
 		log.Errorf("error occured in nbdStorageConfigWatcher, template is invalid: %v", err)
 		return primaryChanged, nil
 	}
@@ -735,7 +736,6 @@ func (w *nbdStorageConfigWatcher) applyClusterInfo(info VdiskNBDConfig) (bool, e
 		w.vdiskID, info.SlaveStorageClusterID)
 	slaveClusterChanged, err := w.loadSlaveChan(info.SlaveStorageClusterID)
 	if err != nil {
-		// TODO: Notify 0-Orchestrator
 		log.Errorf("error occured in nbdStorageConfigWatcher, slave is invalid: %v", err)
 		return primaryChanged || templateClusterChanged, nil
 	}
@@ -762,8 +762,9 @@ func (w *nbdStorageConfigWatcher) loadPrimaryChan(clusterID string) (bool, error
 	ch, err := WatchStorageClusterConfig(ctx, w.source, clusterID)
 	if err != nil {
 		cancel()
-		return false, fmt.Errorf(
-			"nbdStorageConfigWatcher failed, invalid PrimaryStorageClusterConfig: %v", err)
+		log.Debugf("nbdStorageConfigWatcher failed, invalid PrimaryStorageClusterConfig: %v", err)
+		w.source.MarkInvalidKey(Key{ID: clusterID, Type: KeyClusterStorage}, "")
+		return false, err
 	}
 
 	// read initial value
@@ -779,7 +780,8 @@ func (w *nbdStorageConfigWatcher) loadPrimaryChan(clusterID string) (bool, error
 	err = config.ValidateStorageType(w.vdiskType.StorageType())
 	if err != nil {
 		cancel()
-		return false, err
+		w.source.MarkInvalidKey(Key{ID: clusterID, Type: KeyClusterStorage}, w.vdiskID)
+		return false, NewInvalidConfigError(err)
 	}
 
 	// primary cluster has been switched successfully
@@ -819,8 +821,9 @@ func (w *nbdStorageConfigWatcher) loadTemplateChan(clusterID string) (bool, erro
 	ch, err := WatchStorageClusterConfig(ctx, w.source, clusterID)
 	if err != nil {
 		cancel()
-		return false, fmt.Errorf(
-			"nbdStorageConfigWatcher failed, invalid TemplateStorageClusterConfig: %v", err)
+		log.Debugf("nbdStorageConfigWatcher failed, invalid TemplateStorageClusterConfig: %v", err)
+		w.source.MarkInvalidKey(Key{ID: clusterID, Type: KeyClusterStorage}, "")
+		return false, err
 	}
 
 	// read initial value
@@ -836,7 +839,8 @@ func (w *nbdStorageConfigWatcher) loadTemplateChan(clusterID string) (bool, erro
 	err = config.ValidateStorageType(w.vdiskType.StorageType())
 	if err != nil {
 		cancel()
-		return false, err
+		w.source.MarkInvalidKey(Key{ID: clusterID, Type: KeyClusterStorage}, w.vdiskID)
+		return false, NewInvalidConfigError(err)
 	}
 
 	// template cluster has been switched successfully
@@ -876,8 +880,9 @@ func (w *nbdStorageConfigWatcher) loadSlaveChan(clusterID string) (bool, error) 
 	ch, err := WatchStorageClusterConfig(ctx, w.source, clusterID)
 	if err != nil {
 		cancel()
-		return false, fmt.Errorf(
-			"nbdStorageConfigWatcher failed, invalid SlaveStorageClusterConfig: %v", err)
+		log.Debugf("nbdStorageConfigWatcher failed, invalid SlaveStorageClusterConfig: %v", err)
+		w.source.MarkInvalidKey(Key{ID: clusterID, Type: KeyClusterStorage}, "")
+		return false, err
 	}
 
 	// read initial value
@@ -893,7 +898,8 @@ func (w *nbdStorageConfigWatcher) loadSlaveChan(clusterID string) (bool, error) 
 	err = config.ValidateStorageType(w.vdiskType.StorageType())
 	if err != nil {
 		cancel()
-		return false, err
+		w.source.MarkInvalidKey(Key{ID: clusterID, Type: KeyClusterStorage}, w.vdiskID)
+		return false, NewInvalidConfigError(err)
 	}
 
 	// slave cluster has been switched successfully

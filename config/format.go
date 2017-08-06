@@ -26,12 +26,12 @@ func NewNBDVdisksConfig(data []byte) (*NBDVdisksConfig, error) {
 	vdiskscfg := new(NBDVdisksConfig)
 	err := yaml.Unmarshal(data, &vdiskscfg)
 	if err != nil {
-		return nil, err
+		return nil, NewInvalidConfigError(err)
 	}
 
 	err = vdiskscfg.Validate()
 	if err != nil {
-		return nil, err
+		return nil, NewInvalidConfigError(err)
 	}
 
 	return vdiskscfg, nil
@@ -48,12 +48,12 @@ func NewVdiskStaticConfig(data []byte) (*VdiskStaticConfig, error) {
 	staticfg := new(VdiskStaticConfig)
 	err := yaml.Unmarshal(data, &staticfg)
 	if err != nil {
-		return nil, err
+		return nil, NewInvalidConfigError(err)
 	}
 
 	err = staticfg.Validate()
 	if err != nil {
-		return nil, err
+		return nil, NewInvalidConfigError(err)
 	}
 
 	return staticfg, nil
@@ -118,12 +118,12 @@ func NewVdiskNBDConfig(data []byte) (*VdiskNBDConfig, error) {
 
 	err := yaml.Unmarshal(data, nbdcfg)
 	if err != nil {
-		return nil, err
+		return nil, NewInvalidConfigError(err)
 	}
 
 	err = nbdcfg.Validate()
 	if err != nil {
-		return nil, err
+		return nil, NewInvalidConfigError(err)
 	}
 
 	return nbdcfg, nil
@@ -194,12 +194,12 @@ func NewStorageClusterConfig(data []byte) (*StorageClusterConfig, error) {
 
 	err := yaml.Unmarshal(data, clustercfg)
 	if err != nil {
-		return nil, err
+		return nil, NewInvalidConfigError(err)
 	}
 
 	err = clustercfg.Validate()
 	if err != nil {
-		return nil, err
+		return nil, NewInvalidConfigError(err)
 	}
 
 	return clustercfg, nil

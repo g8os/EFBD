@@ -95,7 +95,6 @@ func (s *fileSource) Watch(ctx context.Context, key Key) (<-chan []byte, error) 
 				output, err := s.Get(key)
 				if err != nil {
 					log.Errorf("Could not read config (%d): %s", key.Type, err)
-					continue
 				}
 
 				select {
@@ -109,6 +108,17 @@ func (s *fileSource) Watch(ctx context.Context, key Key) (<-chan []byte, error) 
 	}()
 
 	return ch, nil
+}
+
+// MarkInvalidKey implements Source.MarkInvalidKey
+func (s *fileSource) MarkInvalidKey(key Key, vdiskID string) {
+	if vdiskID == "" {
+		log.Errorf("%v in '%s' is invalid", key, s.path)
+		return
+	}
+
+	log.Errorf("%v in '%s' is invalid when used for vdisk %s",
+		key, s.path, vdiskID)
 }
 
 // Close implements Source.Close
@@ -164,13 +174,15 @@ func (s *fileSource) readTlogClusterConfig(clusterID string) (*TlogClusterConfig
 func (s *fileSource) readFullFile() (*FileFormatCompleteConfig, error) {
 	bytes, err := s.reader(s.path)
 	if err != nil {
-		return nil, err
+		log.Errorf("couldn't read file config: %v", err)
+		return nil, ErrSourceUnavailable
 	}
 
 	var cfg FileFormatCompleteConfig
 	err = yaml.Unmarshal(bytes, &cfg)
 	if err != nil {
-		return nil, err
+		log.Errorf("invalid file config: %v", err)
+		return new(FileFormatCompleteConfig), nil
 	}
 
 	return &cfg, nil
@@ -187,10 +199,6 @@ type FileFormatCompleteConfig struct {
 // NBDVdisksConfig returns the NBD Vdisks configuration embedded in
 // the YAML zerodisk config file.
 func (cfg *FileFormatCompleteConfig) NBDVdisksConfig() (*NBDVdisksConfig, error) {
-	if len(cfg.Vdisks) == 0 {
-		return nil, errors.New("file config has no vdisks specified")
-	}
-
 	nbdVdisksConfig := new(NBDVdisksConfig)
 	for vdiskID := range cfg.Vdisks {
 		nbdVdisksConfig.Vdisks = append(nbdVdisksConfig.Vdisks, vdiskID)
@@ -213,7 +221,8 @@ func (cfg *FileFormatCompleteConfig) VdiskConfig(id string) (*FileFormatVdiskCon
 func (cfg *FileFormatCompleteConfig) StorageClusterConfig(id string) (*StorageClusterConfig, error) {
 	storageClusterConfig, ok := cfg.StorageClusters[id]
 	if !ok {
-		return nil, errors.New("file config has no storage cluster config under the id " + id)
+		log.Debug("file config has no storage cluster config under the id ", id)
+		return nil, ErrConfigUnavailable
 	}
 	return &storageClusterConfig, nil
 }
@@ -250,10 +259,6 @@ func (cfg *FileFormatVdiskConfig) StaticConfig() (*VdiskStaticConfig, error) {
 		Size:            cfg.Size,
 		Type:            cfg.VdiskType,
 		TemplateVdiskID: cfg.TemplateVdiskID,
-	}
-	err := static.Validate()
-	if err != nil {
-		return nil, err
 	}
 
 	return static, nil

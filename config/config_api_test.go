@@ -192,9 +192,15 @@ func TestWatchTlogClusterConfig(t *testing.T) {
 		}
 	}
 
+	timeoutKey := Key{ID: "foo", Type: KeyClusterTlog}
+	invalidKeyCh := source.InvalidKey()
+
 	testTimeout := func() {
 		select {
-		case <-time.After(time.Second * 1):
+		case invalidKey := <-invalidKeyCh:
+			if !assert.Equal(timeoutKey, invalidKey) {
+				assert.FailNow("unexpected invalid key", "%v", invalidKey)
+			}
 		case output := <-ch:
 			assert.FailNow("received unexpected value", "%v", output)
 		}
@@ -265,9 +271,15 @@ func TestWatchStorageClusterConfig(t *testing.T) {
 		}
 	}
 
+	timeoutKey := Key{ID: "foo", Type: KeyClusterStorage}
+	invalidKeyCh := source.InvalidKey()
+
 	testTimeout := func() {
 		select {
-		case <-time.After(time.Second * 1):
+		case invalidKey := <-invalidKeyCh:
+			if !assert.Equal(timeoutKey, invalidKey) {
+				assert.FailNow("unexpected invalid key", "%v", invalidKey)
+			}
 		case output := <-ch:
 			assert.FailNow("received unexpected value", "%v", output)
 		}
@@ -351,9 +363,15 @@ func TestWatchNBDVdisksConfig(t *testing.T) {
 		}
 	}
 
+	timeoutKey := Key{ID: "foo", Type: KeyNBDServerVdisks}
+	invalidKeyCh := source.InvalidKey()
+
 	testTimeout := func() {
 		select {
-		case <-time.After(time.Second * 1):
+		case invalidKey := <-invalidKeyCh:
+			if !assert.Equal(timeoutKey, invalidKey) {
+				assert.FailNow("unexpected invalid key", "%v", invalidKey)
+			}
 		case output := <-ch:
 			assert.FailNow("received unexpected value", "%v", output)
 		}
@@ -371,6 +389,7 @@ func TestWatchNBDVdisksConfig(t *testing.T) {
 
 	// delete 2 vdisks
 	source.SetVdiskConfig("a", nil)
+	testValue([]string{"b", "c"})
 	source.SetVdiskConfig("b", nil)
 	testValue([]string{"c"})
 

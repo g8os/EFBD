@@ -2,7 +2,6 @@ package config
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/zero-os/0-Disk/log"
 )
@@ -82,6 +81,9 @@ func ReadConfig(source Source, id string, keyType KeyType) ([]byte, error) {
 		return nil, ErrNilID
 	}
 
+	// TODO: notify 0-Orchestrator in case of ErrSourceUnavailable/ErrConfigUnavailable
+	//       which could be returned from source.Get
+
 	return source.Get(Key{
 		ID:   id,
 		Type: keyType,
@@ -97,8 +99,8 @@ func WatchNBDVdisksConfig(ctx context.Context, source Source, serverID string) (
 	// fetch current data
 	cfg, err := ReadNBDVdisksConfig(source, serverID)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"Could not fetch initial config of NBDVdisksConfig watcher: %s", err)
+		log.Debugf("Could not fetch initial config of NBDVdisksConfig watcher: %s", err)
+		return nil, err
 	}
 
 	// setup channel
@@ -106,9 +108,11 @@ func WatchNBDVdisksConfig(ctx context.Context, source Source, serverID string) (
 	updater <- *cfg
 
 	ctx = watchContext(ctx)
-	bytesCh, err := source.Watch(ctx, Key{ID: serverID, Type: KeyNBDServerVdisks})
+	configKey := Key{ID: serverID, Type: KeyNBDServerVdisks}
+	bytesCh, err := source.Watch(ctx, configKey)
 	if err != nil {
-		return nil, fmt.Errorf("Could not create NBDVdisksConfig watcher: %s", err)
+		log.Debugf("Could not create NBDVdisksConfig watcher: %s", err)
+		return nil, err
 	}
 
 	go func() {
@@ -131,10 +135,10 @@ func WatchNBDVdisksConfig(ctx context.Context, source Source, serverID string) (
 
 				cfg, err := NewNBDVdisksConfig(bytes)
 				if err != nil {
-					// TODO: Notify 0-Orchestrator
-					log.Errorf(
-						"WatchNBDVdisksConfig for %v received invalid config: %v",
+					log.Debugf(
+						"WatchNBDVdisksConfig for %v handled error: %v",
 						serverID, err)
+					source.MarkInvalidKey(configKey, "")
 					continue
 				}
 
@@ -161,8 +165,8 @@ func WatchNBDVdisksConfig(ctx context.Context, source Source, serverID string) (
 func WatchVdiskNBDConfig(ctx context.Context, source Source, vdiskID string) (<-chan VdiskNBDConfig, error) {
 	cfg, err := ReadVdiskNBDConfig(source, vdiskID)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"Could not fetch initial config for VdiskNBDConfig watcher: %s", err)
+		log.Debugf("Could not fetch initial config for VdiskNBDConfig watcher: %s", err)
+		return nil, err
 	}
 
 	// setup channel and send initial config value
@@ -170,9 +174,11 @@ func WatchVdiskNBDConfig(ctx context.Context, source Source, vdiskID string) (<-
 	updater <- *cfg
 
 	ctx = watchContext(ctx)
-	inputCh, err := source.Watch(ctx, Key{ID: vdiskID, Type: KeyVdiskNBD})
+	configKey := Key{ID: vdiskID, Type: KeyVdiskNBD}
+	inputCh, err := source.Watch(ctx, configKey)
 	if err != nil {
-		return nil, fmt.Errorf("Could not create VdiskNBDConfig watcher: %s", err)
+		log.Debugf("Could not create VdiskNBDConfig watcher: %s", err)
+		return nil, err
 	}
 
 	go func() {
@@ -198,10 +204,7 @@ func WatchVdiskNBDConfig(ctx context.Context, source Source, vdiskID string) (<-
 
 				cfg, err := NewVdiskNBDConfig(bytes)
 				if err != nil {
-					// TODO: Notify 0-Orchestrator
-					log.Errorf(
-						"watchVdiskNBDConfig for %s received invalid config: %v",
-						vdiskID, err)
+					source.MarkInvalidKey(configKey, "")
 					continue
 				}
 
@@ -228,8 +231,8 @@ func WatchVdiskNBDConfig(ctx context.Context, source Source, vdiskID string) (<-
 func WatchVdiskTlogConfig(ctx context.Context, source Source, vdiskID string) (<-chan VdiskTlogConfig, error) {
 	cfg, err := ReadVdiskTlogConfig(source, vdiskID)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"Could not fetch initial config for VdiskTlogConfig watcher: %s", err)
+		log.Debugf("Could not fetch initial config for VdiskTlogConfig watcher: %s", err)
+		return nil, err
 	}
 
 	// setup channel and send initial config value
@@ -237,9 +240,11 @@ func WatchVdiskTlogConfig(ctx context.Context, source Source, vdiskID string) (<
 	updater <- *cfg
 
 	ctx = watchContext(ctx)
-	inputCh, err := source.Watch(ctx, Key{ID: vdiskID, Type: KeyVdiskTlog})
+	configKey := Key{ID: vdiskID, Type: KeyVdiskTlog}
+	inputCh, err := source.Watch(ctx, configKey)
 	if err != nil {
-		return nil, fmt.Errorf("Could not create VdiskTlogConfig watcher: %s", err)
+		log.Debugf("Could not create VdiskTlogConfig watcher: %s", err)
+		return nil, err
 	}
 
 	go func() {
@@ -265,10 +270,7 @@ func WatchVdiskTlogConfig(ctx context.Context, source Source, vdiskID string) (<
 
 				cfg, err := NewVdiskTlogConfig(bytes)
 				if err != nil {
-					// TODO: Notify 0-Orchestrator
-					log.Errorf(
-						"WatchVdiskTlogConfig for %s received invalid config: %v",
-						vdiskID, err)
+					source.MarkInvalidKey(configKey, "")
 					continue
 				}
 
@@ -295,8 +297,8 @@ func WatchVdiskTlogConfig(ctx context.Context, source Source, vdiskID string) (<
 func WatchStorageClusterConfig(ctx context.Context, source Source, clusterID string) (<-chan StorageClusterConfig, error) {
 	cfg, err := ReadStorageClusterConfig(source, clusterID)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"Could not fetch initial config for StorageClusterConfig watcher: %s", err)
+		log.Debugf("Could not fetch initial config for StorageClusterConfig watcher: %s", err)
+		return nil, err
 	}
 
 	// setup channel and send initial config value
@@ -304,9 +306,11 @@ func WatchStorageClusterConfig(ctx context.Context, source Source, clusterID str
 	updater <- *cfg
 
 	ctx = watchContext(ctx)
-	inputCh, err := source.Watch(ctx, Key{ID: clusterID, Type: KeyClusterStorage})
+	configKey := Key{ID: clusterID, Type: KeyClusterStorage}
+	inputCh, err := source.Watch(ctx, configKey)
 	if err != nil {
-		return nil, fmt.Errorf("Could not create StorageClusterConfig watcher: %s", err)
+		log.Debugf("Could not create StorageClusterConfig watcher: %s", err)
+		return nil, err
 	}
 
 	go func() {
@@ -332,10 +336,7 @@ func WatchStorageClusterConfig(ctx context.Context, source Source, clusterID str
 
 				cfg, err := NewStorageClusterConfig(bytes)
 				if err != nil {
-					// TODO: Notify 0-Orchestrator
-					log.Errorf(
-						"WatchStorageClusterConfig for %s received invalid config: %v",
-						clusterID, err)
+					source.MarkInvalidKey(configKey, "")
 					continue
 				}
 
@@ -362,8 +363,8 @@ func WatchStorageClusterConfig(ctx context.Context, source Source, clusterID str
 func WatchTlogClusterConfig(ctx context.Context, source Source, clusterID string) (<-chan TlogClusterConfig, error) {
 	cfg, err := ReadTlogClusterConfig(source, clusterID)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"Could not fetch initial config for TlogClusterConfig watcher: %s", err)
+		log.Debugf("Could not fetch initial config for TlogClusterConfig watcher: %s", err)
+		return nil, err
 	}
 
 	// setup channel and send initial config value
@@ -371,9 +372,11 @@ func WatchTlogClusterConfig(ctx context.Context, source Source, clusterID string
 	updater <- *cfg
 
 	ctx = watchContext(ctx)
-	inputCh, err := source.Watch(ctx, Key{ID: clusterID, Type: KeyClusterTlog})
+	configKey := Key{ID: clusterID, Type: KeyClusterTlog}
+	inputCh, err := source.Watch(ctx, configKey)
 	if err != nil {
-		return nil, fmt.Errorf("Could not create TlogClusterConfig watcher: %s", err)
+		log.Debugf("Could not create TlogClusterConfig watcher: %s", err)
+		return nil, err
 	}
 
 	go func() {
@@ -399,10 +402,7 @@ func WatchTlogClusterConfig(ctx context.Context, source Source, clusterID string
 
 				cfg, err := NewTlogClusterConfig(bytes)
 				if err != nil {
-					// TODO: Notify 0-Orchestrator
-					log.Errorf(
-						"WatchTlogClusterConfig for %s received invalid config: %v",
-						clusterID, err)
+					source.MarkInvalidKey(configKey, "")
 					continue
 				}
 
@@ -412,7 +412,7 @@ func WatchTlogClusterConfig(ctx context.Context, source Source, clusterID string
 				case <-ctx.Done():
 					log.Errorf("timed out (ctx) while sending update for %s",
 						clusterID)
-					continue
+					return
 				}
 			}
 		}

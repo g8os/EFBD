@@ -75,6 +75,8 @@ func main() {
 	// let's create the source and defer close it
 	configSource, err := config.NewSource(sourceConfig)
 	if err != nil {
+		// TODO: handle ErrSourceUnavailable error
+		//       to send notification to 0-Orchestrator
 		log.Fatal(err)
 	}
 	defer configSource.Close()

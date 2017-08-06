@@ -22,3 +22,41 @@ var (
 	// a nil string was given as the id.
 	ErrNilID = errors.New("nil ID given")
 )
+
+var (
+	// ErrSourceUnavailable is returned when the given source
+	// is unavailable due to any kind of critical failure.
+	ErrSourceUnavailable = errors.New("config: source is unavailable")
+	// ErrConfigUnavailable is returned when a requested config
+	// could not be found in the given source.
+	ErrConfigUnavailable = errors.New("config is not available in source")
+	// ErrInvalidKey is returned when a config is requested using
+	// a config key which is either invalid or not supported by
+	// the given source.
+	ErrInvalidKey = errors.New("config key is invalid or not supported")
+)
+
+// NewInvalidConfigError creates a new InvalidConfigError from a given error
+func NewInvalidConfigError(err error) *InvalidConfigError {
+	return &InvalidConfigError{err}
+}
+
+// InvalidConfigError is returned when a config read from a source is invalid,
+// because its an illegal config or because it is not acceptable for the current
+// vdisk usage.
+type InvalidConfigError struct {
+	internalErr error
+}
+
+// Error implements Error.Error
+func (err *InvalidConfigError) Error() string {
+	if err == nil {
+		return ""
+	}
+
+	if err.internalErr == nil {
+		return "invalid config"
+	}
+
+	return "invalid config: " + err.internalErr.Error()
+}

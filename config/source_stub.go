@@ -26,6 +26,8 @@ type StubSource struct {
 
 	watchCounter    int
 	watchCounterMux sync.RWMutex
+
+	invalidConfigSender chan Key
 }
 
 // Watch implements Source.Watch
@@ -40,6 +42,34 @@ func (s *StubSource) Watch(ctx context.Context, key Key) (<-chan []byte, error) 
 		s.watchCounterMux.Unlock()
 	}()
 	return s.fileSource.Watch(ctx, key)
+}
+
+// Close implements SourceCloser.Close
+func (s *StubSource) Close() error {
+	if s.invalidConfigSender != nil {
+		close(s.invalidConfigSender)
+		s.invalidConfigSender = nil
+	}
+
+	return s.fileSource.Close()
+}
+
+// MarkInvalidKey implements Source.MarkInvalidKey
+func (s *StubSource) MarkInvalidKey(key Key, vdiskID string) {
+	if s.invalidConfigSender != nil {
+		s.invalidConfigSender <- key
+	}
+	s.fileSource.MarkInvalidKey(key, vdiskID)
+}
+
+// InvalidKey can be used to get a channel to wait for
+// an incoming ivnalid key.
+func (s *StubSource) InvalidKey() <-chan Key {
+	if s.invalidConfigSender == nil {
+		s.invalidConfigSender = make(chan Key, 1)
+	}
+
+	return s.invalidConfigSender
 }
 
 // SetVdiskConfig is a utility function to set a vdisk config, thread-safe.
