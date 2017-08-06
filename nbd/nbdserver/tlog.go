@@ -263,7 +263,6 @@ func (tls *tlogStorage) Close() (err error) {
 	}
 
 	close(tls.done)
-	tls.done = nil
 
 	err = tls.storage.Close()
 	if err != nil {

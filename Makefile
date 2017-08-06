@@ -49,7 +49,7 @@ testgo:
 	go test -timeout $(TIMEOUT) $(PACKAGES)
 
 testrace:
-	go test -timeout $(TIMEOUT) $(RACE_PACKAGES)
+	go test -race -timeout $(TIMEOUT) $(RACE_PACKAGES)
 
 testcgo:
 	GODEBUG=cgocheck=0 go test -timeout $(TIMEOUT) -tags 'isal' $(PACKAGES)

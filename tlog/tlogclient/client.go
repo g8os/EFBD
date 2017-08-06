@@ -549,20 +549,15 @@ func (c *Client) sendReconnect(sender func() (interface{}, error)) (interface{},
 // Close the open connection, making this client invalid.
 // It is user responsibility to call this function.
 func (c *Client) Close() error {
-	c.stopped = true
-	if c.conn != nil {
-		c.conn.CloseRead() // interrupt the receiver
-	}
-
 	c.cancelFunc()
 
 	c.wLock.Lock()
 	defer c.wLock.Unlock()
 
-	c.rLock.Lock()
-	defer c.rLock.Unlock()
+	c.stopped = true
 
 	if c.conn != nil {
+		c.conn.CloseRead() // interrupt the receiver
 		return c.conn.Close()
 	}
 	return nil
