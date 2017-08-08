@@ -164,16 +164,15 @@ Stores [storage(1)][storage] cluster information, referenced by one or multiple 
 Example Config:
 
 ```yaml
-dataStorage: # required
-  dataStorage:  # at least one server is required
-    - address: 192.168.1.146:2000 # has to be a valid dial string
-      db: 10 # optional, 0 by default
-    - address: 192.123.123.1:2001
-      db: 10
-  metadataStorage: # not used for nondeduped vdisks and template storage,
-                   # required for all other purposes
-    address: 192.168.1.146:2001
-    db: 11
+dataStorage:  # at least one server is required
+  - address: 192.168.1.146:2000 # has to be a valid dial string
+    db: 10 # optional, 0 by default
+  - address: 192.123.123.1:2001
+    db: 10
+metadataStorage: # not used for nondeduped vdisks and template storage,
+                  # required for all other purposes
+  address: 192.168.1.146:2001
+  db: 11
 ```
 
 Used by both the [NBD Server][nbdServerConfig] and the [TLog Server][tlogServerConfig].
