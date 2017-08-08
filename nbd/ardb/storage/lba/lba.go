@@ -18,10 +18,17 @@ func NewLBA(vdiskID string, blockCount, cacheLimitInBytes int64, provider ardb.M
 		return nil, errors.New("NewLBA requires a non-nil MetaRedisProvider")
 	}
 
+	// create as much mutexes as we need sectors
+	muxCount := blockCount / NumberOfRecordsPerLBASector
+	if blockCount%NumberOfRecordsPerLBASector > 0 {
+		muxCount++
+	}
+
 	lba = &LBA{
 		provider:   provider,
 		vdiskID:    vdiskID,
 		storageKey: StorageKey(vdiskID),
+		sectorMux:  make([]sync.RWMutex, muxCount),
 	}
 
 	lba.cache, err = newSectorCache(cacheLimitInBytes, lba.onCacheEviction)
@@ -35,12 +42,12 @@ func NewLBA(vdiskID string, blockCount, cacheLimitInBytes int64, provider ardb.M
 type LBA struct {
 	cache *sectorCache
 
-	// TODO:
-	// come with better way to lock sectors
-	// on an individual level, ideally coming from the sector itself,
-	// it should somehow ensure that it will only ever be used by one
-	// thing at a time.
-	mux sync.RWMutex
+	// One mutex per sector, allows us to only lock
+	// on a per-sector basis. Even with 65k block, that's still only a ~500 element mutex array.
+	// We stil need to lock on a per-sector basis,
+	// as otherwise we might have a race condition where for example
+	// 2 operations might create a new sector, and thus we would miss an operation.
+	sectorMux []sync.RWMutex
 
 	provider ardb.MetadataConnProvider
 
@@ -54,23 +61,34 @@ type LBA struct {
 // or when the its getting evicted from the cache due to space limitations.
 func (lba *LBA) Set(blockIndex int64, h zerodisk.Hash) (err error) {
 	sectorIndex := blockIndex / NumberOfRecordsPerLBASector
+	// Fetch the appropriate sector
+	sector, err := func(sectorIndex int64) (sector *sector, err error) {
+		lba.sectorMux[sectorIndex].Lock()
+		defer lba.sectorMux[sectorIndex].Unlock()
 
-	lba.mux.Lock()
-	defer lba.mux.Unlock()
+		sector, err = lba.getSector(sectorIndex)
+		if err != nil {
+			return
+		}
+		if sector == nil {
+			sector = newSector()
+			// store the new sector in the cache,
+			// otherwise it will be forgotten...
+			lba.cache.Add(sectorIndex, sector)
+		}
 
-	sector, err := lba.getSector(sectorIndex)
+		return
+	}(sectorIndex)
+
 	if err != nil {
 		return
-	}
-	if sector == nil {
-		sector = newSector()
-		// store the new sector in the cache,
-		// otherwise it will be forgotten...
-		lba.cache.Add(sectorIndex, sector)
 	}
 
 	//Update the hash
 	hashIndex := blockIndex % NumberOfRecordsPerLBASector
+
+	lba.sectorMux[sectorIndex].Lock()
+	defer lba.sectorMux[sectorIndex].Unlock()
 
 	sector.Set(hashIndex, h)
 	return
@@ -91,10 +109,12 @@ func (lba *LBA) Delete(blockIndex int64) (err error) {
 func (lba *LBA) Get(blockIndex int64) (h zerodisk.Hash, err error) {
 	sectorIndex := blockIndex / NumberOfRecordsPerLBASector
 
-	lba.mux.RLock()
-	defer lba.mux.RUnlock()
+	sector, err := func(sectorIndex int64) (*sector, error) {
+		lba.sectorMux[sectorIndex].RLock()
+		defer lba.sectorMux[sectorIndex].RUnlock()
 
-	sector, err := lba.getSector(sectorIndex)
+		return lba.getSector(sectorIndex)
+	}(sectorIndex)
 
 	if err != nil || sector == nil {
 		return
@@ -102,6 +122,9 @@ func (lba *LBA) Get(blockIndex int64) (h zerodisk.Hash, err error) {
 
 	// get the hash
 	hashIndex := blockIndex % NumberOfRecordsPerLBASector
+
+	lba.sectorMux[sectorIndex].RLock()
+	defer lba.sectorMux[sectorIndex].RUnlock()
 
 	h = sector.Get(hashIndex)
 	if h.Equals(zerodisk.NilHash) {
@@ -188,9 +211,6 @@ func (lba *LBA) storeCacheInExternalStorage() (err error) {
 		return
 	}
 	defer conn.Close()
-
-	lba.mux.Lock()
-	defer lba.mux.Unlock()
 
 	var cmdCount int64
 	lba.cache.Serialize(func(index int64, bytes []byte) (err error) {
