@@ -5,6 +5,7 @@ import (
 	"container/list"
 	"errors"
 	"fmt"
+	"sync"
 )
 
 // called when an item gets evicted,
@@ -47,12 +48,16 @@ type sectorCache struct {
 	onEvict   evictCallback
 	evictList *list.List
 	size      int
+	mux       sync.RWMutex
 }
 
 // Add a sector linked to an index,
 // creating either a new entry, or updating an existing one.
 // Returns true if an old entry has been evicted.
 func (c *sectorCache) Add(sectorIndex int64, sector *sector) bool {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+
 	// Check for existing item
 	if entry, ok := c.sectors[sectorIndex]; ok {
 		// update an existing item
@@ -80,6 +85,9 @@ func (c *sectorCache) Add(sectorIndex int64, sector *sector) bool {
 // Get a cached sector, if possible,
 // return false otherwise.
 func (c *sectorCache) Get(sectorIndex int64) (sector *sector, ok bool) {
+	c.mux.RLock()
+	defer c.mux.RUnlock()
+
 	var elem *list.Element
 	if elem, ok = c.sectors[sectorIndex]; ok {
 		c.evictList.MoveToFront(elem)
@@ -91,6 +99,9 @@ func (c *sectorCache) Get(sectorIndex int64) (sector *sector, ok bool) {
 
 // Delete (AKA explicitly evict) a sector from the cache
 func (c *sectorCache) Delete(sectorIndex int64) (deleted bool) {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+
 	var elem *list.Element
 	if elem, deleted = c.sectors[sectorIndex]; deleted {
 		// set sector to nil,
@@ -111,6 +122,9 @@ func (c *sectorCache) Serialize(onSerialize serializeCallback) (err error) {
 
 	var buffer bytes.Buffer
 	var entry *cacheEntry
+
+	c.mux.Lock()
+	defer c.mux.Unlock()
 
 	for elem := c.evictList.Front(); elem != nil; elem = elem.Next() {
 		entry = elem.Value.(*cacheEntry)
@@ -144,6 +158,9 @@ func (c *sectorCache) Serialize(onSerialize serializeCallback) (err error) {
 
 // Clear the entire cache, optionally evicing the items first
 func (c *sectorCache) Clear(evict bool) {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+
 	if evict && c.onEvict != nil {
 		var sector *sector
 		for index, elem := range c.sectors {
