@@ -68,8 +68,8 @@ func (us Uint64Slice) Less(i, j int) bool { return us[i] < us[j] }
 // SetResendAll resets this buffer, make all blocks
 // need to be resend right now
 func (b *Buffer) SetResendAll() {
-	b.lock.RLock()
-	defer b.lock.RUnlock()
+	b.lock.Lock()
+	defer b.lock.Unlock()
 
 	// empty the seqToTimeout slice
 	b.seqToTimeout = make([]uint64, 0, len(b.entries)+len(b.waitToFlush))
@@ -221,13 +221,14 @@ func (b *Buffer) TimedOut(ctx context.Context) <-chan *schema.TlogBlock {
 				// nanosecond left before timeout
 				b.lock.RLock()
 				toTime := ent.timeout - time.Now().UnixNano()
+				block := ent.block
 				b.lock.RUnlock()
 
 				if toTime > 0 {
 					time.Sleep(time.Duration(toTime) * time.Nanosecond)
 				}
 
-				b.readyChan <- ent.block
+				b.readyChan <- block
 			}
 		}
 	}()
