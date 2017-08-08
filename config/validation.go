@@ -25,6 +25,12 @@ func IsServiceAddress(str string) bool {
 	return valid.IsDialString(str)
 }
 
+// ValidateBlockSize allows you to validate a block size,
+// returning true if the given block size is valid.
+func ValidateBlockSize(bs int64) bool {
+	return bs >= 512 && (bs&(bs-1)) == 0
+}
+
 const (
 	unixPrefix    = "unix://"
 	httpPrefix    = "http://"

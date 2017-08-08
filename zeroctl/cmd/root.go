@@ -20,7 +20,7 @@ Find more information at github.com/zero-os/0-Disk/zeroctl.`,
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	if err := RootCmd.Execute(); err != nil {
-		fmt.Println(err)
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(-1)
 	}
 }
@@ -31,6 +31,8 @@ func init() {
 		CopyCmd,
 		DeleteCmd,
 		RestoreCmd,
+		ExportCmd,
+		ImportCmd,
 		ListCmd,
 	)
 

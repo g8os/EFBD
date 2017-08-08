@@ -19,7 +19,7 @@ var vdiskCmdCfg struct {
 // VdiskCmd represents the vdisk copy subcommand
 var VdiskCmd = &cobra.Command{
 	Use:   "vdisk source_vdiskid target_vdiskid [target_clusterid]",
-	Short: "Copy a vdisk configured in the config file",
+	Short: "Copy a vdisk",
 	RunE:  copyVdisk,
 }
 

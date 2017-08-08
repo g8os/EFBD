@@ -474,6 +474,8 @@ func TestDedupedVdiskExists(t *testing.T) {
 	}
 }*/
 
+// This test tests both if the amount of block indices listed for a deduped vdisk is correct,
+// as well as the fact that all block indices are always in sorted order from small to big.
 func TestListDedupedBlockIndices(t *testing.T) {
 	const (
 		vdiskID            = "a"
@@ -516,7 +518,7 @@ func TestListDedupedBlockIndices(t *testing.T) {
 			t.Fatalf("couldn't generate a random block (%d): %v", i, err)
 		}
 
-		blockIndex := int64(i * blockIndexInterval)
+		blockIndex := int64(i * i * blockIndexInterval)
 		expectedIndices = append(expectedIndices, blockIndex)
 		err = storage.SetBlock(blockIndex, data)
 		if err != nil {
@@ -526,6 +528,14 @@ func TestListDedupedBlockIndices(t *testing.T) {
 		err = storage.Flush()
 		if err != nil {
 			t.Fatalf("couldn't flush storage (step %d): %v", i, err)
+		}
+
+		fetchedData, err := storage.GetBlock(blockIndex)
+		if err != nil {
+			t.Fatalf("couldn't get block (%d): %v", blockIndex, err)
+		}
+		if !assert.Equal(t, data, fetchedData) {
+			t.Fatalf("couldn't get correct block %d", blockIndex)
 		}
 
 		// now test if listing the indices is correct
@@ -541,7 +551,7 @@ func TestListDedupedBlockIndices(t *testing.T) {
 	// delete all odd counters
 	ci := 1
 	for i := 1; i < blockCount; i += 2 {
-		blockIndex := int64(i * blockIndexInterval)
+		blockIndex := int64(i * i * blockIndexInterval)
 
 		err = storage.DeleteBlock(blockIndex)
 		if err != nil {
@@ -551,6 +561,14 @@ func TestListDedupedBlockIndices(t *testing.T) {
 		err = storage.Flush()
 		if err != nil {
 			t.Fatalf("couldn't flush storage (step %d): %v", i, err)
+		}
+
+		fetchedData, err := storage.GetBlock(blockIndex)
+		if err != nil {
+			t.Fatalf("couldn't get nil block (%d): %v", blockIndex, err)
+		}
+		if !assert.Empty(t, fetchedData) {
+			t.Fatalf("block %d wasn't deleted yet", blockIndex)
 		}
 
 		expectedIndices = append(expectedIndices[:ci], expectedIndices[ci+1:]...)

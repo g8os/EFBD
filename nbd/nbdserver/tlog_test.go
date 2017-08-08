@@ -34,7 +34,7 @@ func TestTlogStorageWithInMemory(t *testing.T) {
 		blockSize = 8
 	)
 
-	storage := newInMemoryStorage(vdiskID, blockSize)
+	storage := storage.NewInMemoryStorage(vdiskID, blockSize)
 	if !assert.NotNil(t, storage) {
 		return
 	}
@@ -50,7 +50,7 @@ func TestTlogStorageForceFlushWithInMemory(t *testing.T) {
 		blockSize = 8
 	)
 
-	storage := newInMemoryStorage(vdiskID, blockSize)
+	storage := storage.NewInMemoryStorage(vdiskID, blockSize)
 	if !assert.NotNil(t, storage) {
 		return
 	}

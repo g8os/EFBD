@@ -43,21 +43,24 @@ else
 		go build -ldflags '$(ldflags)' -o $(OUTPUT)/$@ ./tlog/tlogserver
 endif
 
-test: testgo testrace testcgo testcodegen
+test: testgo testrace testcgo testcodegen benchmarkgo
 
 testgo:
 	go test -timeout $(TIMEOUT) $(PACKAGES)
 
+benchmarkgo:
+	go test -bench=. -run=^$$ -timeout $(TIMEOUT) $(PACKAGES)
+
 testrace: testrace_core testrace_gonbdserver testrace_tlog
 
 testrace_core:
-	go test -race -timeout $(TIMEOUT) $(RACE_PACKAGES)
+	go test -short -race -timeout $(TIMEOUT) $(RACE_PACKAGES)
 
 testrace_tlog:
 	go test -race -timeout $(TIMEOUT) github.com/zero-os/0-Disk/tlog/...
 
 testrace_gonbdserver:
-	go test -race -timeout $(TIMEOUT) github.com/zero-os/0-Disk/nbd/gonbdserver/nbd
+	go test -short -race -timeout $(TIMEOUT) github.com/zero-os/0-Disk/nbd/gonbdserver/nbd
 
 testcodegen:
 	./scripts/codegeneration.sh

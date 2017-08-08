@@ -5,35 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 )
-
-func TestInMemoryStorage(t *testing.T) {
-	const (
-		vdiskID   = "a"
-		blockSize = 8
-	)
-
-	blockStorage := newInMemoryStorage(vdiskID, blockSize)
-	if !assert.NotNil(t, blockStorage) {
-		return
-	}
-
-	testBlockStorage(t, blockStorage)
-}
-
-func TestInMemoryStorageForceFlush(t *testing.T) {
-	const (
-		vdiskID   = "a"
-		blockSize = 8
-	)
-
-	blockStorage := newInMemoryStorage(vdiskID, blockSize)
-	if !assert.NotNil(t, blockStorage) {
-		return
-	}
-
-	testBlockStorageForceFlush(t, blockStorage)
-}
 
 func TestInMemoryBackendReadWrite(t *testing.T) {
 	const (
@@ -42,7 +15,7 @@ func TestInMemoryBackendReadWrite(t *testing.T) {
 		blockSize = 8
 	)
 
-	storage := newInMemoryStorage(vdiskID, blockSize)
+	storage := storage.NewInMemoryStorage(vdiskID, blockSize)
 	if !assert.NotNil(t, storage) {
 		return
 	}

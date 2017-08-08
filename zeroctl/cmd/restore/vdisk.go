@@ -154,5 +154,5 @@ func init() {
 	VdiskCmd.Flags().BoolVarP(
 		&vdiskCmdCfg.Force,
 		"force", "f", false,
-		"when given delete the vdisk if it already existed")
+		"when given, delete the vdisk if it already existed")
 }

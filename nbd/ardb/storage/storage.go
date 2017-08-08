@@ -56,7 +56,7 @@ func (cfg *BlockStorageConfig) Validate() error {
 		return err
 	}
 
-	if cfg.BlockSize <= 0 {
+	if !config.ValidateBlockSize(cfg.BlockSize) {
 		return errors.New("invalid block size size")
 	}
 

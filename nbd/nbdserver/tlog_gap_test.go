@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 )
 
 // to easily reproduce and test:
@@ -27,7 +28,7 @@ func TestTlogStorageSlow(t *testing.T) {
 	const sleepTime = time.Millisecond * 25
 
 	slowStorage := &slowInMemoryStorage{
-		storage:      newInMemoryStorage(vdiskID, blockSize).(*inMemoryStorage),
+		storage:      storage.NewInMemoryStorage(vdiskID, blockSize),
 		modSleepTime: sleepTime,
 	}
 	if !assert.NotNil(t, slowStorage) || !assert.NotNil(t, slowStorage.storage) {
@@ -93,7 +94,7 @@ func TestTlogStorageSlow(t *testing.T) {
 // by sleeping before actually running a modification command.
 // Used only in TestTlogStorageSlow.
 type slowInMemoryStorage struct {
-	storage      *inMemoryStorage
+	storage      storage.BlockStorage
 	modSleepTime time.Duration
 }
 
