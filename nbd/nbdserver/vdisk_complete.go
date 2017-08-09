@@ -7,7 +7,7 @@ import "sync"
 type vdiskCompletion struct {
 	wg     sync.WaitGroup
 	mux    sync.Mutex
-	addMux sync.RWMutex
+	addMux sync.Mutex
 	errors []error
 }
 
@@ -30,8 +30,8 @@ func (vc *vdiskCompletion) AddError(err error) {
 }
 
 func (vc *vdiskCompletion) Add() {
-	vc.addMux.RLock()
-	defer vc.addMux.RUnlock()
+	vc.addMux.Lock()
+	defer vc.addMux.Unlock()
 	vc.wg.Add(1)
 }
 

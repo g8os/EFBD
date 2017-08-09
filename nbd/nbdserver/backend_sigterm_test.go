@@ -62,8 +62,6 @@ func TestBackendSigtermHandler(t *testing.T) {
 			Servers: []string{tlogrpc},
 		})
 
-		// TODO: set addresses into source...
-
 		tls, err := newTlogStorage(ctx, vdiskID, "tlogcluster", source, blockSize, storage, nil)
 		if !assert.NoError(t, err) || !assert.NotNil(t, tls) {
 			return nil
