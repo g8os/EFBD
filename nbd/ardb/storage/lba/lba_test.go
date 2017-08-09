@@ -2,6 +2,7 @@ package lba
 
 import (
 	"crypto/rand"
+	mrand "math/rand"
 	"testing"
 
 	"github.com/zero-os/0-Disk"
@@ -149,6 +150,32 @@ func testLBAWithEmptyStorage(t *testing.T, sectors, buckets int64, lba *LBA) {
 				t.Fatalf("unexpected hash (%d,%d): found %v, expected %v",
 					sectorIndex, hashIndex, hash, expectedHash)
 			}
+		}
+	}
+}
+
+func TestBucketIndex_1_Bucket(t *testing.T) {
+	testBucketIndex(t, 1)
+}
+
+func TestBucketIndex_4_Buckets(t *testing.T) {
+	testBucketIndex(t, 4)
+}
+
+func TestBucketIndex_15_Buckets(t *testing.T) {
+	testBucketIndex(t, 15)
+}
+
+func TestBucketIndex_64_Buckets(t *testing.T) {
+	testBucketIndex(t, 64)
+}
+
+func testBucketIndex(t *testing.T, bucketCount int32) {
+	for i := 0; i < 16777216; i++ {
+		x := mrand.Uint32()
+		bi := bucketIndex(int64(x), bucketCount)
+		if bi < 0 || bi >= int(bucketCount) {
+			t.Fatal("invalid bucket index", x, bucketCount, bi)
 		}
 	}
 }

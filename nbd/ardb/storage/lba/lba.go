@@ -3,6 +3,7 @@ package lba
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/log"
@@ -21,11 +22,6 @@ const (
 func StorageKey(vdiskID string) string {
 	return StorageKeyPrefix + vdiskID
 }
-
-// TODO
-// + DEBUG storage, make unit tests pass again
-// + Make static errors
-// + ADd Bucket Unit tests
 
 // NewLBA creates a new LBA
 func NewLBA(vdiskID string, cacheLimitInBytes int64, provider ardb.MetadataConnProvider) (lba *LBA, err error) {
@@ -50,12 +46,12 @@ func NewLBA(vdiskID string, cacheLimitInBytes int64, provider ardb.MetadataConnP
 
 	log.Debugf("creating LBA for vdisk %s with %d bucket(s)", vdiskID, bucketCount)
 
-	return newLBAWithStorageFactory(bucketCount, bucketLimitInBytes, func() sectorStorage {
+	return newLBAWithStorageFactory(int32(bucketCount), bucketLimitInBytes, func() sectorStorage {
 		return newARDBSectorStorage(storageKey, provider)
 	}), nil
 }
 
-func newLBAWithStorageFactory(bucketCount, bucketLimitInBytes int64, factory func() sectorStorage) *LBA {
+func newLBAWithStorageFactory(bucketCount int32, bucketLimitInBytes int64, factory func() sectorStorage) *LBA {
 	buckets := make([]*sectorBucket, bucketCount)
 
 	var storage sectorStorage
@@ -75,7 +71,7 @@ func newLBAWithStorageFactory(bucketCount, bucketLimitInBytes int64, factory fun
 // where n = NumberOfRecordsPerLBASector.
 type LBA struct {
 	buckets     []*sectorBucket
-	bucketCount int64
+	bucketCount int32
 }
 
 // Set the content hash for a specific block.
@@ -105,35 +101,48 @@ func (lba *LBA) Get(blockIndex int64) (zerodisk.Hash, error) {
 
 // Flush stores all dirty sectors to the external metadaserver
 func (lba *LBA) Flush() error {
+	var wg sync.WaitGroup
 	var errors flushError
+
 	for _, bucket := range lba.buckets {
-		errors.AddError(bucket.Flush())
+		wg.Add(1)
+		bucket := bucket
+		go func() {
+			defer wg.Done()
+			errors.AddError(bucket.Flush())
+		}()
 	}
+
+	wg.Wait()
 	return errors.AsError()
 }
 
 func (lba *LBA) getBucket(blockIndex int64) *sectorBucket {
-	sectorIndex := blockIndex / NumberOfRecordsPerLBASector
-	bucketIndex := bucketHash(sectorIndex, lba.bucketCount)
+	bucketIndex := bucketIndex(blockIndex, lba.bucketCount)
 	return lba.buckets[bucketIndex]
 }
 
-func bucketHash(x, numBuckets int64) int64 {
-	key := uint64(x)
+func bucketIndex(blockIndex int64, bucketCount int32) int {
+	sectorIndex := blockIndex / NumberOfRecordsPerLBASector
+	return int(jumpConsistentHash(uint64(sectorIndex), bucketCount))
+}
 
+// jumpConsistentHash taken from https://arxiv.org/pdf/1406.2294.pdf
+func jumpConsistentHash(key uint64, numBuckets int32) int32 {
 	var b int64 = -1
 	var j int64
 
-	for j < numBuckets {
+	for j < int64(numBuckets) {
 		b = j
 		key = key*2862933555777941757 + 1
 		j = int64(float64(b+1) * (float64(int64(1)<<31) / float64((key>>33)+1)))
 	}
 
-	return int64(b)
+	return int32(b)
 }
 
 const (
 	// maxNumberOfSectorBuckets is the maximum number of buckets we'll use
-	maxNumberOfSectorBuckets = 10
+	// TODO: define this number of buckets with some more thought
+	maxNumberOfSectorBuckets = 64
 )
