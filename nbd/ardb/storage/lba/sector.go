@@ -82,7 +82,7 @@ func (s *sector) IsNil() bool {
 // Bytes returns this sector's internal byte slice,
 // NOTE: this should never be used for non-storage purposes.
 func (s *sector) Bytes() []byte {
-	if s == nil || s.IsNil() {
+	if s.IsNil() {
 		return nil
 	}
 
