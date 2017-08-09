@@ -428,10 +428,6 @@ func (p *dynamicRedisPool) DataConnection(index int) redis.Conn {
 
 // Close implements RedisPool.Close
 func (p *dynamicRedisPool) Close() {
-	if p.done == nil {
-		return
-	}
-
 	close(p.done)
 
 	p.lock.Lock()

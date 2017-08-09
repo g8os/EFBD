@@ -76,10 +76,6 @@ func (c *ExportController) GetConfig(name string) (*nbd.ExportConfig, error) {
 
 // Close any open resources.
 func (c *ExportController) Close() error {
-	if c.done == nil {
-		return nil
-	}
-
 	close(c.done)
 	return nil
 }

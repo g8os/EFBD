@@ -258,10 +258,6 @@ func (tls *tlogStorage) Close() (err error) {
 	tls.storageMux.Lock()
 	defer tls.storageMux.Unlock()
 
-	if tls.done == nil {
-		return nil
-	}
-
 	close(tls.done)
 
 	err = tls.storage.Close()

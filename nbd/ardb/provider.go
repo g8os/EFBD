@@ -216,10 +216,6 @@ func (rp *redisProvider) listen(ctx context.Context, vdiskID string, source conf
 
 // Close the internal redis pool and stop the listen goroutine.
 func (rp *redisProvider) Close() error {
-	if rp.done == nil {
-		return nil
-	}
-
 	close(rp.done)
 	return rp.static.Close()
 }
