@@ -21,7 +21,7 @@ func TestDedupedBackendReadWrite(t *testing.T) {
 	provider := redisstub.NewInMemoryRedisProvider(nil)
 
 	storage, err := storage.Deduped(
-		vdiskID, blockSize*blockCount, blockCount,
+		vdiskID, blockCount,
 		ardb.DefaultLBACacheLimit, false, provider)
 	if err != nil || storage == nil {
 		t.Fatalf("storage could not be created: %v", err)

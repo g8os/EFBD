@@ -38,8 +38,6 @@ type BlockStorageConfig struct {
 	// required: type of vdisk
 	VdiskType config.VdiskType
 
-	// required: vdisk size in bytes
-	VdiskSize int64
 	// required: block size in bytes
 	BlockSize int64
 
@@ -57,11 +55,7 @@ func (cfg *BlockStorageConfig) Validate() error {
 		return err
 	}
 
-	if cfg.VdiskSize <= 0 {
-		return errors.New("invalid vdisk size")
-	}
-
-	if cfg.BlockSize > cfg.VdiskSize {
+	if cfg.BlockSize <= 0 {
 		return errors.New("invalid block size size")
 	}
 
@@ -81,7 +75,6 @@ func NewBlockStorage(cfg BlockStorageConfig, provider ardb.ConnProvider) (storag
 	case config.StorageDeduped:
 		return Deduped(
 			cfg.VdiskID,
-			cfg.VdiskSize,
 			cfg.BlockSize,
 			cfg.LBACacheLimit,
 			vdiskType.TemplateSupport(),
@@ -98,7 +91,6 @@ func NewBlockStorage(cfg BlockStorageConfig, provider ardb.ConnProvider) (storag
 	case config.StorageSemiDeduped:
 		return SemiDeduped(
 			cfg.VdiskID,
-			cfg.VdiskSize,
 			cfg.BlockSize,
 			cfg.LBACacheLimit,
 			provider)

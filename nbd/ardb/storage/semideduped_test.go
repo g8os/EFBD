@@ -24,7 +24,7 @@ func TestSemiDedupedContentBasic(t *testing.T) {
 	templateProvider := func() *redisstub.InMemoryRedisProvider {
 		redisProvider := redisstub.NewInMemoryRedisProvider(nil)
 		template, err := Deduped(
-			"template", blockSize*blockCount, blockCount,
+			"template", blockCount,
 			ardb.DefaultLBACacheLimit, false, redisProvider)
 		if err != nil || template == nil {
 			t.Fatalf("template storage could not be created: %v", err)
@@ -55,7 +55,7 @@ func TestSemiDedupedContentBasic(t *testing.T) {
 	copyTestMetaData(t, "template", "a", templateProvider, redisProvider)
 
 	storage, err := SemiDeduped(
-		"a", int64(blockCount*blockSize), blockSize,
+		"a", blockSize,
 		ardb.DefaultLBACacheLimit, redisProvider)
 	if err != nil || storage == nil {
 		t.Fatalf("creating SemiDedupedStorage failed: %v", err)

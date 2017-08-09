@@ -27,7 +27,7 @@ func TestBackendSigtermHandler(t *testing.T) {
 	ctx := context.Background()
 
 	blockStorage, err = storage.Deduped(
-		vdiskID, blockCount*blockSize, blockSize,
+		vdiskID, blockSize,
 		ardb.DefaultLBACacheLimit, false, provider)
 	if err != nil {
 		t.Fatalf("couldn't create deduped block storage: %v", err)

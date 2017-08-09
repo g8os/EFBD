@@ -113,7 +113,7 @@ func TestDedupedContent(t *testing.T) {
 	)
 
 	redisProvider := redisstub.NewInMemoryRedisProvider(nil)
-	storage, err := Deduped(vdiskID, 64, 8, ardb.DefaultLBACacheLimit, false, redisProvider)
+	storage, err := Deduped(vdiskID, 8, ardb.DefaultLBACacheLimit, false, redisProvider)
 	if err != nil || storage == nil {
 		t.Fatalf("storage could not be created: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestDedupedContentForceFlush(t *testing.T) {
 	)
 
 	redisProvider := redisstub.NewInMemoryRedisProvider(nil)
-	storage, err := Deduped(vdiskID, 64, 8, ardb.DefaultLBACacheLimit, false, redisProvider)
+	storage, err := Deduped(vdiskID, 8, ardb.DefaultLBACacheLimit, false, redisProvider)
 	if err != nil || storage == nil {
 		t.Fatalf("storage could not be created: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestDedupedDeadlock(t *testing.T) {
 
 	redisProvider := redisstub.NewInMemoryRedisProvider(nil)
 	storage, err := Deduped(
-		vdiskID, blockSize*blockCount, blockSize,
+		vdiskID, blockSize,
 		ardb.DefaultLBACacheLimit, false, redisProvider)
 	if err != nil || storage == nil {
 		t.Fatalf("storage could not be created: %v", err)
@@ -165,14 +165,14 @@ func TestGetPrimaryOrTemplateContent(t *testing.T) {
 
 	redisProviderA := redisstub.NewInMemoryRedisProvider(nil)
 	storageA, err := Deduped(
-		vdiskIDA, 64, 8, ardb.DefaultLBACacheLimit, true, redisProviderA)
+		vdiskIDA, 8, ardb.DefaultLBACacheLimit, true, redisProviderA)
 	if err != nil || storageA == nil {
 		t.Fatalf("storageA could not be created: %v", err)
 	}
 
 	redisProviderB := redisstub.NewInMemoryRedisProvider(redisProviderA)
 	storageB, err := Deduped(
-		vdiskIDB, 64, 8, ardb.DefaultLBACacheLimit, true, redisProviderB)
+		vdiskIDB, 8, ardb.DefaultLBACacheLimit, true, redisProviderB)
 	if err != nil || storageB == nil {
 		t.Fatalf("storageB could not be created: %v", err)
 	}
@@ -342,7 +342,7 @@ func TestGetDedupedTemplateContentDeadlock(t *testing.T) {
 
 	redisProviderA := redisstub.NewInMemoryRedisProvider(nil)
 	storageA, err := Deduped(
-		vdiskIDA, blockSize*blockCount, blockSize,
+		vdiskIDA, blockSize,
 		ardb.DefaultLBACacheLimit, false, redisProviderA)
 	if err != nil || storageA == nil {
 		t.Fatalf("storageA could not be created: %v", err)
@@ -350,7 +350,7 @@ func TestGetDedupedTemplateContentDeadlock(t *testing.T) {
 
 	redisProviderB := redisstub.NewInMemoryRedisProvider(redisProviderA)
 	storageB, err := Deduped(
-		vdiskIDB, blockSize*blockCount, blockSize,
+		vdiskIDB, blockSize,
 		ardb.DefaultLBACacheLimit, true, redisProviderB)
 	if err != nil || storageB == nil {
 		t.Fatalf("storageB could not be created: %v", err)
@@ -388,7 +388,8 @@ func TestGetDedupedTemplateContentDeadlock(t *testing.T) {
 			t.Fatal(i, err)
 		}
 		if bytes.Compare(contentArray[i], content) != 0 {
-			t.Fatal(i, "unexpected content")
+			t.Fatalf("unexpected content (%d): found %v, expected %v",
+				i, content, contentArray[i])
 		}
 	}
 }

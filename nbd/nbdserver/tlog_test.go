@@ -67,7 +67,7 @@ func TestTlogStorageWithDeduped(t *testing.T) {
 
 	redisProvider := redisstub.NewInMemoryRedisProvider(nil)
 	storage, err := storage.Deduped(
-		vdiskID, blockCount*blockSize, blockSize,
+		vdiskID, blockSize,
 		ardb.DefaultLBACacheLimit, false, redisProvider)
 	if !assert.NoError(t, err) {
 		return
@@ -88,7 +88,7 @@ func TestTlogStorageForceFlushWithDeduped(t *testing.T) {
 
 	redisProvider := redisstub.NewInMemoryRedisProvider(nil)
 	storage, err := storage.Deduped(
-		vdiskID, blockCount*blockSize, blockSize,
+		vdiskID, blockSize,
 		ardb.DefaultLBACacheLimit, false, redisProvider)
 	if !assert.NoError(t, err) {
 		return
@@ -220,7 +220,7 @@ func TestTlogDedupedStorageReplay(t *testing.T) {
 
 		connProvider = redisstub.NewInMemoryRedisProvider(nil)
 		return storage.Deduped(
-			vdiskID, vdiskSize, blockSize,
+			vdiskID, blockSize,
 			ardb.DefaultLBACacheLimit, false, connProvider)
 	}
 

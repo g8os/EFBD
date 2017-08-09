@@ -15,13 +15,7 @@ import (
 )
 
 // Deduped returns a deduped BlockStorage
-func Deduped(vdiskID string, vdiskSize, blockSize, lbaCacheLimit int64, templateSupport bool, provider ardb.ConnProvider) (BlockStorage, error) {
-	// define the block count based on the vdisk size and block size
-	blockCount := vdiskSize / blockSize
-	if vdiskSize%blockSize > 0 {
-		blockCount++
-	}
-
+func Deduped(vdiskID string, blockSize, lbaCacheLimit int64, templateSupport bool, provider ardb.ConnProvider) (BlockStorage, error) {
 	// define the LBA cache limit
 	cacheLimit := lbaCacheLimit
 	if cacheLimit < lba.BytesPerSector {
@@ -34,7 +28,6 @@ func Deduped(vdiskID string, vdiskSize, blockSize, lbaCacheLimit int64, template
 	// create the LBA (used to store deduped metadata)
 	vlba, err := lba.NewLBA(
 		vdiskID,
-		blockCount,
 		cacheLimit,
 		provider,
 	)

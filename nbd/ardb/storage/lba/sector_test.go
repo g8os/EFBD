@@ -1,7 +1,7 @@
 package lba
 
 import (
-	"bytes"
+	"crypto/rand"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -31,7 +31,7 @@ func TestCreateSector(t *testing.T) {
 		// getting a sector will keep it clean
 		for i := int64(0); i < NumberOfRecordsPerLBASector; i++ {
 			h := sector.Get(i) // NOTE: there is no out-of-range protection
-			assert.Equal(t, zerodisk.NilHash, h, "created from bytes, contain all nil hashes")
+			assert.Nil(t, h, "created from bytes, contain all nil hashes")
 		}
 
 		// setting a sector will make it dirty though
@@ -40,7 +40,9 @@ func TestCreateSector(t *testing.T) {
 		assert.True(t, sector.Dirty(), "modified sector should be dirty")
 		h := sector.Get(0) // NOTE: there is no out-of-range protection
 		if assert.NotEmpty(t, h, "created from bytes, no hash should be nil") {
-			assert.NotEqual(t, zerodisk.NilHash, h, "should be not equal to the NilHash")
+			if !assert.NotNil(t, h, "should be nil") {
+				assert.NotEqual(t, zerodisk.NilHash, h, "should be not equal to the NilHash")
+			}
 		}
 
 		// a sector can be marked non-dirty by the user,
@@ -48,12 +50,10 @@ func TestCreateSector(t *testing.T) {
 		sector.UnsetDirty()
 		assert.False(t, sector.Dirty(), "sector should now be clean")
 
-		// a sector can be serialized, used to write it to persistent memory
-		var buffer bytes.Buffer
-		// Write can only fail in case the given writer fails,
-		// which a bytes buffer should never do?!
-		if assert.NoError(t, sector.Write(&buffer), "should not fail") {
-			bytes := buffer.Bytes()
+		// the internal slice of a buffer can be received,
+		// but this should be done with care!
+		bytes := sector.Bytes()
+		if assert.NotNil(t, bytes, "should not be nil") {
 			assert.Len(t, bytes, BytesPerSector,
 				"should be exactly the length of the space it requires to store hashes")
 
@@ -72,9 +72,65 @@ func TestCreateSector(t *testing.T) {
 				// getting a sector will keep it clean
 				for i := int64(1); i < NumberOfRecordsPerLBASector; i++ {
 					h := sector.Get(i) // NOTE: there is no out-of-range protection
-					assert.Equal(t, zerodisk.NilHash, h, "created from bytes, contain all nil hashes")
+					assert.Nil(t, h, "created from bytes, contain all nil hashes")
 				}
 			}
+		}
+	}
+}
+
+func TestSectorSetAndGet(t *testing.T) {
+	sector := newSector()
+	if sector == nil {
+		t.Fatal("couldn't create sector")
+	}
+
+	hashes := make([]zerodisk.Hash, NumberOfRecordsPerLBASector)
+	for i := range hashes {
+		hashes[i] = zerodisk.NewHash()
+		rand.Read(hashes[i])
+	}
+
+	// set all hashes
+	for i, h := range hashes {
+		sector.Set(int64(i), h)
+	}
+
+	// get all hashes, should be equal to what we created
+	for i, h := range hashes {
+		hash := sector.Get(int64(i))
+		if !h.Equals(hash) {
+			t.Fatalf("unexpected hash (%d): found %v, expected %v",
+				i, h, hash)
+		}
+	}
+
+	// check bytes
+	allHashes := sector.Bytes()
+	for i, h := range hashes {
+		offset := i * zerodisk.HashSize
+		hash := zerodisk.Hash(allHashes[offset : offset+zerodisk.HashSize])
+		if !h.Equals(hash) {
+			t.Fatalf("unexpected hash (%d): found %v, expected %v",
+				i, h, hash)
+		}
+	}
+
+	// now get a new sector
+	sector, err := sectorFromBytes(allHashes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sector == nil {
+		t.Fatal("couldn't create sector")
+	}
+
+	// get all hashes, should be equal to what we created
+	for i, h := range hashes {
+		hash := sector.Get(int64(i))
+		if !h.Equals(hash) {
+			t.Fatalf("unexpected hash (%d): found %v, expected %v",
+				i, h, hash)
 		}
 	}
 }
