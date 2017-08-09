@@ -263,12 +263,6 @@ func (ab *backend) GoBackground(ctx context.Context) {
 			ab.vComp.AddError(err)
 		}
 
-		// make sure to also close storage
-		err = ab.storage.Close()
-		if err != nil {
-			ab.vComp.AddError(err)
-		}
-
 		log.Debugf("exit from SIGTERM handler for vdisk %s", ab.vdiskID)
 	}
 }

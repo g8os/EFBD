@@ -27,7 +27,7 @@ func TestBackendSigtermHandler(t *testing.T) {
 	ctx := context.Background()
 
 	blockStorage, err = storage.Deduped(
-		vdiskID, blockCount*blockSize, blockSize,
+		vdiskID, blockSize,
 		ardb.DefaultLBACacheLimit, false, provider)
 	if err != nil {
 		t.Fatalf("couldn't create deduped block storage: %v", err)
@@ -61,8 +61,6 @@ func TestBackendSigtermHandler(t *testing.T) {
 		source.SetTlogServerCluster(vdiskID, "tlogcluster", &config.TlogClusterConfig{
 			Servers: []string{tlogrpc},
 		})
-
-		// TODO: set addresses into source...
 
 		tls, err := newTlogStorage(ctx, vdiskID, "tlogcluster", source, blockSize, storage, nil)
 		if !assert.NoError(t, err) || !assert.NotNil(t, tls) {

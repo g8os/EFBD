@@ -1,9 +1,7 @@
 package lba
 
 import (
-	"errors"
 	"fmt"
-	"io"
 
 	"github.com/zero-os/0-Disk"
 )
@@ -13,12 +11,6 @@ const (
 	NumberOfRecordsPerLBASector = 128
 	// BytesPerSector defines how many bytes each sector requires
 	BytesPerSector = NumberOfRecordsPerLBASector * zerodisk.HashSize
-)
-
-var (
-	// internal error which is returned
-	// in case a pure nil sector is being written
-	errNilSectorWrite = errors.New("sector is nil, and cannot be written")
 )
 
 func newSector() *sector {
@@ -65,11 +57,16 @@ func (s *sector) Set(hashIndex int64, hash zerodisk.Hash) {
 	return
 }
 
-func (s *sector) Get(hashIndex int64) (hash zerodisk.Hash) {
-	hash = zerodisk.NewHash()
+func (s *sector) Get(hashIndex int64) zerodisk.Hash {
 	offset := hashIndex * zerodisk.HashSize
-	copy(hash[:], s.hashes[offset:])
-	return
+	targetHash := zerodisk.Hash(s.hashes[offset : offset+zerodisk.HashSize])
+	if targetHash.Equals(zerodisk.NilHash) {
+		return nil
+	}
+
+	hash := zerodisk.NewHash()
+	copy(hash[:], targetHash)
+	return hash
 }
 
 func (s *sector) IsNil() bool {
@@ -82,12 +79,12 @@ func (s *sector) IsNil() bool {
 	return true
 }
 
-func (s *sector) Write(w io.Writer) (err error) {
+// Bytes returns this sector's internal byte slice,
+// NOTE: this should never be used for non-storage purposes.
+func (s *sector) Bytes() []byte {
 	if s.IsNil() {
-		err = errNilSectorWrite
-		return
+		return nil
 	}
 
-	_, err = w.Write(s.hashes)
-	return
+	return s.hashes
 }

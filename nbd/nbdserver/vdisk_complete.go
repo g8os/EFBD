@@ -7,12 +7,16 @@ import "sync"
 type vdiskCompletion struct {
 	wg     sync.WaitGroup
 	mux    sync.Mutex
+	addMux sync.Mutex
 	errors []error
 }
 
 func (vc *vdiskCompletion) Wait() []error {
+	vc.addMux.Lock()
+	defer vc.addMux.Unlock()
 	vc.wg.Wait()
-	return vc.errors
+
+	return vc.evictAllErrors()
 }
 
 func (vc *vdiskCompletion) Done() {
@@ -26,5 +30,16 @@ func (vc *vdiskCompletion) AddError(err error) {
 }
 
 func (vc *vdiskCompletion) Add() {
+	vc.addMux.Lock()
+	defer vc.addMux.Unlock()
 	vc.wg.Add(1)
+}
+
+func (vc *vdiskCompletion) evictAllErrors() []error {
+	vc.mux.Lock()
+	defer vc.mux.Unlock()
+
+	errors := vc.errors
+	vc.errors = nil
+	return errors
 }

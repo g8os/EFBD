@@ -74,7 +74,6 @@ func NewPlayer(ctx context.Context, source config.Source, serverConfigs []config
 		VdiskID:         vdiskID,
 		TemplateVdiskID: vdiskCfg.TemplateVdiskID,
 		VdiskType:       vdiskCfg.Type,
-		VdiskSize:       int64(vdiskCfg.Size) * ardb.GibibyteAsBytes,
 		BlockSize:       int64(vdiskCfg.BlockSize),
 	}, ardbProvider)
 	if err != nil {

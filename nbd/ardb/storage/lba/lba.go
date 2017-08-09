@@ -1,79 +1,86 @@
 package lba
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"sync"
 
-	"github.com/garyburd/redigo/redis"
 	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 )
 
+const (
+	// StorageKeyPrefix is the prefix used in StorageKey
+	StorageKeyPrefix = "lba:"
+	// MinimumBucketSizeLimit defines how small the cache limit for the LBA
+	// and thus a bucket can be at its extreme. Bigger is better.
+	MinimumBucketSizeLimit = BytesPerSector * 8
+)
+
+// StorageKey returns the LBA storage key used for a given deduped vdisk
+func StorageKey(vdiskID string) string {
+	return StorageKeyPrefix + vdiskID
+}
+
 // NewLBA creates a new LBA
-func NewLBA(vdiskID string, blockCount, cacheLimitInBytes int64, provider ardb.MetadataConnProvider) (lba *LBA, err error) {
+func NewLBA(vdiskID string, cacheLimitInBytes int64, provider ardb.MetadataConnProvider) (lba *LBA, err error) {
+	if vdiskID == "" {
+		return nil, errors.New("NewLBA requires non-empty vdiskID")
+	}
 	if provider == nil {
 		return nil, errors.New("NewLBA requires a non-nil MetaRedisProvider")
 	}
-
-	lba = &LBA{
-		provider:   provider,
-		vdiskID:    vdiskID,
-		storageKey: StorageKey(vdiskID),
+	if cacheLimitInBytes < MinimumBucketSizeLimit {
+		return nil, fmt.Errorf(
+			"sectorCache requires at least %d bytes", MinimumBucketSizeLimit)
 	}
 
-	lba.cache, err = newSectorCache(cacheLimitInBytes, lba.onCacheEviction)
+	bucketCount := cacheLimitInBytes / MinimumBucketSizeLimit
+	if bucketCount > maxNumberOfSectorBuckets {
+		bucketCount = maxNumberOfSectorBuckets
+	}
 
-	return
+	bucketLimitInBytes := cacheLimitInBytes / bucketCount
+	storageKey := StorageKey(vdiskID)
+
+	log.Debugf("creating LBA for vdisk %s with %d bucket(s)", vdiskID, bucketCount)
+
+	return newLBAWithStorageFactory(int32(bucketCount), bucketLimitInBytes, func() sectorStorage {
+		return newARDBSectorStorage(storageKey, provider)
+	}), nil
+}
+
+func newLBAWithStorageFactory(bucketCount int32, bucketLimitInBytes int64, factory func() sectorStorage) *LBA {
+	buckets := make([]*sectorBucket, bucketCount)
+
+	var storage sectorStorage
+	for index := range buckets {
+		storage = factory()
+		buckets[index] = newSectorBucket(bucketLimitInBytes, storage)
+	}
+
+	return &LBA{
+		buckets:     buckets,
+		bucketCount: bucketCount,
+	}
 }
 
 // LBA implements the functionality to lookup block keys through the logical block index.
 // The data is persisted to an external metadataserver in sectors of n keys,
 // where n = NumberOfRecordsPerLBASector.
 type LBA struct {
-	cache *sectorCache
-
-	// TODO:
-	// come with better way to lock sectors
-	// on an individual level, ideally coming from the sector itself,
-	// it should somehow ensure that it will only ever be used by one
-	// thing at a time.
-	mux sync.RWMutex
-
-	provider ardb.MetadataConnProvider
-
-	vdiskID    string
-	storageKey string
+	buckets     []*sectorBucket
+	bucketCount int32
 }
 
 // Set the content hash for a specific block.
 // When a key is updated, the sector containing this blockindex is marked as dirty and will be
 // stored in the external metadataserver when Flush is called,
 // or when the its getting evicted from the cache due to space limitations.
-func (lba *LBA) Set(blockIndex int64, h zerodisk.Hash) (err error) {
-	sectorIndex := blockIndex / NumberOfRecordsPerLBASector
-
-	lba.mux.Lock()
-	defer lba.mux.Unlock()
-
-	sector, err := lba.getSector(sectorIndex)
-	if err != nil {
-		return
-	}
-	if sector == nil {
-		sector = newSector()
-		// store the new sector in the cache,
-		// otherwise it will be forgotten...
-		lba.cache.Add(sectorIndex, sector)
-	}
-
-	//Update the hash
-	hashIndex := blockIndex % NumberOfRecordsPerLBASector
-
-	sector.Set(hashIndex, h)
-	return
+func (lba *LBA) Set(blockIndex int64, h zerodisk.Hash) error {
+	bucket := lba.getBucket(blockIndex)
+	return bucket.SetHash(blockIndex, h)
 }
 
 // Delete the content hash for a specific block.
@@ -81,219 +88,61 @@ func (lba *LBA) Set(blockIndex int64, h zerodisk.Hash) (err error) {
 // stored in the external metadaserver when Flush is called,
 // or when the its getting evicted from the cache due to space limitations.
 // Deleting means actually that the nilhash will be set for this blockindex.
-func (lba *LBA) Delete(blockIndex int64) (err error) {
-	err = lba.Set(blockIndex, nil)
-	return
+func (lba *LBA) Delete(blockIndex int64) error {
+	return lba.Set(blockIndex, nil)
 }
 
 // Get returns the hash for a block, nil if no hash is registered.
 // If the sector containing this blockindex is not present, it is fetched from the external metadaserver
-func (lba *LBA) Get(blockIndex int64) (h zerodisk.Hash, err error) {
-	sectorIndex := blockIndex / NumberOfRecordsPerLBASector
-
-	lba.mux.RLock()
-	defer lba.mux.RUnlock()
-
-	sector, err := lba.getSector(sectorIndex)
-
-	if err != nil || sector == nil {
-		return
-	}
-
-	// get the hash
-	hashIndex := blockIndex % NumberOfRecordsPerLBASector
-
-	h = sector.Get(hashIndex)
-	if h.Equals(zerodisk.NilHash) {
-		h = nil
-	}
-
-	return
+func (lba *LBA) Get(blockIndex int64) (zerodisk.Hash, error) {
+	bucket := lba.getBucket(blockIndex)
+	return bucket.GetHash(blockIndex)
 }
 
 // Flush stores all dirty sectors to the external metadaserver
-func (lba *LBA) Flush() (err error) {
-	err = lba.storeCacheInExternalStorage()
-	return
-}
-
-// Get a sector from cache given a block index,
-// or retreiving it from the external storage instead,
-// in case the sector isn't available in the cache.
-func (lba *LBA) getSector(index int64) (sector *sector, err error) {
-	sector, ok := lba.cache.Get(index)
-	if !ok {
-		sector, err = lba.getSectorFromExternalStorage(index)
-		if err != nil {
-			return
-		}
-
-		if sector != nil {
-			lba.cache.Add(index, sector)
-		}
-	}
-
-	return
-}
-
-// in case a sector gets evicted from cache,
-// this method will be called, and we'll serialize the sector immediately,
-// unless it isn't dirty
-func (lba *LBA) onCacheEviction(index int64, sector *sector) {
-	if !sector.Dirty() {
-		return
-	}
-
-	var err error
-
-	// the given sector can be nil in case it was deleted by the user,
-	// in that case we will remove the sector from the external storage as well
-	// otherwise we serialize the sector before it gets thrown into the void
-	if sector != nil {
-		err = lba.storeSectorInExternalStorage(index, sector)
-	} else {
-		err = lba.deleteSectorFromExternalStorage(index)
-	}
-
-	if err != nil {
-		log.Infof("error during eviction of sector %d: %s", index, err)
-	}
-}
-
-func (lba *LBA) getSectorFromExternalStorage(index int64) (sector *sector, err error) {
-	conn, err := lba.provider.MetadataConnection()
-	if err != nil {
-		return
-	}
-	defer conn.Close()
-	reply, err := conn.Do("HGET", lba.storageKey, index)
-	if err != nil || reply == nil {
-		return
-	}
-
-	sectorBytes, err := redis.Bytes(reply, err)
-	if err != nil {
-		return
-	}
-
-	sector, err = sectorFromBytes(sectorBytes)
-	return
-}
-
-// Store all sectors available in the cache,
-// into the external storage.
-func (lba *LBA) storeCacheInExternalStorage() (err error) {
-	conn, err := lba.provider.MetadataConnection()
-	if err != nil {
-		return
-	}
-	defer conn.Close()
-
-	lba.mux.Lock()
-	defer lba.mux.Unlock()
-
-	var cmdCount int64
-	lba.cache.Serialize(func(index int64, bytes []byte) (err error) {
-		if bytes != nil {
-			err = conn.Send("HSET", lba.storageKey, index, bytes)
-		} else {
-			err = conn.Send("HDEL", lba.storageKey, index)
-		}
-
-		cmdCount++
-		return
-	})
-
-	// Write all sets in output buffer to Redis at once
-	err = conn.Flush()
-	if err != nil {
-		return
-	}
-
-	// read all responses
+func (lba *LBA) Flush() error {
+	var wg sync.WaitGroup
 	var errors flushError
-	for i := int64(0); i < cmdCount; i++ {
-		_, err = conn.Receive()
-		if err != nil {
-			errors = append(errors, err)
-		}
-	}
-	if len(errors) > 0 {
-		err = errors // return 1+ errors in case we received any
-		return
+
+	for _, bucket := range lba.buckets {
+		wg.Add(1)
+		bucket := bucket
+		go func() {
+			defer wg.Done()
+			errors.AddError(bucket.Flush())
+		}()
 	}
 
-	// no need to evict, already serialized them
-	evict := false
-	// clear cache, as we serialized them all
-	lba.cache.Clear(evict)
-
-	// return with no errors, all good
-	return
+	wg.Wait()
+	return errors.AsError()
 }
 
-// Store a single sector into the external storage.
-func (lba *LBA) storeSectorInExternalStorage(index int64, sector *sector) (err error) {
-	if !sector.Dirty() {
-		log.Debugf(
-			"LBA sector %d for %s isn't dirty, so nothing to store in external (meta) storage",
-			index, lba.vdiskID)
-		return // only store a dirty sector
-	}
-
-	var buffer bytes.Buffer
-	if err = sector.Write(&buffer); err != nil {
-		err = fmt.Errorf("couldn't serialize evicted sector %d: %s", index, err)
-		return
-	}
-
-	conn, err := lba.provider.MetadataConnection()
-	if err != nil {
-		return
-	}
-	defer conn.Close()
-
-	_, err = conn.Do("HSET", lba.storageKey, index, buffer.Bytes())
-	if err != nil {
-		sector.UnsetDirty()
-	}
-
-	return
+func (lba *LBA) getBucket(blockIndex int64) *sectorBucket {
+	bucketIndex := bucketIndex(blockIndex, lba.bucketCount)
+	return lba.buckets[bucketIndex]
 }
 
-// Delete a single sector from the external storage.
-func (lba *LBA) deleteSectorFromExternalStorage(index int64) (err error) {
-	conn, err := lba.provider.MetadataConnection()
-	if err != nil {
-		return
-	}
-	defer conn.Close()
-
-	_, err = conn.Do("HDEL", lba.storageKey, index)
-
-	return
+func bucketIndex(blockIndex int64, bucketCount int32) int {
+	sectorIndex := blockIndex / NumberOfRecordsPerLBASector
+	return int(jumpConsistentHash(uint64(sectorIndex), bucketCount))
 }
 
-// flushError is a collection of errors received,
-// send by the server as a reply on the commands that got flushed to it
-type flushError []error
+// jumpConsistentHash taken from https://arxiv.org/pdf/1406.2294.pdf
+func jumpConsistentHash(key uint64, numBuckets int32) int32 {
+	var b int64 = -1
+	var j int64
 
-// Error implements Error.Error
-func (e flushError) Error() (s string) {
-	s = fmt.Sprintf("flush failed because of %d commands: ", len(e))
-	for _, err := range e {
-		s += `"` + err.Error() + `";`
+	for j < int64(numBuckets) {
+		b = j
+		key = key*2862933555777941757 + 1
+		j = int64(float64(b+1) * (float64(int64(1)<<31) / float64((key>>33)+1)))
 	}
-	return
-}
 
-// StorageKey returns the storage key that can/will be
-// used to store the LBA data for the given vdiskID
-func StorageKey(vdiskID string) string {
-	return StorageKeyPrefix + vdiskID
+	return int32(b)
 }
 
 const (
-	// StorageKeyPrefix is the prefix used in StorageKey
-	StorageKeyPrefix = "lba:"
+	// maxNumberOfSectorBuckets is the maximum number of buckets we'll use
+	// TODO: define this number of buckets with some more thought
+	maxNumberOfSectorBuckets = 64
 )

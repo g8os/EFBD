@@ -94,7 +94,6 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 			VdiskID:         vdiskID,
 			TemplateVdiskID: staticConfig.TemplateVdiskID,
 			VdiskType:       staticConfig.Type,
-			VdiskSize:       vdiskSize,
 			BlockSize:       blockSize,
 			LBACacheLimit:   f.lbaCacheLimit,
 		}, redisProvider)

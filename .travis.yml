@@ -14,6 +14,10 @@ jobs:
       script: TIMEOUT=5m make testrace
     - stage: test
       go: 1.8
+      install: skip
+      script: TIMEOUT=10m make testrace_gonbdserver
+    - stage: test
+      go: 1.8
       install:
         - ./tlog/install_dependencies.sh
       script: TIMEOUT=5m make testcgo

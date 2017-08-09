@@ -11,8 +11,8 @@ import (
 )
 
 // SemiDeduped returns a semi deduped BlockStorage
-func SemiDeduped(vdiskID string, vdiskSize, blockSize, lbaCacheLimit int64, provider ardb.ConnProvider) (BlockStorage, error) {
-	templateStorage, err := Deduped(vdiskID, vdiskSize, blockSize, lbaCacheLimit, true, provider)
+func SemiDeduped(vdiskID string, blockSize, lbaCacheLimit int64, provider ardb.ConnProvider) (BlockStorage, error) {
+	templateStorage, err := Deduped(vdiskID, blockSize, lbaCacheLimit, true, provider)
 	if err != nil {
 		return nil, err
 	}
