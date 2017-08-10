@@ -126,8 +126,14 @@ func ReadConfig(source Source, id string, keyType KeyType) ([]byte, error) {
 	if err == ErrConfigUnavailable {
 		source.MarkInvalidKey(configKey, "")
 	} else if err == ErrSourceUnavailable {
-		// TODO: notify 0-Orchestrator that the etcd cluster is down
-		// see: https://github.com/zero-os/0-Disk/issues/370
+		log.Errorf("couldn't fetch config %v: %v", configKey, err)
+		if source.Type() == "etcd" {
+			log.Broadcast(
+				log.StatusClusterTimeout,
+				log.SubjectETCD,
+				source.SourceConfig(),
+			)
+		}
 	} else if _, isInvalid := err.(*InvalidConfigError); isInvalid {
 		source.MarkInvalidKey(configKey, "")
 	}
