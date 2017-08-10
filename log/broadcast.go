@@ -73,7 +73,7 @@ const (
 type InvalidConfigBody struct {
 	Endpoints []string `json:"endpoints"`
 	Key       string   `json:"key"`
-	// given if the config is only invalud
+	// given if the config is only invalid
 	// because it is used for a specific vdiskID
 	// which has extra requirements the configs does not fullfill.
 	VdiskID string `json:"vdiskID"`
