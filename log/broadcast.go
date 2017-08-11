@@ -1,6 +1,8 @@
 package log
 
 import (
+	"errors"
+
 	"github.com/zero-os/0-log"
 )
 
@@ -41,6 +43,17 @@ func (s MessageSubject) String() string {
 	}
 }
 
+// MarshalText implements encoding.TextMarshaler.MarshalText.
+// Returns this message subject in string format.
+func (s MessageSubject) MarshalText() ([]byte, error) {
+	str := s.String()
+	if str == subjectNilStr {
+		return nil, errors.New("invalid message subject cannot be marshalled")
+	}
+
+	return []byte(str), nil
+}
+
 const (
 	// SubjectStorage identifies the messages has to do with (ardb) storage
 	SubjectStorage MessageSubject = iota
@@ -76,5 +89,5 @@ type InvalidConfigBody struct {
 	// given if the config is only invalid
 	// because it is used for a specific vdiskID
 	// which has extra requirements the configs does not fullfill.
-	VdiskID string `json:"vdiskID"`
+	VdiskID string `json:"vdiskID,omitempty"`
 }
