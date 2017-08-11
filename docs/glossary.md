@@ -50,6 +50,12 @@ Database (db) is one of the available [vdisk](#vdisk) types. It uses the [nonded
 
 [Blocks](#block) stored in the deduped [storage (2)](#storage) are only stored once, and are identified by their block [hash](#hash), which is referenced via its [metadata (1)](#metadata). See the [deduped storage docs][dedup] for more info.
 
+### etcd
+
+[etcd][etcd] is a distributed reliable key-value store and uses the Raft consensus algorithm to manage a highly-available replicated log.
+
+Configurations for all [vdisks](#vdisk) to be mounted by a given [NBD Server][nbd] and supported by other 0-Disk services such as the [TLog Server][tlogserver], are stored in an [etcd][etcd] cluster. [0-Orchestrator][0-Orchestrator] sets up this cluster and writes all these configurations to the cluster. 0-Disk services consider this cluster as read-only. For more information about this use case of [etcd][etcd] check out the [etcd config docs][etcdConfigDocs].
+
 ### hash
 
 A hash function is any function that can be used to map data of arbitrary size to data of fixed size. In the case of 0-Disk it can be assumed that the [blake2b][blake2b] cryptographic hashing algorithm is used, unless explicitly specified otherwise. A hash is the name for the fixed-sized data produced by the hashing algorithm.
@@ -76,7 +82,7 @@ Logic Block Addressing (LBA) is the scheme used for specifying the location of [
 
 1. Debug, Info and Error logs are supported and is done using the [0-Disk/log](/log) module. By default these are logged to the _STDERR_, but both the [NBD server](#nbd) and the [TLog server](#tlog) support logging to a file, if given a path to write to.
 
-2. 0-Disk components are just a small piece of the Zero-OS ecosystem. In case a 0-Disk component (such as [NBD server](#nbd) or [TLog server](#tlog)) has to communicate to other components (such as [0-Orchestrator][0-Orchestrator]), it does so using the [zerolog][0-Log] package, which provides formatted _STDERR_ logging, for exactly this purpose of providing a communication medium between Zero-OS components.
+2. 0-Disk components are just a small piece of the Zero-OS ecosystem. In case a 0-Disk component (such as [NBD server](#nbd) or [TLog server](#tlog)) has to communicate to other components (such as [0-Orchestrator][0-Orchestrator]), it does so using the [zerolog][0-log] package, which provides formatted _STDERR_ logging, for exactly this purpose of providing a communication medium between Zero-OS components. Read more information about this in [the log docs][logDocs].
 
 3. [Transactions are logged](#tlog) are logged for [vdisks](#vdisk) which support it and is enabled. This is an option for both [db](#db) and [boot](#boot) [vdisks](#vdisk).
 
@@ -193,6 +199,9 @@ The 0-Disk command line tool, used to manage [vdisks](#vdisk). See the [zeroctl 
 [0-Log]: https://github.com/zero-os/0-log
 
 [config]: /docs/config.md
+[etcdConfigDocs]: /docs/config.md#etcd
+
+[logDocs]: /docs/log.md
 
 [nbd]: /docs/nbd/nbd.md
 [storage]: /docs/nbd/storage/storage.md
@@ -212,3 +221,5 @@ The 0-Disk command line tool, used to manage [vdisks](#vdisk). See the [zeroctl 
 [cmdcopy]: /docs/zeroctl/commands/copy.md
 [cmdexport]: /docs/zeroctl/commands/export.md
 [cmdimport]: /docs/zeroctl/commands/import.md
+
+[etcd]: https://github.com/coreos/etcd
