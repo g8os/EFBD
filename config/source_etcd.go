@@ -18,16 +18,23 @@ func ETCDV3Source(endpoints []string) (SourceCloser, error) {
 	})
 	if err != nil {
 		log.Errorf("ETCDV3Source requires valid etcd v3 client: %v", err)
-		// TODO: notify 0-Orchestrator that the etcd cluster is down
-		// see: https://github.com/zero-os/0-Disk/issues/370
+		log.Broadcast(
+			log.StatusClusterTimeout,
+			log.SubjectETCD,
+			endpoints,
+		)
 		return nil, ErrSourceUnavailable
 	}
 
-	return &etcdv3Source{client}, nil
+	return &etcdv3Source{
+		client:    client,
+		endpoints: endpoints,
+	}, nil
 }
 
 type etcdv3Source struct {
-	client *clientv3.Client
+	client    *clientv3.Client
+	endpoints []string
 }
 
 // Get implements Source.Get
@@ -135,10 +142,33 @@ func (s *etcdv3Source) Watch(ctx context.Context, key Key) (<-chan []byte, error
 
 // MarkInvalidKey implements Source.MarkInvalidKey
 func (s *etcdv3Source) MarkInvalidKey(key Key, vdiskID string) {
-	// TODO:
-	// use the 0-log library, to log this failure
-	// see: https://github.com/zero-os/0-Disk/issues/300
-	// and: https://github.com/zero-os/0-Disk/issues/363
+	keyStr, err := ETCDKey(key.ID, key.Type)
+	if err != nil {
+		panic(err) // should never happen
+	}
+
+	log.Errorf(
+		"received invalid etcd config '%s' (vdisk:'%s')", keyStr, vdiskID)
+
+	log.Broadcast(
+		log.StatusInvalidConfig,
+		log.SubjectETCD,
+		log.InvalidConfigBody{
+			Endpoints: s.endpoints,
+			Key:       keyStr,
+			VdiskID:   vdiskID,
+		},
+	)
+}
+
+// SourceConfig implements Source.SourceConfig
+func (s *etcdv3Source) SourceConfig() interface{} {
+	return s.endpoints
+}
+
+// Type implements Source.Type
+func (s *etcdv3Source) Type() string {
+	return "etcd"
 }
 
 // Close implements Source.Close

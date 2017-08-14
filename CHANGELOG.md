@@ -1,11 +1,62 @@
 # Change Log
 
-## [1.1.0-alpha-5 (unreleased)](https://github.com/zero-os/0-Disk/tree/1.1.0-alpha-5)
-
-[Full Changelog](https://github.com/zero-os/0-Disk/compare/v1.1.0-alpha-4...1.1.0-alpha-5)
+## [v1.1.0-alpha-7](https://github.com/zero-os/0-Disk/tree/1.1.0-alpha-7) (unreleased)
+[Full Changelog](https://github.com/zero-os/0-Disk/compare/v1.1.0-alpha-5...1.1.0-alpha-7)
 
 **Closed issues:**
 
+- fix race warning in vdisk\_complete.go [\#379](https://github.com/zero-os/0-Disk/issues/379)
+- take a hard look at the LBA code and redesign where needed [\#376](https://github.com/zero-os/0-Disk/issues/376)
+- make testrace is running without -race flag [\#373](https://github.com/zero-os/0-Disk/issues/373)
+- notify 0-orchestrator when etcd \(config\) cluster is down [\#370](https://github.com/zero-os/0-Disk/issues/370)
+- Nbd server failed to read template data \(invalid configuration\) [\#364](https://github.com/zero-os/0-Disk/issues/364)
+- notify 0-Orchestrator when a hot-reloaded config is invalid [\#363](https://github.com/zero-os/0-Disk/issues/363)
+- fix stub-based config unit tests [\#361](https://github.com/zero-os/0-Disk/issues/361)
+- additional fields for tlog config [\#360](https://github.com/zero-os/0-Disk/issues/360)
+- List and document all locations which require communication with 0-Orchestrator [\#359](https://github.com/zero-os/0-Disk/issues/359)
+- refactor core storage code into public centralized module [\#350](https://github.com/zero-os/0-Disk/issues/350)
+- add \(meta\)data key rename tool [\#345](https://github.com/zero-os/0-Disk/issues/345)
+- TestForceFlushAtSeq times out in Travis's `make testgo` [\#344](https://github.com/zero-os/0-Disk/issues/344)
+- `make testcodegen` failed but reported as passed on travis [\#343](https://github.com/zero-os/0-Disk/issues/343)
+- nbdserver : move sigterm handler to nbd.Backend [\#339](https://github.com/zero-os/0-Disk/issues/339)
+- broken TestSlaveSyncRealRead unit test [\#331](https://github.com/zero-os/0-Disk/issues/331)
+- exit nbdserver gracefully upon SIGTERM [\#323](https://github.com/zero-os/0-Disk/issues/323)
+- tlogserver : handle db down in smarter way \(erasure coding way\) [\#321](https://github.com/zero-os/0-Disk/issues/321)
+- remove usage of config files, go to etcd [\#316](https://github.com/zero-os/0-Disk/issues/316)
+- broken tlogclient multiple server unit test [\#310](https://github.com/zero-os/0-Disk/issues/310)
+- move specs/docs which are now in readme's to the docs folder [\#309](https://github.com/zero-os/0-Disk/issues/309)
+- Add For-Orchestrator-Failure \(stderr\) logger [\#300](https://github.com/zero-os/0-Disk/issues/300)
+- vdisk restore fails but returns success [\#288](https://github.com/zero-os/0-Disk/issues/288)
+
+**Merged pull requests:**
+
+- Adds 0-log to Config [\#382](https://github.com/zero-os/0-Disk/pull/382) ([chrisvdg](https://github.com/chrisvdg))
+- fix race warnings and their origins [\#380](https://github.com/zero-os/0-Disk/pull/380) ([GlenDC](https://github.com/GlenDC))
+- fix StorageClusterConfig configuration in docs/config.md [\#377](https://github.com/zero-os/0-Disk/pull/377) ([khaledkbadr](https://github.com/khaledkbadr))
+- Fix header links in docs/config.md [\#372](https://github.com/zero-os/0-Disk/pull/372) ([khaledkbadr](https://github.com/khaledkbadr))
+- fix deadlock issue in watch config unit tests [\#366](https://github.com/zero-os/0-Disk/pull/366) ([GlenDC](https://github.com/GlenDC))
+- isolate BlockStorage and bring order to nbd module [\#356](https://github.com/zero-os/0-Disk/pull/356) ([GlenDC](https://github.com/GlenDC))
+- remote backendStorage.Merge interface method [\#348](https://github.com/zero-os/0-Disk/pull/348) ([GlenDC](https://github.com/GlenDC))
+- vendor+install missing capnpc-go plugin [\#347](https://github.com/zero-os/0-Disk/pull/347) ([GlenDC](https://github.com/GlenDC))
+- add tool to migrate legacy keys to new format [\#346](https://github.com/zero-os/0-Disk/pull/346) ([GlenDC](https://github.com/GlenDC))
+- add missing docs and improve existing docs [\#342](https://github.com/zero-os/0-Disk/pull/342) ([GlenDC](https://github.com/GlenDC))
+- tlogclient : fix race condition when waiting for sync.Cond variable. [\#341](https://github.com/zero-os/0-Disk/pull/341) ([iwanbk](https://github.com/iwanbk))
+- move nbd sigterm handling to backend [\#340](https://github.com/zero-os/0-Disk/pull/340) ([GlenDC](https://github.com/GlenDC))
+- tlogclient : fix first sequence used to reconnect. [\#338](https://github.com/zero-os/0-Disk/pull/338) ([iwanbk](https://github.com/iwanbk))
+- update dependencies [\#333](https://github.com/zero-os/0-Disk/pull/333) ([GlenDC](https://github.com/GlenDC))
+- Adds etcdconfig [\#330](https://github.com/zero-os/0-Disk/pull/330) ([chrisvdg](https://github.com/chrisvdg))
+
+## [v1.1.0-alpha-5](https://github.com/zero-os/0-Disk/tree/v1.1.0-alpha-5) (2017-07-14)
+[Full Changelog](https://github.com/zero-os/0-Disk/compare/v1.1.0-alpha-4...v1.1.0-alpha-5)
+
+**Closed issues:**
+
+- tlogserver not building on MacOS in master [\#328](https://github.com/zero-os/0-Disk/issues/328)
+- Fix broken zeroctl list vdisks command \(remove prefixes\) [\#326](https://github.com/zero-os/0-Disk/issues/326)
+- tlogserver : remove hot reload support [\#315](https://github.com/zero-os/0-Disk/issues/315)
+- multiple tlog : logs might be stored twice on failover [\#314](https://github.com/zero-os/0-Disk/issues/314)
+- spread metadata of tlogserver's slave syncer [\#305](https://github.com/zero-os/0-Disk/issues/305)
+- Space-Optimized Storage Type \(deduped/nondeduped hybrid\) [\#298](https://github.com/zero-os/0-Disk/issues/298)
 - config hot reload data race [\#292](https://github.com/zero-os/0-Disk/issues/292)
 - tlog: sending SIGHUP kills the server [\#287](https://github.com/zero-os/0-Disk/issues/287)
 - tlog: stop main listener and all vdisk goroutines with contex.CancelFunc [\#283](https://github.com/zero-os/0-Disk/issues/283)
@@ -19,6 +70,13 @@
 
 **Merged pull requests:**
 
+- nbdserver sigterm handler. [\#337](https://github.com/zero-os/0-Disk/pull/337) ([iwanbk](https://github.com/iwanbk))
+- Revert "Implements TrimAt" [\#329](https://github.com/zero-os/0-Disk/pull/329) ([iwanbk](https://github.com/iwanbk))
+- Fix usage of parent context. [\#327](https://github.com/zero-os/0-Disk/pull/327) ([iwanbk](https://github.com/iwanbk))
+- Fix tlog test multipleserver [\#320](https://github.com/zero-os/0-Disk/pull/320) ([iwanbk](https://github.com/iwanbk))
+- improve code base and inline docs [\#318](https://github.com/zero-os/0-Disk/pull/318) ([GlenDC](https://github.com/GlenDC))
+- add semideduped storage type [\#312](https://github.com/zero-os/0-Disk/pull/312) ([GlenDC](https://github.com/GlenDC))
+- Implements TrimAt [\#307](https://github.com/zero-os/0-Disk/pull/307) ([chrisvdg](https://github.com/chrisvdg))
 - Feat slavesync hot reload [\#295](https://github.com/zero-os/0-Disk/pull/295) ([iwanbk](https://github.com/iwanbk))
 - Multiple-tlog support improvements [\#294](https://github.com/zero-os/0-Disk/pull/294) ([iwanbk](https://github.com/iwanbk))
 - Fix hot reload data race. [\#293](https://github.com/zero-os/0-Disk/pull/293) ([iwanbk](https://github.com/iwanbk))

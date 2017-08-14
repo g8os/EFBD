@@ -355,6 +355,10 @@
 			"Rev": "2243d714d6c94951d8ccca8c851836ff47d401c9"
 		},
 		{
+			"ImportPath": "github.com/zero-os/0-log",
+			"Rev": "9173ce07ea291ea5c99897e290394ee4122fee81"
+		},
+		{
 			"ImportPath": "golang.org/x/net/http2",
 			"Rev": "b3756b4b77d7b13260a0a2ec658753cf48922eac"
 		},

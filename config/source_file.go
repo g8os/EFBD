@@ -127,6 +127,16 @@ func (s *fileSource) MarkInvalidKey(key Key, vdiskID string) {
 		key, s.path, vdiskID)
 }
 
+// SourceConfig implements Source.SourceConfig
+func (s *fileSource) SourceConfig() interface{} {
+	return s.path
+}
+
+// Type implements Source.Type
+func (s *fileSource) Type() string {
+	return "file"
+}
+
 // Close implements Source.Close
 func (s *fileSource) Close() error {
 	return nil

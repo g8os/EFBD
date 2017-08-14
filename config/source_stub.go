@@ -68,6 +68,11 @@ func (s *StubSource) MarkInvalidKey(key Key, vdiskID string) {
 	s.fileSource.MarkInvalidKey(key, vdiskID)
 }
 
+// Type implements Source.Type
+func (s *StubSource) Type() string {
+	return "stub"
+}
+
 // InvalidKey can be used to get a channel to wait for
 // an incoming ivnalid key.
 func (s *StubSource) InvalidKey() <-chan Key {

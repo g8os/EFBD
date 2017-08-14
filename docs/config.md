@@ -272,6 +272,17 @@ Invalid configurations are never dispatched to the config-user, and any such sit
 
 Read [the internal Godoc documentation][configGodoc] for more technical details.
 
+### Failure Scenarios
+
+While there are benefits of having our configuration stored in an [etcd][etcd] cluster, managed by the [0-orchestrator][orchestrator]. There are also a few scenarios where this opens the door for (critical) failures:
+
++ The [etcd][etcd] cluster might become unreachable, making it impossible to get updates for watched config keys. But even worse it would make it impossible to mount new [vdisks][vdisk], due to the fact that no config could be read any longer.
++ [0-orchestrator][orchestrator] might (due to a bug) write an invalid configuration (for a particular [vdisk][vdisk]), making it impossible to read and/or update it.
+
+In both cases we are in pretty deep problem, as both scenarios prevent us from fetching and using the configuration as intended. As it is all managed by the [0-orchestrator][orchestrator], we also rely on the [0-orchestrator][orchestrator] to fix these failures when they occur. It can do so as it will get notified by a message sent by the 0-Disk service in question.
+
+You can read all about this in [the log docs][logDocs].
+
 ## file
 
 Configuration of 0-Disk services using a single config file is also supported. **This should never be used for production**, and is only really meant for use by developers working on the 0-Disk repository. Because of this, no guarantees are made about backwards compatibility of its format. If you're using 0-Disk services in an ecosystem of things, or in production, you should be realy using the [etcd][etcd]-based configuration. Please take a look at the [etcd section](#etcd) section for more information on how to use and enable it.
@@ -417,3 +428,4 @@ Learn more about:
 [TlogClusterConfigGodoc]: https://godoc.org/github.com/zero-os/0-Disk/config#TlogClusterConfig
 [ZerostorClusterConfigGodoc]: https://godoc.org/github.com/zero-os/0-Disk/config#ZeroStorClusterConfig
 [zeroStorNamespacing]: https://github.com/zero-os/0-stor/blob/master/specs/concept.md#namespaces-concept
+[logDocs]: /docs/log.md

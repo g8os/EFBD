@@ -40,6 +40,11 @@ type Source interface {
 	// in case the invalid state is related to
 	// it being used for a specific vdisk.
 	MarkInvalidKey(key Key, vdiskID string)
+	// SourceConfig returns this source configuration.
+	// For etcd this means a comma seperated list of its etcd cluster addresses.
+	SourceConfig() interface{}
+	// returns the type of this source
+	Type() string
 }
 
 // SourceCloser defines a Source which
