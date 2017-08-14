@@ -10,8 +10,9 @@ import (
 	"time"
 
 	"github.com/garyburd/redigo/redis"
-	"github.com/siddontang/ledisdb/config"
+	lediscfg "github.com/siddontang/ledisdb/config"
 	"github.com/siddontang/ledisdb/server"
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 )
 
@@ -22,7 +23,7 @@ import (
 // https://github.com/siddontang/ledisdb/blob/master/doc/commands.md
 // WARNING: should be used for testing/dev purposes only!
 func NewMemoryRedis() *MemoryRedis {
-	cfg := config.NewConfigDefault()
+	cfg := lediscfg.NewConfigDefault()
 	cfg.DBName = "memory"
 	cfg.DataDir, _ = ioutil.TempDir("", "redisstub")
 	// assigning the empty string to Addr,
@@ -136,6 +137,11 @@ func (rp *InMemoryRedisProvider) TemplateConnection(index int64) (redis.Conn, er
 	return rp.templatePool.Get(), nil
 }
 
+// Address returns the address of the in-memory ardb server.
+func (rp *InMemoryRedisProvider) Address() string {
+	return rp.memRedis.Address()
+}
+
 // Close implements ConnProvider.Close
 func (rp *InMemoryRedisProvider) Close() error {
 	rp.memRedis.Close()
@@ -163,4 +169,94 @@ func newInMemoryRedisPool(dial func() (redis.Conn, error)) *redis.Pool {
 		IdleTimeout: 5 * time.Second,
 		Dial:        dial,
 	}
+}
+
+// NewInMemoryRedisProviderMultiServers returns an ARDB Connection Provider,
+// which uses multiple in-memory ARDB for all its purposes.
+// See documentation for NewMemoryRedis more information.
+// WARNING: should be used for testing/dev purposes only!
+func NewInMemoryRedisProviderMultiServers(dataServers int, metaDataServer bool) *InMemoryRedisProviderMultiServers {
+	if dataServers < 1 {
+		panic("no data servers given, while we require at least one")
+	}
+
+	var memRedisSlice []*MemoryRedis
+	for i := 0; i < dataServers; i++ {
+		memRedis := NewMemoryRedis()
+		go memRedis.Listen()
+		memRedisSlice = append(memRedisSlice, memRedis)
+	}
+
+	var metaMemRedis *MemoryRedis
+	if metaDataServer {
+		metaMemRedis = NewMemoryRedis()
+		go metaMemRedis.Listen()
+	}
+
+	return &InMemoryRedisProviderMultiServers{
+		memRedisSlice: memRedisSlice,
+		metaMemRedis:  metaMemRedis,
+	}
+}
+
+// InMemoryRedisProviderMultiServers provides a in memory provider
+// for any redis connection, using multiple in-memory ardb servers.
+// While it is safe to create this struct directly,
+// it is recommended to create it using NewInMemoryRedisProviderMultiServers.
+// WARNING: should be used for testing/dev purposes only!
+type InMemoryRedisProviderMultiServers struct {
+	memRedisSlice []*MemoryRedis
+	metaMemRedis  *MemoryRedis
+}
+
+// DataConnection implements ConnProvider.DataConnection
+func (rp *InMemoryRedisProviderMultiServers) DataConnection(index int64) (redis.Conn, error) {
+	i := index % int64(len(rp.memRedisSlice))
+	return redis.Dial("tcp", rp.memRedisSlice[i].Address())
+
+}
+
+// MetadataConnection implements ConnProvider.MetadataConnection
+func (rp *InMemoryRedisProviderMultiServers) MetadataConnection() (redis.Conn, error) {
+	if rp.metaMemRedis == nil {
+		return nil, errors.New("this provider has no metadata server configured")
+	}
+
+	return redis.Dial("tcp", rp.metaMemRedis.Address())
+}
+
+// TemplateConnection implements ConnProvider.TemplateConnection
+func (rp *InMemoryRedisProviderMultiServers) TemplateConnection(index int64) (redis.Conn, error) {
+	return nil, errors.New("template connection not supported")
+}
+
+// ClusterConfig returns the cluster config which
+// can be used to connect to the storage cluster which underlies this provider.
+func (rp *InMemoryRedisProviderMultiServers) ClusterConfig() *config.StorageClusterConfig {
+	cluster := new(config.StorageClusterConfig)
+
+	if rp.metaMemRedis != nil {
+		cluster.MetadataStorage = &config.StorageServerConfig{
+			Address: rp.metaMemRedis.Address(),
+		}
+	}
+
+	for _, memRedis := range rp.memRedisSlice {
+		cluster.DataStorage = append(cluster.DataStorage, config.StorageServerConfig{
+			Address: memRedis.Address(),
+		})
+	}
+
+	return cluster
+}
+
+// Close implements ConnProvider.Close
+func (rp *InMemoryRedisProviderMultiServers) Close() error {
+	for _, memRedis := range rp.memRedisSlice {
+		memRedis.Close()
+	}
+	if rp.metaMemRedis != nil {
+		rp.metaMemRedis.Close()
+	}
+	return nil
 }

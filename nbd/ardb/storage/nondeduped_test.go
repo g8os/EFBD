@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/garyburd/redigo/redis"
+	"github.com/stretchr/testify/assert"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/redisstub"
@@ -271,6 +272,157 @@ func TestGetNondedupedTemplateContentDeadlock(t *testing.T) {
 		if bytes.Compare(contentArray[i], content) != 0 {
 			t.Fatal(i, "unexpected content", contentArray[i], content)
 		}
+	}
+}
+
+/*
+func TestNonDedupedVdiskExists(t *testing.T) {
+	const (
+		vdiskID    = "a"
+		blockSize  = 8
+		blockCount = 8
+	)
+
+	redisProvider := redisstub.NewInMemoryRedisProvider(nil)
+	address := redisProvider.Address()
+	clusterConfig := config.StorageClusterConfig{
+		DataStorage: []config.StorageServerConfig{
+			config.StorageServerConfig{
+				Address: address,
+			},
+		},
+		MetadataStorage: &config.StorageServerConfig{
+			Address: address,
+		},
+	}
+
+	storage, err := NonDeduped(vdiskID, "", 8, false, redisProvider)
+	if err != nil || storage == nil {
+		t.Fatalf("storage could not be created: %v", err)
+	}
+
+	exists, err := NonDedupedVdiskExists(vdiskID, &clusterConfig)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if exists {
+		t.Fatal("vdisk shouldn't exist yet while it does")
+	}
+
+	data := make([]byte, blockSize)
+	_, err = rand.Read(data)
+	if err != nil {
+		t.Fatalf("couldn't generate a random block (#0): %v", err)
+	}
+	err = storage.SetBlock(0, data)
+	if err != nil {
+		t.Fatalf("couldn't set block #0: %v", err)
+	}
+	err = storage.Flush()
+	if err != nil {
+		t.Fatalf("couldn't flush storage: %v", err)
+	}
+
+	exists, err = NonDedupedVdiskExists(vdiskID, &clusterConfig)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !exists {
+		t.Fatal("vdisk should exist now, but it doesn't")
+	}
+
+	err = storage.DeleteBlock(0)
+	if err != nil {
+		t.Fatalf("couldn't delete block #0: %v", err)
+	}
+	err = storage.Flush()
+	if err != nil {
+		t.Fatalf("couldn't flush storage: %v", err)
+	}
+
+	exists, err = NonDedupedVdiskExists(vdiskID, &clusterConfig)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if exists {
+		t.Fatal("vdisk shouldn't exist anymore, but it does")
+	}
+}*/
+
+func TestListNonDedupedBlockIndices(t *testing.T) {
+	const (
+		vdiskID    = "a"
+		blockSize  = 8
+		blockCount = 9
+	)
+
+	redisProvider := redisstub.NewInMemoryRedisProviderMultiServers(4, false)
+	defer redisProvider.Close()
+	clusterConfig := redisProvider.ClusterConfig()
+
+	storage, err := NonDeduped(vdiskID, "", blockSize, false, redisProvider)
+	if err != nil || storage == nil {
+		t.Fatalf("storage could not be created: %v", err)
+	}
+
+	indices, err := ListNonDedupedBlockIndices(vdiskID, clusterConfig)
+	if err == nil {
+		t.Fatalf("expected an error, as no indices exist yet: %v", indices)
+	}
+
+	var expectedIndices []int64
+
+	// store all blocks, and make sure the List returns all indices correctly
+	for i := 0; i < blockCount; i++ {
+		// store a block
+		data := make([]byte, blockSize)
+		_, err := rand.Read(data)
+		if err != nil {
+			t.Fatalf("couldn't generate a random block (%d): %v", i, err)
+		}
+		err = storage.SetBlock(int64(i), data)
+		if err != nil {
+			t.Fatalf("couldn't set block (%d): %v", i, err)
+		}
+
+		err = storage.Flush()
+		if err != nil {
+			t.Fatalf("couldn't flush storage (step %d): %v", i, err)
+		}
+
+		// now test if listing the indices is correct
+		indices, err := ListNonDedupedBlockIndices(vdiskID, clusterConfig)
+		if err != nil {
+			t.Fatalf("couldn't list deduped block indices (step %d): %v", i, err)
+		}
+
+		expectedIndices = append(expectedIndices, int64(i))
+		if assert.Len(t, indices, i+1) {
+			assert.Equal(t, expectedIndices, indices)
+		}
+	}
+
+	// delete all odd blocks
+	ci := 1
+	for i := 1; i < blockCount; i += 2 {
+		err = storage.DeleteBlock(int64(i))
+		if err != nil {
+			t.Fatalf("couldn't delete block %d: %v", i, err)
+		}
+
+		expectedIndices = append(expectedIndices[:ci], expectedIndices[ci+1:]...)
+
+		// now test if listing the indices is still correct
+		indices, err := ListNonDedupedBlockIndices(vdiskID, clusterConfig)
+		if err != nil {
+			t.Fatalf("couldn't list deduped block indices (step %d): %v", i, err)
+		}
+
+		if assert.Len(t, indices, len(expectedIndices), "at cut index %v", i) {
+			assert.Equal(t, expectedIndices, indices, "at cut index %v", i)
+		}
+
+		ci++
 	}
 }
 

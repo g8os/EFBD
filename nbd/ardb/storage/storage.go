@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/garyburd/redigo/redis"
@@ -99,6 +100,42 @@ func NewBlockStorage(cfg BlockStorageConfig, provider ardb.ConnProvider) (storag
 		return nil, fmt.Errorf(
 			"no block storage available for %s's storage type %s",
 			cfg.VdiskID, storageType)
+	}
+}
+
+// VdiskExists returns true if the vdisk question exists in the given ardb storage cluster.
+// An error is returned in case this couldn't be verified for whatever reason.
+func VdiskExists(id string, t config.VdiskType, ccfg *config.StorageClusterConfig) (bool, error) {
+	switch st := t.StorageType(); st {
+	case config.StorageDeduped:
+		return DedupedVdiskExists(id, ccfg)
+
+	case config.StorageNonDeduped:
+		return NonDedupedVdiskExists(id, ccfg)
+
+	case config.StorageSemiDeduped:
+		return SemiDedupedVdiskExists(id, ccfg)
+
+	default:
+		return false, fmt.Errorf("%v is not a supported storage type", st)
+	}
+}
+
+// ListBlockIndices returns all indices stored for the given storage.
+// This function will always either return an error OR indices.
+func ListBlockIndices(id string, t config.VdiskType, ccfg *config.StorageClusterConfig) ([]int64, error) {
+	switch st := t.StorageType(); st {
+	case config.StorageDeduped:
+		return ListDedupedBlockIndices(id, ccfg)
+
+	case config.StorageNonDeduped:
+		return ListNonDedupedBlockIndices(id, ccfg)
+
+	case config.StorageSemiDeduped:
+		return ListSemiDedupedBlockIndices(id, ccfg)
+
+	default:
+		return nil, fmt.Errorf("%v is not a supported storage type", st)
 	}
 }
 
@@ -391,4 +428,29 @@ func (errs pipelineErrors) Error() string {
 	}
 
 	return str[:len(str)-2]
+}
+
+// sortInt64s sorts a slice of int64s
+func sortInt64s(s []int64) {
+	sort.Sort(int64Slice(s))
+}
+
+// int64Slice implements the sort.Interface for a slice of int64s
+type int64Slice []int64
+
+func (s int64Slice) Len() int           { return len(s) }
+func (s int64Slice) Less(i, j int) bool { return s[i] < s[j] }
+func (s int64Slice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+
+// dedupInt64s deduplicates a given int64 slice which is already sorted.
+func dedupInt64s(s []int64) []int64 {
+	for i, n := 0, len(s)-1; i < n; {
+		if s[i] == s[i+1] {
+			s = append(s[:i], s[i+1:]...)
+			continue
+		}
+		i++
+	}
+
+	return s
 }

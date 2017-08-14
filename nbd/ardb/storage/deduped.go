@@ -225,6 +225,42 @@ func (ds *dedupedStorage) setContent(hash zerodisk.Hash, content []byte) (succes
 // Close implements BlockStorage.Close
 func (ds *dedupedStorage) Close() error { return nil }
 
+// DedupedVdiskExists returns if the deduped vdisk in question
+// exists in the given ardb storage cluster.
+func DedupedVdiskExists(vdiskID string, cluster *config.StorageClusterConfig) (bool, error) {
+	if cluster == nil {
+		return false, errors.New("no cluster config given")
+	}
+	if cluster.MetadataStorage == nil {
+		return false, errors.New("no metadataServer given for cluster config")
+	}
+
+	conn, err := ardb.GetConnection(*cluster.MetadataStorage)
+	if err != nil {
+		return false, fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
+	}
+	defer conn.Close()
+	return redis.Bool(conn.Do("EXISTS", lba.StorageKey(vdiskID)))
+}
+
+// ListDedupedBlockIndices returns all indices stored for the given deduped storage.
+// This function will always either return an error OR indices.
+func ListDedupedBlockIndices(vdiskID string, cluster *config.StorageClusterConfig) ([]int64, error) {
+	if cluster == nil {
+		return nil, errors.New("no cluster config given")
+	}
+	if cluster.MetadataStorage == nil {
+		return nil, errors.New("no metadataServer given for cluster config")
+	}
+
+	conn, err := ardb.GetConnection(*cluster.MetadataStorage)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
+	}
+	defer conn.Close()
+	return ardb.RedisInt64s(listDedupedBlockIndicesScript.Do(conn, lba.StorageKey(vdiskID)))
+}
+
 // CopyDeduped copies all metadata of a deduped storage
 // from a sourceID to a targetID, within the same cluster or between different clusters.
 func CopyDeduped(sourceID, targetID string, sourceCluster, targetCluster *config.StorageClusterConfig) error {
@@ -233,7 +269,7 @@ func CopyDeduped(sourceID, targetID string, sourceCluster, targetCluster *config
 		return errors.New("no source cluster given")
 	}
 	if sourceCluster.MetadataStorage == nil {
-		return errors.New("no metaDataServer given for source")
+		return errors.New("no metadataServer given for source")
 	}
 
 	// define whether or not we're copying between different servers,
@@ -281,28 +317,11 @@ func CopyDeduped(sourceID, targetID string, sourceCluster, targetCluster *config
 }
 
 func copyDedupedSameConnection(sourceID, targetID string, conn redis.Conn) (err error) {
-	script := redis.NewScript(0, `
-local source = ARGV[1]
-local destination = ARGV[2]
-
-if redis.call("EXISTS", source) == 0 then
-    return redis.error_reply('"' .. source .. '" does not exist')
-end
-
-if redis.call("EXISTS", destination) == 1 then
-    redis.call("DEL", destination)
-end
-
-redis.call("RESTORE", destination, 0, redis.call("DUMP", source))
-
-return redis.call("HLEN", destination)
-`)
-
 	log.Infof("dumping vdisk %q and restoring it as vdisk %q",
 		sourceID, targetID)
 
 	sourceKey, targetKey := lba.StorageKey(sourceID), lba.StorageKey(targetID)
-	indexCount, err := redis.Int64(script.Do(conn, sourceKey, targetKey))
+	indexCount, err := redis.Int64(copyDedupedSameConnScript.Do(conn, sourceKey, targetKey))
 	if err == nil {
 		log.Infof("copied %d meta indices to vdisk %q", indexCount, targetID)
 	}
@@ -384,3 +403,48 @@ func (op *deleteDedupedMetadataOp) Receive(receiver storageOpReceiver) error {
 func (op *deleteDedupedMetadataOp) Label() string {
 	return "delete deduped metadata of " + op.vdiskID
 }
+
+var copyDedupedSameConnScript = redis.NewScript(0, `
+local source = ARGV[1]
+local destination = ARGV[2]
+
+if redis.call("EXISTS", source) == 0 then
+    return redis.error_reply('"' .. source .. '" does not exist')
+end
+
+if redis.call("EXISTS", destination) == 1 then
+    redis.call("DEL", destination)
+end
+
+redis.call("RESTORE", destination, 0, redis.call("DUMP", source))
+
+return redis.call("HLEN", destination)
+`)
+
+var listDedupedBlockIndicesScript = redis.NewScript(0, fmt.Sprintf(`
+local key = ARGV[1]
+local sectors = redis.call("HGETALL", key)
+
+local indices = {}
+for rsi = 1, #sectors, 2 do
+	local si = sectors[rsi]
+	local s = sectors[rsi+1]
+
+	-- go through each hash, to check if we need to add it
+	for hi = 1, %[1]d do
+		local hashStart = (hi - 1) * %[2]d + 1
+		local hashEnd = hi * %[2]d
+		for i = hashStart, hashEnd do
+			if s:byte(i) ~= 0 then
+				-- hash is non-nil, so let's save it
+				local blockIndex = (si * %[1]d) + (hi - 1)
+				indices[#indices+1] = blockIndex
+				break
+			end
+		end
+	end
+end
+
+-- return all found hashes
+return indices
+`, lba.NumberOfRecordsPerLBASector, zerodisk.HashSize))
