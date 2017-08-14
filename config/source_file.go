@@ -57,6 +57,9 @@ func (s *fileSource) Get(key Key) ([]byte, error) {
 	case KeyClusterStorage:
 		return serializeConfigReply(s.readStorageClusterConfig(key.ID))
 
+	case KeyClusterZeroStor:
+		return serializeConfigReply(s.readZeroStorClusterConfig(key.ID))
+
 	case KeyClusterTlog:
 		return serializeConfigReply(s.readTlogClusterConfig(key.ID))
 
@@ -172,6 +175,15 @@ func (s *fileSource) readStorageClusterConfig(clusterID string) (*StorageCluster
 	return cfg.StorageClusterConfig(clusterID)
 }
 
+func (s *fileSource) readZeroStorClusterConfig(clusterID string) (*ZeroStorClusterConfig, error) {
+	cfg, err := s.readFullFile()
+	if err != nil {
+		return nil, err
+	}
+
+	return cfg.ZeroStorClusterConfig(clusterID)
+}
+
 // read the entire config from file,
 // and take out a specific tlog cluster config
 func (s *fileSource) readTlogClusterConfig(clusterID string) (*TlogClusterConfig, error) {
@@ -204,9 +216,10 @@ func (s *fileSource) readFullFile() (*FileFormatCompleteConfig, error) {
 // FileFormatCompleteConfig is the YAML format struct
 // used for a zerodisk config file.
 type FileFormatCompleteConfig struct {
-	Vdisks          map[string]FileFormatVdiskConfig `yaml:"vdisks" valid:"required"`
-	StorageClusters map[string]StorageClusterConfig  `yaml:"storageClusters" valid:"required"`
-	TlogClusters    map[string]TlogClusterConfig     `yaml:"tlogClusters" valid:"optional"`
+	Vdisks           map[string]FileFormatVdiskConfig `yaml:"vdisks" valid:"required"`
+	StorageClusters  map[string]StorageClusterConfig  `yaml:"storageClusters" valid:"required"`
+	TlogClusters     map[string]TlogClusterConfig     `yaml:"tlogClusters" valid:"optional"`
+	ZeroStorClusters map[string]ZeroStorClusterConfig `yaml:"zeroStorClusters" valid:"optional"`
 }
 
 // NBDVdisksConfig returns the NBD Vdisks configuration embedded in
@@ -239,6 +252,17 @@ func (cfg *FileFormatCompleteConfig) StorageClusterConfig(id string) (*StorageCl
 		return nil, ErrConfigUnavailable
 	}
 	return &storageClusterConfig, nil
+}
+
+// ZeroStorClusterConfig returns ZeroStorCluster configuration embedded in
+// the YAML zerodisk config file
+func (cfg *FileFormatCompleteConfig) ZeroStorClusterConfig(id string) (*ZeroStorClusterConfig, error) {
+	zeroStorClusterConfig, ok := cfg.ZeroStorClusters[id]
+	if !ok {
+		log.Debug("file config has no 0-stor cluster config under the id ", id)
+		return nil, ErrConfigUnavailable
+	}
+	return &zeroStorClusterConfig, nil
 }
 
 // TlogClusterConfig returns the TlogCluster configuration embedded in

@@ -165,19 +165,7 @@ func InMemoryRedisPool(requiredDataServerCount int) RedisPool {
 // using the storage cluster defined in the given Blokstor config file,
 // for that vdisk.
 func RedisPoolFromConfig(vdiskID string, source config.Source, requiredDataServerCount int) (RedisPool, error) {
-	cfg, err := config.ReadTlogStorageConfig(source, vdiskID, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(cfg.StorageCluster.DataStorage) < requiredDataServerCount {
-		return nil, fmt.Errorf(
-			"storageCluster of vdisk %s has not enough dataservers",
-			vdiskID)
-	}
-
-	// create redis pool based on the given valid storage cluster
-	return newStaticRedisPool(cfg.StorageCluster.DataStorage), nil
+	return nil, errors.New("no longer supported and needed")
 }
 
 // RedisPoolConfig used to create any kind
@@ -439,36 +427,7 @@ func (p *dynamicRedisPool) Close() {
 }
 
 func (p *dynamicRedisPool) reloadConfig(cfg *config.TlogStorageConfig) error {
-	numServers := len(cfg.StorageCluster.DataStorage)
-	if numServers < p.requiredNumberOfDataPools {
-		return errors.New("not enough tlog servers defined")
-	}
-
-	p.lock.Lock()
-	defer p.lock.Unlock()
-
-	log.Debug("(re)loading redis pools, using the latest available config")
-
-	configs := cfg.StorageCluster.DataStorage[:p.requiredNumberOfDataPools]
-	for index, cfg := range configs {
-		if pool, ok := p.dataPools[index]; ok {
-			// pool already exists, so let's see
-			// if we can keep it as it is
-			if pool.Config == cfg {
-				continue // pool is fine as it is
-			}
-
-			log.Debugf("closing replaced pool #%d: %v", index, &pool.Config)
-			p.dataPools[index].Close()
-		}
-
-		p.dataPools[index] = &redisPool{
-			Pool:   newConnectionPool(cfg),
-			Config: cfg,
-		}
-	}
-
-	return nil
+	return errors.New("no longer needed and supported")
 }
 
 func (p *dynamicRedisPool) listen(ctx context.Context, source config.Source, vdiskID string) error {

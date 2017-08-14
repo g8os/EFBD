@@ -170,7 +170,7 @@ func NewVdiskTlogConfig(data []byte) (*VdiskTlogConfig, error) {
 
 // VdiskTlogConfig represents the tlogserver-related information for a vdisk.
 type VdiskTlogConfig struct {
-	StorageClusterID      string `yaml:"storageClusterID" valid:"required"`
+	ZeroStorClusterID     string `yaml:"zeroStorClusterID" valid:"required"`
 	SlaveStorageClusterID string `yaml:"slaveStorageClusterID" valid:"optional"`
 }
 
@@ -296,6 +296,110 @@ func (cfg *StorageClusterConfig) Equal(other *StorageClusterConfig) bool {
 	return cfg.MetadataStorage.Equal(other.MetadataStorage)
 }
 
+// NewZeroStorClusterConfig creates a new ZeroStorClusterConfig from a given YAML slice.
+func NewZeroStorClusterConfig(data []byte) (*ZeroStorClusterConfig, error) {
+	clustercfg := new(ZeroStorClusterConfig)
+
+	err := yaml.Unmarshal(data, clustercfg)
+	if err != nil {
+		return nil, err
+	}
+
+	err = clustercfg.Validate()
+	if err != nil {
+		return nil, err
+	}
+
+	return clustercfg, nil
+}
+
+// ZeroStorClusterConfig defines the config for a ZeroStor server cluster
+type ZeroStorClusterConfig struct {
+	IYO             IYOCredentials `yaml:"iyo" valid:"required"`
+	Servers         []Server       `yaml:"servers" valid:"required"`
+	MetadataServers []Server       `yaml:"metadataServers" valid:"required"`
+}
+
+// Validate implements FormatValidator.Validate.
+func (cfg *ZeroStorClusterConfig) Validate() error {
+	if cfg == nil {
+		return nil
+	}
+
+	_, err := valid.ValidateStruct(cfg)
+	if err != nil {
+		return fmt.Errorf("invalid ZeroStorClusterConfig: %v", err)
+	}
+
+	return nil
+}
+
+// Clone implements Cloner.Clone
+func (cfg *ZeroStorClusterConfig) Clone() ZeroStorClusterConfig {
+	var clone ZeroStorClusterConfig
+	if cfg == nil {
+		return clone
+	}
+
+	clone.IYO = cfg.IYO
+
+	clone.Servers = make([]Server, len(cfg.Servers))
+	copy(clone.Servers, cfg.Servers)
+
+	clone.MetadataServers = make([]Server, len(cfg.MetadataServers))
+	copy(clone.MetadataServers, cfg.MetadataServers)
+
+	return clone
+}
+
+// Equal checks if the 2 configs are equal.
+func (cfg *ZeroStorClusterConfig) Equal(other *ZeroStorClusterConfig) bool {
+	// check if both configs are given or not
+	if cfg == nil {
+		if other == nil {
+			return true
+		}
+		return false
+	} else if other == nil {
+		return false
+	}
+
+	// check length Servers
+	if len(cfg.Servers) != len(other.Servers) ||
+		len(cfg.MetadataServers) != len(other.MetadataServers) {
+		return false
+	}
+
+	// check if IYO credentials are equal
+	if cfg.IYO != other.IYO {
+		return false
+	}
+
+	// check if servers are equal
+	for i := range cfg.Servers {
+		if cfg.Servers[i] != other.Servers[i] {
+			return false
+		}
+	}
+	for i := range cfg.MetadataServers {
+		if cfg.MetadataServers[i] != other.MetadataServers[i] {
+			return false
+		}
+	}
+
+	return true
+}
+
+// IYOCredentials represents Itsyou.online credentials needed for 0-Stor namespacing
+// More information about the namespacing of the 0-Stor:
+// https://github.com/zero-os/0-stor/blob/master/specs/concept.md#namespaces-concept
+type IYOCredentials struct {
+	Org       string `yaml:"org" valid:"required"`
+	Namespace string `yaml:"namespace" valid:"required"`
+	ClientID  string `yaml:"clientID" valid:"required"`
+	Secret    string `yaml:"secret" valid:"required"`
+}
+
 // NewTlogClusterConfig creates a new TlogClusterConfig from a given YAML slice.
 func NewTlogClusterConfig(data []byte) (*TlogClusterConfig, error) {
 	clustercfg := new(TlogClusterConfig)
@@ -330,10 +434,9 @@ func (cfg *TlogClusterConfig) Validate() error {
 		return fmt.Errorf("invalid TlogClusterConfig: %v", err)
 	}
 
-	for _, server := range cfg.Servers {
-		if !valid.IsDialString(server) {
-			return fmt.Errorf("%s is not a valid dial string", server)
-		}
+	err = isDialStringSlice(cfg.Servers)
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -381,6 +484,22 @@ func (cfg *StorageServerConfig) Equal(other *StorageServerConfig) bool {
 
 	// it now all depends on whether or not their address is equal
 	return cfg.Address == other.Address
+}
+
+// Server represents a generic server with only a dialstring address
+type Server struct {
+	Address string `yaml:"address" valid:"dialstring,required"`
+}
+
+// isDialStringSlice checks a provided string slice
+// if each element is a valid dial string.
+func isDialStringSlice(data []string) error {
+	for _, server := range data {
+		if !valid.IsDialString(server) {
+			return fmt.Errorf("%s is not a valid dial string", server)
+		}
+	}
+	return nil
 }
 
 const (

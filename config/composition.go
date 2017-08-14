@@ -107,18 +107,18 @@ func (cfg *NBDStorageConfig) Clone() NBDStorageConfig {
 // TlogStorageConfig contains all information needed
 // to store tlogserver-related (meta)data.
 type TlogStorageConfig struct {
-	StorageCluster      StorageClusterConfig
+	ZeroStorCluster     ZeroStorClusterConfig
 	SlaveStorageCluster *StorageClusterConfig
 }
 
-// Validate the optional properties of this config,
+// Validate the required properties of this config,
 // using the VdiskType information.
 func (cfg *TlogStorageConfig) Validate(storageType StorageType) error {
 	// validate primary storage cluster
-	err := cfg.StorageCluster.Validate()
+	err := cfg.ZeroStorCluster.Validate()
 	if err != nil {
 		return fmt.Errorf(
-			"invalid TlogStorageConfig, invalid tlog storage cluster: %v", err)
+			"invalid TlogStorageConfig, invalid 0-stor cluster: %v", err)
 	}
 
 	return cfg.ValidateOptional(storageType)
