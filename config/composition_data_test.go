@@ -192,12 +192,12 @@ var validTlogStorageConfigs = []TlogStorageConfig{
 				ClientID:  "foo client",
 				Secret:    "foo secret",
 			},
-			Servers: []Server{
-				Server{Address: "1.1.1.1:11"},
-				Server{Address: "2.2.2.2:22"},
+			Servers: []ServerConfig{
+				ServerConfig{Address: "1.1.1.1:11"},
+				ServerConfig{Address: "2.2.2.2:22"},
 			},
-			MetadataServers: []Server{
-				Server{Address: "3.3.3.3:33"},
+			MetadataServers: []ServerConfig{
+				ServerConfig{Address: "3.3.3.3:33"},
 			},
 		},
 	},
@@ -210,12 +210,12 @@ var validTlogStorageConfigs = []TlogStorageConfig{
 				ClientID:  "foo client",
 				Secret:    "foo secret",
 			},
-			Servers: []Server{
-				Server{Address: "1.1.1.1:11"},
-				Server{Address: "2.2.2.2:22"},
+			Servers: []ServerConfig{
+				ServerConfig{Address: "1.1.1.1:11"},
+				ServerConfig{Address: "2.2.2.2:22"},
 			},
-			MetadataServers: []Server{
-				Server{Address: "3.3.3.3:33"},
+			MetadataServers: []ServerConfig{
+				ServerConfig{Address: "3.3.3.3:33"},
 			},
 		},
 	},
@@ -247,12 +247,12 @@ var validTlogStorageConfigsDeduped = []TlogStorageConfig{
 				ClientID:  "foo client",
 				Secret:    "foo secret",
 			},
-			Servers: []Server{
-				Server{Address: "1.1.1.1:11"},
-				Server{Address: "2.2.2.2:22"},
+			Servers: []ServerConfig{
+				ServerConfig{Address: "1.1.1.1:11"},
+				ServerConfig{Address: "2.2.2.2:22"},
 			},
-			MetadataServers: []Server{
-				Server{Address: "3.3.3.3:33"},
+			MetadataServers: []ServerConfig{
+				ServerConfig{Address: "3.3.3.3:33"},
 			},
 		},
 	},
@@ -265,12 +265,12 @@ var validTlogStorageConfigsDeduped = []TlogStorageConfig{
 				ClientID:  "foo client",
 				Secret:    "foo secret",
 			},
-			Servers: []Server{
-				Server{Address: "1.1.1.1:11"},
-				Server{Address: "2.2.2.2:22"},
+			Servers: []ServerConfig{
+				ServerConfig{Address: "1.1.1.1:11"},
+				ServerConfig{Address: "2.2.2.2:22"},
 			},
-			MetadataServers: []Server{
-				Server{Address: "3.3.3.3:33"},
+			MetadataServers: []ServerConfig{
+				ServerConfig{Address: "3.3.3.3:33"},
 			},
 		},
 	},
@@ -288,12 +288,12 @@ var invalidTlogStorageConfigs = []TlogStorageConfig{
 				ClientID:  "foo client",
 				Secret:    "foo secret",
 			},
-			Servers: []Server{
-				Server{Address: "1.1.1.1:11"},
-				Server{Address: "2.2.2.2:22"},
+			Servers: []ServerConfig{
+				ServerConfig{Address: "1.1.1.1:11"},
+				ServerConfig{Address: "2.2.2.2:22"},
 			},
-			MetadataServers: []Server{
-				Server{Address: "3.3.3.3:33"},
+			MetadataServers: []ServerConfig{
+				ServerConfig{Address: "3.3.3.3:33"},
 			},
 		},
 	},
@@ -306,9 +306,9 @@ var invalidTlogStorageConfigs = []TlogStorageConfig{
 				ClientID:  "foo client",
 				Secret:    "foo secret",
 			},
-			Servers: []Server{
-				Server{Address: "1.1.1.1:11"},
-				Server{Address: "2.2.2.2:22"},
+			Servers: []ServerConfig{
+				ServerConfig{Address: "1.1.1.1:11"},
+				ServerConfig{Address: "2.2.2.2:22"},
 			},
 		},
 	},
@@ -324,12 +324,12 @@ var invalidTlogStorageConfigsDeduped = append(invalidTlogStorageConfigs,
 				ClientID:  "foo client",
 				Secret:    "foo secret",
 			},
-			Servers: []Server{
-				Server{Address: "1.1.1.1:11"},
-				Server{Address: "2.2.2.2:22"},
+			Servers: []ServerConfig{
+				ServerConfig{Address: "1.1.1.1:11"},
+				ServerConfig{Address: "2.2.2.2:22"},
 			},
-			MetadataServers: []Server{
-				Server{Address: "3.3.3.3:33"},
+			MetadataServers: []ServerConfig{
+				ServerConfig{Address: "3.3.3.3:33"},
 			},
 		},
 		SlaveStorageCluster: &StorageClusterConfig{

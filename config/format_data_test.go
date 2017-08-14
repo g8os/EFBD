@@ -279,6 +279,17 @@ servers:
   - address: "1.1.1.1:11"
 metadataServers:
   - address: "2.2.2.2:22"
+`, // using unix socket address for metadata example
+	`
+iyo:
+  org: "foo org"
+  namespace: "foo namespace"
+  clientID: "foo client"
+  secret: "foo secret"
+servers:
+  - address: "1.1.1.1:11"
+metadataServers:
+  - address: "unix://etcd137925510"
 `,
 }
 
@@ -385,6 +396,6 @@ iyo:
 servers:
   - address: "1.1.1.1:11"
 metadataServers:
-  - address: "foo address"
+  - address: "unixfooaddress"
 `,
 }

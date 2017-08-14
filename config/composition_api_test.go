@@ -200,8 +200,8 @@ func TestReadTlogStorageConfig(t *testing.T) {
 			ClientID:  "foo clientID",
 			Secret:    "foo secret",
 		},
-		Servers:         []Server{Server{"1.1.1.1:11"}},
-		MetadataServers: []Server{Server{"2.2.2.2:22"}},
+		Servers:         []ServerConfig{ServerConfig{"1.1.1.1:11"}},
+		MetadataServers: []ServerConfig{ServerConfig{"2.2.2.2:22"}},
 	}
 	source.SetTlogZeroStorCluster("a", "mycluster", &originalZeroStorCfg)
 	tlogStorCfg, err := ReadTlogStorageConfig(source, "a", nil)
@@ -552,8 +552,8 @@ func TestWatchTlogStorageConfig_FailAtStartup(t *testing.T) {
 			ClientID:  "foo clientID",
 			Secret:    "foo secret",
 		},
-		Servers:         []Server{Server{"1.1.1.1:11"}},
-		MetadataServers: []Server{Server{"2.2.2.2:22"}},
+		Servers:         []ServerConfig{ServerConfig{"1.1.1.1:11"}},
+		MetadataServers: []ServerConfig{ServerConfig{"2.2.2.2:22"}},
 	})
 
 	_, err = WatchTlogStorageConfig(ctx, source, "a")
@@ -575,8 +575,8 @@ func TestWatchTlogStorageConfig_FailAfterSuccess(t *testing.T) {
 			ClientID:  "foo clientID",
 			Secret:    "foo secret",
 		},
-		Servers:         []Server{Server{"1.1.1.1:11"}},
-		MetadataServers: []Server{Server{"2.2.2.2:22"}},
+		Servers:         []ServerConfig{ServerConfig{"1.1.1.1:11"}},
+		MetadataServers: []ServerConfig{ServerConfig{"2.2.2.2:22"}},
 	})
 	ch, err := WatchTlogStorageConfig(ctx, source, "a")
 	assert.NoError(err, "should be valid")
@@ -585,7 +585,7 @@ func TestWatchTlogStorageConfig_FailAfterSuccess(t *testing.T) {
 	assert.Nil(output.SlaveStorageCluster)
 	if assert.Len(output.ZeroStorCluster.Servers, 1) {
 		assert.Equal(
-			Server{"1.1.1.1:11"},
+			ServerConfig{"1.1.1.1:11"},
 			output.ZeroStorCluster.Servers[0])
 	}
 
@@ -615,8 +615,8 @@ func TestWatchTlogStorageConfig_FailAfterSuccess(t *testing.T) {
 			ClientID:  "foo clientID",
 			Secret:    "foo secret",
 		},
-		Servers:         []Server{Server{"3.3.3.3:33"}},
-		MetadataServers: []Server{Server{"2.2.2.2:22"}},
+		Servers:         []ServerConfig{ServerConfig{"3.3.3.3:33"}},
+		MetadataServers: []ServerConfig{ServerConfig{"2.2.2.2:22"}},
 	})
 
 	// trigger reload (even though it was broken before)
@@ -624,7 +624,7 @@ func TestWatchTlogStorageConfig_FailAfterSuccess(t *testing.T) {
 	assert.Nil(output.SlaveStorageCluster)
 	if assert.Len(output.ZeroStorCluster.Servers, 1) {
 		assert.Equal(
-			Server{"3.3.3.3:33"},
+			ServerConfig{"3.3.3.3:33"},
 			output.ZeroStorCluster.Servers[0])
 	}
 }
@@ -641,8 +641,8 @@ func TestWatchTlogStorageConfig_ChangeClusterReference(t *testing.T) {
 			ClientID:  "foo clientID",
 			Secret:    "foo secret",
 		},
-		Servers:         []Server{Server{"1.1.1.1:11"}},
-		MetadataServers: []Server{Server{"2.2.2.2:22"}},
+		Servers:         []ServerConfig{ServerConfig{"1.1.1.1:11"}},
+		MetadataServers: []ServerConfig{ServerConfig{"2.2.2.2:22"}},
 	}
 
 	var slaveStoragecluster *StorageClusterConfig
@@ -734,9 +734,9 @@ func TestWatchTlogStorageConfig_ChangeClusterReference(t *testing.T) {
 	testInvalidKey(Key{ID: "zeroStorCluster", Type: KeyClusterZeroStor}) // no update should happen
 
 	// updating a cluster in a valid way should still be possible
-	zeroStorCluster.Servers = []Server{
-		Server{"4.4.4.4:44"},
-		Server{"5.5.5.5:55"},
+	zeroStorCluster.Servers = []ServerConfig{
+		ServerConfig{"4.4.4.4:44"},
+		ServerConfig{"5.5.5.5:55"},
 	}
 	source.SetTlogZeroStorCluster("a", "zeroStorCluster", &zeroStorCluster)
 	testValue() // updating a storage cluster should be ok

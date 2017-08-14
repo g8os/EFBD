@@ -316,8 +316,8 @@ func NewZeroStorClusterConfig(data []byte) (*ZeroStorClusterConfig, error) {
 // ZeroStorClusterConfig defines the config for a ZeroStor server cluster
 type ZeroStorClusterConfig struct {
 	IYO             IYOCredentials `yaml:"iyo" valid:"required"`
-	Servers         []Server       `yaml:"servers" valid:"required"`
-	MetadataServers []Server       `yaml:"metadataServers" valid:"required"`
+	Servers         []ServerConfig `yaml:"servers" valid:"required"`
+	MetadataServers []ServerConfig `yaml:"metadataServers" valid:"required"`
 }
 
 // Validate implements FormatValidator.Validate.
@@ -343,10 +343,10 @@ func (cfg *ZeroStorClusterConfig) Clone() ZeroStorClusterConfig {
 
 	clone.IYO = cfg.IYO
 
-	clone.Servers = make([]Server, len(cfg.Servers))
+	clone.Servers = make([]ServerConfig, len(cfg.Servers))
 	copy(clone.Servers, cfg.Servers)
 
-	clone.MetadataServers = make([]Server, len(cfg.MetadataServers))
+	clone.MetadataServers = make([]ServerConfig, len(cfg.MetadataServers))
 	copy(clone.MetadataServers, cfg.MetadataServers)
 
 	return clone
@@ -486,11 +486,6 @@ func (cfg *StorageServerConfig) Equal(other *StorageServerConfig) bool {
 	return cfg.Address == other.Address
 }
 
-// Server represents a generic server with only a dialstring address
-type Server struct {
-	Address string `yaml:"address" valid:"dialstring,required"`
-}
-
 // isDialStringSlice checks a provided string slice
 // if each element is a valid dial string.
 func isDialStringSlice(data []string) error {
@@ -500,6 +495,12 @@ func isDialStringSlice(data []string) error {
 		}
 	}
 	return nil
+}
+
+// ServerConfig represents a generic server config
+// with only a service address.
+type ServerConfig struct {
+	Address string `yaml:"address" valid:"serviceaddress,required"`
 }
 
 const (

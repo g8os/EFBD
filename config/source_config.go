@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-
-	valid "github.com/asaskevich/govalidator"
 )
 
 // NewSourceConfig creates a new source config by
@@ -139,7 +137,7 @@ func etcdResourceFromString(data string) ([]string, error) {
 		addresses := strings.Split(data, endpointsResourceSeperator)
 		for _, address := range addresses {
 			address = strings.TrimSpace(address)
-			if !valid.IsDialString(address) {
+			if !IsServiceAddress(address) {
 				return nil, fmt.Errorf(
 					"etcd config info: '%s' is not a valid address", address)
 			}
@@ -149,7 +147,7 @@ func etcdResourceFromString(data string) ([]string, error) {
 	}
 
 	data = strings.TrimSpace(data)
-	if valid.IsDialString(data) {
+	if IsServiceAddress(data) {
 		return []string{data}, nil
 	}
 
