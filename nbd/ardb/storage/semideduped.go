@@ -184,6 +184,44 @@ func combineErrorPair(e1, e2 error) error {
 	return fmt.Errorf("%v; %v", e1, e2)
 }
 
+// SemiDedupedVdiskExists returns if the semi deduped vdisk in question
+// exists in the given ardb storage cluster.
+func SemiDedupedVdiskExists(vdiskID string, cluster *config.StorageClusterConfig) (bool, error) {
+	// it's just an alias for DedupedVdiskExists,
+	// as a semi deduped vdisk has always deduped data,
+	// while non-deduped is optional in case it's a fresh vdisk.
+	return DedupedVdiskExists(vdiskID, cluster)
+}
+
+// ListSemiDedupedBlockIndices returns all indices stored for the given semi deduped storage.
+// This function will always either return an error OR indices.
+func ListSemiDedupedBlockIndices(vdiskID string, cluster *config.StorageClusterConfig) ([]int64, error) {
+	// get deduped' indices
+	indices, err := ListDedupedBlockIndices(vdiskID, cluster)
+	if err != nil {
+		return nil, err
+	}
+
+	// try to get nondeduped' indices
+	ndIndices, err := ListNonDedupedBlockIndices(vdiskID, cluster)
+	if err == redis.ErrNil {
+		// no nondeduped' (user) indices found,
+		// so early exit with a sorted slice containing only deduped' indices
+		sortInt64s(indices)
+		return indices, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// add both slices together,
+	// sort them and dedup the total slice.
+	indices = append(indices, ndIndices...)
+	sortInt64s(indices)
+	indices = dedupInt64s(indices)
+	return indices, nil
+}
+
 // CopySemiDeduped copies a semi deduped storage
 // within the same or between different storage clusters.
 func CopySemiDeduped(sourceID, targetID string, sourceCluster, targetCluster *config.StorageClusterConfig) error {

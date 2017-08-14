@@ -178,6 +178,88 @@ func (ss *nonDedupedStorage) isZeroContent(content []byte) bool {
 	return true
 }
 
+// NonDedupedVdiskExists returns if the non deduped vdisk in question
+// exists in the given ardb storage cluster.
+func NonDedupedVdiskExists(vdiskID string, cluster *config.StorageClusterConfig) (bool, error) {
+	if cluster == nil {
+		return false, errors.New("no cluster config given")
+	}
+
+	// storage key used on all data servers for this vdisk
+	key := nonDedupedStorageKey(vdiskID)
+
+	// go through each server to check if the vdisKID exists there
+	// the first vdisk which has data for this vdisk,
+	// we'll take as a sign that the vdisk exists
+	for _, serverConfig := range cluster.DataStorage {
+		exists, err := nonDedupedVdiskExistsOnServer(key, serverConfig)
+		if exists || err != nil {
+			return exists, err
+		}
+	}
+
+	// no errors occured, but no server had the given storage key,
+	// which means the vdisk doesn't exist
+	return false, nil
+}
+
+func nonDedupedVdiskExistsOnServer(key string, server config.StorageServerConfig) (bool, error) {
+	conn, err := ardb.GetConnection(server)
+	if err != nil {
+		return false, fmt.Errorf(
+			"couldn't connect to data ardb %s@%d: %s",
+			server.Address, server.Database, err.Error())
+	}
+	defer conn.Close()
+	return redis.Bool(conn.Do("EXISTS", key))
+}
+
+// ListNonDedupedBlockIndices returns all indices stored for the given nondeduped storage.
+// This function will always either return an error OR indices.
+func ListNonDedupedBlockIndices(vdiskID string, cluster *config.StorageClusterConfig) ([]int64, error) {
+	if cluster == nil {
+		return nil, errors.New("no cluster config given")
+	}
+
+	key := nonDedupedStorageKey(vdiskID)
+
+	var indices []int64
+	// collect the indices found on each data server
+	for _, serverConfig := range cluster.DataStorage {
+		serverIndices, err := listNonDedupedBlockIndicesOnDataServer(key, serverConfig)
+		if err == redis.ErrNil {
+			log.Infof(
+				"ardb server %s@%d doesn't contain any data for nondeduped vdisk %s",
+				serverConfig.Address, serverConfig.Database, vdiskID)
+			continue // it's ok if a server doesn't have anything stored
+			// even though this might indicate a problem
+			// in our sharding algorithm
+		}
+		if err != nil {
+			return nil, err
+		}
+		// add it to the list of indices already found
+		indices = append(indices, serverIndices...)
+	}
+
+	// if no indices could be found, we concider that as an error
+	if len(indices) == 0 {
+		return nil, redis.ErrNil
+	}
+
+	sortInt64s(indices)
+	return indices, nil
+}
+
+func listNonDedupedBlockIndicesOnDataServer(key string, server config.StorageServerConfig) ([]int64, error) {
+	conn, err := ardb.GetConnection(server)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
+	}
+	defer conn.Close()
+	return ardb.RedisInt64s(conn.Do("HKEYS", key))
+}
+
 // CopyNonDeduped copies a non-deduped storage
 // within the same or between different storage clusters.
 func CopyNonDeduped(sourceID, targetID string, sourceCluster, targetCluster *config.StorageClusterConfig) error {
@@ -243,30 +325,13 @@ func CopyNonDeduped(sourceID, targetID string, sourceCluster, targetCluster *con
 }
 
 func copyNonDedupedSameConnection(sourceID, targetID string, conn redis.Conn) (err error) {
-	script := redis.NewScript(0, `
-local source = ARGV[1]
-local destination = ARGV[2]
-
-if redis.call("EXISTS", source) == 0 then
-    return redis.error_reply('"' .. source .. '" does not exist')
-end
-
-if redis.call("EXISTS", destination) == 1 then
-    redis.call("DEL", destination)
-end
-
-redis.call("RESTORE", destination, 0, redis.call("DUMP", source))
-
-return redis.call("HLEN", destination)
-`)
-
 	log.Infof("dumping vdisk %q and restoring it as vdisk %q",
 		sourceID, targetID)
 
 	sourceKey := nonDedupedStorageKey(sourceID)
 	targetKey := nonDedupedStorageKey(targetID)
 
-	indexCount, err := redis.Int64(script.Do(conn, sourceKey, targetKey))
+	indexCount, err := redis.Int64(copyNonDedupedSameConnScript.Do(conn, sourceKey, targetKey))
 	if err == nil {
 		log.Infof("copied %d block indices to vdisk %q",
 			indexCount, targetID)
@@ -360,3 +425,20 @@ const (
 	// nonDedupedStorageKeyPrefix is the prefix used in nonDedupedStorageKey
 	nonDedupedStorageKeyPrefix = "nondedup:"
 )
+
+var copyNonDedupedSameConnScript = redis.NewScript(0, `
+local source = ARGV[1]
+local destination = ARGV[2]
+
+if redis.call("EXISTS", source) == 0 then
+    return redis.error_reply('"' .. source .. '" does not exist')
+end
+
+if redis.call("EXISTS", destination) == 1 then
+    redis.call("DEL", destination)
+end
+
+redis.call("RESTORE", destination, 0, redis.call("DUMP", source))
+
+return redis.call("HLEN", destination)
+`)

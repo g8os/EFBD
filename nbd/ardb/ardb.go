@@ -65,3 +65,23 @@ func RedisBytes(reply interface{}, replyErr error) (content []byte, err error) {
 
 	return
 }
+
+// RedisInt64s is a helper that converts an array command reply to a []int64.
+// If err is not equal to nil, then RedisInt64s returns the error.
+// RedisInt64s returns an error if an array item is not an integer.
+func RedisInt64s(reply interface{}, err error) ([]int64, error) {
+	values, err := redis.Values(reply, err)
+	if err != nil {
+		return nil, err
+	}
+
+	var ints []int64
+	if err := redis.ScanSlice(values, &ints); err != nil {
+		return nil, err
+	}
+	if len(ints) == 0 {
+		return nil, redis.ErrNil
+	}
+
+	return ints, nil
+}

@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/garyburd/redigo/redis"
+	"github.com/stretchr/testify/assert"
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage/lba"
@@ -391,6 +393,179 @@ func TestGetDedupedTemplateContentDeadlock(t *testing.T) {
 			t.Fatalf("unexpected content (%d): found %v, expected %v",
 				i, content, contentArray[i])
 		}
+	}
+}
+
+/*
+func TestDedupedVdiskExists(t *testing.T) {
+	const (
+		vdiskID    = "a"
+		blockSize  = 8
+		blockCount = 8
+	)
+
+	redisProvider := redisstub.NewInMemoryRedisProvider(nil)
+	address := redisProvider.Address()
+	clusterConfig := config.StorageClusterConfig{
+		DataStorage: []config.StorageServerConfig{
+			config.StorageServerConfig{
+				Address: address,
+			},
+		},
+		MetadataStorage: &config.StorageServerConfig{
+			Address: address,
+		},
+	}
+
+	storage, err := Deduped(
+		vdiskID, blockSize,
+		ardb.DefaultLBACacheLimit, false, redisProvider)
+	if err != nil || storage == nil {
+		t.Fatalf("storage could not be created: %v", err)
+	}
+
+	exists, err := DedupedVdiskExists(vdiskID, &clusterConfig)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if exists {
+		t.Fatal("vdisk shouldn't exist yet while it does")
+	}
+
+	data := make([]byte, blockSize)
+	_, err = rand.Read(data)
+	if err != nil {
+		t.Fatalf("couldn't generate a random block (#0): %v", err)
+	}
+	err = storage.SetBlock(0, data)
+	if err != nil {
+		t.Fatalf("couldn't set block #0: %v", err)
+	}
+	err = storage.Flush()
+	if err != nil {
+		t.Fatalf("couldn't flush storage: %v", err)
+	}
+
+	exists, err = DedupedVdiskExists(vdiskID, &clusterConfig)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	fmt.Println(redisProvider.Address())
+	time.Sleep(time.Second * 300)
+	if !exists {
+		t.Fatal("vdisk should exist now, but it doesn't")
+	}
+
+	err = storage.DeleteBlock(0)
+	if err != nil {
+		t.Fatalf("couldn't delete block #0: %v", err)
+	}
+	err = storage.Flush()
+	if err != nil {
+		t.Fatalf("couldn't flush storage: %v", err)
+	}
+
+	exists, err = DedupedVdiskExists(vdiskID, &clusterConfig)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if exists {
+		t.Fatal("vdisk shouldn't exist anymore, but it does")
+	}
+}*/
+
+func TestListDedupedBlockIndices(t *testing.T) {
+	const (
+		vdiskID            = "a"
+		blockSize          = 8
+		blockCount         = 16
+		blockIndexInterval = lba.NumberOfRecordsPerLBASector / 3
+	)
+
+	redisProvider := redisstub.NewInMemoryRedisProvider(nil)
+	address := redisProvider.Address()
+	clusterConfig := config.StorageClusterConfig{
+		DataStorage: []config.StorageServerConfig{
+			config.StorageServerConfig{
+				Address: address,
+			},
+		},
+		MetadataStorage: &config.StorageServerConfig{
+			Address: address,
+		},
+	}
+
+	storage, err := Deduped(
+		vdiskID, blockSize,
+		ardb.DefaultLBACacheLimit, false, redisProvider)
+	if err != nil || storage == nil {
+		t.Fatalf("storage could not be created: %v", err)
+	}
+
+	indices, err := ListDedupedBlockIndices(vdiskID, &clusterConfig)
+	if err == nil {
+		t.Fatalf("expected an error, as no indices exist yet: %v", indices)
+	}
+
+	var expectedIndices []int64
+	for i := 0; i < blockCount; i++ {
+		// store a block
+		data := make([]byte, blockSize)
+		_, err := rand.Read(data)
+		if err != nil {
+			t.Fatalf("couldn't generate a random block (%d): %v", i, err)
+		}
+
+		blockIndex := int64(i * blockIndexInterval)
+		expectedIndices = append(expectedIndices, blockIndex)
+		err = storage.SetBlock(blockIndex, data)
+		if err != nil {
+			t.Fatalf("couldn't set block (%d): %v", i, err)
+		}
+
+		err = storage.Flush()
+		if err != nil {
+			t.Fatalf("couldn't flush storage (step %d): %v", i, err)
+		}
+
+		// now test if listing the indices is correct
+		indices, err := ListDedupedBlockIndices(vdiskID, &clusterConfig)
+		if err != nil {
+			t.Fatalf("couldn't list deduped block indices (step %d): %v", i, err)
+		}
+		if assert.Len(t, indices, len(expectedIndices)) {
+			assert.Equal(t, expectedIndices, indices)
+		}
+	}
+
+	// delete all odd counters
+	ci := 1
+	for i := 1; i < blockCount; i += 2 {
+		blockIndex := int64(i * blockIndexInterval)
+
+		err = storage.DeleteBlock(blockIndex)
+		if err != nil {
+			t.Fatalf("couldn't delete block %d: %v", i, err)
+		}
+
+		err = storage.Flush()
+		if err != nil {
+			t.Fatalf("couldn't flush storage (step %d): %v", i, err)
+		}
+
+		expectedIndices = append(expectedIndices[:ci], expectedIndices[ci+1:]...)
+
+		// now test if listing the indices is still correct
+		indices, err := ListDedupedBlockIndices(vdiskID, &clusterConfig)
+		if err != nil {
+			t.Fatalf("couldn't list deduped block indices (step %d): %v", i, err)
+		}
+
+		if assert.Len(t, indices, len(expectedIndices), "at cut index %v", i) {
+			assert.Equal(t, expectedIndices, indices, "at cut index %v", i)
+		}
+
+		ci++
 	}
 }
 
