@@ -339,14 +339,14 @@ func TestZeroStorClusterConfigEqual(t *testing.T) {
 	b.IYO.Secret = "foo secret"
 	assert.True(a.Equal(b), "should be equal")
 
-	a.Servers = []Server{
-		Server{
+	a.Servers = []ServerConfig{
+		ServerConfig{
 			Address: "1.1.1.1:11",
 		},
 	}
 	assert.False(a.Equal(b), "b does not have a server")
-	b.Servers = []Server{
-		Server{
+	b.Servers = []ServerConfig{
+		ServerConfig{
 			Address: "1.1.1.1:22",
 		},
 	}
@@ -354,14 +354,14 @@ func TestZeroStorClusterConfigEqual(t *testing.T) {
 	b.Servers[0].Address = "1.1.1.1:11"
 	assert.True(a.Equal(b), "should be equal")
 
-	a.MetadataServers = []Server{
-		Server{
+	a.MetadataServers = []ServerConfig{
+		ServerConfig{
 			Address: "1.1.1.1:11",
 		},
 	}
 	assert.False(a.Equal(b), "b does not have a metadata server")
-	b.MetadataServers = []Server{
-		Server{
+	b.MetadataServers = []ServerConfig{
+		ServerConfig{
 			Address: "1.1.1.1:22",
 		},
 	}
@@ -390,16 +390,16 @@ func TestZeroStorClusterConfigClone(t *testing.T) {
 		Secret:    "secret foo",
 	}
 
-	a.Servers = []Server{
-		Server{"localhost:16379"},
-		Server{"localhost:16380"},
-		Server{"localhost:16381"},
+	a.Servers = []ServerConfig{
+		ServerConfig{"localhost:16379"},
+		ServerConfig{"localhost:16380"},
+		ServerConfig{"localhost:16381"},
 	}
 
-	a.MetadataServers = []Server{
-		Server{"localhost:16389"},
-		Server{"localhost:16390"},
-		Server{"localhost:16391"},
+	a.MetadataServers = []ServerConfig{
+		ServerConfig{"localhost:16389"},
+		ServerConfig{"localhost:16390"},
+		ServerConfig{"localhost:16391"},
 	}
 
 	b := a.Clone()
@@ -408,8 +408,8 @@ func TestZeroStorClusterConfigClone(t *testing.T) {
 	assert.Equal(a.MetadataServers, b.MetadataServers, "should be equal")
 
 	b.IYO.Secret = "secret bar"
-	b.Servers[0] = Server{"localhost:200"}
-	b.MetadataServers[0] = Server{"localhost:201"}
+	b.Servers[0] = ServerConfig{"localhost:200"}
+	b.MetadataServers[0] = ServerConfig{"localhost:201"}
 
 	assert.NotEqual(a.IYO, b.IYO, "IYO secret shouldn't equal any longer")
 	assert.NotEqual(a.Servers, b.Servers, "one server shouldn't equal any longer")
