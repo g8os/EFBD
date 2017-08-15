@@ -15,7 +15,7 @@ import (
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
-	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
+	"github.com/zero-os/0-Disk/tlog/stor"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/aggmq"
 )
 
@@ -46,10 +46,8 @@ type vdiskFlusherCmd struct {
 type vdiskCleanupFunc func(vdiskID string)
 
 type vdisk struct {
-	id          string
-	lastHash    []byte              // current in memory last hash
-	lastHashKey []byte              // redis key of the last hash
-	respChan    chan *BlockResponse // channel of responses to be sent to client
+	id       string
+	respChan chan *BlockResponse // channel of responses to be sent to client
 
 	configSource config.Source
 
@@ -64,10 +62,10 @@ type vdisk struct {
 	flusherCmdRespChan chan struct{}          // channel of flusher command response
 	unwantedBlockChan  chan *schema.TlogBlock // channel of unwanted block : e.g.: double sent
 
-	flusher              *flusher
-	segmentBuf           []byte // capnp segment buffer used by the flusher
 	expectedSequence     uint64 // expected sequence to be received
 	expectedSequenceLock sync.Mutex
+	flushSize            int
+	flushTime            int
 
 	// connected clients table
 	clientsTab     map[string]*net.TCPConn
@@ -78,6 +76,8 @@ type vdisk struct {
 	apc             aggmq.AggProcessorConfig
 	withSlaveSyncer bool
 	ssMux           sync.Mutex
+
+	storClient *stor.Client
 }
 
 // ID returns the ID of this vdisk
@@ -93,8 +93,8 @@ func (vd *vdisk) ResponseChan() <-chan *BlockResponse {
 // creates vdisk with given vdiskID, flusher, and first sequence.
 // firstSequence is the very first sequence that this vdisk will receive.
 // blocks with sequence < firstSequence are going to be ignored.
-func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, configSource config.Source, f *flusher,
-	firstSequence uint64, flusherConf *flusherConfig, segmentBufLen int, cleanup vdiskCleanupFunc) (*vdisk, error) {
+func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, configSource config.Source,
+	firstSequence uint64, flusherConf *flusherConfig, cleanup vdiskCleanupFunc) (*vdisk, error) {
 
 	var aggComm *aggmq.AggComm
 	var withSlaveSyncer bool
@@ -108,17 +108,10 @@ func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, config
 		HexNonce: flusherConf.HexNonce,
 	}
 
-	// get last hash from storage
-	lastHash, err := f.getLastHash(vdiskID)
-	if err != nil {
-		return nil, err
-	}
-	maxTlbInBuffer := f.flushSize * tlogBlockFactorSize
+	maxTlbInBuffer := flusherConf.FlushSize * tlogBlockFactorSize
 
 	vd := &vdisk{
 		id:           vdiskID,
-		lastHashKey:  decoder.GetLashHashKey(vdiskID),
-		lastHash:     lastHash,
 		respChan:     make(chan *BlockResponse, respChanSize),
 		configSource: configSource,
 
@@ -133,8 +126,8 @@ func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, config
 		flusherCmdChan:     make(chan vdiskFlusherCmd, 1),
 		flusherCmdRespChan: make(chan struct{}, 1),
 		unwantedBlockChan:  make(chan *schema.TlogBlock, 2),
-		segmentBuf:         make([]byte, 0, segmentBufLen),
-		flusher:            f,
+		flushSize:          flusherConf.FlushSize,
+		flushTime:          flusherConf.FlushTime,
 
 		clientsTab:      make(map[string]*net.TCPConn),
 		withSlaveSyncer: withSlaveSyncer,
@@ -142,6 +135,10 @@ func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, config
 		aggMq:           aggMq,
 		apc:             apc,
 	}
+	if err := vd.createFlusher(flusherConf.K, flusherConf.M, flusherConf.PrivKey); err != nil {
+		return nil, err
+	}
+
 	if err := vd.manageSlaveSync(); err != nil {
 		return nil, err
 	}
@@ -154,6 +151,55 @@ func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, config
 	go vd.cleanup(ctx, cleanup)
 
 	return vd, nil
+}
+
+func (vd *vdisk) createFlusher(k, m int, encPrivKey string) error {
+	// read vdisk config
+	vdiskConf, err := config.ReadVdiskTlogConfig(vd.configSource, vd.ID())
+	if err != nil {
+		return err
+	}
+
+	// read zerostor config of this vdisk
+	zsc, err := config.ReadZeroStoreClusterConfig(vd.configSource, vdiskConf.ZeroStorClusterID)
+	if err != nil {
+		return err
+	}
+
+	// creates stor config
+	serverAddrs := func() (addrs []string) {
+		for _, s := range zsc.Servers {
+			addrs = append(addrs, s.Address)
+		}
+		return
+	}()
+
+	metaServerAddrs := func() (addrs []string) {
+		for _, s := range zsc.MetadataServers {
+			addrs = append(addrs, s.Address)
+		}
+		return
+	}()
+
+	storConf := stor.Config{
+		VdiskID:         vd.ID(),
+		Organization:    zsc.IYO.Org,
+		Namespace:       zsc.IYO.Namespace,
+		IyoClientID:     zsc.IYO.ClientID,
+		IyoSecret:       zsc.IYO.Secret,
+		ZeroStorShards:  serverAddrs,
+		MetaShards:      metaServerAddrs,
+		DataShardsNum:   k,
+		ParityShardsNum: m,
+		EncryptPrivKey:  encPrivKey,
+	}
+
+	storClient, err := stor.NewClient(storConf)
+	if err != nil {
+		return err
+	}
+	vd.storClient = storClient
+	return nil
 }
 
 // do all necessary cleanup for this vdisk
@@ -319,7 +365,7 @@ func (vd *vdisk) runFlusher(ctx context.Context, cancelFunc context.CancelFunc) 
 	var lastSeqFlushed uint64
 
 	// periodic flush interval
-	pfDur := time.Duration(vd.flusher.flushTime) * time.Second
+	pfDur := time.Duration(vd.flushTime) * time.Second
 
 	// periodic flush timer
 	pfTimer := time.NewTimer(pfDur)
@@ -347,11 +393,11 @@ func (vd *vdisk) runFlusher(ctx context.Context, cancelFunc context.CancelFunc) 
 				// reset the flag and flush right now
 				needForceFlushSeq = false
 				toFlushLen = len(tlogs)
-			} else if len(tlogs) < vd.flusher.flushSize {
+			} else if len(tlogs) < vd.flushSize {
 				// only flush if it > f.flushSize
 				continue
 			} else {
-				toFlushLen = vd.flusher.flushSize
+				toFlushLen = vd.flushSize
 			}
 
 			pfTimer.Stop()
@@ -422,7 +468,7 @@ func (vd *vdisk) runFlusher(ctx context.Context, cancelFunc context.CancelFunc) 
 
 		status := tlog.BlockStatusFlushOK
 
-		seqs, rawAgg, err := vd.flusher.flush(blocks[:], vd)
+		rawAgg, err := vd.storClient.ProcessStore(blocks)
 		if err != nil {
 			log.Infof("flush %v failed: %v", vd.id, err)
 			status = tlog.BlockStatusFlushFailed
@@ -431,6 +477,11 @@ func (vd *vdisk) runFlusher(ctx context.Context, cancelFunc context.CancelFunc) 
 		if cmdType == vdiskCmdForceFlushBlocking {
 			// if it is blocking cmd, something else is waiting, notify him!
 			vd.flusherCmdRespChan <- struct{}{}
+		}
+
+		seqs := make([]uint64, len(blocks))
+		for i := 0; i < len(blocks); i++ {
+			seqs[i] = blocks[i].Sequence()
 		}
 
 		// send response

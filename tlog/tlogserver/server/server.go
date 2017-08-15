@@ -181,7 +181,7 @@ func (s *Server) handshake(r io.Reader, w io.Writer, conn *net.TCPConn) (vd *vdi
 		return // error return
 	}
 
-	vd, err = s.vdiskMgr.Get(s.ctx, vdiskID, req.FirstSequence(), s.createFlusher, conn, s.flusherConf)
+	vd, err = s.vdiskMgr.Get(s.ctx, vdiskID, req.FirstSequence(), conn, s.flusherConf)
 	if err != nil {
 		status = tlog.HandshakeStatusInternalServerError
 		err = fmt.Errorf("couldn't create vdisk %s: %s", vdiskID, err.Error())
@@ -199,15 +199,6 @@ func (s *Server) handshake(r io.Reader, w io.Writer, conn *net.TCPConn) (vd *vdi
 	log.Debug("handshake phase successfully completed")
 	status = tlog.HandshakeStatusOK
 	return // success return
-}
-
-func (s *Server) createFlusher(vdiskID string, flusherConf *flusherConfig) (*flusher, error) {
-	redisPool, err := s.poolFactory.NewRedisPool(vdiskID)
-	if err != nil {
-		return nil, err
-	}
-
-	return newFlusher(flusherConf, redisPool)
 }
 
 func (s *Server) writeHandshakeResponse(w io.Writer, segmentBuf []byte, status tlog.HandshakeStatus) error {

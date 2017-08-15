@@ -4,8 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/zero-os/0-Disk/tlog/schema"
-
+	"github.com/coreos/etcd/clientv3"
 	storclient "github.com/zero-os/0-stor/client"
 	storclientconf "github.com/zero-os/0-stor/client/config"
 	"github.com/zero-os/0-stor/client/lib/compress"
@@ -13,6 +12,8 @@ import (
 	"github.com/zero-os/0-stor/client/lib/encrypt"
 	"github.com/zero-os/0-stor/client/lib/hash"
 	"github.com/zero-os/0-stor/client/meta"
+
+	"github.com/zero-os/0-Disk/tlog/schema"
 )
 
 // Config defines the 0-stor client config
@@ -27,7 +28,6 @@ type Config struct {
 	DataShardsNum   int
 	ParityShardsNum int
 	EncryptPrivKey  string
-	EncryptNonce    string
 }
 
 // Client defines the 0-stor client
@@ -42,13 +42,15 @@ type Client struct {
 	// capnp buffer
 	capnpBuf []byte
 
+	metaCli *clientv3.Client
 	// first & last metadata key
 	firstMetaKey []byte
 	lastMetaKey  []byte
 
 	// etcd key in which we store our last metadata
 	// we need to store it so we still know it after restart
-	lastMetaEtcdKey []byte
+	lastMetaEtcdKey  []byte
+	firstMetaEtcdKey []byte
 
 	lastMd *meta.Meta
 
@@ -66,26 +68,37 @@ func NewClient(conf Config) (*Client, error) {
 	hasher, err := hash.NewHasher(hash.Config{
 		Type: hash.TypeBlake2,
 	})
+	if err != nil {
+		return nil, err
+	}
 
+	metaCli, err := newEtcdClient(conf.MetaShards)
 	if err != nil {
 		return nil, err
 	}
 
 	cli := &Client{
-		vdiskID:         conf.VdiskID,
-		storClient:      sc,
-		capnpBuf:        make([]byte, 4096*4),
-		hasher:          hasher,
-		firstMetaKey:    []byte(fmt.Sprintf("tlog:%v:first_meta", conf.VdiskID)),
-		lastMetaEtcdKey: []byte(fmt.Sprintf("tlog:%v:last_meta", conf.VdiskID)),
+		vdiskID:          conf.VdiskID,
+		storClient:       sc,
+		capnpBuf:         make([]byte, 4096*4),
+		hasher:           hasher,
+		metaCli:          metaCli,
+		firstMetaEtcdKey: []byte(fmt.Sprintf("tlog:%v:first_meta", conf.VdiskID)),
+		lastMetaEtcdKey:  []byte(fmt.Sprintf("tlog:%v:last_meta", conf.VdiskID)),
 	}
 
-	lastMetaKey, lastMd, err := cli.getLastMetaKey()
+	firstMetaKey, err := cli.getFirstMetaKey()
+	if err != nil {
+		return nil, err
+	}
+	cli.firstMetaKey = firstMetaKey
+
+	lastMetaKey, err := cli.getLastMetaKey()
 	if err != nil {
 		return nil, err
 	}
 	cli.lastMetaKey = lastMetaKey
-	cli.lastMd = lastMd
+
 	return cli, nil
 }
 
@@ -102,6 +115,14 @@ func (c *Client) ProcessStore(blocks []*schema.TlogBlock) ([]byte, error) {
 
 	key := c.hasher.Hash(data)
 
+	// it is very first data, save first key to metadata server
+	if c.firstMetaKey == nil {
+		c.firstMetaKey = key
+		if err := c.saveFirstMetaKey(); err != nil {
+			return nil, err
+		}
+	}
+
 	// stor to 0-stor
 	lastMd, err := c.storClient.Write(key, data, c.lastMetaKey, c.lastMd)
 	if err != nil {
@@ -113,7 +134,14 @@ func (c *Client) ProcessStore(blocks []*schema.TlogBlock) ([]byte, error) {
 
 	c.lastMd = lastMd
 	c.lastMetaKey = key
-	return data, c.saveLastMetaKey(c.lastMetaKey)
+	return data, c.saveLastMetaKey()
+}
+
+func (c *Client) LastHash() []byte {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+
+	return c.lastMetaKey
 }
 
 // creates 0-stor client config from Config
@@ -124,7 +152,6 @@ func newStorClientConf(conf Config) *storclientconf.Config {
 	encryptConf := encrypt.Config{
 		Type:    encrypt.TypeAESGCM,
 		PrivKey: conf.EncryptPrivKey,
-		Nonce:   conf.EncryptNonce,
 	}
 
 	distConf := distribution.Config{
@@ -137,7 +164,9 @@ func newStorClientConf(conf Config) *storclientconf.Config {
 		Namespace:    conf.Namespace,
 		Shards:       conf.ZeroStorShards,
 		MetaShards:   conf.MetaShards,
+		IYOAppID:     conf.IyoClientID,
 		IYOSecret:    conf.IyoSecret,
+		Protocol:     "grpc",
 		Pipes: []storclientconf.Pipe{
 			storclientconf.Pipe{
 				Name:   "pipe1",

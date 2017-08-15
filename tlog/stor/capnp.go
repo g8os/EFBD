@@ -11,7 +11,7 @@ import (
 
 func (c *Client) encodeCapnp(blocks []*schema.TlogBlock) ([]byte, error) {
 	// create the aggregation object
-	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(c.capnpBuf))
+	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
 	if err != nil {
 		return nil, err
 	}

@@ -3,16 +3,22 @@ package server
 import (
 	"context"
 	"math/rand"
+	"os"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
+	"github.com/zero-os/0-Disk/tlog/stor"
+	"github.com/zero-os/0-Disk/tlog/stor/embeddedserver"
 	"github.com/zero-os/0-Disk/tlog/tlogclient"
-	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
+	"github.com/zero-os/0-stor/client/meta/embedserver"
 )
 
 var (
@@ -23,32 +29,90 @@ var (
 		FlushSize:  25,
 		FlushTime:  10,
 		PrivKey:    "12345678901234567890123456789012",
-		HexNonce:   "37b8e8a308c354048d245f6d",
 	}
 )
 
+func newZeroStorConfig(t *testing.T, vdiskID, privKey string,
+	data, parity int) (func(), *config.StubSource, stor.Config) {
+	// stor server
+	storCluster, err := embeddedserver.NewZeroStorCluster(data + parity)
+	require.Nil(t, err)
+
+	var servers []config.ServerConfig
+	for _, addr := range storCluster.Addrs() {
+		servers = append(servers, config.ServerConfig{
+			Address: addr,
+		})
+	}
+	// meta server
+	mdServer, err := embedserver.New()
+	require.Nil(t, err)
+
+	storConf := stor.Config{
+		VdiskID:         vdiskID,
+		Organization:    os.Getenv("iyo_organization"),
+		Namespace:       "thedisk",
+		IyoClientID:     os.Getenv("iyo_client_id"),
+		IyoSecret:       os.Getenv("iyo_secret"),
+		ZeroStorShards:  storCluster.Addrs(),
+		MetaShards:      []string{mdServer.ListenAddr()},
+		DataShardsNum:   data,
+		ParityShardsNum: parity,
+		EncryptPrivKey:  privKey,
+	}
+
+	clusterID := "zero_stor_cluster_id"
+	stubSource := config.NewStubSource()
+
+	stubSource.SetTlogZeroStorCluster(vdiskID, clusterID, &config.ZeroStorClusterConfig{
+		IYO: config.IYOCredentials{
+			Org:       storConf.Organization,
+			Namespace: storConf.Namespace,
+			ClientID:  storConf.IyoClientID,
+			Secret:    storConf.IyoSecret,
+		},
+		Servers: servers,
+		MetadataServers: []config.ServerConfig{
+			config.ServerConfig{
+				Address: mdServer.ListenAddr(),
+			},
+		},
+	})
+
+	cleanFunc := func() {
+		mdServer.Stop()
+		storCluster.Close()
+	}
+	return cleanFunc, stubSource, storConf
+}
+
 // Test that we can send the data to tlog and decode it again correctly
 func TestEndToEnd(t *testing.T) {
+	const (
+		expectedVdiskID = "1234567890"
+		firstSequence   = 0
+		numFlush        = 5
+		dataLen         = 4096 * 4
+	)
+
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
 	// config
 	conf := testConf
 
-	// create inmemory redis pool factory
+	log.Infof("in memory redis pool")
 	poolFactory := tlog.InMemoryRedisPoolFactory(conf.RequiredDataServers())
 
+	cleanFunc, stubSource, storConfig := newZeroStorConfig(t, expectedVdiskID, conf.PrivKey, conf.K, conf.M)
+	defer cleanFunc()
+
 	// start the server
-	s, err := NewServer(conf, nil, poolFactory)
+	s, err := NewServer(conf, stubSource, poolFactory)
 	assert.Nil(t, err)
 
 	go s.Listen(ctx)
 	t.Logf("listen addr=%v", s.ListenAddr())
-
-	const (
-		expectedVdiskID = "1234567890"
-		firstSequence   = 0
-	)
 
 	// create tlog client
 	client, err := tlogclient.New([]string{s.ListenAddr()}, expectedVdiskID, firstSequence, false)
@@ -57,7 +121,6 @@ func TestEndToEnd(t *testing.T) {
 	}
 
 	// initialize test data
-	dataLen := 4096 * 4
 
 	data := make([]byte, dataLen)
 	for i := 0; i < (dataLen); i++ {
@@ -65,8 +128,6 @@ func TestEndToEnd(t *testing.T) {
 	}
 	data[0] = 'b'
 	data[1] = 'c'
-
-	const numFlush = 5
 
 	var wg sync.WaitGroup
 
@@ -108,29 +169,15 @@ func TestEndToEnd(t *testing.T) {
 
 	wg.Wait()
 
-	// get the redis pool for the vdisk
-	pool, err := s.poolFactory.NewRedisPool(expectedVdiskID)
-	if !assert.Nil(t, err) {
-		return
-	}
-
-	// decode the message
-	dec, err := decoder.New(
-		pool, conf.K, conf.M,
-		expectedVdiskID, conf.PrivKey, conf.HexNonce)
-	assert.Nil(t, err)
-
-	aggChan := dec.Decode(decoder.NewLimitByTimestamp(0, 0))
+	// decode it
+	storCli, err := stor.NewClient(storConfig)
+	require.Nil(t, err)
 
 	aggReceived := 0
-	for {
-		da, more := <-aggChan
-		if !more {
-			break
-		}
-		assert.Nil(t, da.Err)
+	for wr := range storCli.Walk(0, uint64(time.Now().UnixNano())) {
+		require.Nil(t, wr.Err)
+		agg := wr.Agg
 
-		agg := da.Agg
 		assert.Equal(t, uint64(conf.FlushSize), agg.Size())
 
 		vdiskID, err := agg.VdiskID()
@@ -146,17 +193,23 @@ func TestEndToEnd(t *testing.T) {
 
 			// check the data content
 			blockData, err := block.Data()
-			assert.Nil(t, err)
-			assert.Equal(t, data, blockData)
+			require.Nil(t, err)
+			require.Equal(t, data, blockData)
 		}
 
 		aggReceived++
 	}
-	assert.Equal(t, numFlush, aggReceived)
+
+	require.Equal(t, numFlush, aggReceived)
 }
 
 // Test tlog server ability to handle unordered message
 func TestUnordered(t *testing.T) {
+	const (
+		vdiskID       = "12345"
+		firstSequence = 10
+	)
+
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
@@ -166,17 +219,16 @@ func TestUnordered(t *testing.T) {
 	// create inmemory redis pool factory
 	poolFactory := tlog.InMemoryRedisPoolFactory(conf.RequiredDataServers())
 
+	cleanFunc, stubSource, storConfig := newZeroStorConfig(t, vdiskID, conf.PrivKey, conf.K, conf.M)
+	defer cleanFunc()
+
 	// start the server
-	s, err := NewServer(conf, nil, poolFactory)
+	s, err := NewServer(conf, stubSource, poolFactory)
 	assert.Nil(t, err)
 
 	go s.Listen(ctx)
 
 	t.Logf("listen addr=%v", s.ListenAddr())
-	const (
-		vdiskID       = "12345"
-		firstSequence = 10
-	)
 
 	// create tlog client
 	client, err := tlogclient.New([]string{s.ListenAddr()}, vdiskID, firstSequence, false)
@@ -238,32 +290,17 @@ func TestUnordered(t *testing.T) {
 
 	wg.Wait()
 
-	// get the redis pool for the vdisk
-	pool, err := s.poolFactory.NewRedisPool(vdiskID)
-	if !assert.Nil(t, err) {
-		return
-	}
-
-	// decode the message
-	dec, err := decoder.New(
-		pool, conf.K, conf.M,
-		vdiskID, conf.PrivKey, conf.HexNonce)
-	assert.Nil(t, err)
-
-	aggChan := dec.Decode(decoder.NewLimitByTimestamp(0, 0))
+	// decode it
+	storCli, err := stor.NewClient(storConfig)
+	require.Nil(t, err)
 
 	var expectedSequence = uint64(firstSequence)
-	for {
-		da, more := <-aggChan
-		if !more {
-			break
-		}
-		if !assert.Nil(t, da.Err) {
-			t.Fatalf("unexpected error on the aggregations:%v", err)
-			return
-		}
 
-		agg := da.Agg
+	for wr := range storCli.Walk(0, uint64(time.Now().UnixNano())) {
+		require.Nil(t, wr.Err)
+		agg := wr.Agg
+
+		assert.Equal(t, uint64(conf.FlushSize), agg.Size())
 
 		blocks, err := agg.Blocks()
 		assert.Nil(t, err)
@@ -271,7 +308,8 @@ func TestUnordered(t *testing.T) {
 		assert.Equal(t, conf.FlushSize, blocks.Len())
 		for i := 0; i < blocks.Len(); i++ {
 			block := blocks.At(i)
-			assert.Equal(t, expectedSequence, block.Sequence())
+
+			require.Equal(t, expectedSequence, block.Sequence())
 			expectedSequence++
 		}
 	}

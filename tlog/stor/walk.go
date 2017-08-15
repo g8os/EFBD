@@ -46,7 +46,6 @@ func (c *Client) Walk(fromEpoch, toEpoch uint64) <-chan *WalkResult {
 
 			wr.Agg = agg
 			wrCh <- wr
-			return
 		}
 	}()
 	return wrCh
