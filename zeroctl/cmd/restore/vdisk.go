@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/player"
 	cmdConf "github.com/zero-os/0-Disk/zeroctl/cmd/config"
@@ -21,6 +22,7 @@ var vdiskCmdCfg struct {
 	PrivKey, HexNonce    string
 	StartTs              uint64 // start timestamp
 	EndTs                uint64 // end timestamp
+	Force                bool
 }
 
 // VdiskCmd represents the restore vdisk subcommand
@@ -55,6 +57,11 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 	}
 	log.SetLevel(logLevel)
 
+	err = checkVdiskExists(vdiskID, configSource)
+	if err != nil {
+		return err
+	}
+
 	ctx := context.Background()
 
 	// parse optional server configs
@@ -73,6 +80,60 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 
 	_, err = player.Replay(decoder.NewLimitByTimestamp(vdiskCmdCfg.StartTs, vdiskCmdCfg.EndTs))
 	return err
+}
+
+// checkVdiskExists checks if the vdisk in question already/still exists,
+// and if so, and the force flag is specified, delete the (meta)data.
+func checkVdiskExists(vdiskID string, configSource config.Source) error {
+	staticConfig, err := config.ReadVdiskStaticConfig(configSource, vdiskID)
+	if err != nil {
+		return fmt.Errorf(
+			"cannot read static vdisk config for vdisk %s: %v", vdiskID, err)
+	}
+	nbdStorageConfig, err := config.ReadNBDStorageConfig(configSource, vdiskID, staticConfig)
+	if err != nil {
+		return fmt.Errorf(
+			"cannot read nbd storage config for vdisk %s: %v", vdiskID, err)
+	}
+
+	exists, err := storage.VdiskExists(
+		vdiskID, staticConfig.Type, &nbdStorageConfig.StorageCluster)
+	if !exists {
+		return nil // vdisk doesn't exist, so nothing to do
+	}
+	if err != nil {
+		return fmt.Errorf("couldn't check if vdisk %s already exists: %v", vdiskID, err)
+	}
+
+	if !vdiskCmdCfg.Force {
+		return fmt.Errorf("cannot restore vdisk %s as it already exists", vdiskID)
+	}
+
+	vdisks := map[string]config.VdiskType{vdiskID: staticConfig.Type}
+
+	// delete metadata (if needed)
+	if nbdStorageConfig.StorageCluster.MetadataStorage != nil {
+		cfg := nbdStorageConfig.StorageCluster.MetadataStorage
+		err := storage.DeleteMetadata(*cfg, vdisks)
+		if err != nil {
+			return fmt.Errorf(
+				"couldn't delete metadata for vdisk %s from %s@%d: %v",
+				vdiskID, cfg.Address, cfg.Database, err)
+		}
+	}
+
+	// delete data (if needed)
+	for _, serverConfig := range nbdStorageConfig.StorageCluster.DataStorage {
+		err := storage.DeleteData(serverConfig, vdisks)
+		if err != nil {
+			return fmt.Errorf(
+				"couldn't delete data for vdisk %s from %s@%d: %v",
+				vdiskID, serverConfig.Address, serverConfig.Database, err)
+		}
+	}
+
+	// vdisk did exist, but we were able to delete all the exiting (meta)data
+	return nil
 }
 
 func init() {
@@ -107,4 +168,8 @@ func init() {
 		&vdiskCmdCfg.EndTs,
 		"end-timestamp", 0,
 		"end timestamp in nanosecond(default 0: until the end)")
+	VdiskCmd.Flags().BoolVarP(
+		&vdiskCmdCfg.Force,
+		"force", "f", false,
+		"when given delete the vdisk if it already existed")
 }
