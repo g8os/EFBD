@@ -34,14 +34,11 @@ func TestResetFirstSequence(t *testing.T) {
 	conf := testConf
 	conf.FlushTime = 100 // make it high value to avoid flush by timeout
 
-	// create inmemory redis pool factory
-	poolFactory := tlog.InMemoryRedisPoolFactory(conf.RequiredDataServers())
-
 	cleanFunc, stubSource, _ := newZeroStorConfig(t, vdiskID, conf.PrivKey, conf.K, conf.M)
 	defer cleanFunc()
 
 	// start the server
-	s, err := NewServer(conf, stubSource, poolFactory)
+	s, err := NewServer(conf, stubSource)
 	assert.Nil(t, err)
 
 	go s.Listen(ctx)

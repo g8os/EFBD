@@ -23,7 +23,6 @@ type Server struct {
 	port                 int
 	bufSize              int
 	maxRespSegmentBufLen int // max len of response capnp segment buffer
-	poolFactory          tlog.RedisPoolFactory
 	listener             net.Listener
 	flusherConf          *flusherConfig
 	vdiskMgr             *vdiskManager
@@ -31,12 +30,9 @@ type Server struct {
 }
 
 // NewServer creates a new tlog server
-func NewServer(conf *Config, configSource config.Source, poolFactory tlog.RedisPoolFactory) (*Server, error) {
+func NewServer(conf *Config, configSource config.Source) (*Server, error) {
 	if conf == nil {
 		return nil, errors.New("tlogserver requires a non-nil config")
-	}
-	if poolFactory == nil {
-		return nil, errors.New("tlogserver requires a non-nil RedisPoolFactory")
 	}
 
 	var err error
@@ -72,7 +68,6 @@ func NewServer(conf *Config, configSource config.Source, poolFactory tlog.RedisP
 	vdiskManager := newVdiskManager(
 		conf.AggMq, conf.BlockSize, conf.FlushSize, configSource)
 	return &Server{
-		poolFactory:          poolFactory,
 		listener:             listener,
 		flusherConf:          flusherConf,
 		maxRespSegmentBufLen: schema.RawTlogRespLen(conf.FlushSize),

@@ -137,6 +137,10 @@ func (c *Client) ProcessStore(blocks []*schema.TlogBlock) ([]byte, error) {
 	return data, c.saveLastMetaKey()
 }
 
+func (c *Client) Close() error {
+	return nil
+}
+
 func (c *Client) LastHash() []byte {
 	c.mux.Lock()
 	defer c.mux.Unlock()

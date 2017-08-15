@@ -92,7 +92,6 @@ type slaveSyncer struct {
 	aggComm          *aggmq.AggComm // the communication channel
 	player           *player.Player // tlog replay player
 	mgr              *Manager
-	dec              *decoder.Decoder            // tlog decoder
 	metaPool         *ardb.RedisPool             // ardb meta redis pool
 	metaConf         *config.StorageServerConfig // ardb meta redis config
 	lastSeqSyncedKey string                      // key of the last sequence synced
@@ -124,8 +123,7 @@ func newSlaveSyncer(ctx context.Context, configSource config.Source, apc aggmq.A
 
 func (ss *slaveSyncer) init() error {
 	// tlog replay player
-	player, err := player.NewPlayer(ss.ctx, ss.configSource, nil, ss.apc.VdiskID, ss.apc.PrivKey,
-		ss.apc.HexNonce, ss.apc.K, ss.apc.M)
+	player, err := player.NewPlayer(ss.ctx, ss.configSource, ss.apc.VdiskID, ss.apc.PrivKey, ss.apc.K, ss.apc.M)
 	if err != nil {
 		return err
 	}

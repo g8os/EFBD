@@ -102,13 +102,12 @@ func TestEndToEnd(t *testing.T) {
 	conf := testConf
 
 	log.Infof("in memory redis pool")
-	poolFactory := tlog.InMemoryRedisPoolFactory(conf.RequiredDataServers())
 
 	cleanFunc, stubSource, storConfig := newZeroStorConfig(t, expectedVdiskID, conf.PrivKey, conf.K, conf.M)
 	defer cleanFunc()
 
 	// start the server
-	s, err := NewServer(conf, stubSource, poolFactory)
+	s, err := NewServer(conf, stubSource)
 	assert.Nil(t, err)
 
 	go s.Listen(ctx)
@@ -216,14 +215,11 @@ func TestUnordered(t *testing.T) {
 	// config
 	conf := testConf
 
-	// create inmemory redis pool factory
-	poolFactory := tlog.InMemoryRedisPoolFactory(conf.RequiredDataServers())
-
 	cleanFunc, stubSource, storConfig := newZeroStorConfig(t, vdiskID, conf.PrivKey, conf.K, conf.M)
 	defer cleanFunc()
 
 	// start the server
-	s, err := NewServer(conf, stubSource, poolFactory)
+	s, err := NewServer(conf, stubSource)
 	assert.Nil(t, err)
 
 	go s.Listen(ctx)

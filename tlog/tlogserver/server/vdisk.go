@@ -154,44 +154,9 @@ func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, config
 }
 
 func (vd *vdisk) createFlusher(k, m int, encPrivKey string) error {
-	// read vdisk config
-	vdiskConf, err := config.ReadVdiskTlogConfig(vd.configSource, vd.ID())
+	storConf, err := stor.ConfigFromConfigSource(vd.configSource, vd.ID(), encPrivKey, k, m)
 	if err != nil {
 		return err
-	}
-
-	// read zerostor config of this vdisk
-	zsc, err := config.ReadZeroStoreClusterConfig(vd.configSource, vdiskConf.ZeroStorClusterID)
-	if err != nil {
-		return err
-	}
-
-	// creates stor config
-	serverAddrs := func() (addrs []string) {
-		for _, s := range zsc.Servers {
-			addrs = append(addrs, s.Address)
-		}
-		return
-	}()
-
-	metaServerAddrs := func() (addrs []string) {
-		for _, s := range zsc.MetadataServers {
-			addrs = append(addrs, s.Address)
-		}
-		return
-	}()
-
-	storConf := stor.Config{
-		VdiskID:         vd.ID(),
-		Organization:    zsc.IYO.Org,
-		Namespace:       zsc.IYO.Namespace,
-		IyoClientID:     zsc.IYO.ClientID,
-		IyoSecret:       zsc.IYO.Secret,
-		ZeroStorShards:  serverAddrs,
-		MetaShards:      metaServerAddrs,
-		DataShardsNum:   k,
-		ParityShardsNum: m,
-		EncryptPrivKey:  encPrivKey,
 	}
 
 	storClient, err := stor.NewClient(storConf)

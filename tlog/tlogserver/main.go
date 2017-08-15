@@ -11,7 +11,6 @@ import (
 	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
-	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/aggmq"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/slavesync"
@@ -38,10 +37,7 @@ func main() {
 	flag.StringVar(&conf.PrivKey, "priv-key", conf.PrivKey, "private key")
 	flag.StringVar(&conf.HexNonce, "nonce", conf.HexNonce, "hex nonce used for encryption")
 	flag.StringVar(&profileAddr, "profile-address", "", "Enables profiling of this server as an http service")
-	flag.BoolVar(&inMemoryStorage, "memorystorage", false, "Stores the (meta)data in memory only, usefull for testing or benchmarking (overwrites the storage-addresses flag)")
 	flag.Var(&sourceConfig, "config", "config resource: dialstrings (etcd cluster) or path (yaml file)")
-	flag.StringVar(&storageAddresses, "storage-addresses", "",
-		"comma seperated list of redis compatible connectionstrings (format: '<ip>:<port>[@<db>]', eg: 'localhost:16379,localhost:6379@2'), if given, these are used for all vdisks, ignoring the given config")
 	flag.BoolVar(&withSlaveSync, "with-slave-sync", false, "sync to ardb slave")
 	flag.BoolVar(&verbose, "v", false, "log verbose (debug) statements")
 	flag.StringVar(&logPath, "logfile", "", "optionally log to the specified file, instead of the stderr")
@@ -107,26 +103,6 @@ func main() {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
-	// return server configs based on the given storage addresses
-	serverConfigs, err := config.ParseCSStorageServerConfigStrings(storageAddresses)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// create any kind of valid pool factory
-	poolFactory, err := tlog.AnyRedisPoolFactory(ctx, tlog.RedisPoolFactoryConfig{
-		RequiredDataServerCount: conf.RequiredDataServers(),
-		Source:                  configSource,
-		ServerConfigs:           serverConfigs,
-		AutoFill:                true,
-		AllowInMemory:           true,
-	})
-
-	if err != nil {
-		log.Fatalf("failed to create redis pool factory: %s", err.Error())
-	}
-	defer poolFactory.Close()
-
 	if withSlaveSync {
 		// aggregation MQ
 		conf.AggMq = aggmq.NewMQ()
@@ -137,7 +113,7 @@ func main() {
 	}
 
 	// create server
-	server, err := server.NewServer(conf, configSource, poolFactory)
+	server, err := server.NewServer(conf, configSource)
 	if err != nil {
 		log.Fatalf("failed to create server: %v", err)
 	}

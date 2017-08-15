@@ -8,7 +8,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/tlogclient"
 )
 
@@ -35,8 +34,7 @@ func TestForceFlushAtSeq(t *testing.T) {
 	defer cleanFunc()
 
 	// start the server
-	poolFactory := tlog.InMemoryRedisPoolFactory(conf.RequiredDataServers())
-	s, err := NewServer(conf, stubSource, poolFactory)
+	s, err := NewServer(conf, stubSource)
 	assert.Nil(t, err)
 
 	go s.Listen(ctx)
@@ -114,8 +112,7 @@ func testForceFlushAtSeqPossibleRace(t *testing.T, withSleep bool) {
 	defer cleanFunc()
 
 	// start the server
-	poolFactory := tlog.InMemoryRedisPoolFactory(conf.RequiredDataServers())
-	s, err := NewServer(conf, stubSource, poolFactory)
+	s, err := NewServer(conf, stubSource)
 	assert.Nil(t, err)
 
 	go s.Listen(ctx)
