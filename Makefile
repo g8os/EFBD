@@ -9,7 +9,7 @@ COMMIT_HASH = $(shell git rev-parse --short HEAD 2>/dev/null)
 BUILD_DATE = $(shell date +%FT%T%z)
 
 PACKAGES = $(shell go list ./... | grep -v vendor)
-RACE_PACKAGES = $(shell go list ./... | grep -v vendor | grep -E 'nbd|tlog|config' | grep -v 'gonbdserver')
+RACE_PACKAGES = $(shell go list ./... | grep -v vendor | grep -E 'nbd|config' | grep -v 'gonbdserver')
 
 ldflags = -extldflags "-static" -s -w
 ldflagszeroctl = -X $(PACKAGE)/zeroctl/cmd.CommitHash=$(COMMIT_HASH) -X $(PACKAGE)/zeroctl/cmd.BuildDate=$(BUILD_DATE) -s -w
@@ -50,6 +50,12 @@ testgo:
 
 testrace:
 	go test -race -timeout $(TIMEOUT) $(RACE_PACKAGES)
+
+testrace_tlog_client:
+	go test -race -timeout $(TIMEOUT) github.com/zero-os/0-Disk/tlog/tlogclient/...  github.com/zero-os/0-Disk/tlog/stor/...
+
+testrace_tlog_server:
+	go test -race -timeout $(TIMEOUT) github.com/zero-os/0-Disk/tlog/tlogserver/...
 
 testrace_gonbdserver:
 	go test -race -timeout $(TIMEOUT) github.com/zero-os/0-Disk/nbd/gonbdserver/nbd
