@@ -9,7 +9,7 @@ COMMIT_HASH = $(shell git rev-parse --short HEAD 2>/dev/null)
 BUILD_DATE = $(shell date +%FT%T%z)
 
 PACKAGES = $(shell go list ./... | grep -v vendor)
-RACE_PACKAGES = $(shell go list ./... | grep -v vendor | grep -E 'nbd|config' | grep -v 'gonbdserver')
+RACE_PACKAGES = $(shell go list ./... | grep -v vendor | grep -E 'nbd|config|tlog' | grep -v 'gonbdserver')
 
 ldflags = -extldflags "-static" -s -w
 ldflagszeroctl = -X $(PACKAGE)/zeroctl/cmd.CommitHash=$(COMMIT_HASH) -X $(PACKAGE)/zeroctl/cmd.BuildDate=$(BUILD_DATE) -s -w
