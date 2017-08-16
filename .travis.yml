@@ -15,7 +15,11 @@ jobs:
     - stage: test
       go: 1.8
       install: skip
-      script: TIMEOUT=5m make testrace_tlog
+      script: TIMEOUT=5m make testrace_tlog_client
+    - stage: test
+      go: 1.8
+      install: skip
+      script: TIMEOUT=5m make testrace_tlog_server
     - stage: test
       go: 1.8
       install: skip
