@@ -51,7 +51,8 @@ func TestBackendSigtermHandler(t *testing.T) {
 			return nil
 		}
 
-		tlogrpc := newTlogTestServer(context.Background(), t)
+		cleanup, tlogrpc := newTlogTestServer(context.Background(), t, vdiskID)
+		defer cleanup()
 		if !assert.NotEmpty(t, tlogrpc) {
 			return nil
 		}

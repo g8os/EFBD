@@ -5,21 +5,25 @@ import (
 	"context"
 	crand "crypto/rand"
 	mrand "math/rand"
+	"os"
 	"sync"
 	"syscall"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/redisstub"
-	"github.com/zero-os/0-Disk/tlog"
+	"github.com/zero-os/0-Disk/tlog/stor"
+	"github.com/zero-os/0-Disk/tlog/stor/embeddedserver"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/player"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
+	"github.com/zero-os/0-stor/client/meta/embedserver"
 )
 
 func TestTlogStorageWithInMemory(t *testing.T) {
@@ -136,7 +140,8 @@ func TestTlogStorageForceFlushWithNondeduped(t *testing.T) {
 }
 
 func testTlogStorage(ctx context.Context, t *testing.T, vdiskID string, blockSize int64, storage storage.BlockStorage) {
-	tlogrpc := newTlogTestServer(ctx, t)
+	cleanup, tlogrpc := newTlogTestServer(ctx, t, vdiskID)
+	defer cleanup()
 	if !assert.NotEmpty(t, tlogrpc) {
 		return
 	}
@@ -157,7 +162,8 @@ func testTlogStorage(ctx context.Context, t *testing.T, vdiskID string, blockSiz
 }
 
 func testTlogStorageForceFlush(ctx context.Context, t *testing.T, vdiskID string, blockSize int64, storage storage.BlockStorage) {
-	tlogrpc := newTlogTestServer(ctx, t)
+	cleanup, tlogrpc := newTlogTestServer(ctx, t, vdiskID)
+	defer cleanup()
 	if !assert.NotEmpty(t, tlogrpc) {
 		return
 	}
@@ -177,7 +183,7 @@ func testTlogStorageForceFlush(ctx context.Context, t *testing.T, vdiskID string
 	testBlockStorageForceFlush(t, storage)
 }
 
-func newTlogTestServer(ctx context.Context, t *testing.T) string {
+func newTlogTestServer(ctx context.Context, t *testing.T, vdiskID string) (func(), string) {
 	testConf := &server.Config{
 		K:          4,
 		M:          2,
@@ -188,21 +194,16 @@ func newTlogTestServer(ctx context.Context, t *testing.T) string {
 		HexNonce:   "37b8e8a308c354048d245f6d",
 	}
 
-	// create inmemory redis pool factory
-	poolFactory := tlog.InMemoryRedisPoolFactory(testConf.RequiredDataServers())
-	if !assert.NotNil(t, poolFactory) {
-		return ""
-	}
+	cleanup, configSource, _ := newZeroStorConfig(t, vdiskID, testConf)
 
 	// start the server
-	s, err := server.NewServer(testConf, nil, poolFactory)
-	if !assert.NoError(t, err) {
-		return ""
-	}
+	s, err := server.NewServer(testConf, configSource)
+	require.Nil(t, err)
+
 	go s.Listen(ctx)
 	s.IgnoreSignalOnce(syscall.SIGTERM)
 
-	return s.ListenAddr()
+	return cleanup, s.ListenAddr()
 }
 
 func TestTlogDedupedStorageReplay(t *testing.T) {
@@ -251,6 +252,13 @@ func TestTlogNonDedupedStorageReplay(t *testing.T) {
 type storageCreator func(vdiskID string, vdiskSize, blockSize int64) (storage.BlockStorage, error)
 
 func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
+	const (
+		vdiskID       = "myvdisk"
+		blockSize     = 4096
+		size          = 1024 * 64
+		firstSequence = 0
+	)
+
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
@@ -266,11 +274,11 @@ func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
 		HexNonce:   "37b8e8a308c354048d245f6d",
 	}
 
-	t.Log("create inmemory redis pool factory")
-	poolFactory := tlog.InMemoryRedisPoolFactory(testConf.RequiredDataServers())
+	cleanup, configSource, _ := newZeroStorConfig(t, vdiskID, testConf)
+	defer cleanup()
 
 	t.Log("start the server")
-	s, err := server.NewServer(testConf, nil, poolFactory)
+	s, err := server.NewServer(testConf, configSource)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -283,13 +291,6 @@ func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
 	)
 
 	t.Logf("listen addr=%v", tlogrpc)
-
-	const (
-		vdiskID       = "myvdisk"
-		blockSize     = 4096
-		size          = 1024 * 64
-		firstSequence = 0
-	)
 
 	t.Log("2. Start a tlog BlockStorage, which hash tlogclient integration;")
 
@@ -327,6 +328,12 @@ func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
 
 	for i := 0; i < blocks; i++ {
 		if i == blocks-1 {
+			// we need to flush here so we have accurate lastBlockTs
+			// it is because the 0-stor based tlog use timestamp in
+			// metadata server rather than in the aggregation
+			err = storage.Flush()
+			require.Nil(t, err)
+
 			lastBlockTs = uint64(time.Now().UnixNano())
 		}
 
@@ -396,20 +403,15 @@ func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
 
 	t.Log("7. Replay the tlog aggregations;")
 
-	t.Log("create new redis pool")
-	tlogRedisPool, err := poolFactory.NewRedisPool(vdiskID)
-	if !assert.NoError(t, err) {
-		return
-	}
-
 	t.Log("replay from tlog except the last block")
-	player, err := player.NewPlayerWithPoolAndStorage(ctx, tlogRedisPool, nil, storage, vdiskID,
-		testConf.PrivKey, testConf.HexNonce, testConf.K, testConf.M)
+	player, err := player.NewPlayerWithStorage(ctx, configSource, nil, storage, vdiskID,
+		testConf.PrivKey, testConf.K, testConf.M)
 	if !assert.NoError(t, err) {
 		return
 	}
 
 	_, err = player.Replay(decoder.NewLimitByTimestamp(startTs, lastBlockTs))
+	require.Nil(t, err)
 
 	t.Log("8. Validate that all replayed data is again retrievable and correct;")
 
@@ -438,6 +440,7 @@ func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
 
 	t.Log("10 replay last block")
 	_, err = player.Replay(decoder.NewLimitByTimestamp(lastBlockTs, 0))
+	require.Nil(t, err)
 
 	t.Log("11. Validate that last block is again retrievable and correct;")
 	{
@@ -887,4 +890,59 @@ func TestDataHistory(t *testing.T) {
 
 func init() {
 	log.SetLevel(log.DebugLevel)
+}
+
+func newZeroStorConfig(t *testing.T, vdiskID string, tlogConf *server.Config) (func(), *config.StubSource, stor.Config) {
+
+	// stor server
+	storCluster, err := embeddedserver.NewZeroStorCluster(tlogConf.K + tlogConf.M)
+	require.Nil(t, err)
+
+	var servers []config.ServerConfig
+	for _, addr := range storCluster.Addrs() {
+		servers = append(servers, config.ServerConfig{
+			Address: addr,
+		})
+	}
+
+	// meta server
+	mdServer, err := embedserver.New()
+	require.Nil(t, err)
+
+	storConf := stor.Config{
+		VdiskID:         vdiskID,
+		Organization:    os.Getenv("iyo_organization"),
+		Namespace:       "thedisk",
+		IyoClientID:     os.Getenv("iyo_client_id"),
+		IyoSecret:       os.Getenv("iyo_secret"),
+		ZeroStorShards:  storCluster.Addrs(),
+		MetaShards:      []string{mdServer.ListenAddr()},
+		DataShardsNum:   tlogConf.K,
+		ParityShardsNum: tlogConf.M,
+		EncryptPrivKey:  tlogConf.PrivKey,
+	}
+
+	clusterID := "zero_stor_cluster_id"
+	stubSource := config.NewStubSource()
+
+	stubSource.SetTlogZeroStorCluster(vdiskID, clusterID, &config.ZeroStorClusterConfig{
+		IYO: config.IYOCredentials{
+			Org:       storConf.Organization,
+			Namespace: storConf.Namespace,
+			ClientID:  storConf.IyoClientID,
+			Secret:    storConf.IyoSecret,
+		},
+		Servers: servers,
+		MetadataServers: []config.ServerConfig{
+			config.ServerConfig{
+				Address: mdServer.ListenAddr(),
+			},
+		},
+	})
+
+	cleanFunc := func() {
+		mdServer.Stop()
+		storCluster.Close()
+	}
+	return cleanFunc, stubSource, storConf
 }
