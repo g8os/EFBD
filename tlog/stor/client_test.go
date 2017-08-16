@@ -36,7 +36,7 @@ func TestRoundTrip(t *testing.T) {
 		IyoSecret:       os.Getenv("iyo_secret"),
 		ZeroStorShards:  storCluster.Addrs(),
 		MetaShards:      []string{mdServer.ListenAddr()},
-		DataShardsNum:   2,
+		DataShardsNum:   1,
 		ParityShardsNum: 1,
 		EncryptPrivKey:  "12345678901234567890123456789012",
 	}
