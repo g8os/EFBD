@@ -185,8 +185,8 @@ func testTlogStorageForceFlush(ctx context.Context, t *testing.T, vdiskID string
 
 func newTlogTestServer(ctx context.Context, t *testing.T, vdiskID string) (func(), string) {
 	testConf := &server.Config{
-		K:          4,
-		M:          2,
+		K:          1,
+		M:          1,
 		ListenAddr: "",
 		FlushSize:  25,
 		FlushTime:  25,
@@ -265,8 +265,8 @@ func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
 	t.Log("1. Start a tlogserver;")
 
 	testConf := &server.Config{
-		K:          4,
-		M:          2,
+		K:          1,
+		M:          1,
 		ListenAddr: "",
 		FlushSize:  1,
 		FlushTime:  1,

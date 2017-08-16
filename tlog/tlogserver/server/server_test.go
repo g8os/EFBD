@@ -23,8 +23,8 @@ import (
 
 var (
 	testConf = &Config{
-		K:          4,
-		M:          2,
+		K:          1,
+		M:          1,
 		ListenAddr: "127.0.0.1:0",
 		FlushSize:  25,
 		FlushTime:  10,

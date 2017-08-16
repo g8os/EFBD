@@ -23,6 +23,8 @@ var (
 
 func init() {
 	testConf.ListenAddr = "127.0.0.1:0"
+	testConf.K = 1
+	testConf.M = 1
 }
 
 func newZeroStorDefaultConfig(t *testing.T, vdiskID string) (func(), *config.StubSource, stor.Config) {
