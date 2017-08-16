@@ -2,89 +2,208 @@ package reedsolomon
 
 import "errors"
 
-const unitSize int = 1024
+// size of sub-vector
+const UnitSize int = 16 * 1024
 
-// Encode : cauchy_matrix * data_matrix(input) -> parity_matrix(output)
-// dp : data_matrix(upper) parity_matrix(lower, empty now)
-func (r *RS) Encode(dp Matrix) error {
-	if len(dp) != r.Shards {
-		return ErrTooFewShards
-	}
-	size, err := checkShardSize(dp)
+func (r *rsAVX2) Encode(shards matrix) (err error) {
+	err = CheckEncodeShards(r.data, r.parity, shards)
 	if err != nil {
-		return err
+		return
 	}
-	inMap := make(map[int]int)
-	outMap := make(map[int]int)
-	for i := 0; i < r.Data; i++ {
-		inMap[i] = i
-	}
-	for i := r.Data; i < r.Shards; i++ {
-		outMap[i-r.Data] = i
-	}
-	encodeSSSE3(r.Gen, dp, r.Data, r.Parity, size, inMap, outMap)
-	return nil
-}
-
-func encodeSSSE3(gen, dp Matrix, numIn, numOut, size int, inMap, outMap map[int]int) {
-	start := 0
-	do := unitSize
+	in := shards[:r.data]
+	out := shards[r.data:]
+	size := len(in[0])
+	start, end := 0, 0
+	do := UnitSize
 	for start < size {
-		if start+do <= size {
-			encodeWorkerS(gen, dp, start, do, numIn, numOut, inMap, outMap)
-			start = start + do
+		end = start + do
+		if end <= size {
+			r.matrixMul(start, end, in, out)
+			start = end
 		} else {
-			encodeRemainS(start, size, gen, dp, numIn, numOut, inMap, outMap)
+			r.matrixMulRemain(start, size, in, out)
 			start = size
 		}
 	}
+	return
 }
 
-func encodeWorkerS(gen, dp Matrix, start, do, numIn, numOut int, inMap, outMap map[int]int) {
-	end := start + do
-	for i := 0; i < numIn; i++ {
-		j := inMap[i]
-		in := dp[j]
-		for oi := 0; oi < numOut; oi++ {
-			k := outMap[oi]
-			c := gen[oi][i]
-			if i == 0 { // it means don't need to copy Parity Data for xor
-				gfMulSSSE3(mulTableLow[c][:], mulTableHigh[c][:], in[start:end], dp[k][start:end])
-			} else {
-				gfMulXorSSSE3(mulTableLow[c][:], mulTableHigh[c][:], in[start:end], dp[k][start:end])
-			}
+func (r *rsSSSE3) Encode(shards matrix) (err error) {
+	err = CheckEncodeShards(r.data, r.parity, shards)
+	if err != nil {
+		return
+	}
+	in := shards[:r.data]
+	out := shards[r.data:]
+	size := len(in[0])
+	start, end := 0, 0
+	do := UnitSize
+	for start < size {
+		end = start + do
+		if end <= size {
+			r.matrixMul(start, end, in, out)
+			start = end
+		} else {
+			r.matrixMulRemain(start, size, in, out)
+			start = size
 		}
 	}
+	return
 }
 
-func encodeRemainS(start, size int, gen, dp Matrix, numIn, numOut int, inMap, outMap map[int]int) {
-	do := size - start
-	for i := 0; i < numIn; i++ {
-		j := inMap[i]
-		in := dp[j]
-		for oi := 0; oi < numOut; oi++ {
-			k := outMap[oi]
-			c := gen[oi][i]
+func (r *rsBase) Encode(shards matrix) (err error) {
+	err = CheckEncodeShards(r.data, r.parity, shards)
+	if err != nil {
+		return
+	}
+	in := shards[:r.data]
+	out := shards[r.data:]
+	gen := r.gen
+	for i := 0; i < r.data; i++ {
+		data := in[i]
+		for oi := 0; oi < r.parity; oi++ {
 			if i == 0 {
-				gfMulRemainS(c, in[start:size], dp[k][start:size], do)
+				mulBase(gen[oi][i], data, out[oi])
 			} else {
-				gfMulRemainXorS(c, in[start:size], dp[k][start:size], do)
+				mulXORBase(gen[oi][i], data, out[oi])
+			}
+		}
+	}
+	return
+}
+
+// Check Encode Args
+func CheckEncodeShards(in, out int, shards matrix) error {
+	err := CheckMatrixRows(in, out, shards)
+	if err != nil {
+		return err
+	}
+	err = CheckShardSize(shards)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+var ErrNumShards = errors.New("reedsolomon: num of shards not match")
+
+func CheckMatrixRows(in, out int, shards matrix) error {
+	if in+out != len(shards) {
+		return ErrNumShards
+	}
+	return nil
+}
+
+var ErrShardEmpty = errors.New("reedsolomon: shards size equal 0")
+var ErrShardSizeNoMatch = errors.New("reedsolomon: shards size not match")
+
+func CheckShardSize(shards matrix) error {
+	size := len(shards[0])
+	if size == 0 {
+		return ErrShardEmpty
+	}
+	for i := 1; i < len(shards); i++ {
+		if len(shards[i]) != size {
+			return ErrShardSizeNoMatch
+		}
+	}
+	return nil
+}
+
+////////////// Internal Functions //////////////
+// matrix multiply
+// avx2
+func (r *rsAVX2) matrixMul(start, end int, in, out matrix) {
+	for i := 0; i < r.data; i++ {
+		for oi := 0; oi < r.parity; oi++ {
+			c := r.gen[oi][i]
+			low := mulTableLow[c][:]
+			high := mulTableHigh[c][:]
+			if i == 0 {
+				mulAVX2(low, high, in[i][start:end], out[oi][start:end])
+			} else {
+				mulXORAVX2(low, high, in[i][start:end], out[oi][start:end])
 			}
 		}
 	}
 }
 
-var ErrShardSize = errors.New("reedsolomon: Shards size equal 0 or not match")
-
-func checkShardSize(m Matrix) (int, error) {
-	size := len(m[0])
-	if size == 0 {
-		return size, ErrShardSize
-	}
-	for _, v := range m {
-		if len(v) != size {
-			return 0, ErrShardSize
+func (r *rsAVX2) matrixMulRemain(start, end int, in, out matrix) {
+	r.matrixMul(start, end, in, out)
+	done := (end >> 5) << 5
+	remain := end - done
+	if remain > 0 {
+		g := r.gen
+		start = start + done
+		for i := 0; i < r.data; i++ {
+			for oi := 0; oi < r.parity; oi++ {
+				if i == 0 {
+					mulBase(g[oi][i], in[i][start:end], out[oi][start:end])
+				} else {
+					mulXORBase(g[oi][i], in[i][start:end], out[oi][start:end])
+				}
+			}
 		}
 	}
-	return size, nil
+}
+
+//go:noescape
+func mulAVX2(low, high, in, out []byte)
+
+//go:noescape
+func mulXORAVX2(low, high, in, out []byte)
+
+// ssse3
+func (r *rsSSSE3) matrixMul(start, end int, in, out matrix) {
+	for i := 0; i < r.data; i++ {
+		for oi := 0; oi < r.parity; oi++ {
+			c := r.gen[oi][i]
+			low := mulTableLow[c][:]
+			high := mulTableHigh[c][:]
+			if i == 0 {
+				mulSSSE3(low, high, in[i][start:end], out[oi][start:end])
+			} else {
+				mulXORSSSE3(low, high, in[i][start:end], out[oi][start:end])
+			}
+		}
+	}
+}
+
+func (r *rsSSSE3) matrixMulRemain(start, end int, in, out matrix) {
+	r.matrixMul(start, end, in, out)
+	done := (end >> 4) << 4
+	remain := end - done
+	if remain > 0 {
+		gen := r.gen
+		start = start + done
+		for i := 0; i < r.data; i++ {
+			for oi := 0; oi < r.parity; oi++ {
+				if i == 0 {
+					mulBase(gen[oi][i], in[i][start:end], out[oi][start:end])
+				} else {
+					mulXORBase(gen[oi][i], in[i][start:end], out[oi][start:end])
+				}
+			}
+		}
+	}
+}
+
+//go:noescape
+func mulSSSE3(low, high, in, out []byte)
+
+//go:noescape
+func mulXORSSSE3(low, high, in, out []byte)
+
+func mulBase(c byte, in, out []byte) {
+	mt := mulTable[c]
+	for i := 0; i < len(in); i++ {
+		out[i] = mt[in[i]]
+	}
+}
+
+func mulXORBase(c byte, in, out []byte) {
+	mt := mulTable[c]
+	for i := 0; i < len(in); i++ {
+		out[i] ^= mt[in[i]]
+	}
 }

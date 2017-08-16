@@ -468,6 +468,7 @@ func IsDNSName(str string) bool {
 
 // IsDialString validates the given string for usage with the various Dial() functions
 func IsDialString(str string) bool {
+
 	if h, p, err := net.SplitHostPort(str); err == nil && h != "" && p != "" && (IsDNSName(h) || IsIP(h)) && IsPort(p) {
 		return true
 	}

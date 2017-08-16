@@ -1,64 +1,95 @@
-/**
- * Reed-Solomon Coding over in GF(2^8).
- * Primitive Polynomial: x^8 + x^4 + x^3 + x^2 + 1 (0x1d)
- */
+/*
+	Reed-Solomon Codes over GF(2^8)
+	Primitive Polynomial:  x^8+x^4+x^3+x^2+1
+*/
 
 package reedsolomon
 
-import "errors"
-
-type RS struct {
-	Data   int    // Number of Data Shards
-	Parity int    // Number of Parity Shards
-	Shards int    // Total number of Shards
-	M      Matrix // encoding matrix, identity Matrix(upper) + generator Matrix(lower)
-	Gen    Matrix // generator matrix(cauchy Matrix)
-	INS    int    // Extensions Instruction(AVX2 or SSSE3)
-}
-
-const (
-	AVX2  = 0
-	SSSE3 = 1
+import (
+	"errors"
+	"sync"
 )
 
-var ErrTooFewShards = errors.New("reedsolomon: too few Shards given for encoding")
-var ErrTooManyShards = errors.New("reedsolomon: too many Shards given for encoding")
-var ErrNoSupportINS = errors.New("reedsolomon: there is no AVX2 or SSSE3")
-
-// New : create a encoding matrix for encoding, reconstruction
-func New(d, p int) (*RS, error) {
-	err := checkShards(d, p)
-	if err != nil {
-		return nil, err
-	}
-	r := RS{
-		Data:   d,
-		Parity: p,
-		Shards: d + p,
-	}
-	if hasSSSE3() {
-		r.INS = SSSE3
-	} else {
-		return &r, ErrNoSupportINS
-	}
-	e := genEncodeMatrix(r.Shards, d) // create encoding matrix
-	r.M = e
-	r.Gen = NewMatrix(p, d)
-	for i := range r.Gen {
-		r.Gen[i] = r.M[d+i]
-	}
-	return &r, err
+type EncodeReconster interface {
+	Encode(shards matrix) error
+	Reconstruct(shards matrix) error
+	ReconstructData(shards matrix) error
 }
 
-func checkShards(d, p int) error {
-	if (d <= 0) || (p <= 0) {
-		return ErrTooFewShards
+// the cap of inverse Matrix cache
+const inverseCacheCap  = 1 << 14
+// Encode & Reconst receiver
+type (
+	rsBase reedSolomon
+	rsAVX2 reedSolomon
+	rsSSSE3 reedSolomon
+	reedSolomon struct {
+		data    int
+		parity  int
+		gen     matrix
+		inverse *matrixCache
 	}
-	if d+p >= 255 {
-		return ErrTooManyShards
+	matrixCache struct {
+		_padding0 [8]uint64
+		sync.RWMutex
+		_padding1 [8]uint64
+		size  uint32
+		_padding2 [8]uint64
+		cache map[uint64]matrix
 	}
-	return nil
+)
+
+func New(data, parity int) (rs EncodeReconster, err error) {
+	err = checkShards(data, parity)
+	if err != nil {
+		return
+	}
+	ins := getINS()
+	g := genCauchyMatrix(data, parity)
+	c := make(map[uint64]matrix)
+	switch ins {
+	case avx2:
+		return &rsAVX2{data: data, parity: parity, gen: g, inverse:&matrixCache{cache:c}}, nil
+	case ssse3:
+		return &rsSSSE3{data: data, parity: parity, gen: g, inverse:&matrixCache{cache:c}}, nil
+	default:
+		return &rsBase{data: data, parity: parity, gen: g, inverse:&matrixCache{cache:c}}, nil
+	}
+}
+
+// Instruction Extensions Flags
+const (
+	base      = iota
+	avx2
+	ssse3
+)
+
+func getINS() int {
+	if hasAVX2() {
+		return avx2
+	} else if hasSSSE3() {
+		return ssse3
+	} else {
+		return base
+	}
 }
 
 //go:noescape
+func hasAVX2() bool
+
+//go:noescape
 func hasSSSE3() bool
+
+// Check EC Shards
+var errInvShards = errors.New("reedsolomon: data or parity shards must > 0")
+var errMaxShards = errors.New("reedsolomon: shards must <= 256")
+
+func checkShards(d, p int) error {
+	if (d <= 0) || (p <= 0) {
+		return errInvShards
+	}
+	if d+p >= 255 {
+		return errMaxShards
+	}
+	return nil
+}

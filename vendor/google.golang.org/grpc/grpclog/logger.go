@@ -16,7 +16,6 @@
  *
  */
 
-// Package grpclog defines logging for grpc.
 package grpclog
 
 // Logger mimics golang's standard Logger as an interface.

@@ -18,11 +18,6 @@ jobs:
       script: TIMEOUT=10m make testrace_gonbdserver
     - stage: test
       go: 1.8
-      install:
-        - ./tlog/install_dependencies.sh
-      script: TIMEOUT=5m make testcgo
-    - stage: test
-      go: 1.8
       os: osx
       install:
         - go get -u github.com/Jumpscale/go-raml

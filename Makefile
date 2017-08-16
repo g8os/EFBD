@@ -54,9 +54,6 @@ testrace:
 testrace_gonbdserver:
 	go test -race -timeout $(TIMEOUT) github.com/zero-os/0-Disk/nbd/gonbdserver/nbd
 
-testcgo:
-	GODEBUG=cgocheck=0 go test -timeout $(TIMEOUT) -tags 'isal' $(PACKAGES)
-
 testcodegen:
 	./scripts/codegeneration.sh
 

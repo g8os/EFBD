@@ -33,8 +33,7 @@ import (
 	"sync"
 	"time"
 
-	"context"
-
+	"golang.org/x/net/context"
 	"golang.org/x/net/http2"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"

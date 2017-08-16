@@ -15,7 +15,7 @@ import (
 
 	authpb "github.com/coreos/etcd/auth/authpb"
 
-	context "context"
+	context "golang.org/x/net/context"
 
 	grpc "google.golang.org/grpc"
 
