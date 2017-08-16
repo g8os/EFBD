@@ -15,6 +15,8 @@ func TestIsServiceAddress(t *testing.T) {
 		"unix://42",
 		"127.0.0.1:3000",
 		"[2001:db8:0:1:1:1:1:1]:123",
+		"http://etcdserver.com:123",
+		"https://etcdserver.com:123",
 	}
 	for _, validCase := range validCases {
 		assert.Truef(IsServiceAddress(validCase), "%v", validCase)
@@ -26,6 +28,7 @@ func TestIsServiceAddress(t *testing.T) {
 		"localhost:foo",
 		"unix:/foo",
 		"unix:boo",
+		"http://,foo.com",
 	}
 	for _, invalidCase := range invalidCases {
 		assert.Falsef(IsServiceAddress(invalidCase), "%v", invalidCase)

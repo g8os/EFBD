@@ -18,11 +18,17 @@ func IsServiceAddress(str string) bool {
 		return ok && pt == valid.Unix
 	}
 
+	if strings.HasPrefix(str, httpPrefix) || strings.HasPrefix(str, httpsPrefix) {
+		return valid.IsURL(str)
+	}
+
 	return valid.IsDialString(str)
 }
 
 const (
 	unixPrefix    = "unix://"
+	httpPrefix    = "http://"
+	httpsPrefix   = "https://"
 	unixFileStart = len(unixPrefix) - 1
 )
 
