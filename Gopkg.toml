@@ -61,3 +61,19 @@
 [[constraint]]
   branch = "master"
   name = "zombiezen.com/go/capnproto2"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/pierrec/lz4"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/ulikunitz/xz"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/secsy/goftp"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/zeebo/bencode"
