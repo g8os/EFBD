@@ -27,8 +27,7 @@ import (
 
 	"github.com/coreos/etcd/etcdserver/api/v3rpc/rpctypes"
 
-	"context"
-
+	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -53,11 +52,9 @@ type Client struct {
 	conn     *grpc.ClientConn
 	dialerrc chan error
 
-	cfg              Config
-	creds            *credentials.TransportCredentials
-	balancer         *simpleBalancer
-	retryWrapper     retryRpcFunc
-	retryAuthWrapper retryRpcFunc
+	cfg      Config
+	creds    *credentials.TransportCredentials
+	balancer *simpleBalancer
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -388,8 +385,6 @@ func newClient(cfg *Config) (*Client, error) {
 		return nil, err
 	}
 	client.conn = conn
-	client.retryWrapper = client.newRetryWrapper()
-	client.retryAuthWrapper = client.newAuthRetryWrapper()
 
 	// wait for a connection
 	if cfg.DialTimeout > 0 {
@@ -511,7 +506,6 @@ func toErr(ctx context.Context, err error) error {
 			err = ctx.Err()
 		}
 	case codes.Unavailable:
-		err = ErrNoAvailableEndpoints
 	case codes.FailedPrecondition:
 		err = grpc.ErrClientConnClosing
 	}

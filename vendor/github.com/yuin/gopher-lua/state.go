@@ -5,8 +5,9 @@ package lua
 ////////////////////////////////////////////////////////
 
 import (
-	"context"
 	"fmt"
+	"github.com/yuin/gopher-lua/parse"
+	"golang.org/x/net/context"
 	"io"
 	"math"
 	"os"
@@ -14,8 +15,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-
-	"github.com/yuin/gopher-lua/parse"
 )
 
 const MultRet = -1

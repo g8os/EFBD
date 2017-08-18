@@ -48,7 +48,9 @@ test: testgo testrace testcgo testcodegen
 testgo:
 	go test -timeout $(TIMEOUT) $(PACKAGES)
 
-testrace:
+testrace: testrace_core testrace_gonbdserver
+
+testrace_core:
 	go test -race -timeout $(TIMEOUT) $(RACE_PACKAGES)
 
 testrace_gonbdserver:
@@ -63,4 +65,4 @@ testcodegen:
 $(OUTPUT):
 	mkdir -p $(OUTPUT)
 
-.PHONY: $(OUTPUT) nbdserver tlogserver zeroctl test testgo testrace testcgo testcodegen
+.PHONY: $(OUTPUT) nbdserver tlogserver zeroctl test testgo testrace testrace_core testrace_gonbdserver testcgo testcodegen

@@ -4,18 +4,18 @@ import (
 	"errors"
 )
 
-type Matrix [][]byte // byte[row][col]
+type matrix [][]byte // byte[row][col]
 
-func NewMatrix(rows, cols int) Matrix {
-	m := Matrix(make([][]byte, rows))
+func NewMatrix(rows, cols int) matrix {
+	m := matrix(make([][]byte, rows))
 	for i := range m {
 		m[i] = make([]byte, cols)
 	}
 	return m
 }
 
-// return identity matrix(upper) cauchy Matrix(lower)
-func genEncodeMatrix(rows, cols int) Matrix {
+// return identity matrix(upper) cauchy matrix(lower)
+func genEncodeMatrix(rows, cols int) matrix {
 	m := NewMatrix(rows, cols)
 	// identity matrix
 	for j := 0; j < cols; j++ {
@@ -32,7 +32,7 @@ func genEncodeMatrix(rows, cols int) Matrix {
 	return m
 }
 
-func (m Matrix) invert() (Matrix, error) {
+func (m matrix) invert() (matrix, error) {
 	size := len(m)
 	iM := identityMatrix(size)
 	mIM, _ := m.augIM(iM)
@@ -45,7 +45,7 @@ func (m Matrix) invert() (Matrix, error) {
 }
 
 // IN -> (IN|I)
-func (m Matrix) augIM(iM Matrix) (Matrix, error) {
+func (m matrix) augIM(iM matrix) (matrix, error) {
 	result := NewMatrix(len(m), len(m[0])+len(iM[0]))
 	for r, row := range m {
 		for c := range row {
@@ -62,7 +62,7 @@ func (m Matrix) augIM(iM Matrix) (Matrix, error) {
 var ErrSingular = errors.New("reedsolomon: matrix is singular")
 
 // (IN|I) -> (I|OUT)
-func (m Matrix) gaussJordan() error {
+func (m matrix) gaussJordan() error {
 	rows := len(m)
 	columns := len(m[0])
 	// Clear out the part below the main diagonal and scale the main
@@ -118,7 +118,7 @@ func (m Matrix) gaussJordan() error {
 	return nil
 }
 
-func identityMatrix(n int) Matrix {
+func identityMatrix(n int) matrix {
 	m := NewMatrix(n, n)
 	for i := 0; i < n; i++ {
 		m[i][i] = byte(1)
@@ -127,7 +127,7 @@ func identityMatrix(n int) Matrix {
 }
 
 // (I|OUT) -> OUT
-func (m Matrix) subMatrix(size int) Matrix {
+func (m matrix) subMatrix(size int) matrix {
 	result := NewMatrix(size, size)
 	for r := 0; r < size; r++ {
 		for c := size; c < size*2; c++ {
@@ -138,7 +138,7 @@ func (m Matrix) subMatrix(size int) Matrix {
 }
 
 // SwapRows Exchanges two rows in the matrix.
-func (m Matrix) swapRows(r1, r2 int) {
+func (m matrix) swapRows(r1, r2 int) {
 	m[r2], m[r1] = m[r1], m[r2]
 }
 
