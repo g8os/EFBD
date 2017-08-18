@@ -18,7 +18,7 @@
 
 // Package transport defines and implements message oriented communication
 // channel to complete various transactions (e.g., an RPC).
-package transport
+package transport // import "google.golang.org/grpc/transport"
 
 import (
 	"fmt"
@@ -26,8 +26,7 @@ import (
 	"net"
 	"sync"
 
-	"context"
-
+	"golang.org/x/net/context"
 	"golang.org/x/net/http2"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"

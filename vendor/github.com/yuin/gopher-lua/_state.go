@@ -3,7 +3,7 @@ package lua
 import (
 	"fmt"
 	"github.com/yuin/gopher-lua/parse"
-	"context"
+	"golang.org/x/net/context"
 	"io"
 	"math"
 	"os"

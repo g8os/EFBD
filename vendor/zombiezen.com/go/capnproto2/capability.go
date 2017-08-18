@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strconv"
 
-	"context"
+	"golang.org/x/net/context"
 )
 
 // An Interface is a reference to a client in a message's capability table.

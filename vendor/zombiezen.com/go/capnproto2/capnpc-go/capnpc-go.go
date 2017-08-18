@@ -33,7 +33,7 @@ const (
 	textImport    = capnpImport + "/encoding/text"
 	schemasImport = capnpImport + "/schemas"
 	serverImport  = capnpImport + "/server"
-	contextImport = "context"
+	contextImport = "golang.org/x/net/context"
 )
 
 // genoptions are parameters that control code generation.
