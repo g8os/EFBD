@@ -236,6 +236,19 @@ func request_Lease_LeaseTimeToLive_0(ctx context.Context, marshaler runtime.Mars
 
 }
 
+func request_Lease_LeaseLeases_0(ctx context.Context, marshaler runtime.Marshaler, client etcdserverpb.LeaseClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq etcdserverpb.LeaseLeasesRequest
+	var metadata runtime.ServerMetadata
+
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil {
+		return nil, metadata, grpc.Errorf(codes.InvalidArgument, "%v", err)
+	}
+
+	msg, err := client.LeaseLeases(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+
+}
+
 func request_Cluster_MemberAdd_0(ctx context.Context, marshaler runtime.Marshaler, client etcdserverpb.ClusterClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var protoReq etcdserverpb.MemberAddRequest
 	var metadata runtime.ServerMetadata
@@ -336,6 +349,19 @@ func request_Maintenance_Hash_0(ctx context.Context, marshaler runtime.Marshaler
 	}
 
 	msg, err := client.Hash(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+
+}
+
+func request_Maintenance_HashKV_0(ctx context.Context, marshaler runtime.Marshaler, client etcdserverpb.MaintenanceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq etcdserverpb.HashKVRequest
+	var metadata runtime.ServerMetadata
+
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil {
+		return nil, metadata, grpc.Errorf(codes.InvalidArgument, "%v", err)
+	}
+
+	msg, err := client.HashKV(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 
 }
@@ -990,6 +1016,34 @@ func RegisterLeaseHandler(ctx context.Context, mux *runtime.ServeMux, conn *grpc
 
 	})
 
+	mux.Handle("POST", pattern_Lease_LeaseLeases_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		if cn, ok := w.(http.CloseNotifier); ok {
+			go func(done <-chan struct{}, closed <-chan bool) {
+				select {
+				case <-done:
+				case <-closed:
+					cancel()
+				}
+			}(ctx.Done(), cn.CloseNotify())
+		}
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		rctx, err := runtime.AnnotateContext(ctx, req)
+		if err != nil {
+			runtime.HTTPError(ctx, outboundMarshaler, w, req, err)
+		}
+		resp, md, err := request_Lease_LeaseLeases_0(rctx, inboundMarshaler, client, req, pathParams)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
+		if err != nil {
+			runtime.HTTPError(ctx, outboundMarshaler, w, req, err)
+			return
+		}
+
+		forward_Lease_LeaseLeases_0(ctx, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
+	})
+
 	return nil
 }
 
@@ -1001,6 +1055,8 @@ var (
 	pattern_Lease_LeaseKeepAlive_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v3alpha", "lease", "keepalive"}, ""))
 
 	pattern_Lease_LeaseTimeToLive_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"v3alpha", "kv", "lease", "timetolive"}, ""))
+
+	pattern_Lease_LeaseLeases_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"v3alpha", "kv", "lease", "leases"}, ""))
 )
 
 var (
@@ -1011,6 +1067,8 @@ var (
 	forward_Lease_LeaseKeepAlive_0 = runtime.ForwardResponseStream
 
 	forward_Lease_LeaseTimeToLive_0 = runtime.ForwardResponseMessage
+
+	forward_Lease_LeaseLeases_0 = runtime.ForwardResponseMessage
 )
 
 // RegisterClusterHandlerFromEndpoint is same as RegisterClusterHandler but
@@ -1320,6 +1378,34 @@ func RegisterMaintenanceHandler(ctx context.Context, mux *runtime.ServeMux, conn
 
 	})
 
+	mux.Handle("POST", pattern_Maintenance_HashKV_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		if cn, ok := w.(http.CloseNotifier); ok {
+			go func(done <-chan struct{}, closed <-chan bool) {
+				select {
+				case <-done:
+				case <-closed:
+					cancel()
+				}
+			}(ctx.Done(), cn.CloseNotify())
+		}
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		rctx, err := runtime.AnnotateContext(ctx, req)
+		if err != nil {
+			runtime.HTTPError(ctx, outboundMarshaler, w, req, err)
+		}
+		resp, md, err := request_Maintenance_HashKV_0(rctx, inboundMarshaler, client, req, pathParams)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
+		if err != nil {
+			runtime.HTTPError(ctx, outboundMarshaler, w, req, err)
+			return
+		}
+
+		forward_Maintenance_HashKV_0(ctx, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
+	})
+
 	mux.Handle("POST", pattern_Maintenance_Snapshot_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -1388,6 +1474,8 @@ var (
 
 	pattern_Maintenance_Hash_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v3alpha", "maintenance", "hash"}, ""))
 
+	pattern_Maintenance_HashKV_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v3alpha", "maintenance", "hash"}, ""))
+
 	pattern_Maintenance_Snapshot_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v3alpha", "maintenance", "snapshot"}, ""))
 
 	pattern_Maintenance_MoveLeader_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v3alpha", "maintenance", "transfer-leadership"}, ""))
@@ -1401,6 +1489,8 @@ var (
 	forward_Maintenance_Defragment_0 = runtime.ForwardResponseMessage
 
 	forward_Maintenance_Hash_0 = runtime.ForwardResponseMessage
+
+	forward_Maintenance_HashKV_0 = runtime.ForwardResponseMessage
 
 	forward_Maintenance_Snapshot_0 = runtime.ForwardResponseStream
 

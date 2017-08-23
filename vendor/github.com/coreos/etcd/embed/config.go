@@ -20,7 +20,9 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/coreos/etcd/etcdserver"
 	"github.com/coreos/etcd/pkg/cors"
@@ -112,10 +114,12 @@ type Config struct {
 
 	// debug
 
-	Debug        bool   `json:"debug"`
-	LogPkgLevels string `json:"log-package-levels"`
-	EnablePprof  bool
-	Metrics      string `json:"metrics"`
+	Debug                 bool   `json:"debug"`
+	LogPkgLevels          string `json:"log-package-levels"`
+	EnablePprof           bool   `json:"enable-pprof"`
+	Metrics               string `json:"metrics"`
+	ListenMetricsUrls     []url.URL
+	ListenMetricsUrlsJSON string `json:"listen-metrics-urls"`
 
 	// ForceNewCluster starts a new cluster even if previously started; unsafe.
 	ForceNewCluster bool `json:"force-new-cluster"`
@@ -137,6 +141,10 @@ type Config struct {
 	// auth
 
 	AuthToken string `json:"auth-token"`
+
+	// Experimental flags
+
+	ExperimentalCorruptCheckTime time.Duration `json:"experimental-corrupt-check-time"`
 }
 
 // configYAML holds the config suitable for yaml parsing
@@ -255,6 +263,14 @@ func (cfg *configYAML) configFromFile(path string) error {
 		cfg.ACUrls = []url.URL(u)
 	}
 
+	if cfg.ListenMetricsUrlsJSON != "" {
+		u, err := types.NewURLs(strings.Split(cfg.ListenMetricsUrlsJSON, ","))
+		if err != nil {
+			plog.Fatalf("unexpected error setting up listen-metrics-urls: %v", err)
+		}
+		cfg.ListenMetricsUrls = []url.URL(u)
+	}
+
 	// If a discovery flag is set, clear default initial cluster set by InitialClusterFromName
 	if (cfg.Durl != "" || cfg.DNSCluster != "") && cfg.InitialCluster == defaultInitialCluster {
 		cfg.InitialCluster = ""
@@ -284,6 +300,25 @@ func (cfg *Config) Validate() error {
 	}
 	if err := checkBindURLs(cfg.LCUrls); err != nil {
 		return err
+	}
+	if err := checkBindURLs(cfg.ListenMetricsUrls); err != nil {
+		return err
+	}
+	if err := checkHostURLs(cfg.APUrls); err != nil {
+		// TODO: return err in v3.4
+		addrs := make([]string, len(cfg.APUrls))
+		for i := range cfg.APUrls {
+			addrs[i] = cfg.APUrls[i].String()
+		}
+		plog.Warningf("advertise-peer-urls %q is deprecated (%v)", strings.Join(addrs, ","), err)
+	}
+	if err := checkHostURLs(cfg.ACUrls); err != nil {
+		// TODO: return err in v3.4
+		addrs := make([]string, len(cfg.ACUrls))
+		for i := range cfg.ACUrls {
+			addrs[i] = cfg.ACUrls[i].String()
+		}
+		plog.Warningf("advertise-client-urls %q is deprecated (%v)", strings.Join(addrs, ","), err)
 	}
 
 	// Check if conflicting flags are passed.
@@ -380,6 +415,34 @@ func (cfg Config) defaultClientHost() bool {
 	return len(cfg.ACUrls) == 1 && cfg.ACUrls[0].String() == DefaultAdvertiseClientURLs
 }
 
+func (cfg *Config) ClientSelfCert() (err error) {
+	if cfg.ClientAutoTLS && cfg.ClientTLSInfo.Empty() {
+		chosts := make([]string, len(cfg.LCUrls))
+		for i, u := range cfg.LCUrls {
+			chosts[i] = u.Host
+		}
+		cfg.ClientTLSInfo, err = transport.SelfCert(filepath.Join(cfg.Dir, "fixtures", "client"), chosts)
+		return err
+	} else if cfg.ClientAutoTLS {
+		plog.Warningf("ignoring client auto TLS since certs given")
+	}
+	return nil
+}
+
+func (cfg *Config) PeerSelfCert() (err error) {
+	if cfg.PeerAutoTLS && cfg.PeerTLSInfo.Empty() {
+		phosts := make([]string, len(cfg.LPUrls))
+		for i, u := range cfg.LPUrls {
+			phosts[i] = u.Host
+		}
+		cfg.PeerTLSInfo, err = transport.SelfCert(filepath.Join(cfg.Dir, "fixtures", "peer"), phosts)
+		return err
+	} else if cfg.PeerAutoTLS {
+		plog.Warningf("ignoring peer auto TLS since certs given")
+	}
+	return nil
+}
+
 // UpdateDefaultClusterFromName updates cluster advertise URLs with, if available, default host,
 // if advertise URLs are default values(localhost:2379,2380) AND if listen URL is 0.0.0.0.
 // e.g. advertise peer URL localhost:2380 or listen peer URL 0.0.0.0:2380
@@ -438,6 +501,19 @@ func checkBindURLs(urls []url.URL) error {
 		}
 		if net.ParseIP(host) == nil {
 			return fmt.Errorf("expected IP in URL for binding (%s)", url.String())
+		}
+	}
+	return nil
+}
+
+func checkHostURLs(urls []url.URL) error {
+	for _, url := range urls {
+		host, _, err := net.SplitHostPort(url.Host)
+		if err != nil {
+			return err
+		}
+		if host == "" {
+			return fmt.Errorf("unexpected empty host (%s)", url.String())
 		}
 	}
 	return nil

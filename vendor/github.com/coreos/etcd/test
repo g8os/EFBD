@@ -101,13 +101,21 @@ function functional_pass {
 		agent_pids="${agent_pids} $pid"
 	done
 
+	for a in 1 2 3; do
+		echo "Waiting for 'etcd-agent' on ${a}9027..."
+		while ! nc -z localhost ${a}9027; do
+			sleep 1
+		done
+	done
+
+	echo "Starting 'etcd-tester'"
 	./bin/etcd-tester \
 		-agent-endpoints "127.0.0.1:19027,127.0.0.1:29027,127.0.0.1:39027" \
 		-client-ports 12379,22379,32379 \
 		-peer-ports 12380,22380,32380 \
 		-limit 1 \
 		-schedule-cases "0 1 2 3 4 5" \
-		-exit-on-failure
+		-exit-on-failure && echo "'etcd-tester' succeeded"
 	ETCD_TESTER_EXIT_CODE=$?
 	echo "ETCD_TESTER_EXIT_CODE:" ${ETCD_TESTER_EXIT_CODE}
 
@@ -162,7 +170,10 @@ function cov_pass {
 	# use 30m timeout because e2e coverage takes longer
 	# due to many tests cause etcd process to wait
 	# on leadership transfer timeout during gracefully shutdown
+	echo Testing e2e without proxy...
 	go test -tags cov -timeout 30m -v ${REPO_PATH}"/e2e" || failed="$failed e2e"
+	echo Testing e2e with proxy...
+	go test -tags "cov cluster_proxy" -timeout 30m -v ${REPO_PATH}"/e2e" || failed="$failed e2e-proxy"
 
 	# incrementally merge to get coverage data even if some coverage files are corrupted
 	# optimistically assume etcdserver package's coverage file is OK since gocovmerge
@@ -201,14 +212,15 @@ function integration_e2e_pass {
 	wait $e2epid
 	wait $intpid
 	go test -timeout 1m -v ${RACE} -cpu 1,2,4 $@ ${REPO_PATH}/client/integration
-	go test -timeout 10m -v ${RACE} -cpu 1,2,4 $@ ${REPO_PATH}/clientv3/integration
+	go test -timeout 20m -v ${RACE} -cpu 1,2,4 $@ ${REPO_PATH}/clientv3/integration
 	go test -timeout 1m -v -cpu 1,2,4 $@ ${REPO_PATH}/contrib/raftexample
 	go test -timeout 1m -v ${RACE} -cpu 1,2,4 -run=Example $@ ${TEST}
 }
 
 function grpcproxy_pass {
 	go test -timeout 20m -v ${RACE} -tags cluster_proxy -cpu 1,2,4 $@ ${REPO_PATH}/integration
-	go test -timeout 15m -v ${RACE} -tags cluster_proxy -cpu 1,2,4 $@ ${REPO_PATH}/clientv3/integration
+	go test -timeout 20m -v ${RACE} -tags cluster_proxy -cpu 1,2,4 $@ ${REPO_PATH}/clientv3/integration
+	go test -timeout 15m -v -tags cluster_proxy $@ ${REPO_PATH}/e2e
 }
 
 function release_pass {
@@ -261,7 +273,7 @@ function fmt_pass {
 	fi
 
 	echo "Checking 'go tool vet -all -shadow'..."
-	fmtpkgs=$(echo $FMT | xargs dirname | sort | uniq | sed '/\./d')
+	fmtpkgs=$(for a in $FMT; do dirname "$a"; done | sort | uniq | grep -v "\\.")
 	vetRes=$(go tool vet -all -shadow ${fmtpkgs} 2>&1 | grep -v '/gw/' || true)
 	if [ -n "${vetRes}" ]; then
 		echo -e "govet -all -shadow checking failed:\n${vetRes}"

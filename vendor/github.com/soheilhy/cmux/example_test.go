@@ -23,12 +23,13 @@ import (
 	"net/rpc"
 	"strings"
 
+	"google.golang.org/grpc"
+
 	"golang.org/x/net/context"
 	"golang.org/x/net/websocket"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/examples/helloworld/helloworld"
 
-	"github.com/cockroachdb/cmux"
+	"github.com/soheilhy/cmux"
+	grpchello "google.golang.org/grpc/examples/helloworld/helloworld"
 )
 
 type exampleHTTPHandler struct{}
@@ -87,15 +88,15 @@ func serveRPC(l net.Listener) {
 
 type grpcServer struct{}
 
-func (s *grpcServer) SayHello(ctx context.Context, in *helloworld.HelloRequest) (
-	*helloworld.HelloReply, error) {
+func (s *grpcServer) SayHello(ctx context.Context, in *grpchello.HelloRequest) (
+	*grpchello.HelloReply, error) {
 
-	return &helloworld.HelloReply{Message: "Hello " + in.Name + " from cmux"}, nil
+	return &grpchello.HelloReply{Message: "Hello " + in.Name + " from cmux"}, nil
 }
 
 func serveGRPC(l net.Listener) {
 	grpcs := grpc.NewServer()
-	helloworld.RegisterGreeterServer(grpcs, &grpcServer{})
+	grpchello.RegisterGreeterServer(grpcs, &grpcServer{})
 	if err := grpcs.Serve(l); err != cmux.ErrListenerClosed {
 		panic(err)
 	}
@@ -111,7 +112,7 @@ func Example() {
 
 	// We first match the connection against HTTP2 fields. If matched, the
 	// connection will be sent through the "grpcl" listener.
-	grpcl := m.Match(cmux.HTTP2HeaderField("content-type", "application/grpc"))
+	grpcl := m.Match(cmux.HTTP2HeaderFieldPrefix("content-type", "application/grpc"))
 	//Otherwise, we match it againts a websocket upgrade request.
 	wsl := m.Match(cmux.HTTP1HeaderField("Upgrade", "websocket"))
 

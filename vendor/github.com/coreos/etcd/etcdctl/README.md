@@ -115,6 +115,8 @@ RPC: Range
 
 #### Examples
 
+First, populate etcd with some keys:
+
 ```bash
 ./etcdctl put foo bar
 # OK
@@ -124,9 +126,33 @@ RPC: Range
 # OK
 ./etcdctl put foo3 bar3
 # OK
+```
+
+Get the key named `foo`:
+
+```bash
 ./etcdctl get foo
 # foo
 # bar
+```
+
+Get all keys:
+
+```bash
+./etcdctl get --from-key ''
+# foo
+# bar
+# foo1
+# bar1
+# foo2
+# foo2
+# foo3
+# bar3
+```
+
+Get all keys with names greater than or equal to `foo1`:
+
+```bash
 ./etcdctl get --from-key foo1
 # foo1
 # bar1
@@ -134,6 +160,11 @@ RPC: Range
 # bar2
 # foo3
 # bar3
+```
+
+Get keys with names greater than or equal to `foo1` and less than `foo3`:
+
+```bash
 ./etcdctl get foo1 foo3
 # foo1
 # bar1
@@ -223,12 +254,13 @@ RPC: Txn
 #### Input Format
 ```ebnf
 <Txn> ::= <CMP>* "\n" <THEN> "\n" <ELSE> "\n"
-<CMP> ::= (<CMPCREATE>|<CMPMOD>|<CMPVAL>|<CMPVER>) "\n"
+<CMP> ::= (<CMPCREATE>|<CMPMOD>|<CMPVAL>|<CMPVER>|<CMPLEASE>) "\n"
 <CMPOP> ::= "<" | "=" | ">"
 <CMPCREATE> := ("c"|"create")"("<KEY>")" <REVISION>
 <CMPMOD> ::= ("m"|"mod")"("<KEY>")" <CMPOP> <REVISION>
 <CMPVAL> ::= ("val"|"value")"("<KEY>")" <CMPOP> <VALUE>
 <CMPVER> ::= ("ver"|"version")"("<KEY>")" <CMPOP> <VERSION>
+<CMPLEASE> ::= "lease("<KEY>")" <CMPOP> <LEASE>
 <THEN> ::= <OP>*
 <ELSE> ::= <OP>*
 <OP> ::= ((see put, get, del etcdctl command syntax)) "\n"
@@ -236,6 +268,7 @@ RPC: Txn
 <VALUE> ::= (%q formatted string)
 <REVISION> ::= "\""[0-9]+"\""
 <VERSION> ::= "\""[0-9]+"\""
+<LEASE> ::= "\""[0-9]+\""
 ```
 
 #### Output
@@ -435,6 +468,26 @@ Prints lease information.
 
 ./etcdctl lease timetolive 2d8257079fa1bc0c --write-out=json --keys
 # {"cluster_id":17186838941855831277,"member_id":4845372305070271874,"revision":3,"raft_term":2,"id":3279279168933706764,"ttl":459,"granted-ttl":500,"keys":["Zm9vMQ==","Zm9vMg=="]}
+```
+
+### LEASE LIST
+
+LEASE LIST lists all active leases.
+
+RPC: LeaseLeases
+
+#### Output
+
+Prints a message with a list of active leases.
+
+#### Example
+
+```bash
+./etcdctl lease grant 10
+# lease 32695410dcc0ca06 granted with TTL(10s)
+
+./etcdctl lease list
+32695410dcc0ca06
 ```
 
 ### LEASE KEEP-ALIVE \<leaseID\>
@@ -639,6 +692,49 @@ Get the status for all endpoints in the cluster associated with the default endp
 +------------------------+------------------+----------------+---------+-----------+-----------+------------+
 ```
 
+### ENDPOINT HASHKV
+
+ENDPOINT HASHKV fetches the hash of the key-value store of an endpoint.
+
+#### Output
+
+##### Simple format
+
+Prints a humanized table of each endpoint URL and KV history hash.
+
+##### JSON format
+
+Prints a line of JSON encoding each endpoint URL and KV history hash.
+
+#### Examples
+
+Get the hash for the default endpoint:
+
+```bash
+./etcdctl endpoint hashkv
+# 127.0.0.1:2379, 1084519789
+```
+
+Get the status for the default endpoint as JSON:
+
+```bash
+./etcdctl -w json endpoint hashkv
+# [{"Endpoint":"127.0.0.1:2379","Hash":{"header":{"cluster_id":14841639068965178418,"member_id":10276657743932975437,"revision":1,"raft_term":3},"hash":1084519789,"compact_revision":-1}}]
+```
+
+Get the status for all endpoints in the cluster associated with the default endpoint:
+
+```bash
+./etcdctl -w table endpoint --cluster hashkv
++------------------------+------------+
+|        ENDPOINT        |    HASH    |
++------------------------+------------+
+| http://127.0.0.1:12379 | 1084519789 |
+| http://127.0.0.1:22379 | 1084519789 |
+| http://127.0.0.1:32379 | 1084519789 |
++------------------------+------------+
+```
+
 ### ALARM \<subcommand\>
 
 Provides alarm related commands
@@ -689,11 +785,16 @@ If NOSPACE alarm is present:
 # alarm:NOSPACE
 ```
 
-### DEFRAG
+### DEFRAG [options]
 
-DEFRAG defragments the backend database file for a set of given endpoints. When an etcd member reclaims storage space
-from deleted and compacted keys, the space is kept in a free list and the database file remains the same size. By defragmenting
-the database, the etcd member releases this free space back to the file system.
+DEFRAG defragments the backend database file for a set of given endpoints while etcd is running, or directly defragments an
+etcd data directory while etcd is not running. When an etcd member reclaims storage space from deleted and compacted keys, the
+space is kept in a free list and the database file remains the same size. By defragmenting the database, the etcd member
+releases this free space back to the file system.
+
+#### Options
+
+- data-dir -- Optional. If present, defragments a data directory not in use by etcd.
 
 #### Output
 
@@ -705,6 +806,15 @@ For each endpoints, prints a message indicating whether the endpoint was success
 ./etcdctl --endpoints=localhost:2379,badendpoint:2379 defrag
 # Finished defragmenting etcd member[localhost:2379]
 # Failed to defragment etcd member[badendpoint:2379] (grpc: timed out trying to connect)
+```
+
+To defragment a data directory directly, use the `--data-dir` flag:
+
+``` bash
+# Defragment while etcd is not running
+./etcdctl defrag --data-dir default.etcd
+# success (exit status 0)
+# Error: cannot open database at default.etcd/member/snap/db
 ```
 
 #### Remarks
@@ -830,9 +940,13 @@ echo ${transferee_id}
 
 ## Concurrency commands
 
-### LOCK \<lockname\> [command arg1 arg2 ...]
+### LOCK [options] \<lockname\> [command arg1 arg2 ...]
 
 LOCK acquires a distributed named mutex with a given name. Once the lock is acquired, it will be held until etcdctl is terminated.
+
+#### Options
+
+- ttl - time out in seconds of lock session.
 
 #### Output
 

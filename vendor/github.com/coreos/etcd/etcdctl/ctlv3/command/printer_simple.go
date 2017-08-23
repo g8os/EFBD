@@ -104,6 +104,13 @@ func (s *simplePrinter) TimeToLive(resp v3.LeaseTimeToLiveResponse, keys bool) {
 	fmt.Println(txt)
 }
 
+func (s *simplePrinter) Leases(resp v3.LeaseLeasesResponse) {
+	fmt.Printf("found %d leases\n", len(resp.Leases))
+	for _, item := range resp.Leases {
+		fmt.Printf("%016x\n", item.ID)
+	}
+}
+
 func (s *simplePrinter) Alarm(resp v3.AlarmResponse) {
 	for _, e := range resp.Alarms {
 		fmt.Printf("%+v\n", e)
@@ -131,6 +138,13 @@ func (s *simplePrinter) MemberList(resp v3.MemberListResponse) {
 
 func (s *simplePrinter) EndpointStatus(statusList []epStatus) {
 	_, rows := makeEndpointStatusTable(statusList)
+	for _, row := range rows {
+		fmt.Println(strings.Join(row, ", "))
+	}
+}
+
+func (s *simplePrinter) EndpointHashKV(hashList []epHashKV) {
+	_, rows := makeEndpointHashKVTable(hashList)
 	for _, row := range rows {
 		fmt.Println(strings.Join(row, ", "))
 	}

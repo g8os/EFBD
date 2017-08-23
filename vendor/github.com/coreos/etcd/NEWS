@@ -1,3 +1,30 @@
+etcd v3.2.6 (2017-08-21)
+- fix watch restore from snapshot
+- fix etcd_debugging_mvcc_keys_total inconsistency
+- fix multiple URLs for '--listen-peer-urls' flag
+- add 'enable-pprof' to etcd configuration file format
+
+etcd v3.2.5 (2017-08-04)
+- use reverse lookup to match wildcard DNS SAN
+- return non-zero exit code on unhealthy 'endpoint health'
+- fix unreachable /metrics endpoint when '--enable-v2=false'
+- fix grpcproxy to respect 'PrevKv' flag
+- add container registry 'gcr.io/etcd-development/etcd'
+
+etcd v3.2.4 (2017-07-19)
+- do not block on active client stream when stopping server
+- fix gRPC proxy Snapshot RPC error handling
+
+etcd v3.2.3 (2017-07-14)
+- let clients establish unlimited streams
+- add docker tags for minor versions
+  e.g. docker pull quay.io/coreos/etcd:v3.2 to fetch latest v3.2 versions
+
+etcd v3.1.10 (2017-07-14)
+- use Go 1.8.3 to fix panic on net/http.CloseNotify
+- add docker tags for minor versions
+  e.g. docker pull quay.io/coreos/etcd:v3.1 to fetch latest v3.1 versions
+
 etcd v3.2.2 (2017-07-07)
 - rate-limit lease revoke on expiration
 - extend leases on promote to avoid queueing effect on lease expiration

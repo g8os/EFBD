@@ -524,6 +524,7 @@ func (s *EtcdServer) Start() {
 	s.goAttach(func() { monitorFileDescriptor(s.stopping) })
 	s.goAttach(s.monitorVersions)
 	s.goAttach(s.linearizableReadLoop)
+	s.goAttach(s.monitorKVHash)
 }
 
 // start prepares and starts server in a new goroutine. It is no longer safe to
@@ -1366,8 +1367,7 @@ func (s *EtcdServer) applyEntryNormal(e *raftpb.Entry) {
 			Action:   pb.AlarmRequest_ACTIVATE,
 			Alarm:    pb.AlarmType_NOSPACE,
 		}
-		r := pb.InternalRaftRequest{Alarm: a}
-		s.processInternalRaftRequest(s.ctx, r)
+		s.raftRequest(s.ctx, pb.InternalRaftRequest{Alarm: a})
 		s.w.Trigger(id, ar)
 	})
 }
@@ -1629,6 +1629,9 @@ func (s *EtcdServer) restoreAlarms() error {
 	if len(as.Get(pb.AlarmType_NOSPACE)) > 0 {
 		s.applyV3 = newApplierV3Capped(s.applyV3)
 	}
+	if len(as.Get(pb.AlarmType_CORRUPT)) > 0 {
+		s.applyV3 = newApplierV3Corrupt(s.applyV3)
+	}
 	return nil
 }
 
@@ -1666,4 +1669,8 @@ func (s *EtcdServer) goAttach(f func()) {
 		defer s.wg.Done()
 		f()
 	}()
+}
+
+func (s *EtcdServer) Alarms() []*pb.AlarmMember {
+	return s.alarmStore.Get(pb.AlarmType_NONE)
 }

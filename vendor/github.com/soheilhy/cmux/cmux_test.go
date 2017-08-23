@@ -15,13 +15,20 @@
 package cmux
 
 import (
+	"bytes"
+	"crypto/rand"
+	"crypto/tls"
 	"errors"
 	"fmt"
+	"go/build"
 	"io"
 	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	"net/rpc"
+	"os"
+	"os/exec"
 	"runtime"
 	"sort"
 	"strings"
@@ -31,6 +38,7 @@ import (
 	"time"
 
 	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/hpack"
 )
 
 const (
@@ -39,7 +47,7 @@ const (
 )
 
 func safeServe(errCh chan<- error, muxl CMux) {
-	if err := muxl.Serve(); !strings.Contains(err.Error(), "use of closed network connection") {
+	if err := muxl.Serve(); !strings.Contains(err.Error(), "use of closed") {
 		errCh <- err
 	}
 }
@@ -77,10 +85,13 @@ func testListener(t *testing.T) (net.Listener, func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var once sync.Once
 	return l, func() {
-		if err := l.Close(); err != nil {
-			t.Fatal(err)
-		}
+		once.Do(func() {
+			if err := l.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 
@@ -122,22 +133,73 @@ func runTestHTTPServer(errCh chan<- error, l net.Listener) {
 	}
 }
 
-func runTestHTTP1Client(t *testing.T, addr net.Addr) {
-	if r, err := http.Get("http://" + addr.String()); err != nil {
+func generateTLSCert(t *testing.T) {
+	err := exec.Command("go", "run", build.Default.GOROOT+"/src/crypto/tls/generate_cert.go", "--host", "*").Run()
+	if err != nil {
 		t.Fatal(err)
-	} else {
-		defer func() {
-			if err := r.Body.Close(); err != nil {
-				t.Fatal(err)
-			}
-		}()
-		if b, err := ioutil.ReadAll(r.Body); err != nil {
+	}
+}
+
+func cleanupTLSCert(t *testing.T) {
+	err := os.Remove("cert.pem")
+	if err != nil {
+		t.Error(err)
+	}
+	err = os.Remove("key.pem")
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func runTestTLSServer(errCh chan<- error, l net.Listener) {
+	certificate, err := tls.LoadX509KeyPair("cert.pem", "key.pem")
+	if err != nil {
+		errCh <- err
+		log.Printf("1")
+		return
+	}
+
+	config := &tls.Config{
+		Certificates: []tls.Certificate{certificate},
+		Rand:         rand.Reader,
+	}
+
+	tlsl := tls.NewListener(l, config)
+	runTestHTTPServer(errCh, tlsl)
+}
+
+func runTestHTTP1Client(t *testing.T, addr net.Addr) {
+	runTestHTTPClient(t, "http", addr)
+}
+
+func runTestTLSClient(t *testing.T, addr net.Addr) {
+	runTestHTTPClient(t, "https", addr)
+}
+
+func runTestHTTPClient(t *testing.T, proto string, addr net.Addr) {
+	client := http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+	r, err := client.Get(proto + "://" + addr.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() {
+		if err = r.Body.Close(); err != nil {
 			t.Fatal(err)
-		} else {
-			if string(b) != testHTTP1Resp {
-				t.Fatalf("invalid response: want=%s got=%s", testHTTP1Resp, b)
-			}
 		}
+	}()
+
+	b, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != testHTTP1Resp {
+		t.Fatalf("invalid response: want=%s got=%s", testHTTP1Resp, b)
 	}
 }
 
@@ -176,6 +238,84 @@ func runTestRPCClient(t *testing.T, addr net.Addr) {
 
 	if num != rpcVal {
 		t.Errorf("wrong rpc response: want=%d got=%v", rpcVal, num)
+	}
+}
+
+const (
+	handleHTTP1Close   = 1
+	handleHTTP1Request = 2
+	handleAnyClose     = 3
+	handleAnyRequest   = 4
+)
+
+func TestTimeout(t *testing.T) {
+	defer leakCheck(t)()
+	lis, Close := testListener(t)
+	defer Close()
+	result := make(chan int, 5)
+	testDuration := time.Millisecond * 500
+	m := New(lis)
+	m.SetReadTimeout(testDuration)
+	http1 := m.Match(HTTP1Fast())
+	any := m.Match(Any())
+	go func() {
+		_ = m.Serve()
+	}()
+	go func() {
+		con, err := http1.Accept()
+		if err != nil {
+			result <- handleHTTP1Close
+		} else {
+			_, _ = con.Write([]byte("http1"))
+			_ = con.Close()
+			result <- handleHTTP1Request
+		}
+	}()
+	go func() {
+		con, err := any.Accept()
+		if err != nil {
+			result <- handleAnyClose
+		} else {
+			_, _ = con.Write([]byte("any"))
+			_ = con.Close()
+			result <- handleAnyRequest
+		}
+	}()
+	time.Sleep(testDuration) // wait to prevent timeouts on slow test-runners
+	client, err := net.Dial("tcp", lis.Addr().String())
+	if err != nil {
+		log.Fatal("testTimeout client failed: ", err)
+	}
+	defer func() {
+		_ = client.Close()
+	}()
+	time.Sleep(testDuration / 2)
+	if len(result) != 0 {
+		log.Print("tcp ")
+		t.Fatal("testTimeout failed: accepted to fast: ", len(result))
+	}
+	_ = client.SetReadDeadline(time.Now().Add(testDuration * 3))
+	buffer := make([]byte, 10)
+	rl, err := client.Read(buffer)
+	if err != nil {
+		t.Fatal("testTimeout failed: client error: ", err, rl)
+	}
+	Close()
+	if rl != 3 {
+		log.Print("testTimeout failed: response from wrong sevice ", rl)
+	}
+	if string(buffer[0:3]) != "any" {
+		log.Print("testTimeout failed: response from wrong sevice ")
+	}
+	time.Sleep(testDuration * 2)
+	if len(result) != 2 {
+		t.Fatal("testTimeout failed: accepted to less: ", len(result))
+	}
+	if a := <-result; a != handleAnyRequest {
+		t.Fatal("testTimeout failed: any rule did not match")
+	}
+	if a := <-result; a != handleHTTP1Close {
+		t.Fatal("testTimeout failed: no close an http rule")
 	}
 }
 
@@ -222,9 +362,12 @@ func TestRead(t *testing.T) {
 	}
 	for i := 0; i < mult; i++ {
 		var b [len(payload)]byte
-		if n, err := muxedConn.Read(b[:]); err != nil {
+		n, err := muxedConn.Read(b[:])
+		if err != nil {
 			t.Error(err)
-		} else if e := len(b); n != e {
+			continue
+		}
+		if e := len(b); n != e {
 			t.Errorf("expected to read %d bytes, but read %d bytes", e, n)
 		}
 	}
@@ -254,6 +397,33 @@ func TestAny(t *testing.T) {
 	go safeServe(errCh, muxl)
 
 	runTestHTTP1Client(t, l.Addr())
+}
+
+func TestTLS(t *testing.T) {
+	generateTLSCert(t)
+	defer cleanupTLSCert(t)
+	defer leakCheck(t)()
+	errCh := make(chan error)
+	defer func() {
+		select {
+		case err := <-errCh:
+			t.Fatal(err)
+		default:
+		}
+	}()
+	l, cleanup := testListener(t)
+	defer cleanup()
+
+	muxl := New(l)
+	tlsl := muxl.Match(TLS())
+	httpl := muxl.Match(Any())
+
+	go runTestTLSServer(errCh, tlsl)
+	go runTestHTTPServer(errCh, httpl)
+	go safeServe(errCh, muxl)
+
+	runTestHTTP1Client(t, l.Addr())
+	runTestTLSClient(t, l.Addr())
 }
 
 func TestHTTP2(t *testing.T) {
@@ -292,20 +462,97 @@ func TestHTTP2(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	{
-		var b [len(http2.ClientPreface)]byte
-		if _, err := muxedConn.Read(b[:]); err != nil {
+	var b [len(http2.ClientPreface)]byte
+	var n int
+	// We have the sniffed buffer first...
+	if n, err = muxedConn.Read(b[:]); err == io.EOF {
+		t.Fatal(err)
+	}
+	// and then we read from the source.
+	if _, err = muxedConn.Read(b[n:]); err != io.EOF {
+		t.Fatal(err)
+	}
+	if string(b[:]) != http2.ClientPreface {
+		t.Errorf("got unexpected read %s, expected %s", b, http2.ClientPreface)
+	}
+}
+
+func TestHTTP2MatchHeaderField(t *testing.T) {
+	testHTTP2MatchHeaderField(t, HTTP2HeaderField, "value", "value", "anothervalue")
+}
+
+func TestHTTP2MatchHeaderFieldPrefix(t *testing.T) {
+	testHTTP2MatchHeaderField(t, HTTP2HeaderFieldPrefix, "application/grpc+proto", "application/grpc", "application/json")
+}
+
+func testHTTP2MatchHeaderField(
+	t *testing.T,
+	matcherConstructor func(string, string) Matcher,
+	headerValue string,
+	matchValue string,
+	notMatchValue string,
+) {
+	defer leakCheck(t)()
+	errCh := make(chan error)
+	defer func() {
+		select {
+		case err := <-errCh:
+			t.Fatal(err)
+		default:
+		}
+	}()
+	name := "name"
+	writer, reader := net.Pipe()
+	go func() {
+		if _, err := io.WriteString(writer, http2.ClientPreface); err != nil {
 			t.Fatal(err)
 		}
-		if string(b[:]) != http2.ClientPreface {
-			t.Errorf("got unexpected read %s, expected %s", b, http2.ClientPreface)
+		var buf bytes.Buffer
+		enc := hpack.NewEncoder(&buf)
+		if err := enc.WriteField(hpack.HeaderField{Name: name, Value: headerValue}); err != nil {
+			t.Fatal(err)
 		}
-	}
-	{
+		framer := http2.NewFramer(writer, nil)
+		err := framer.WriteHeaders(http2.HeadersFrameParam{
+			StreamID:      1,
+			BlockFragment: buf.Bytes(),
+			EndStream:     true,
+			EndHeaders:    true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	l := newChanListener()
+	l.connCh <- reader
+	muxl := New(l)
+	// Register a bogus matcher that only reads one byte.
+	muxl.Match(func(r io.Reader) bool {
 		var b [1]byte
-		if _, err := muxedConn.Read(b[:]); err != io.EOF {
-			t.Errorf("unexpected error %v, expected %v", err, io.EOF)
-		}
+		_, _ = r.Read(b[:])
+		return false
+	})
+	// Create a matcher that cannot match the response.
+	muxl.Match(matcherConstructor(name, notMatchValue))
+	// Then match with the expected field.
+	h2l := muxl.Match(matcherConstructor(name, matchValue))
+	go safeServe(errCh, muxl)
+	muxedConn, err := h2l.Accept()
+	close(l.connCh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b [len(http2.ClientPreface)]byte
+	// We have the sniffed buffer first...
+	if _, err := muxedConn.Read(b[:]); err == io.EOF {
+		t.Fatal(err)
+	}
+	if string(b[:]) != http2.ClientPreface {
+		t.Errorf("got unexpected read %s, expected %s", b, http2.ClientPreface)
 	}
 }
 
@@ -436,8 +683,8 @@ func interestingGoroutines() (gs []string) {
 		}
 
 		if stack == "" ||
+			strings.Contains(stack, "main.main()") ||
 			strings.Contains(stack, "testing.Main(") ||
-			strings.Contains(stack, "testing.tRunner(") ||
 			strings.Contains(stack, "runtime.goexit") ||
 			strings.Contains(stack, "created by runtime.gc") ||
 			strings.Contains(stack, "interestingGoroutines") ||

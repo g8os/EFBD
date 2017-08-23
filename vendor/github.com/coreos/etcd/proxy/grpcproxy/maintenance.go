@@ -15,6 +15,8 @@
 package grpcproxy
 
 import (
+	"io"
+
 	"golang.org/x/net/context"
 
 	"github.com/coreos/etcd/clientv3"
@@ -49,6 +51,9 @@ func (mp *maintenanceProxy) Snapshot(sr *pb.SnapshotRequest, stream pb.Maintenan
 	for {
 		rr, err := sc.Recv()
 		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
 			return err
 		}
 		err = stream.Send(rr)
@@ -61,6 +66,11 @@ func (mp *maintenanceProxy) Snapshot(sr *pb.SnapshotRequest, stream pb.Maintenan
 func (mp *maintenanceProxy) Hash(ctx context.Context, r *pb.HashRequest) (*pb.HashResponse, error) {
 	conn := mp.client.ActiveConnection()
 	return pb.NewMaintenanceClient(conn).Hash(ctx, r)
+}
+
+func (mp *maintenanceProxy) HashKV(ctx context.Context, r *pb.HashKVRequest) (*pb.HashKVResponse, error) {
+	conn := mp.client.ActiveConnection()
+	return pb.NewMaintenanceClient(conn).HashKV(ctx, r)
 }
 
 func (mp *maintenanceProxy) Alarm(ctx context.Context, r *pb.AlarmRequest) (*pb.AlarmResponse, error) {

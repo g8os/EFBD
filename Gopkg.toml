@@ -4,6 +4,7 @@
   name = "github.com/asaskevich/govalidator"
 
 [[constraint]]
+  branch = "master"
   name = "github.com/coreos/etcd"
 
 [[constraint]]
