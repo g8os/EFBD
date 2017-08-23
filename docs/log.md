@@ -114,64 +114,19 @@ This message is send in the hope that the config can be made valid by receiving 
 
 ## Broadcast statistics 
 
-The `BroadcastStatistics` function in the `0-Disk/log` package logs statistical messages using the [0-Log library][zeroLog] to broadcast messages for the [0-core log monitor][zeroCoreLogMonitor] using the [Statistics Log message format spec][StatLogSpec].
+The `BroadcastStatistics` function in the `0-Disk/log` package logs statistical messages using the [0-Log library][zeroLog] to broadcast messages for the [0-core log monitor][zeroCoreLogMonitor] using the [Statistics Log message format spec][StatLogSpec]. The broadcasted statistics messages are send at [log level 10 (statistics/monitoring message)][loglevels]. 
 
 More in-depth information about the actual implementation in 0-Disk can be found in [the log module Godocs][zeroDiskLogGodcs].
 
-### Message format
+### Logged statistics
 
-All broadcasted statistics messages are sent using [level 10 (loglevel Statistics/monitoring)][loglevels] and takes a `zerolog.MsgStatistics` struct with the following fields:
-
-* Key (`string`): represents the key for the statistic
-* Value (`float`): represents the data value of the statistic
-* Operation (`zerolog.AggregationType`): represents the aggregation operation for the statistic
-* Tags(`zerolog.MetricTags`): represents additional tags for the statistic
-
-More indepth information about 0-log can be found on the [0-log documentation][zerolog]
-
-The `BroadcastStatistics` function takes the following arguments:
-* vdiskID (`string`): represents the ID of the vdisk where the statistics are from.  
-    Used to build the `0-log` `Key`.
-* key (`StatisticsKey`): represents of what the statistic is from.  
-    Used to build the `0-log` `Key`.
-* value (`float`): Used for the `0-log` `Value`.
-* op (`AggregationType`): Used for the `0-log` `Operation`.
-* tags (`MetricTags`, optional): Used for the `0-log` `Tags`.
-
-These values will be put in a `zerolog.MsgStatistics` struct to be logged. 
-
-The `vdiskID` and `key` are used to format the `MsgStatistics` key to the [monitor metrics spec][monMetricsSpec] specific for 0-Disks.
-
-Wrappers for `zerolog.AggregationType` (`AggregationType`) and `zerolog.MetricTags` (`MetricTags`) are provided so there is no need to directly access the 0-log lib anywhere else within `0-Disk`.
-
-An error can be returned in following cases:
-* `vdiskID` is empty (`ErrNilVdiskID`)
-* `StatisticsKey` (`Key`) is invalid (`ErrInvalidStatisticsKey`)
-* `AggregationType` (`zerolog.MsgStatistics.Operation`) is invalid (`zerolog.ErrInvalidAggregationType`)
-
-### Usage
-```go
-// without tags
-BroadcastStatistics("vdisk1", StatisticsKeyIOPSWrite, 1.234, AggregationAverages, nil)
-// outputs: 10::vdisk.iops.write@virt.vdisk1:1.234000|A
-
-// with tags
-tags := MetricTags{
-    "foo":   "world",
-    "hello": "bar",
-}
-BroadcastStatistics("vdisk2", StatisticsKeyTroughputRead, 2.345, AggregationDifferentiates, tags)
-// outputs: 10::vdisk.throughput.read@virt.vdisk2:2.345000|D|foo=world,hello=bar
-```
+    // TODO: describe format of statistics broadcasted + services that broadcast them
 
 [zeroLog]: https://github.com/zero-os/0-log/
-[zeroStor]: https://github.com/zero-os/0-stor/
 [loglevels]: https://github.com/zero-os/0-log/blob/master/README.md#supported-log-levels
-[sourceinterface]: https://godoc.org/github.com/zero-os/0-Disk/config/#Source
 [zeroCoreLogMonitor]: https://github.com/zero-os/0-core/blob/master/docs/monitoring/README.md#monitoring
 [zeroOrchestrator]: https://github.com/zero-os/0-orchestrator
 [StatLogSpec]: https://github.com/zero-os/0-core/blob/master/docs/monitoring/stats.md#statistics-log-message-format
-[monMetricsSpec]: https://github.com/zero-os/0-core/tree/master/docs/monitoring#monitoring-metrics
 
 [ardb]: /docs/glossary.md#ardb
 [tlog]: /docs/glossary.md#tlog

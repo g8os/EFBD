@@ -10,7 +10,7 @@ func TestStatsLog(t *testing.T) {
 	assert := assert.New(t)
 
 	// test valid cases
-	// without tags
+	//without tags
 	err := BroadcastStatistics("vdisk1", StatisticsKeyIOPSWrite, 1.234, AggregationAverages, nil)
 	assert.NoError(err)
 	//with tags
@@ -73,7 +73,7 @@ func TestCreateKey(t *testing.T) {
 		},
 		{
 			vdiskID:  "vdisk1",
-			key:      StatisticsKey(""),
+			key:      StatisticsKey(255),
 			expected: ErrInvalidStatisticsKey,
 		},
 	}

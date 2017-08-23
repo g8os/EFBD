@@ -8,13 +8,13 @@ import (
 
 var (
 	// ErrNilVdiskID represents an error where an empty vdiskid was provided
-	ErrNilVdiskID = errors.New("empty statistics ID")
+	ErrNilVdiskID = errors.New("unexpected nil vdiskID")
 	// ErrInvalidStatisticsKey represents an error where an invalid Statisticskey was provided
 	ErrInvalidStatisticsKey = errors.New("invalid statistics key")
 )
 
 // BroadcastStatistics broadcasts statistics data for 0-Core statistics monitor
-// using 0-Log package
+// using the 0-Log package
 func BroadcastStatistics(vdiskID string, key StatisticsKey, value float64, op AggregationType, tags MetricTags) error {
 	k, err := createKey(vdiskID, key)
 	if err != nil {
@@ -22,14 +22,19 @@ func BroadcastStatistics(vdiskID string, key StatisticsKey, value float64, op Ag
 	}
 
 	msg := zerolog.MsgStatistics{
-		Value:     value,
-		Key:       k,
+		Key:   k,
+		Value: value,
+		// aggregation operation
 		Operation: zerolog.AggregationType(op),
-		Tags:      zerolog.MetricTags(tags),
+		// metric tags for the statistic
+		Tags: zerolog.MetricTags(tags),
 	}
+
 	return zerolog.Log(zerolog.LevelStatistics, msg)
 }
 
+// createKey turns vdiskID and StatisticsKey into a key for the zerolog.MsgStatistics
+// following monitoring specs: https://github.com/zero-os/0-core/tree/master/docs/monitoring#monitoring-metrics
 func createKey(vdiskID string, statkey StatisticsKey) (string, error) {
 	if vdiskID == "" {
 		return "", ErrNilVdiskID
@@ -38,21 +43,47 @@ func createKey(vdiskID string, statkey StatisticsKey) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return statkey.String() + "@virt." + vdiskID, nil
 }
 
 // StatisticsKey represents a statistics key
-type StatisticsKey string
+type StatisticsKey uint8
 
 // StatisticsKey options
 const (
-	StatisticsKeyIOPSRead       = StatisticsKey("vdisk.iops.read")
-	StatisticsKeyIOPSWrite      = StatisticsKey("vdisk.iops.write")
-	StatisticsKeyTroughputRead  = StatisticsKey("vdisk.throughput.read")
-	StatisticsKeyTroughputWrite = StatisticsKey("vdisk.throughput.write")
+	StatisticsKeyIOPSRead = iota
+	StatisticsKeyIOPSWrite
+	StatisticsKeyTroughputRead
+	StatisticsKeyTroughputWrite
 )
 
-// Validate validates a StatisticsKey
+// StatisticsKey string representations
+const (
+	statisticsKeyIOPSReadStr       = "vdisk.iops.read"
+	statisticsKeyIOPSWriteStr      = "vdisk.iops.write"
+	statisticsKeyTroughputReadStr  = "vdisk.throughput.read"
+	statisticsKeyTroughputWriteStr = "vdisk.throughput.write"
+	statisticsKeyNilStr            = ""
+)
+
+// String returns the string representation of the StatisticsKey
+func (sk StatisticsKey) String() string {
+	switch sk {
+	case StatisticsKeyIOPSRead:
+		return statisticsKeyIOPSReadStr
+	case StatisticsKeyIOPSWrite:
+		return statisticsKeyIOPSWriteStr
+	case StatisticsKeyTroughputRead:
+		return statisticsKeyTroughputReadStr
+	case StatisticsKeyTroughputWrite:
+		return statisticsKeyTroughputWriteStr
+	default:
+		return statisticsKeyNilStr
+	}
+}
+
+// Validate validates the StatisticsKey
 func (sk StatisticsKey) Validate() error {
 	switch sk {
 	case StatisticsKeyIOPSRead, StatisticsKeyIOPSWrite, StatisticsKeyTroughputRead, StatisticsKeyTroughputWrite:
@@ -62,21 +93,21 @@ func (sk StatisticsKey) Validate() error {
 	}
 }
 
-func (sk StatisticsKey) String() string {
-	return string(sk)
-}
-
 // zerolog wrappers
 
 // AggregationType represents an statistics aggregation type
+// wraps zerolog.AggregationType
 type AggregationType zerolog.AggregationType
 
 const (
 	// AggregationAverages represents an averaging aggregation type
+	// wraps zerolog.AggregationAverages
 	AggregationAverages = AggregationType(zerolog.AggregationAverages)
 	// AggregationDifferentiates represents a differentiating aggregation type
+	// wraps zerolog.AggregationDifferentiates
 	AggregationDifferentiates = AggregationType(zerolog.AggregationDifferentiates)
 )
 
 // MetricTags represents statistics metric tags
-type MetricTags map[string]interface{}
+// wraps zerolog.MetricTags
+type MetricTags zerolog.MetricTags
