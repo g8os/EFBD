@@ -56,6 +56,7 @@ const (
 	StatisticsKeyIOPSWrite
 	StatisticsKeyTroughputRead
 	StatisticsKeyTroughputWrite
+	StatisticsKeyEnumLength // should always be the final enum value
 )
 
 // StatisticsKey string representations
@@ -64,7 +65,6 @@ const (
 	statisticsKeyIOPSWriteStr      = "vdisk.iops.write"
 	statisticsKeyTroughputReadStr  = "vdisk.throughput.read"
 	statisticsKeyTroughputWriteStr = "vdisk.throughput.write"
-	statisticsKeyNilStr            = ""
 )
 
 // String returns the string representation of the StatisticsKey
@@ -79,18 +79,17 @@ func (sk StatisticsKey) String() string {
 	case StatisticsKeyTroughputWrite:
 		return statisticsKeyTroughputWriteStr
 	default:
-		return statisticsKeyNilStr
+		return ""
 	}
 }
 
 // Validate validates the StatisticsKey
 func (sk StatisticsKey) Validate() error {
-	switch sk {
-	case StatisticsKeyIOPSRead, StatisticsKeyIOPSWrite, StatisticsKeyTroughputRead, StatisticsKeyTroughputWrite:
-		return nil
-	default:
+	if sk >= StatisticsKeyEnumLength {
 		return ErrInvalidStatisticsKey
 	}
+
+	return nil
 }
 
 // zerolog wrappers
