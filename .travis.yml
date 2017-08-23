@@ -22,8 +22,7 @@ jobs:
       script: TIMEOUT=10m make testrace_gonbdserver
     - stage: test
       go: 1.8
-      os: osx
       install:
         - go get -u github.com/Jumpscale/go-raml
-        - ./tlog/install_capnp_macos.sh
+        - ./scripts/install_capnp_unix.sh
       script: make testcodegen
