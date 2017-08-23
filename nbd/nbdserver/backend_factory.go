@@ -47,7 +47,7 @@ func newBackendFactory(cfg backendFactoryConfig) (*backendFactory, error) {
 		poolFactory:   cfg.PoolFactory,
 		lbaCacheLimit: cfg.LBACacheLimit,
 		configSource:  cfg.ConfigSource,
-		vdiskComp:     &vdiskCompletion{},
+		vdiskComp:     newVdiskCompletion(),
 	}, nil
 }
 
@@ -142,11 +142,12 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	return
 }
 
-// Wait waits for vdisks completion.
-// It only wait for vdisk which has vdiskCompletion
+// StopAndWait stops all vdisk and waits for vdisks completion.
+// It only stop and wait for vdisk which has vdiskCompletion
 // attached.
 // It returns errors from vdisk that exited
 // because of context cancellation.
-func (f backendFactory) Wait() []error {
+func (f backendFactory) StopAndWait() []error {
+	f.vdiskComp.StopAll()
 	return f.vdiskComp.Wait()
 }

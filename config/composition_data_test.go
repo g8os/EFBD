@@ -173,18 +173,6 @@ var invalidNBDStorageConfigsDeduped = append(invalidNBDStorageConfigs,
 var validTlogStorageConfigs = []TlogStorageConfig{
 	// complete example
 	TlogStorageConfig{
-		StorageCluster: StorageClusterConfig{
-			DataStorage: []StorageServerConfig{
-				StorageServerConfig{
-					Address:  "localhost:16379",
-					Database: 1,
-				},
-				StorageServerConfig{
-					Address:  "localhost:16380",
-					Database: 2,
-				},
-			},
-		},
 		SlaveStorageCluster: &StorageClusterConfig{
 			DataStorage: []StorageServerConfig{
 				StorageServerConfig{
@@ -197,14 +185,37 @@ var validTlogStorageConfigs = []TlogStorageConfig{
 				},
 			},
 		},
+		ZeroStorCluster: ZeroStorClusterConfig{
+			IYO: IYOCredentials{
+				Org:       "foo org",
+				Namespace: "foo namespace",
+				ClientID:  "foo client",
+				Secret:    "foo secret",
+			},
+			Servers: []ServerConfig{
+				ServerConfig{Address: "1.1.1.1:11"},
+				ServerConfig{Address: "2.2.2.2:22"},
+			},
+			MetadataServers: []ServerConfig{
+				ServerConfig{Address: "3.3.3.3:33"},
+			},
+		},
 	},
 	// minimal example
 	TlogStorageConfig{
-		StorageCluster: StorageClusterConfig{
-			DataStorage: []StorageServerConfig{
-				StorageServerConfig{
-					Address: "localhost:16379",
-				},
+		ZeroStorCluster: ZeroStorClusterConfig{
+			IYO: IYOCredentials{
+				Org:       "foo org",
+				Namespace: "foo namespace",
+				ClientID:  "foo client",
+				Secret:    "foo secret",
+			},
+			Servers: []ServerConfig{
+				ServerConfig{Address: "1.1.1.1:11"},
+				ServerConfig{Address: "2.2.2.2:22"},
+			},
+			MetadataServers: []ServerConfig{
+				ServerConfig{Address: "3.3.3.3:33"},
 			},
 		},
 	},
@@ -213,18 +224,6 @@ var validTlogStorageConfigs = []TlogStorageConfig{
 var validTlogStorageConfigsDeduped = []TlogStorageConfig{
 	// complete example
 	TlogStorageConfig{
-		StorageCluster: StorageClusterConfig{
-			DataStorage: []StorageServerConfig{
-				StorageServerConfig{
-					Address:  "localhost:16379",
-					Database: 1,
-				},
-				StorageServerConfig{
-					Address:  "localhost:16380",
-					Database: 2,
-				},
-			},
-		},
 		SlaveStorageCluster: &StorageClusterConfig{
 			DataStorage: []StorageServerConfig{
 				StorageServerConfig{
@@ -241,53 +240,96 @@ var validTlogStorageConfigsDeduped = []TlogStorageConfig{
 				Database: 5,
 			},
 		},
+		ZeroStorCluster: ZeroStorClusterConfig{
+			IYO: IYOCredentials{
+				Org:       "foo org",
+				Namespace: "foo namespace",
+				ClientID:  "foo client",
+				Secret:    "foo secret",
+			},
+			Servers: []ServerConfig{
+				ServerConfig{Address: "1.1.1.1:11"},
+				ServerConfig{Address: "2.2.2.2:22"},
+			},
+			MetadataServers: []ServerConfig{
+				ServerConfig{Address: "3.3.3.3:33"},
+			},
+		},
 	},
 	// minimal example
 	TlogStorageConfig{
-		StorageCluster: StorageClusterConfig{
-			DataStorage: []StorageServerConfig{
-				StorageServerConfig{
-					Address: "localhost:16379",
-				},
+		ZeroStorCluster: ZeroStorClusterConfig{
+			IYO: IYOCredentials{
+				Org:       "foo org",
+				Namespace: "foo namespace",
+				ClientID:  "foo client",
+				Secret:    "foo secret",
+			},
+			Servers: []ServerConfig{
+				ServerConfig{Address: "1.1.1.1:11"},
+				ServerConfig{Address: "2.2.2.2:22"},
+			},
+			MetadataServers: []ServerConfig{
+				ServerConfig{Address: "3.3.3.3:33"},
 			},
 		},
 	},
 }
 
 var invalidTlogStorageConfigs = []TlogStorageConfig{
-	// missing Storage Custer
+	// missing Storage Cluster
 	TlogStorageConfig{},
-	// invalid Storage Cluster
+	// invalid ZeroStor Cluster
 	TlogStorageConfig{
-		StorageCluster: StorageClusterConfig{
-			DataStorage: []StorageServerConfig{
-				StorageServerConfig{
-					Database: 1,
-				},
+		ZeroStorCluster: ZeroStorClusterConfig{
+			IYO: IYOCredentials{
+				Org:       "",
+				Namespace: "foo namespace",
+				ClientID:  "foo client",
+				Secret:    "foo secret",
+			},
+			Servers: []ServerConfig{
+				ServerConfig{Address: "1.1.1.1:11"},
+				ServerConfig{Address: "2.2.2.2:22"},
+			},
+			MetadataServers: []ServerConfig{
+				ServerConfig{Address: "3.3.3.3:33"},
 			},
 		},
 	},
-	// invalid Slave Storage Cluster
+	// invalid ZeroStor Storage Cluster
 	TlogStorageConfig{
-		StorageCluster: StorageClusterConfig{
-			DataStorage: []StorageServerConfig{
-				StorageServerConfig{
-					Address: "localhost:16379",
-				},
+		ZeroStorCluster: ZeroStorClusterConfig{
+			IYO: IYOCredentials{
+				Org:       "foo org",
+				Namespace: "foo namespace",
+				ClientID:  "foo client",
+				Secret:    "foo secret",
+			},
+			Servers: []ServerConfig{
+				ServerConfig{Address: "1.1.1.1:11"},
+				ServerConfig{Address: "2.2.2.2:22"},
 			},
 		},
-		SlaveStorageCluster: new(StorageClusterConfig),
 	},
 }
 
 var invalidTlogStorageConfigsDeduped = append(invalidTlogStorageConfigs,
 	// missing metadata storage server in given slave cluster
 	TlogStorageConfig{
-		StorageCluster: StorageClusterConfig{
-			DataStorage: []StorageServerConfig{
-				StorageServerConfig{
-					Address: "localhost:16379",
-				},
+		ZeroStorCluster: ZeroStorClusterConfig{
+			IYO: IYOCredentials{
+				Org:       "foo org",
+				Namespace: "foo namespace",
+				ClientID:  "foo client",
+				Secret:    "foo secret",
+			},
+			Servers: []ServerConfig{
+				ServerConfig{Address: "1.1.1.1:11"},
+				ServerConfig{Address: "2.2.2.2:22"},
+			},
+			MetadataServers: []ServerConfig{
+				ServerConfig{Address: "3.3.3.3:33"},
 			},
 		},
 		SlaveStorageCluster: &StorageClusterConfig{

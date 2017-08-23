@@ -14,7 +14,6 @@ func DefaultConfig() *Config {
 		FlushTime:  25,
 		BlockSize:  4096,
 		PrivKey:    "12345678901234567890123456789012",
-		HexNonce:   "37b8e8a308c354048d245f6d",
 	}
 }
 
@@ -27,7 +26,6 @@ type Config struct {
 	FlushSize  int
 	FlushTime  int
 	PrivKey    string
-	HexNonce   string
 	AggMq      *aggmq.MQ
 }
 
@@ -45,5 +43,4 @@ type flusherConfig struct {
 	FlushSize int
 	FlushTime int
 	PrivKey   string
-	HexNonce  string
 }

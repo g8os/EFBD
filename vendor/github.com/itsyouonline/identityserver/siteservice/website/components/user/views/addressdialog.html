@@ -1,0 +1,75 @@
+
+<md-dialog>
+    <form name="dataform">
+        <md-toolbar>
+            <div class="md-toolbar-tools">
+                <h2><span ng-if="::!originalLabel" translate='user.views.addressdialog.addaddress' translate-cloak>Add an address</span>
+                    <span ng-if="::originalLabel" translate="address">Address</span></h2>
+                <span flex></span>
+                <md-button class="md-icon-button" ng-click="cancel()">
+                    <md-icon md-svg-src="assets/img/ic_close_24px.svg" aria-label translate-attr="{ 'aria-label': 'closedialog' }"></md-icon>
+                </md-button>
+            </div>
+        </md-toolbar>
+        <md-dialog-content>
+            <div class="md-dialog-content" layout="column">
+                <md-input-container>
+                    <label translate='label'>Label</label>
+                    <input ng-model="data.label" minlength="2" required type="text" md-autofocus="true"
+                           name="labelinput" md-maxlength="50" ng-pattern="/^[a-zA-Z\d\-_\s]{2,50}$/">
+                    <div ng-messages="dataform.labelinput.$error">
+                        <div ng-message="minlength" translate='labelminlength'>At least 2 characters required</div>
+                        <div ng-message="pattern" translate="invalid_label"></div>
+                        <div ng-message="md-maxlength" translate='labelmaxlength'>The label cannot be longer than 50 characters</div>
+                    </div>
+                    <div ng-messages="validationerrors" md-auto-hide="false">
+                        <div ng-message="duplicate" translate='labelduplicate'>This label is already used</div>
+                    </div>
+                </md-input-container>
+                <div layout="row">
+                    <md-input-container flex>
+                        <label translate='user.views.addressdialog.street'>Street</label>
+                        <input ng-model="data.street" required type="text" maxlength="50" name="street">
+                    </md-input-container>
+                    <md-input-container>
+                        <label translate='user.views.addressdialog.number'>Nr</label>
+                        <input ng-model="data.nr" required type="text" maxlength="10" name="nr">
+                    </md-input-container>
+                </div>
+                <div layout="row">
+                    <md-input-container>
+                        <label translate='user.views.addressdialog.postalcode'>Postal code</label>
+                        <input ng-model="data.postalcode" required type="text" maxlength="20" name="postalcode">
+                    </md-input-container>
+                    <md-input-container>
+                        <label translate='user.views.addressdialog.city'>City</label>
+                        <input ng-model="data.city" required type="text" maxlength="30" name="city">
+                    </md-input-container>
+                    <md-input-container>
+                        <label translate='user.views.addressdialog.country'>Country</label>
+                        <input ng-model="data.country" required type="text" maxlength="40" name="coumtry">
+                    </md-input-container>
+                </div>
+                <md-input-container>
+                    <label translate='user.views.addressdialog.remarks'>Remarks</label>
+                    <input ng-model="data.other" type="text" maxlength="30" name="other">
+                </md-input-container>
+            </div>
+        </md-dialog-content>
+        <md-dialog-actions layout="row" layout-align="space-between center">
+            <md-button class="md-warn" ng-click="remove(originalLabel)" ng-if="::originalLabel" translate='delete'>
+                Delete
+            </md-button>
+            <span flex></span>
+            <md-button ng-click="cancel()" translate='cancel'>
+                Cancel
+            </md-button>
+            <md-button class="md-primary" ng-click="create(data)" ng-if="::!originalLabel" translate='add'>
+                Add
+            </md-button>
+            <md-button class="md-primary" ng-click="update(originalLabel, data)" ng-if="::originalLabel" translate='save'>
+                Save
+            </md-button>
+        </md-dialog-actions>
+    </form>
+</md-dialog>

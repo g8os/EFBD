@@ -151,24 +151,24 @@ func (s *StubSource) SetTemplateStorageCluster(vdiskID, clusterID string, cfg *S
 	s.cfg.Vdisks[vdiskID] = vdiskCfg
 }
 
-// SetTlogStorageCluster is a utility function to set a tlog storage cluster config, thread-safe.
-func (s *StubSource) SetTlogStorageCluster(vdiskID, clusterID string, cfg *StorageClusterConfig) {
+// SetTlogZeroStorCluster is a utility function to set a tlog storage zerostor config, thread-safe.
+func (s *StubSource) SetTlogZeroStorCluster(vdiskID, clusterID string, cfg *ZeroStorClusterConfig) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 	defer s.triggerReload()
 
 	if cfg != nil {
-		s.setStorageCluster(clusterID, cfg)
+		s.setZeroStorCluster(clusterID, cfg)
 	}
 
 	vdiskCfg := s.getVdiskCfg(vdiskID)
 
 	if vdiskCfg.Tlog == nil {
 		vdiskCfg.Tlog = &VdiskTlogConfig{
-			StorageClusterID: clusterID,
+			ZeroStorClusterID: clusterID,
 		}
 	} else {
-		vdiskCfg.Tlog.StorageClusterID = clusterID
+		vdiskCfg.Tlog.ZeroStorClusterID = clusterID
 	}
 
 	s.cfg.Vdisks[vdiskID] = vdiskCfg
@@ -237,6 +237,15 @@ func (s *StubSource) SetStorageCluster(clusterID string, cfg *StorageClusterConf
 	s.setStorageCluster(clusterID, cfg)
 }
 
+// SetZeroStorCluster is a utility function to set a 0-stor cluster config, thread-safe.
+func (s *StubSource) SetZeroStorCluster(clusterID string, cfg *ZeroStorClusterConfig) {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+	defer s.triggerReload()
+
+	s.setZeroStorCluster(clusterID, cfg)
+}
+
 // SetTlogCluster is a utility function to set a tlog cluster config, thread-safe.
 func (s *StubSource) SetTlogCluster(clusterID string, cfg *TlogClusterConfig) {
 	s.mux.Lock()
@@ -298,6 +307,24 @@ func (s *StubSource) setStorageCluster(clusterID string, cfg *StorageClusterConf
 	}
 
 	s.cfg.StorageClusters[clusterID] = cfg.Clone()
+	return true
+}
+
+func (s *StubSource) setZeroStorCluster(clusterID string, cfg *ZeroStorClusterConfig) bool {
+	if s.cfg == nil {
+		s.cfg = &FileFormatCompleteConfig{
+			ZeroStorClusters: make(map[string]ZeroStorClusterConfig),
+		}
+	} else if s.cfg.ZeroStorClusters == nil {
+		s.cfg.ZeroStorClusters = make(map[string]ZeroStorClusterConfig)
+	}
+
+	if cfg == nil {
+		delete(s.cfg.ZeroStorClusters, clusterID)
+		return false
+	}
+
+	s.cfg.ZeroStorClusters[clusterID] = cfg.Clone()
 	return true
 }
 

@@ -1,0 +1,52 @@
+<form layout="row" name="loginform" ng-submit="vm.submit()">
+    <div flex></div>
+    <md-card id="form-area" class="form-card" flex="100" flex-gt-xs="80" flex-gt-sm="50" flex-gt-md="40" flex-gt-lg="30">
+        <md-card-avatar ng-if="vm.externalSite">
+            <canvas id="login-logo" height="240px" width="500px" ng-show="vm.logo"></canvas>
+        </md-card-avatar>
+        <md-card-title>
+            <md-card-title-text ng-if="!vm.externalSite">
+                <span class="md-headline" translate='login.views.loginform.login'>Login</span>
+                <span class="md-subhead" translate='login.views.loginform.loginhelp'>
+                    You can login using your username, verified email address or verified phone number.
+                </span>
+                </span>
+            </md-card-title-text>
+            <md-card-title-text ng-if="vm.externalSite">
+                <div layout="column">
+                    <p class="loginprompt" ng-if="!vm.description" translate='oauth_default_description' translate-values="{externalsite: vm.externalSite}">
+                        Dear <span ng-bind="vm.externalSite"></span> customer,
+                        We make use of the independant ItsYou.Online identity management system to highly
+                        protect the access to your <span ng-bind="vm.externalSite"></span> products. Please login to your ItsYou.Online
+                        account to complete the <span ng-bind="vm.externalSite"></span> onboarding process.
+                    </p>
+                    <p class="loginprompt" ng-if="vm.description" ng-bind="vm.description"></p>
+                </div>
+            </md-card-title-text>
+        </md-card-title>
+        <md-card-content>
+            <div layout="column">
+                <md-input-container>
+                    <label for="username" translate='login.views.loginform.loginplaceholder'>Username, email address or phonenumber</label>
+                    <input ng-model="vm.login" ng-minlength="2" required name="username" type="text" id="username">
+                </md-input-container>
+                <md-input-container>
+                    <label for="password" translate='login.views.loginform.password'>Password</label>
+                    <input ng-model="vm.password" required name="password" type="password"
+                           ng-change="vm.clearValidation()" id="password">
+                    <div ng-messages="loginform.password.$error">
+                        <div ng-message="invalidcredentials" translate='login.views.loginform.invalidcredentials'>Invalid credentials</div>
+                    </div>
+                </md-input-container>
+            </div>
+        </md-card-content>
+        <md-card-actions layout="row" layout-align="space-between center">
+            <div layout="column" layout-align="center start">
+                <md-button href="#/forgotpassword" translate='login.views.loginform.forgotpassword'>Forgot your password?</md-button>
+                <md-button href="#/validateemail" style='margin-left: 0' translate='validate_email'>Validate email</md-button>
+            </div>
+            <md-button type="submit" class="md-raised md-primary" translate='login.views.loginform.loginbtn'>Log in</md-button>
+        </md-card-actions>
+    </md-card>
+    <div flex></div>
+</form>

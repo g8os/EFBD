@@ -34,7 +34,8 @@ func TestTlogStorageSlow(t *testing.T) {
 		return
 	}
 
-	tlogrpc := newTlogTestServer(ctx, t)
+	tlogrpc, cleanup := newTlogTestServer(ctx, t, vdiskID)
+	defer cleanup()
 	if !assert.NotEmpty(t, tlogrpc) {
 		return
 	}

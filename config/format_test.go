@@ -278,3 +278,141 @@ func TestTlogClusterConfigClone(t *testing.T) {
 	a.Servers[0] = "localhost:200"
 	assert.Equal(a.Servers, b.Servers, "should be equal")
 }
+
+func TestNewZeroStorClusterConfig(t *testing.T) {
+	assert := assert.New(t)
+
+	for _, validCase := range validZeroStorClusterConfigYAML {
+		cfg, err := NewZeroStorClusterConfig([]byte(validCase))
+		if assert.NoError(err, validCase) {
+			assert.NotNil(cfg, validCase)
+		}
+	}
+
+	for _, invalidCase := range invalidZeroStorClusterConfigYAML {
+		cfg, err := NewZeroStorClusterConfig([]byte(invalidCase))
+		if assert.Error(err, invalidCase) {
+			t.Logf("NewStorageClusterConfig error: %v", err)
+			assert.Nil(cfg, invalidCase)
+		}
+	}
+}
+func TestZeroStorClusterConfigEqual(t *testing.T) {
+	assert := assert.New(t)
+
+	var a, b *ZeroStorClusterConfig
+	assert.True(a.Equal(b), "both are nil")
+
+	a = &ZeroStorClusterConfig{
+		IYO: IYOCredentials{
+			Org: "foo organisation",
+		},
+	}
+	assert.False(a.Equal(b), "a is not nil")
+	b = a
+	assert.True(a.Equal(b), "should be equal")
+
+	a = nil
+	assert.False(a.Equal(b), "a is nil")
+
+	a = &ZeroStorClusterConfig{
+		IYO: IYOCredentials{
+			Org:       "foo organisation",
+			Namespace: "foo namespace",
+		},
+	}
+	assert.False(a.Equal(b), "b does not have a namespace")
+	b.IYO.Namespace = "bar namespace"
+	assert.False(a.Equal(b), "b has a different namespace")
+	b.IYO.Namespace = "foo namespace"
+	assert.True(a.Equal(b), "should be equal")
+	a.IYO.ClientID = "foo client"
+	assert.False(a.Equal(b), "b does not have a clientID")
+	b.IYO.ClientID = "bar client"
+	assert.False(a.Equal(b), "b has a different clientID")
+	b.IYO.ClientID = "foo client"
+	assert.True(a.Equal(b), "should be equal")
+	a.IYO.Secret = "foo secret"
+	assert.False(a.Equal(b), "b does not have a secrect")
+	b.IYO.Secret = "bar secret"
+	assert.False(a.Equal(b), "b has a different secret")
+	b.IYO.Secret = "foo secret"
+	assert.True(a.Equal(b), "should be equal")
+
+	a.Servers = []ServerConfig{
+		ServerConfig{
+			Address: "1.1.1.1:11",
+		},
+	}
+	assert.False(a.Equal(b), "b does not have a server")
+	b.Servers = []ServerConfig{
+		ServerConfig{
+			Address: "1.1.1.1:22",
+		},
+	}
+	assert.False(a.Equal(b), "b has a different server address")
+	b.Servers[0].Address = "1.1.1.1:11"
+	assert.True(a.Equal(b), "should be equal")
+
+	a.MetadataServers = []ServerConfig{
+		ServerConfig{
+			Address: "1.1.1.1:11",
+		},
+	}
+	assert.False(a.Equal(b), "b does not have a metadata server")
+	b.MetadataServers = []ServerConfig{
+		ServerConfig{
+			Address: "1.1.1.1:22",
+		},
+	}
+	assert.False(a.Equal(b), "b has a different server metadata address")
+	b.MetadataServers[0].Address = "1.1.1.1:11"
+	assert.True(a.Equal(b), "should be equal")
+}
+
+func TestZeroStorClusterConfigClone(t *testing.T) {
+	assert := assert.New(t)
+
+	var nilCluster *ZeroStorClusterConfig
+	// should be fine, will be just a nil cluster
+	a := nilCluster.Clone()
+	assert.Empty(a.IYO.ClientID)
+	assert.Empty(a.IYO.Namespace)
+	assert.Empty(a.IYO.Org)
+	assert.Empty(a.IYO.Secret)
+	assert.Empty(a.Servers)
+	assert.Empty(a.MetadataServers)
+
+	a.IYO = IYOCredentials{
+		Org:       "foo org",
+		Namespace: "foo namespace",
+		ClientID:  "client foo",
+		Secret:    "secret foo",
+	}
+
+	a.Servers = []ServerConfig{
+		ServerConfig{"localhost:16379"},
+		ServerConfig{"localhost:16380"},
+		ServerConfig{"localhost:16381"},
+	}
+
+	a.MetadataServers = []ServerConfig{
+		ServerConfig{"localhost:16389"},
+		ServerConfig{"localhost:16390"},
+		ServerConfig{"localhost:16391"},
+	}
+
+	b := a.Clone()
+	assert.Equal(a.IYO, b.IYO, "should be equal")
+	assert.Equal(a.Servers, b.Servers, "should be equal")
+	assert.Equal(a.MetadataServers, b.MetadataServers, "should be equal")
+
+	b.IYO.Secret = "secret bar"
+	b.Servers[0] = ServerConfig{"localhost:200"}
+	b.MetadataServers[0] = ServerConfig{"localhost:201"}
+
+	assert.NotEqual(a.IYO, b.IYO, "IYO secret shouldn't equal any longer")
+	assert.NotEqual(a.Servers, b.Servers, "one server shouldn't equal any longer")
+	assert.NotEqual(a.MetadataServers, b.MetadataServers, "one server shouldn't equal any longer")
+
+}

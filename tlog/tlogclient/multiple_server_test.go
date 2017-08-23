@@ -2,22 +2,17 @@ package tlogclient
 
 import (
 	"context"
-	"strings"
 	"testing"
+	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/zero-os/0-stor/client/meta/embedserver"
 
-	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
-	"github.com/zero-os/0-Disk/redisstub"
-	"github.com/zero-os/0-Disk/tlog"
-	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
+	"github.com/zero-os/0-Disk/tlog/stor"
+	"github.com/zero-os/0-Disk/tlog/stor/embeddedserver"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
 )
-
-func init() {
-	log.SetLevel(log.DebugLevel)
-}
 
 type testTwoServerConf struct {
 	firstSendStartSeq uint64
@@ -58,7 +53,7 @@ type testTwoServerConf struct {
 // - wait until all flushed
 // Start tlog decoder
 // - make sure all sequence successfully decoded
-func TestMultipleServerBasic(t *testing.T) {
+func TestMultipleServerBasicMasterStop(t *testing.T) {
 	log.Info("TestMultipleServerBasic")
 
 	conf := testMultipleServerBasicConf()
@@ -66,7 +61,7 @@ func TestMultipleServerBasic(t *testing.T) {
 	testTwoServers(t, conf)
 }
 
-func TestMultipleServerBasicMasterFailToFlush(t *testing.T) {
+func testMultipleServerBasicMasterFailToFlush(t *testing.T) {
 	log.Info("TestMultipleServerBasicMasterFailToFlush")
 
 	conf := testMultipleServerBasicConf()
@@ -108,7 +103,6 @@ func TestMultipleServerResendUnflushedMasterFailFlush(t *testing.T) {
 
 	conf := testMultipleServerResendUnflushedConf()
 	conf.masterFailedToFlush = true
-	testTwoServers(t, conf)
 
 }
 
@@ -139,28 +133,29 @@ func testTwoServers(t *testing.T, ttConf testTwoServerConf) {
 	)
 	data := make([]byte, 4096)
 
+	// tlog conf
+	tlogConf := testConf
+	tlogConf.K = 1
+	tlogConf.M = 1
+	tlogConf.FlushSize = 25
+
+	storCluster, err := embeddedserver.NewZeroStorCluster(tlogConf.K + tlogConf.M)
+	require.Nil(t, err)
+	defer storCluster.Close()
+
+	mdServer, err := embedserver.New()
+	defer mdServer.Stop()
+
 	ctx1, cancelFunc1 := context.WithCancel(context.Background())
 	defer cancelFunc1()
 
 	ctx2, cancelFunc2 := context.WithCancel(context.Background())
 	defer cancelFunc2()
 
-	stors, err := newRedisStors(vdiskID)
-	assert.Nil(t, err)
-	defer func() {
-		for _, stor := range stors {
-			stor.Close()
-		}
-	}()
-
 	t.Log("Create tlog servers")
-	pool1, _, t1, err := createTestTlogServer(ctx1, vdiskID, stors)
-	assert.Nil(t, err)
-	defer pool1.Close()
+	t1, _ := createTestTlogServer(ctx1, t, tlogConf, storCluster, mdServer, vdiskID)
 
-	pool2, tlogConf, t2, err := createTestTlogServer(ctx2, vdiskID, stors)
-	assert.Nil(t, err)
-	defer pool2.Close()
+	t2, storConf2 := createTestTlogServer(ctx2, t, tlogConf, storCluster, mdServer, vdiskID)
 
 	t.Log("connect client")
 
@@ -173,7 +168,7 @@ func testTwoServers(t *testing.T, ttConf testTwoServerConf) {
 	}
 
 	client, err := New(tlogAddrs, vdiskID, 0, false)
-	assert.Nil(t, err)
+	require.Nil(t, err)
 
 	respChan := client.Recv()
 
@@ -201,7 +196,7 @@ func testTwoServers(t *testing.T, ttConf testTwoServerConf) {
 
 	case ttConf.masterFailedToFlush:
 		// simulate master failed to flush
-		pool1.Close()
+		//storCluster1.Close()
 	case ttConf.hotReload:
 		cancelFunc1()
 		client.ChangeServerAddresses([]string{
@@ -219,93 +214,44 @@ func testTwoServers(t *testing.T, ttConf testTwoServerConf) {
 	}()
 
 	// wait for it to be flushed
-	if !assert.True(t, testClientWaitSeqFlushed(ctx2, t, respChan, cancelFunc1, ttConf.secondWaitEndSeq)) {
-		return
-	}
+	require.True(t, testClientWaitSeqFlushed(ctx2, t, respChan, cancelFunc1, ttConf.secondWaitEndSeq))
 
 	// validate with the decoder
-	flushedAll, err := validateWithDecoder(seqs, pool2, tlogConf.K, tlogConf.M, vdiskID,
-		tlogConf.PrivKey, tlogConf.HexNonce, ttConf.firstSendStartSeq, ttConf.secondSendEndSeq)
-	assert.Nil(t, err)
-	assert.True(t, flushedAll)
+	validateWithDecoder(t, seqs, storConf2, ttConf.firstSendStartSeq, ttConf.secondSendEndSeq)
 }
 
-func validateWithDecoder(seqs map[uint64]struct{}, pool tlog.RedisPool, k, m int,
-	vdiskID, privKey, hexNonce string, startSeq, endSeq uint64) (bool, error) {
+func validateWithDecoder(t *testing.T, seqs map[uint64]struct{}, storConf stor.Config,
+	startSeq, endSeq uint64) {
 
-	dec, err := decoder.New(pool, k, m, vdiskID, privKey, hexNonce)
-	if err != nil {
-		return false, err
-	}
+	storCli, err := stor.NewClient(storConf)
+	require.Nil(t, err)
 
-	aggChan := dec.Decode(decoder.NewLimitBySequence(startSeq, endSeq))
-	for da := range aggChan {
-		if da.Err != nil {
-			break
-		}
-		agg := da.Agg
+	for wr := range storCli.Walk(0, uint64(time.Now().UnixNano())) {
+		require.Nil(t, wr.Err)
+		agg := wr.Agg
+
 		blocks, err := agg.Blocks()
-		if err != nil {
-			return false, err
-		}
+		require.Nil(t, err)
+
 		for i := 0; i < blocks.Len(); i++ {
 			block := blocks.At(i)
 			delete(seqs, block.Sequence())
 		}
 	}
-	return len(seqs) == 0, nil
+	// flushed all
+	require.Equal(t, 0, len(seqs))
 }
 
-func createTestTlogServer(ctx context.Context, vdiskID string,
-	stors []*redisstub.MemoryRedis) (tlog.RedisPool, *server.Config, *server.Server, error) {
-	conf := server.DefaultConfig()
-	conf.ListenAddr = ""
-	conf.K = 1
-	conf.M = 1
-	conf.FlushSize = 25
+func createTestTlogServer(ctx context.Context, t *testing.T, conf *server.Config,
+	storCluster *embeddedserver.ZeroStorCluster,
+	mdServer *embedserver.Server, vdiskID string) (*server.Server, stor.Config) {
 
-	addrs := []string{}
-	for _, stor := range stors {
-		addrs = append(addrs, stor.Address())
-	}
-	serverConfigs, err := config.ParseCSStorageServerConfigStrings(strings.Join(addrs, ","))
-	if err != nil {
-		return nil, nil, nil, err
-	}
+	_, configSource, storConf := newZeroStorConfigFromCluster(t, storCluster, mdServer, vdiskID,
+		conf.PrivKey, conf.K, conf.M)
 
-	// create any kind of valid pool factory
-	poolFact, err := tlog.AnyRedisPoolFactory(ctx, tlog.RedisPoolFactoryConfig{
-		RequiredDataServerCount: len(stors),
-		ServerConfigs:           serverConfigs,
-		AutoFill:                true,
-		AllowInMemory:           true,
-	})
-	if err != nil {
-		return nil, nil, nil, err
-	}
+	tlogServer, err := server.NewServer(conf, configSource)
+	require.Nil(t, err)
 
-	pool, err := poolFact.NewRedisPool(vdiskID)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	server, err := server.NewServer(conf, nil, poolFact)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	go server.Listen(ctx)
-	return pool, conf, server, nil
-}
-
-func newRedisStors(vdiskID string) (stors []*redisstub.MemoryRedis, err error) {
-	stor1 := redisstub.NewMemoryRedis()
-	stor2 := redisstub.NewMemoryRedis()
-
-	stors = append(stors, stor1, stor2)
-
-	go stor1.Listen()
-	go stor2.Listen()
-
-	return
+	go tlogServer.Listen(ctx)
+	return tlogServer, storConf
 }

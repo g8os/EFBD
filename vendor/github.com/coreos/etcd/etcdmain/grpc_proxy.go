@@ -37,8 +37,8 @@ import (
 	"github.com/coreos/etcd/pkg/transport"
 	"github.com/coreos/etcd/proxy/grpcproxy"
 
-	"github.com/cockroachdb/cmux"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
+	"github.com/soheilhy/cmux"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 )
@@ -285,7 +285,7 @@ func newGRPCProxyServer(client *clientv3.Client) *grpc.Server {
 	}
 
 	if len(grpcProxyLeasing) > 0 {
-		client.KV, _ = leasing.NewKV(client, grpcProxyLeasing)
+		client.KV, _, _ = leasing.NewKV(client, grpcProxyLeasing)
 	}
 
 	kvp, _ := grpcproxy.NewKvProxy(client)

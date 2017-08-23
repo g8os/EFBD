@@ -1,0 +1,18 @@
+{
+  "databases": {
+    "rocksdb": {
+      "host": "172.17.0.3",
+      "port": 16379
+    },
+    "forestdb": {
+      "host": "172.17.0.3",
+      "port": 16379
+    }
+  },
+  "operations": ["GET" ,"SET"],
+  "keyspace_length": 10000000,
+  "number_of_requests": 10000000,
+  "number_of_pipelined_requests": 16,
+  "quiet": true,
+  "number_of_iterations_per_db": 5
+}

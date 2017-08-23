@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
@@ -24,12 +24,16 @@ func TestReconnectFromSend(t *testing.T) {
 		numLogs       = 50
 	)
 
-	serv, _, err := createTestServer()
-	assert.Nil(t, err)
+	// create test server
+	clean, configSource, _ := newZeroStorDefaultConfig(t, vdisk)
+	defer clean()
+
+	serv, err := server.NewServer(testConf, configSource)
+	require.Nil(t, err)
 	go serv.Listen(ctx)
 
 	client, err := New([]string{serv.ListenAddr()}, vdisk, firstSequence, false)
-	assert.Nil(t, err)
+	require.Nil(t, err)
 	defer client.Close()
 
 	data := make([]byte, 4096)
@@ -44,7 +48,7 @@ func TestReconnectFromSend(t *testing.T) {
 
 		// send
 		err := client.Send(schema.OpSet, x, int64(x), x, data)
-		assert.Nil(t, err)
+		require.Nil(t, err)
 	}
 
 	waitForBlockReceivedResponse(t, client, 0, uint64(numLogs)-1)
@@ -65,14 +69,17 @@ func TestReconnectFromRead(t *testing.T) {
 		vdisk = "12345"
 	)
 	// test server
-	s, _, err := createTestServer()
-	assert.Nil(t, err)
+	clean, configSource, _ := newZeroStorDefaultConfig(t, vdisk)
+	defer clean()
+
+	s, err := server.NewServer(testConf, configSource)
+	require.Nil(t, err)
 	go s.Listen(ctx)
 
 	//readTimeout = 10 * time.Millisecond
 	// Step #1
 	client, err := New([]string{s.ListenAddr()}, vdisk, 0, false)
-	assert.Nil(t, err)
+	require.Nil(t, err)
 
 	// Step #2
 	client.conn.Close()
@@ -85,16 +92,16 @@ func TestReconnectFromRead(t *testing.T) {
 	client.wLock.Lock()
 	err = client.forceFlushAtSeq(uint64(1))
 	client.wLock.Unlock()
-	assert.Nil(t, err)
+	require.Nil(t, err)
 
 	// Step #5
 	select {
 	case <-time.After(5 * time.Second):
 		t.Fatal("TestReconnectFromRead failed : too long")
 	case resp := <-respCh:
-		assert.Nil(t, resp.Err)
-		assert.NotNil(t, resp.Resp)
-		assert.Equal(t, resp.Resp.Status, tlog.BlockStatusForceFlushReceived)
+		require.Nil(t, resp.Err)
+		require.NotNil(t, resp.Resp)
+		require.Equal(t, resp.Resp.Status, tlog.BlockStatusForceFlushReceived)
 	}
 }
 
@@ -116,20 +123,23 @@ func TestReconnectFromForceFlush(t *testing.T) {
 		vdisk = "12345"
 	)
 	// test server
-	s, _, err := createTestServer()
-	assert.Nil(t, err)
+	clean, configSource, _ := newZeroStorDefaultConfig(t, vdisk)
+	defer clean()
+
+	s, err := server.NewServer(testConf, configSource)
+	require.Nil(t, err)
 	go s.Listen(ctx)
 
 	// Create client
 	client, err := New([]string{s.ListenAddr()}, vdisk, 0, false)
-	assert.Nil(t, err)
+	require.Nil(t, err)
 
 	// Simulate closed connection
 	client.conn.Close()
 
 	// Do forceFlush, it should reconnect here
 	err = client.ForceFlushAtSeq(uint64(0))
-	assert.Nil(t, err)
+	require.Nil(t, err)
 
 	respCh := client.Recv()
 
@@ -138,53 +148,8 @@ func TestReconnectFromForceFlush(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("TestReconnectFromRead failed : too long")
 	case resp := <-respCh:
-		assert.Nil(t, resp.Err)
-		assert.NotNil(t, resp.Resp)
-		assert.Equal(t, resp.Resp.Status, tlog.BlockStatusForceFlushReceived)
+		require.Nil(t, resp.Err)
+		require.NotNil(t, resp.Resp)
+		require.Equal(t, resp.Resp.Status, tlog.BlockStatusForceFlushReceived)
 	}
-}
-
-func waitForBlockReceivedResponse(t *testing.T, client *Client, minSequence, maxSequence uint64) {
-	// map of sequence we want to wait for the response to come
-	logsToRecv := map[uint64]struct{}{}
-	for i := minSequence; i <= maxSequence; i++ {
-		logsToRecv[i] = struct{}{}
-	}
-
-	respChan := client.Recv()
-
-	for len(logsToRecv) > 0 {
-		// recv
-		resp := <-respChan
-
-		if resp.Err == nil {
-			// check response content
-			response := resp.Resp
-			if response == nil {
-				continue
-			}
-			switch response.Status {
-			case tlog.BlockStatusRecvOK:
-				assert.Equal(t, 1, len(response.Sequences))
-				delete(logsToRecv, response.Sequences[0])
-			case tlog.BlockStatusFlushOK: // if flushed, it means all previous already received
-				maxSeq := response.Sequences[len(response.Sequences)-1]
-				var seq uint64
-				for seq = 0; seq <= maxSeq; seq++ {
-					delete(logsToRecv, seq)
-				}
-			}
-		}
-	}
-}
-func createTestServer() (*server.Server, *server.Config, error) {
-	conf := server.DefaultConfig()
-	conf.ListenAddr = "127.0.0.1:0"
-
-	// create inmemory redis pool factory
-	poolFactory := tlog.InMemoryRedisPoolFactory(conf.RequiredDataServers())
-
-	// start the server
-	serv, err := server.NewServer(conf, nil, poolFactory)
-	return serv, conf, err
 }

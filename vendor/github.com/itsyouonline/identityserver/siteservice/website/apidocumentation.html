@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+	   <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+       <title>It's You Online</title>
+
+       <link rel="stylesheet" href="assets/css/style.css"/>
+       <link rel="stylesheet" href="assets/css/font-awesome.min.css"/>
+      <link href='https://fonts.googleapis.com/css?family=Wellfleet:400' rel='stylesheet' type='text/css'>
+        <style>
+
+            [ng\:cloak], [ng-cloak], .ng-cloak {
+                display: none;
+            }
+
+            .fullscreendocumentation {
+              left: 0;
+              right: 0;
+              z-index: 0;
+            margin-top: 10px;
+            }
+            .itsyouonlineheader {
+                width: 100%; background: #939598; height: 80px; ;z-index: 2;margin-top: 15px;
+            }
+            #raml_documentation {
+                display: none ;
+            }
+        </style>
+
+        <link href="apidocumentation/styles/api-console-light-theme.css" rel="stylesheet" class="theme">
+ </head>
+
+<body ng-app="ramlConsoleApp" class="raml-console-body" >
+
+<div class="itsyouonlineheader">
+  <div class="content">
+    <div id="logo"><a href="/"></a></div>
+    <div class="sign-wrap">
+      <a href="/apidocumentation/raml/itsyouonline.raml" download>Download RAML specification</a>
+    </div>
+  </div>
+</div>
+
+
+<div class="fullscreendocumentation">
+    <div>
+        <raml-console-loader src="/apidocumentation/raml/itsyouonline.raml" disable-theme-switcher disable-raml-client-generator disable-title resources-collapsed></raml-console-loader>
+    </div>
+</div>
+
+
+<script src="/apidocumentation/scripts/api-console-vendor.js"></script>
+<script src="/apidocumentation/scripts/api-console.js"></script>
+<script>
+  $.noConflict();
+</script>
+</body>
+</html>

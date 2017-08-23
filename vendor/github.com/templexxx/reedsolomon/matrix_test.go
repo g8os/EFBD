@@ -14,7 +14,7 @@ func TestMatrixInverse(t *testing.T) {
 		shouldPass     bool
 		expectedErr    error
 	}{
-		// Test case validating inverse of the input Matrix.
+		// Test case validating inverse of the input matrix.
 		{
 			// input
 			[][]byte{
@@ -39,7 +39,7 @@ func TestMatrixInverse(t *testing.T) {
 			true,
 			nil,
 		},
-		// Test case validating inverse of the input Matrix.
+		// Test case validating inverse of the input matrix.
 		{
 			// input
 			[][]byte{
@@ -76,32 +76,28 @@ func TestMatrixInverse(t *testing.T) {
 		m := newMatrixData(testCase.matrixData)
 		actualResult, actualErr := m.invert()
 		if actualErr != nil && testCase.shouldPass {
-			t.Errorf("Test %d: Expected to pass, but failed with: <ERROR> %s", i+1, actualErr.Error())
+			t.Errorf("Test %r: Expected to pass, but failed with: <ERROR> %s", i+1, actualErr.Error())
 		}
 		if actualErr == nil && !testCase.shouldPass {
-			t.Errorf("Test %d: Expected to fail with <ERROR> \"%s\", but passed instead.", i+1, testCase.expectedErr)
+			t.Errorf("Test %r: Expected to fail with <ERROR> \"%s\", but passed instead.", i+1, testCase.expectedErr)
 		}
 		// Failed as expected, but does it fail for the expected reason.
 		if actualErr != nil && !testCase.shouldPass {
 			if testCase.expectedErr != actualErr {
-				t.Errorf("Test %d: Expected to fail with error \"%s\", but instead failed with error \"%s\" instead.", i+1, testCase.expectedErr, actualErr)
+				t.Errorf("Test %r: Expected to fail with error \"%s\", but instead failed with error \"%s\" instead.", i+1, testCase.expectedErr, actualErr)
 			}
 		}
 		// Test passes as expected, but the output values
 		// are verified for correctness here.
 		if actualErr == nil && testCase.shouldPass {
 			if testCase.expectedResult != actualResult.string() {
-				t.Errorf("Test %d: The inverse matrix doesnt't match the expected result", i+1)
+				t.Errorf("Test %r: The inverse matrix doesnt't match the expected result", i+1)
 			}
 		}
 	}
 }
 
 func BenchmarkInvert10x10(b *testing.B) {
-	benchmarkInvert(b, 10)
-}
-
-func BenchmarkInvert28x28(b *testing.B) {
 	benchmarkInvert(b, 10)
 }
 

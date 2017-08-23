@@ -1,0 +1,23 @@
+<div layout="row">
+    <md-input-container flex>
+        <label for="countryselect" translate="country">Country</label>
+        <md-select ng-model="country" id="countryselect" ng-change="updateSMS()" required>
+            <md-option ng-repeat="country in countries" ng-value="country" class="countryoption">
+                <div layout="row" layout-align="space-between center">
+                    <span ng-bind="country.name"></span>
+                    <span ng-bind="country.dial_code"></span>
+                </div
+            </md-option>
+        </md-select>
+    </md-input-container>
+    <md-input-container flex>
+        <label for="sms" translate="phone_number">Phone number</label>
+        <input type="tel" ng-model="sms" name="phonenumber" ng-pattern="/^[0-9]*$/" id="sms" ng-change="updateSMS()" ng-model-options="{allowInvalid: true}" required>
+        <div ng-messages="validationerrors">
+            <div ng-message="pattern" translate='phonenumberpattern'>
+                Invalid phone number. Phone number may only contain digits.
+            </div>
+            <div ng-message="invalid_phonenumber" translate='invalidphonenumber'>Invalid phone number</div>
+        </div>
+    </md-input-container>
+</div>

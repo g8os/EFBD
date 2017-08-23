@@ -1,0 +1,38 @@
+organization: mordor                                # itsyou.online organization name
+namespace: thedisk                                  # itsyou.online namespace
+protocol: rest
+iyo_app_id: ancd
+iyo_app_secret: defg
+
+shards:                                             # the address(es) of 0-stor server
+    - http://127.0.0.1:12345
+    - http://127.0.0.1:12346
+    - http://127.0.0.1:12347
+meta_shards:
+    - http://127.0.0.1:2379                         # the address(es) of etcd server
+
+pipes:
+    - name: pipe0
+      type: chunker
+      config:
+          chunkSize: 1024000
+
+    - name: pipe1
+      type: compress
+      config:
+          type: snappy
+
+    - name: pipe2
+      type: encrypt 
+      config:
+          type: aes_gcm
+          privKey: ab345678901234567890123456789012
+          nonce: 123456789012
+
+
+    - name: pipe3
+      type: distribution
+      config:
+          data: 2
+          parity: 1
+

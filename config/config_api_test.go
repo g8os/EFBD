@@ -169,6 +169,62 @@ func TestReadStorageClusterConfig(t *testing.T) {
 	}
 }
 
+func TestReadZeroStoreClusterConfig(t *testing.T) {
+	assert := assert.New(t)
+
+	_, err := ReadZeroStoreClusterConfig(nil, "foo")
+	assert.Error(err, "should trigger error due to nil-source")
+
+	// create stub source, with no config, which will trigger errors
+	source := NewStubSource()
+
+	invalidKeyCh := source.InvalidKey()
+	testInvalidKey := func(id string) {
+		expected := Key{ID: id, Type: KeyClusterZeroStor}
+		select {
+		case invalidKey := <-invalidKeyCh:
+			if !assert.Equal(expected, invalidKey) {
+				assert.FailNow("unexpected invalid key", "%v", invalidKey)
+			}
+		case <-time.After(time.Second):
+			assert.FailNow("timed out while waiting for invalid key", "%v", expected)
+		}
+	}
+
+	_, err = ReadZeroStoreClusterConfig(source, "foo")
+	assert.Error(err, "should trigger error due to nil config")
+
+	source.SetTlogZeroStorCluster("foo", "bar", new(ZeroStorClusterConfig))
+	_, err = ReadZeroStoreClusterConfig(source, "foo")
+	assert.Error(err, "should trigger error due to invalid config")
+	testInvalidKey("foo")
+
+	inputCfg := ZeroStorClusterConfig{
+		IYO: IYOCredentials{
+			Org:       "foo org",
+			Namespace: "foo namespace",
+			ClientID:  "foo client",
+			Secret:    "foo secret",
+		},
+		Servers: []ServerConfig{
+			ServerConfig{Address: "1.1.1.1:11"},
+		},
+		MetadataServers: []ServerConfig{
+			ServerConfig{Address: "2.2.2.2:22"},
+		},
+	}
+	source.SetTlogZeroStorCluster("foo", "bar", &inputCfg)
+
+	outputCfg, err := ReadZeroStoreClusterConfig(source, "bar")
+	if assert.NoError(err, "should be ok") {
+		assert.Equal(inputCfg, *outputCfg)
+	}
+
+	_, err = ReadZeroStoreClusterConfig(source, "lorem")
+	assert.Error(err, "should trigger error due to invalid config")
+	testInvalidKey("lorem")
+}
+
 func TestReadTlogClusterConfig(t *testing.T) {
 	assert := assert.New(t)
 
@@ -281,6 +337,105 @@ func TestWatchTlogClusterConfig(t *testing.T) {
 	source.SetTlogCluster("foo", nil)
 	// now no config should be send, as the new config is invalid
 	testInvalidKey("foo")
+
+	// cancel context
+	cancel()
+	// channel should be now closed
+	select {
+	case <-time.After(time.Second * 1):
+		assert.FailNow("timed out, ch doesn't seem to close")
+	case _, open := <-ch:
+		if !assert.False(open) {
+			assert.FailNow("channel should have been closed")
+		}
+	}
+}
+
+func TestWatchZeroStorClusterConfig(t *testing.T) {
+	assert := assert.New(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	_, err := WatchZeroStorClusterConfig(ctx, nil, "bar")
+	assert.Error(err, "should trigger error due to nil-source")
+
+	// create stub source, with no config, which will trigger errors
+	source := NewStubSource()
+
+	invalidKeyCh := source.InvalidKey()
+	testInvalidKey := func(id string) {
+		expected := Key{ID: id, Type: KeyClusterZeroStor}
+		select {
+		case invalidKey := <-invalidKeyCh:
+			if !assert.Equal(expected, invalidKey) {
+				assert.FailNow("unexpected invalid key", "%v", invalidKey)
+			}
+		case <-time.After(time.Second):
+			assert.FailNow("timed out while waiting for invalid key", "%v", expected)
+		}
+	}
+
+	_, err = WatchZeroStorClusterConfig(ctx, source, "bar")
+	assert.Error(err, "should trigger error due to nil config")
+
+	source.SetTlogZeroStorCluster("foo", "bar", new(ZeroStorClusterConfig))
+	_, err = WatchZeroStorClusterConfig(ctx, source, "bar")
+	assert.Error(err, "should trigger error due to invalid config")
+	testInvalidKey("bar")
+
+	inputCfg := ZeroStorClusterConfig{
+		IYO: IYOCredentials{
+			Org:       "foo org",
+			Namespace: "foo namespace",
+			ClientID:  "foo client",
+			Secret:    "foo secret",
+		},
+		Servers: []ServerConfig{
+			ServerConfig{Address: "1.1.1.1:11"},
+			ServerConfig{Address: "2.2.2.2:22"},
+		},
+		MetadataServers: []ServerConfig{
+			ServerConfig{Address: "3.3.3.3:33"},
+		},
+	}
+	source.SetTlogZeroStorCluster("foo", "bar", &inputCfg)
+
+	ch, err := WatchZeroStorClusterConfig(ctx, source, "bar")
+	if !assert.NoError(err) {
+		return
+	}
+
+	testValue := func(cfg ZeroStorClusterConfig) {
+		output := <-ch
+		if !assert.Equal(cfg, output) {
+			assert.FailNow("invalid returned value")
+		}
+	}
+
+	testValue(inputCfg)
+
+	// make invalid, this should make it mark the key as invalid
+	var emptyZeroStor ZeroStorClusterConfig
+	source.SetTlogZeroStorCluster("foo", "bar", &emptyZeroStor)
+	testInvalidKey("bar")
+
+	// delete cluster
+	source.SetTlogZeroStorCluster("foo", "bar", nil)
+	// this should make it also Invalid
+	testInvalidKey("bar")
+
+	// make it valid again
+	source.SetTlogZeroStorCluster("foo", "bar", &inputCfg)
+	testValue(inputCfg)
+
+	// update the 0-stor configuration in a valid way
+	inputCfg.IYO.ClientID = "boo client"
+	inputCfg.Servers = append(inputCfg.Servers, ServerConfig{Address: "3.3.3.3:33"})
+	inputCfg.MetadataServers[0].Address = "4.4.4.4:33"
+
+	source.SetTlogZeroStorCluster("foo", "bar", &inputCfg)
+	testValue(inputCfg)
 
 	// cancel context
 	cancel()

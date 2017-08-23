@@ -1,0 +1,36 @@
+{
+    "emailvalidation": {
+        "title": "It'sYou.Online email verification",
+        "text": "To verify your email address %s on ItsYou.Online, click the button below.",
+        "buttontext": "Verify email",
+        "reason": " You’re receiving this email because you recently created a new ItsYou.Online account or added a new email address. If this wasn’t you, please ignore this email.",
+        "subject": "ItsYou.Online email verification",
+        "urlcaption": "Button not working? Paste the following link into your browser:"
+    },
+    "passwordreset": {
+        "title": "It's You Online password reset",
+        "text": "To reset your ItsYou.Online password, click the button below.",
+        "buttontext": "Reset password",
+        "reason": "You’re receiving this email because you recently requested to reset your password at ItsYou.Online. If this wasn’t you, please ignore this email.",
+        "subject": "ItsYou.Online password reset",
+        "urlcaption": "Button not working? Paste the following link into your browser:"
+    },
+    "organizationinvite": {
+        "title": "It's You Online organization invitation",
+        "text": "You have been invited to the %s organization on It's You Online. Click the button below to accept the invitation.",
+        "buttontext": "Accept invitation",
+        "reason": "You’re receiving this email because someone invited you to an organization at ItsYou.Online. If you think this was a mistake please ignore this email.",
+        "subject": "You have been invited to the %s organization",
+        "urlcaption": "Button not working? Paste the following link into your browser:"
+    },
+    "smsconfirmation": "To verify your phonenumber on itsyou.online enter the code %s in the form or use this link: %s?c=%s&k=%s&l=%s",
+    "smsconfirmationandlogin": "To verify your phonenumber on itsyou.online and continue to login, enter the code %s in the form or use this link: %s?c=%s&k=%s&l=%s",
+    "authorizeorganizationsms": "To continue signing in at itsyou.online to authorize the organization %s, enter the code %s in the form or use this link: https://%s/sc?c=%s&k=%s&l=%s",
+    "signinsms": "To continue signing in at itsyou.online enter the code %s in the form or use this link: https://%s/sc?c=%s&k=%s&l=%s",
+    "invalidlink": "Invalid or expired link",
+    "smsloggingin": "You will be logged in within a few seconds",
+    "error": "An unexpected error occurred, please try again later",
+    "smsconfirmed": "Your phonenumber is confirmed",
+    "smsconfirmedandlogin": "Your phonenumber is confirmed, and you will be logged in within a few seconds",
+    "emailconfirmed": "Your Email Address is confirmed"
+}

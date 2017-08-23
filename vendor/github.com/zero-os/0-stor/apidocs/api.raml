@@ -1,0 +1,378 @@
+#%RAML 1.0
+title: "0-Stor"
+description: "0-Stor REST API"
+version: 0.0.1
+mediaType: application/json
+
+uses:
+  reservation: https://raw.githubusercontent.com/Jumpscale-Cockpit/raml-definitions/master/librairies/reservation.raml
+
+securitySchemes:
+  itsyouonline: 
+                description: |
+                  OAuth2 is a protocol that lets external apps request authorization to private
+                  details in a user's account without getting their password.
+                type: OAuth 2.0
+                describedBy:
+                  headers:
+                    Authorization:
+                      description: |
+                        Used to send a valid OAuth 2 access token. Do not use together with
+                        the "access_token" query string parameter.
+                  queryParameters:
+                    access_token:
+                      description: |
+                        Used to send a valid OAuth 2 access token. Do not use together with
+                        the "Authorization" header
+                  responses:
+                    404:
+                      description: Unauthorized
+                settings:
+                  authorizationUri: https://itsyou.online/v1/oauth/authorize
+                  accessTokenUri: https://itsyou.online/v1/oauth/access_token?response_type=id_token
+                  authorizationGrants: [ authorization_code, client_credentials ]
+                  scopes:
+                    - "user:admin"
+                    - "user:info"
+                    - "user:name"
+                    - "user:email"
+                    - "user:phone"
+                    - "organization:owner"
+                    - "organization:member"
+                    - "organization:info"
+                    - "organization:contracts:read"
+                    - "company:admin"
+                    - "company:read"
+                    - "company:info"
+                    - "company:contracts:read"
+                    - "contract:read"
+                    - "contract:participant"
+                    - "user:memberof:org"
+
+resourceTypes:
+  collection: 
+              #%RAML 1.0 ResourceType
+              usage: This resourceType should be used for any collection of items
+              get:
+                displayName: List<<resourcePathName | !uppercamelcase>>
+                description: List all <<resourcePathName>>
+                responses:
+                  200:
+                    body:
+                      type: <<resourcePathName | !singularize | !uppercamelcase>>[]
+              post:
+                displayName: Create<<resourcePathName | !singularize | !uppercamelcase>>
+                description: Create a new <<resourcePathName | !singularize>>
+                body:
+                  type: <<resourcePathName | !singularize | !uppercamelcase>>Create
+                responses:
+                  201:
+                    description: <<resourcePathName | !singularize>> created
+                    body:
+                      type: <<resourcePathName | !singularize | !uppercamelcase>>
+                  409:
+                    description: conflict, a <<resourcePathName | !singularize>> with this id already exists
+  member: 
+          #%RAML 1.0 ResourceType
+          usage: This resourceType should be used for any collection member
+          get:
+            displayName: Get<<resourcePathName | !singularize | !uppercamelcase>>
+            description: Get detail view about <<resourcePathName | !singularize>>
+            responses:
+              200:
+                body:
+                  type: <<resourcePathName | !singularize | !uppercamelcase>>
+              404:
+                description: <<resourcePathName | !singularize>> not found
+          put:
+            displayName: Update<<resourcePathName | !singularize | !uppercamelcase>>
+            description: Update <<resourcePathName | !singularize>>
+            responses:
+              200:
+                body:
+                  type: <<resourcePathName | !singularize | !uppercamelcase>>
+              404:
+                description: <<resourcePathName | !singularize>> not found
+          delete:
+            displayName: Delete<<resourcePathName | !singularize | !uppercamelcase>>
+            description: Delete <<resourcePathName | !singularize>>
+            responses:
+              204:
+                description: <<resourcePathName | !singularize>> deleted successfully
+              404:
+                description: <<resourcePathName | !singularize>> not found
+  listing: 
+           #%RAML 1.0 ResourceType
+           usage: This resourceType should be used for any collection of items that only supports listing
+           get:
+             displayName: List<<resourcePathName | !uppercamelcase>>
+             description: List all <<resourcePathName>>
+             responses:
+               200:
+                 body:
+                   type: <<resourcePathName | !singularize | !uppercamelcase>>[]
+
+traits:
+  paginated: 
+             #%RAML 1.0 traits
+             usage: Apply on ressources that supports pagination
+             
+             queryParameters:
+               page:
+                 type: integer
+                 description: number of the page to return
+                 required: false
+               per_page:
+                 type: integer
+                 description: Specify how many item you want to receive in the response.
+                 maximum: 100
+                 minimum: 1
+                 default: 30
+                 multipleOf: 1
+                 required: false
+             responses:
+               200:
+                 headers:
+                   page-first:
+                     type: string
+                     description: Link to the first page of this ressource.
+                   page-last:
+                     type: string
+                     description: Link to the last page of this ressource.
+                   page-prev:
+                     type: string
+                     description: Link to the previous page of this ressource. Null when the request is already the first page
+                   page-next:
+                     type: string
+                     description: Link to the next page of this ressource. Null when the request is already the last page
+
+types:
+  ACLEntry:
+    description: |
+      ACL entry for a reservation
+    properties:
+      read: boolean
+      write: boolean
+      delete: boolean
+      admin: boolean
+
+  ACL:
+    description: |
+      Mapping between a user ID or group ID and an ACLEntry
+    properties:
+      id:
+        type: string
+        pattern: ^\w+$
+        required: true
+      acl:
+        type: ACLEntry
+        required: true
+
+  NamespaceCreate:
+    properties:
+      label:
+        type: string
+        required: true
+        minLength: 5
+        maxLength: 128
+        pattern: ^\w+$
+      acl:
+        type: ACL[]
+    examples:
+      properties:
+        label: MyLabel
+        acl:
+          - id: normalUser
+            acl:
+              read: true
+              write: true
+              delete: false
+              admin: false
+          - id: admin
+            acl:
+              read: true
+              write: true
+              delete: true
+              admin: true
+
+  Namespace:
+    type: NamespaceCreate
+    properties:
+      spaceUsed:
+        description: |
+          Total size in MiB used in the namespace
+        type: number
+        format: float
+        required: false
+      spaceAvailable:
+        description: |
+          Size in MiB of remaining in the namespace. It the result of (totalSize - spaceUsed)
+        type: number
+        format: float
+        required: false
+
+  NamespaceStat:
+    properties:
+      requestPerHour:
+        description: |
+          Number of request per hour
+        type: integer
+        format: int64
+      NrObjects:
+        description: |
+          Number of object contained in this namespace
+        type: integer
+        format: int64
+
+  Tag:
+    properties:
+      key:
+        type: string
+        required: true
+        pattern: ^\w+$
+      value:
+        type: string
+        required: true
+
+  Object:
+    properties:
+      id:
+        required: true
+        type: string
+        minLength: 5
+        maxLength: 128
+        pattern: ^\w+$
+      data:
+        required: true
+        type: file
+        fileTypes: ['*/*'] # any file type allowed
+        # maxLength: 1048576 TODO: define max upload size
+      tags:
+        required: false
+        type: Tag[]
+
+  # Needed to fullfill collection resourceTypes interface
+  ObjectCreate:
+    type: Object
+
+  ObjectUpdate:
+    properties:
+      data:
+        required: true
+        type: file
+        fileTypes: ['*/*'] # any file type allowed
+        # maxLength: 1048576 TODO: define max upload size
+      tags:
+        required: false
+        type: Tag[]
+
+  Error:
+    properties:
+      error:
+        type: string
+        required: true
+
+/namespaces:
+  securedBy: [ itsyouonline : { scopes: ["user:name"] } ]
+  type: collection
+  get:
+    is: [ paginated ]
+  post:
+    body:
+      type: NamespaceCreate
+  /{nsid}:
+    securedBy: [ reservation.reservationToken ]
+    type: member
+    /stats:
+      securedBy: [ reservation.reservationToken ]
+      get:
+        displayName: StatsNamespace
+        description: |
+          Return usage statistics about this namespace
+        responses:
+          200:
+            body:
+              type: NamespaceStat
+          404:
+            description: |
+              No namespace with this id found
+    /acl:
+      securedBy: [ reservation.reservationToken ]
+      post:
+        description: |
+          Create an dataAccessToken for a user. This token gives this user access to the data in this namespace
+        body:
+          type: ACL
+        responses:
+          200:
+            description: Token created succesfully
+            body:
+              description: |
+                the dataAccessToken
+              properties:
+                dataAccessToken: string
+    /reservation:
+      description: |
+        Management of the reservation for this namespace
+      type: reservation.reservableCollection
+      /{id}:
+        type: reservation.reservableMember
+
+    /objects:
+      type: collection
+      securedBy: [ reservation.dataAccessToken ]
+      post:
+        description: |
+          Set an object into the namespace
+      get:
+        is: [paginated]
+        description: |
+          List keys of the namespaces
+      /{id}:
+        securedBy: [ reservation.dataAccessToken ]
+        head:
+          displayName: ExistObject
+          description: |
+            Test if an object with this id exists
+          responses:
+            200:
+              description: Object exists
+            404:
+              description: |
+                No object found with this id
+        get:
+          displayName: GetObject
+          description: |
+            Retrieve object from the store
+          responses:
+            200:
+              body:
+                type: object
+            404:
+              description: |
+                Object not found
+        put:
+          displayName: UpdateObject
+          description: |
+            Update oject
+          body:
+            type: ObjectUpdate
+          responses:
+            200:
+              description: |
+                Object has been updated
+              # body: TODO
+            404:
+              description: |
+                Object not found
+        delete:
+          displayName: DeleteObject
+          description: |
+            Delete object from the store
+          responses:
+            204:
+              description: |
+                Object deleted succesfully
+            404:
+              description: |
+                Object not found

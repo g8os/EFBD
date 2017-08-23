@@ -6,118 +6,100 @@ import (
 	"testing"
 )
 
-func TestReconst(t *testing.T) {
-	size := 64 * 1024
-	r, err := New(10, 3)
-	if err != nil {
-		t.Fatal(err)
+// verify reconst in base
+func TestVerifyReconstBase(t *testing.T) {
+	d := 5
+	p := 5
+	shards := [][]byte{
+		{0, 1},
+		{4, 5},
+		{2, 3},
+		{6, 7},
+		{8, 9},
+		{0, 0},
+		{0, 0},
+		{0, 0},
+		{0, 0},
+		{0, 0},
 	}
-	dp := NewMatrix(13, size)
-	rand.Seed(0)
-	for s := 0; s < 10; s++ {
-		fillRandom(dp[s])
+	gen := genCauchyMatrix(d, p)
+	r := rsBase{data: d, parity: p, gen: gen}
+	r.Encode(shards)
+
+	have := []int{9, 8, 7, 1, 3}
+	lost := []int{5, 6, 4, 2, 0}
+	newShards := NewMatrix(10, 2)
+	for _, h := range have {
+		copy(newShards[h], shards[h])
 	}
-	err = r.Encode(dp)
-	if err != nil {
-		t.Fatal(err)
+	for _, l := range lost {
+		newShards[l] = nil
 	}
-	// restore encode result
-	store := NewMatrix(3, size)
-	copy(store[0], dp[0])
-	copy(store[1], dp[4])
-	copy(store[2], dp[12])
-	dp[0] = make([]byte, size)
-	dp[4] = make([]byte, size)
-	dp[12] = make([]byte, size)
-	// Reconstruct with all dp present
-	var lost []int
-	err = r.Reconst(dp, lost, true)
-	if err != nil {
-		t.Fatal(err)
+	r.Reconstruct(newShards)
+	if newShards[5][0] != 97 || newShards[5][1] != 64 {
+		t.Fatal("shard 5 mismatch")
 	}
-	// 3 dp "missing"
-	lost = append(lost, 4)
-	lost = append(lost, 0)
-	lost = append(lost, 12)
-	err = r.Reconst(dp, lost, true)
-	if err != nil {
-		t.Fatal(err)
+	if newShards[6][0] != 173 || newShards[6][1] != 3 {
+		t.Fatal("shard 6 mismatch")
 	}
-	if !bytes.Equal(store[0], dp[0]) {
-		t.Fatal("reconst Data mismatch: dp[0]")
+	if newShards[4][0] != 8 || newShards[4][1] != 9 {
+		t.Fatal("shard 7 mismatch")
 	}
-	if !bytes.Equal(store[1], dp[4]) {
-		t.Fatal("reconst Data mismatch: dp[4]")
+	if newShards[2][0] != 2 || newShards[2][1] != 3 {
+		t.Fatal("shard 8 mismatch")
 	}
-	if !bytes.Equal(store[2], dp[12]) {
-		t.Fatal("reconst Data mismatch: dp[12]")
-	}
-	// Reconstruct with 9 dp present (should fail)
-	lost = append(lost, 11)
-	err = r.Reconst(dp, lost, true)
-	if err != ErrTooFewShards {
-		t.Errorf("expected %v, got %v", ErrTooFewShards, err)
+	if newShards[0][0] != 0 || newShards[0][1] != 1 {
+		t.Fatal("shard 9 mismatch")
 	}
 }
 
-func BenchmarkReconst10x4x128KRepair1(b *testing.B) {
-	benchmarkReconst(b, 10, 4, 128*1024, 1)
-}
-
-func BenchmarkReconst10x4x128KRepair2(b *testing.B) {
-	benchmarkReconst(b, 10, 4, 128*1024, 2)
-}
-
-func BenchmarkReconst10x4x128KRepair3(b *testing.B) {
-	benchmarkReconst(b, 10, 4, 128*1024, 3)
-}
-
-func BenchmarkReconst10x4x128KRepair4(b *testing.B) {
-	benchmarkReconst(b, 10, 4, 128*1024, 4)
-}
-
-//// lost only happened in Data
-func BenchmarkReconst10x4x128KRepair1Data(b *testing.B) {
-	benchmarkReconstData(b, 10, 4, 128*1024, 1)
-}
-
-func BenchmarkReconst10x4x128KRepair2Data(b *testing.B) {
-	benchmarkReconstData(b, 10, 4, 128*1024, 2)
-}
-
-func BenchmarkReconst10x4x128KRepair3Data(b *testing.B) {
-	benchmarkReconstData(b, 10, 4, 128*1024, 3)
-}
-
-func BenchmarkReconst10x4x128KRepair4Data(b *testing.B) {
-	benchmarkReconstData(b, 10, 4, 128*1024, 4)
-}
-
-// lost only happened in Data
-func benchmarkReconstData(b *testing.B, d, p, size, repair int) {
+// verify reconst in avx2
+func TestVerifyReconstAVX2(t *testing.T) {
+	d := 10
+	p := 4
+	size := 256
+	dp := NewMatrix(d+p, size)
+	for i := 0; i < d; i++ {
+		rand.Seed(int64(i))
+		fillRandom(dp[i])
+	}
 	r, err := New(d, p)
 	if err != nil {
-		b.Fatal(err)
+		t.Fatal(err)
 	}
-	dp := NewMatrix(d+p, size)
-	for s := 0; s < d; s++ {
-		rand.Seed(int64(s))
-		fillRandom(dp[s])
+	r.Encode(dp)
+	dp2 := NewMatrix(d+p, size)
+	have := []int{0, 13, 2, 5, 6, 7, 8, 9, 11, 1}
+	lost := []int{10, 12, 3, 4}
+	for _, h := range have {
+		copy(dp2[h], dp[h])
 	}
-	err = r.Encode(dp)
-	if err != nil {
-		b.Fatal(err)
-	}
-	lost := randLost(d, repair)
 	for _, l := range lost {
-		dp[l] = make([]byte, size)
+		dp2[l] = nil
 	}
-	r.Reconst(dp, lost, false)
-	b.SetBytes(int64(size * d))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		r.Reconst(dp, lost, false)
+	r.Reconstruct(dp2)
+	for i := range dp {
+		if !bytes.Equal(dp[i], dp2[i]) {
+			t.Errorf("reconst data mismatch: %d", i)
+		}
 	}
+}
+
+func BenchmarkReconst10x4x1KRepair4(b *testing.B) {
+	benchmarkReconst(b, testNumIn, testNumOut, kb, 4)
+}
+
+func BenchmarkReconst10x4x16MRepair4(b *testing.B) {
+	benchmarkReconst(b, testNumIn, testNumOut, 16*mb, 4)
+}
+
+// lost only happened in data
+func BenchmarkReconst10x4x1KRepair4Data(b *testing.B) {
+	benchmarkReconstData(b, testNumIn, testNumOut, kb, 4)
+}
+
+func BenchmarkReconst10x4x16MRepair4Data(b *testing.B) {
+	benchmarkReconstData(b, testNumIn, testNumOut, 16*mb, 4)
 }
 
 func benchmarkReconst(b *testing.B, d, p, size, repair int) {
@@ -134,40 +116,52 @@ func benchmarkReconst(b *testing.B, d, p, size, repair int) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	lost := randLost(d+p, repair)
-	for _, l := range lost {
-		dp[l] = make([]byte, size)
-	}
-	r.Reconst(dp, lost, true)
 	b.SetBytes(int64(size * d))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		r.Reconst(dp, lost, true)
+		corruptRandom(dp, d, p)
+		err = r.Reconstruct(dp)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+func benchmarkReconstData(b *testing.B, d, p, size, repair int) {
+
+	r, err := New(d, p)
+	if err != nil {
+		b.Fatal(err)
+	}
+	dp := NewMatrix(d+p, size)
+	for s := 0; s < d; s++ {
+		rand.Seed(int64(s))
+		fillRandom(dp[s])
+	}
+	err = r.Encode(dp)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.SetBytes(int64(size * d))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		corruptRandomData(dp, d, p)
+		err = r.Reconstruct(dp)
+		if err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
-func randLost(max, num int) []int {
-	var lost []int
-	seed := 0
-	for {
-		rand.Seed(int64(seed))
-		r := rand.Intn(max)
-		if len(lost) == num {
-			return lost
-		}
-		if !has(lost, r) {
-			lost = append(lost, r)
-		}
-		seed++
+func corruptRandom(shards [][]byte, dataShards, parityShards int) {
+	shardsToCorrupt := rand.Intn(parityShards)
+	for i := 1; i <= shardsToCorrupt; i++ {
+		shards[rand.Intn(dataShards+parityShards)] = nil
 	}
 }
 
-func has(s []int, i int) bool {
-	for _, v := range s {
-		if i == v {
-			return true
-		}
-		continue
+func corruptRandomData(shards [][]byte, dataShards, parityShards int) {
+	shardsToCorrupt := rand.Intn(parityShards)
+	for i := 1; i <= shardsToCorrupt; i++ {
+		shards[rand.Intn(dataShards)] = nil
 	}
-	return false
 }

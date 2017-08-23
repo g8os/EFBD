@@ -1,0 +1,23 @@
+<div flex layout="row" layout-fill style="padding-top: 100px;">
+    <div flex></div>
+    <form layout="column" ng-submit="vm.create()">
+        <h1>Create a new company</h1>
+        <br/>
+        <md-input-container>
+            <label>Company name</label>
+            <input ng-model="vm.name" minlength="3" required type="text" md-autofocus="true">
+            <div ng-messages="vm.validationerrors" md-auto-hide="false">
+                <div ng-message="duplicate">This name is already taken</div>
+            </div>
+        </md-input-container>
+        <md-input-container>
+            <label>Tax number</label>
+            <input ng-model="vm.taxnr" type="text">
+        </md-input-container>
+        <div layout="row">
+            <md-button type="submit" class="md-raised md-primary">Create</md-button>
+            <span flex></span>
+        </div>
+    </form>
+    <div flex></div>
+</div>

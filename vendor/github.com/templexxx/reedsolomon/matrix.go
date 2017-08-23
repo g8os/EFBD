@@ -1,8 +1,6 @@
 package reedsolomon
 
-import (
-	"errors"
-)
+import "errors"
 
 type matrix [][]byte // byte[row][col]
 
@@ -15,22 +13,57 @@ func NewMatrix(rows, cols int) matrix {
 }
 
 // return identity matrix(upper) cauchy matrix(lower)
-func genEncodeMatrix(rows, cols int) matrix {
+func GenEncodeMatrix(d, p int) matrix {
+	rows := d + p
+	cols := d
 	m := NewMatrix(rows, cols)
 	// identity matrix
 	for j := 0; j < cols; j++ {
 		m[j][j] = byte(1)
 	}
 	// cauchy matrix
+	c := genCauchyMatrix(d, p)
+	for i, v := range c {
+		copy(m[d+i], v)
+	}
+	return m
+}
+
+func genCauchyMatrix(d, p int) matrix {
+	rows := d + p
+	cols := d
+	m := NewMatrix(p, cols)
+	start := 0
 	for i := cols; i < rows; i++ {
 		for j := 0; j < cols; j++ {
 			d := i ^ j
 			a := inverseTable[d]
-			m[i][j] = byte(a)
+			m[start][j] = byte(a)
 		}
+		start++
 	}
 	return m
 }
+
+// m * m1
+func (m matrix) mul(m1 matrix) (matrix, error) {
+	if len(m[0]) != len(m1) {
+		return nil, ErrMatrixMul
+	}
+	ret := NewMatrix(len(m), len(m1[0]))
+	for r, row := range ret {
+		for c := range row {
+			var value byte
+			for i := range m[0] {
+				// TODO RSBASE Encode 跟这个一样
+				value ^= gfMul(m[r][i], m1[i][c])
+			}
+			ret[r][c] = value
+		}
+	}
+	return ret, nil
+}
+var ErrMatrixMul = errors.New("reedsolomon matrix multiply: num of left cols should be same as num of right rows")
 
 func (m matrix) invert() (matrix, error) {
 	size := len(m)

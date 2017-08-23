@@ -9,7 +9,7 @@ COMMIT_HASH = $(shell git rev-parse --short HEAD 2>/dev/null)
 BUILD_DATE = $(shell date +%FT%T%z)
 
 PACKAGES = $(shell go list ./... | grep -v vendor)
-RACE_PACKAGES = $(shell go list ./... | grep -v vendor | grep -E 'nbd|tlog|config' | grep -v 'gonbdserver')
+RACE_PACKAGES = $(shell go list ./... | grep -v vendor | grep -E 'nbd|config' | grep -v 'gonbdserver')
 
 ldflags = -extldflags "-static" -s -w
 ldflagszeroctl = -X $(PACKAGE)/zeroctl/cmd.CommitHash=$(COMMIT_HASH) -X $(PACKAGE)/zeroctl/cmd.BuildDate=$(BUILD_DATE) -s -w
@@ -48,16 +48,16 @@ test: testgo testrace testcgo testcodegen
 testgo:
 	go test -timeout $(TIMEOUT) $(PACKAGES)
 
-testrace: testrace_core testrace_gonbdserver
+testrace: testrace_core testrace_gonbdserver testrace_tlog
 
 testrace_core:
 	go test -race -timeout $(TIMEOUT) $(RACE_PACKAGES)
 
+testrace_tlog:
+	go test -race -timeout $(TIMEOUT) github.com/zero-os/0-Disk/tlog/...
+
 testrace_gonbdserver:
 	go test -race -timeout $(TIMEOUT) github.com/zero-os/0-Disk/nbd/gonbdserver/nbd
-
-testcgo:
-	GODEBUG=cgocheck=0 go test -timeout $(TIMEOUT) -tags 'isal' $(PACKAGES)
 
 testcodegen:
 	./scripts/codegeneration.sh
@@ -65,4 +65,4 @@ testcodegen:
 $(OUTPUT):
 	mkdir -p $(OUTPUT)
 
-.PHONY: $(OUTPUT) nbdserver tlogserver zeroctl test testgo testrace testrace_core testrace_gonbdserver testcgo testcodegen
+.PHONY: $(OUTPUT) nbdserver tlogserver zeroctl test testgo testrace testrace_core testrace_gonbdserver testrace_tlog testcgo testcodegen

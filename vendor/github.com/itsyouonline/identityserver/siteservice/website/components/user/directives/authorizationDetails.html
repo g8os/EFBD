@@ -1,0 +1,292 @@
+<style>
+    authorization-details md-select-value > span {
+        width: 180px;
+    }
+
+    authorization-details .list-item-text-right {
+        text-align: right;
+        margin-right: 50px !important;
+    }
+
+    authorization-details .list-item-img {
+        height: 30px;
+    }
+
+    authorization-details .list-item-img img.md-avatar {
+        height: 30px;
+        width: 30px;
+        margin-top: 0;
+        margin-bottom: 0;
+    }
+
+    authorization-details .list-item-img span {
+        position: relative;
+        bottom: 10px;
+    }
+
+    authorization-details > md-list {
+        padding: 0;
+    }
+
+    authorization-details > md-list > md-list-item > div, authorization-details > md-list > md-list-item.md-no-proxy {
+        padding: 0 8px !important;
+    }
+
+    @media (max-width: 960px) {
+        authorization-details > md-list > md-list-item {
+            margin: 15px 0;
+        }
+
+        authorization-details md-select-value > span {
+            width: calc(100vw - 120px);
+        }
+    }
+</style>
+<md-list ng-class="{'flex-100 flex-gt-sm-80 flex-gt-md-60': fullscreenAuthorization}">
+    <md-list-item>
+        <p>
+            <i class="fa fa-user">
+                <md-tooltip><span translate='user.directives.authorizationdetails.yourusername'>Your username</span></md-tooltip>
+            </i>
+            <span translate='user.directives.authorizationdetails.yourusername'>Your username</span>
+        </p>
+        <p class="list-item-text-right" ng-bind="::vm.user.username"></p>
+    </md-list-item>
+    <md-list-item ng-repeat="auth in authorizations.avatars track by auth.requestedlabel" layout="column"
+                  layout-gt-sm="row" layout-align="center start" layout-align-gt-sm="start center">
+        <p><i class="fa fa-photo">
+            <md-tooltip><span translate="avatar">Avatar</span></md-tooltip>
+        </i>
+                <span ng-if="::auth.requestedlabel !== 'main'" translate='avatar_for' translate-values='{label: auth.requestedlabel}'>
+                    Avatar for <span ng-bind="::auth.requestedlabel"></span>
+                </span>
+                <span ng-if="::auth.requestedlabel  === 'main'" translate="avatar">
+                    Avatar
+                </span>
+        </p>
+        <md-input-container>
+            <label><span translate="avatar">Avatar</span></label>
+            <md-select ng-model="auth.reallabel">
+                <md-option value=""><span translate='user.directives.authorizationdetails.none'>None</span></md-option>
+                <md-option ng-repeat="avatar in vm.user.avatars" value="{{::avatar.label}}"
+                           ng-bind="::avatar.label">
+                </md-option>
+                <md-option ng-click="vm.showAvatarDialog($event, auth)" ng-if="::isNew">
+                    <i class="fa fa-plus"></i> <span translate='user.directives.authorizationdetails.createnew'>Create new</span>
+                </md-option>
+            </md-select>
+        </md-input-container>
+    </md-list-item>
+    <md-list-item ng-if="::authorizations.name">
+        <p>
+            <i class="fa fa-user">
+                <md-tooltip><span translate='user.directives.authorizationdetails.yourfullname'>Your full name</span></md-tooltip>
+            </i>
+            <span translate='user.directives.authorizationdetails.yourfullname'>Your full name</span>
+        </p>
+        <p class="list-item-text-right">
+            <span ng-bind="::vm.user.firstname"></span> <span ng-bind="::vm.user.lastname"></span>
+        </p>
+        <md-checkbox class="md-secondary" ng-model="authorizations.name"></md-checkbox>
+    </md-list-item>
+    <md-list-item ng-repeat="(label, i) in requested.organizations">
+        <p><i class="fa fa-users">
+            <md-tooltip><span translate='user.directives.authorizationdetails.orgmembership'>Organization membership</span></md-tooltip>
+        </i>
+            <span translate='user.directives.authorizationdetails.memberof' translate-values='{label: label}'>Member of <span ng-bind="::label"></span></span>
+            <span ng-if="vm.pendingOrganizationInvites[label]"><span translate='user.directives.authorizationdetails.acceptinvite'>(this will accept the invitation for this organization)</span></span>
+        </p>
+        <md-checkbox class="md-secondary" ng-model="requested.organizations[label]"></md-checkbox>
+    </md-list-item>
+    <md-list-item ng-repeat="auth in authorizations.emailaddresses track by auth.requestedlabel" layout="column"
+                  layout-gt-sm="row"
+                  layout-align="space-between start" layout-align-gt-sm="start center">
+        <p>
+            <i class="fa fa-at">
+                <md-tooltip><span translate='user.directives.authorizationdetails.emailaddress'>Email address</span></md-tooltip>
+            </i>
+                <span ng-if="::auth.requestedlabel !== 'main'" translate='user.directives.authorizationdetails.emailaddressfor' translate-values='{label: auth.requestedlabel}'>
+                    Email address for <span ng-bind="::auth.requestedlabel"></span>
+                </span>
+                <span ng-if="::auth.requestedlabel  === 'main'" translate='user.directives.authorizationdetails.emailaddress'>
+                    Email address
+                </span>
+        </p>
+        <md-input-container>
+            <label><span translate='user.directives.authorizationdetails.email'>Email</span></label>
+            <md-select ng-model="auth.reallabel">
+                <md-option value=""><span translate='user.directives.authorizationdetails.none'>None</span></md-option>
+                <md-option ng-repeat="email in vm.user.emailaddresses" value="{{::email.label}}"
+                           ng-bind="::email.emailaddress"></md-option>
+                <md-option ng-click="vm.showEmailDialog($event, auth)" ng-if="::isNew">
+                    <i class="fa fa-plus"></i> <span translate='user.directives.authorizationdetails.createnew'>Create new</span>
+                </md-option>
+            </md-select>
+        </md-input-container>
+    </md-list-item>
+    <md-list-item ng-repeat="auth in authorizations.phonenumbers track by auth.requestedlabel" layout="column"
+                  layout-gt-sm="row"
+                  layout-align="center start" layout-align-gt-sm="start center">
+        <p>
+            <i class="fa fa-phone">
+                <md-tooltip><span translate="phone_number">Phone number</span></md-tooltip>
+            </i>
+            <span ng-if="::auth.scope === 'write'"><span translate="full_access"></span>: </span>
+            <span ng-if="::auth.requestedlabel !== 'main'"
+                  translate='user.directives.authorizationdetails.phonenumberfor'
+                  translate-values='{label: auth.requestedlabel}'>Phone number for label</span>
+            <span ng-if="::auth.requestedlabel  === 'main'" translate="phone_number">Phone number</span>
+        </p>
+        <md-input-container>
+            <label><span translate="phone_number">Phone number</span></label>
+            <md-select ng-model="auth.reallabel">
+                <md-option value=""><span translate='user.directives.authorizationdetails.none'>None</span></md-option>
+                <md-option ng-repeat="phone in vm.user.phonenumbers" value="{{::phone.label}}"
+                           ng-bind="::phone.label + ' ' + phone.phonenumber">
+                </md-option>
+                <md-option ng-click="vm.showPhonenumberDialog($event, auth)" ng-if="::isNew">
+                    <i class="fa fa-plus"></i> <span translate='user.directives.authorizationdetails.createnew'>Create new</span>
+                </md-option>
+            </md-select>
+        </md-input-container>
+    </md-list-item>
+    <md-list-item ng-repeat="auth in authorizations.addresses track by auth.requestedlabel" layout="column"
+                  layout-gt-sm="row"
+                  layout-align="center start" layout-align-gt-sm="start center">
+        <p>
+            <i class="fa fa-envelope-o">
+                <md-tooltip><span translate="address">Address</span></md-tooltip>
+            </i>
+            <span ng-if="::auth.requestedlabel !== 'main'" translate='user.directives.authorizationdetails.addressfor'
+                  translate-values='{label: auth.requestedlabel}'></span>
+            <span ng-if="::auth.requestedlabel  === 'main'" translate="address"></span>
+        </p>
+        <md-input-container>
+            <label><span translate="address">Address</span></label>
+            <md-select ng-model="auth.reallabel">
+                <md-option value=""><span translate='user.directives.authorizationdetails.none'>None</span></md-option>
+                <md-option ng-repeat="address in vm.user.addresses" value="{{::address.label}}"
+                           ng-bind="::address.label + ' - ' + address.street + (address.nr? ' ' + address.nr : '') + (address.city? ' ' + address.city : '')">
+                </md-option>
+                <md-option ng-click="vm.showAddressDialog($event, auth)" ng-if="::isNew">
+                    <i class="fa fa-plus"></i> <span translate='user.directives.authorizationdetails.createnew'>Create new</span>
+                </md-option>
+            </md-select>
+        </md-input-container>
+    </md-list-item>
+    <md-list-item ng-repeat="auth in authorizations.bankaccounts track by auth.requestedlabel" layout="column"
+                  layout-gt-sm="row"
+                  layout-align="center start" layout-align-gt-sm="start center">
+        <p><i class="fa fa-bank">
+            <md-tooltip><span translate="bank_account">Bank account</span></md-tooltip>
+        </i>
+                    <span ng-if="::auth.requestedlabel !== 'main'" translate='user.directives.authorizationdetails.bankaccountfor' translate-values='{label: auth.requestedlabel}'>
+                        Bank account for <span ng-bind="::auth.requestedlabel"></span>
+                    </span>
+            <span ng-if="::auth.requestedlabel  === 'main'" translate="bank_account">
+                        Bank account
+                    </span>
+        </p>
+        <md-input-container>
+            <label><span translate="bank_account">Bank account</span></label>
+            <md-select ng-model="auth.reallabel">
+                <md-option value=""><span translate='user.directives.authorizationdetails.none'>None</span></md-option>
+                <md-option ng-repeat="bank in vm.user.bankaccounts" value="{{ ::bank.label }}"
+                           ng-bind="::bank.label + ' - ' + bank.bic + ', ' + bank.iban + ', ' + bank.country">
+                </md-option>
+                <md-option ng-click="vm.showBankAccountDialog($event, auth)" ng-if="::isNew">
+                    <i class="fa fa-plus"></i> <span translate='user.directives.authorizationdetails.createnew'>Create new</span>
+                </md-option>
+            </md-select>
+        </md-input-container>
+    </md-list-item>
+    <md-list-item ng-repeat="auth in authorizations.digitalwallet track by auth.requestedlabel" layout="column"
+                  layout-gt-sm="row"
+                  layout-align="center start" layout-align-gt-sm="start center">
+        <p><i class="fa fa-money">
+            <md-tooltip><span translate='digital_wallet_address'>Digital wallet address</span></md-tooltip>
+        </i>
+            <span ng-if="::auth.requestedlabel !== 'main'" translate='user.directives.authorizationdetails.digitalwalletfor' translate-values='{label: auth.requestedlabel}'>
+                Digital wallet address for <span ng-bind="::auth.requestedlabel"></span>
+            </span>
+            <span ng-if="::auth.requestedlabel  === 'main'" translate="digital_wallet_address">
+                Digital wallet address
+            </span>
+            <span ng-if="::auth.currency" translate='user.directives.authorizationdetails.currency' translate-values='{currency: auth.currency}'>
+                (currency <span ng-bind="::auth.currency"></span>)
+            </span>
+        </p>
+        <md-input-container>
+            <label><span translate="digital_wallet_address">Digital wallet address</span></label>
+            <md-select ng-model="auth.reallabel">
+                <md-option value=""><span translate='user.directives.authorizationdetails.none'>None</span></md-option>
+                <md-option ng-repeat="address in vm.user.digitalwallet" value="{{::address.label}}"
+                           ng-bind="::address.label + ' - ' + address.address + ' - ' + address.currencysymbol">
+                </md-option>
+                <md-option ng-click="vm.showDigitalWalletAddressDialog($event, auth)" ng-if="::isNew">
+                    <i class="fa fa-plus"></i> <span translate='user.directives.authorizationdetails.createnew'>Create new</span>
+                </md-option>
+            </md-select>
+        </md-input-container>
+    </md-list-item>
+    <md-list-item ng-if="::authorizations.github">
+        <p><i class="fa fa-github">
+            <md-tooltip><span translate="github_account">Github account</span></md-tooltip>
+        </i>
+            <span translate='user.directives.authorizationdetails.yourgithub'>Your Github account</span>
+        </p>
+        <div class="list-item-text-right list-item-img" ng-if="vm.user.github.id" hide-xs>
+            <img class="md-avatar" ng-src="{{ ::vm.user.github.avatar_url }}"/>
+            <span>{{ ::vm.user.github.login }}</span>
+        </div>
+        <md-checkbox class="md-secondary" ng-model="authorizations.github"></md-checkbox>
+    </md-list-item>
+    <md-list-item ng-if="::authorizations.facebook">
+        <p><i class="fa fa-facebook-official">
+            <md-tooltip><span translate="facebook_account">Facebook account</span></md-tooltip>
+        </i>
+            <span translate='user.directives.authorizationdetails.yourfacebook'>Your Facebook account</span>
+        </p>
+        <div class="list-item-text-right list-item-img" ng-if="::vm.user.facebook.id" hide-xs>
+            <img class="md-avatar" ng-src="{{ ::vm.user.facebook.picture }}"/>
+            <span>{{ ::vm.user.facebook.name }}</span>
+        </div>
+        <md-checkbox class="md-secondary" ng-model="authorizations.facebook"></md-checkbox>
+    </md-list-item>
+    <md-list-item ng-repeat="auth in authorizations.publicKeys track by auth.requestedlabel" layout="column"
+                  layout-gt-sm="row" layout-align="center start" layout-align-gt-sm="start center">
+        <p><i class="fa fa-key">
+            <md-tooltip><span translate="public_key">Public key</span></md-tooltip>
+        </i>
+                <span ng-if="::auth.requestedlabel !== 'main'" translate='user.directives.authorizationdetails.pubkeyfor' translate-values='{label: auth.requestedlabel}'>
+                    Public key for <span ng-bind="::auth.requestedlabel"></span>
+                </span>
+            <span ng-if="::auth.requestedlabel  === 'main'" translate="public_key">
+                    Public key
+                </span>
+        </p>
+        <md-input-container>
+            <label><span translate="public_key">Public key</span></label>
+            <md-select ng-model="auth.reallabel">
+                <md-option value=""><span translate='user.directives.authorizationdetails.none'>None</span></md-option>
+                <md-option ng-repeat="pubkey in vm.user.publicKeys" value="{{::pubkey.label}}"
+                           ng-bind="::pubkey.label">
+                </md-option>
+                <md-option ng-click="vm.showPublicKeyDialog($event, auth)" ng-if="::isNew">
+                    <i class="fa fa-plus"></i> <span translate='user.directives.authorizationdetails.createnew'>Create new</span>
+                </md-option>
+            </md-select>
+        </md-input-container>
+    </md-list-item>
+    <md-list-item ng-repeat="email in authorizations.ownerof.emailaddresses" layout="column"
+                  layout-gt-sm="row" layout-align="center start" layout-align-gt-sm="start center">
+        <p><i class=" fa fa-at">
+            <md-tooltip><span translate="owner_of_email"></span></md-tooltip>
+        </i>
+            <span translate="owner_of_email_x" translate-values="{ email: email}"></span>
+        </p>
+        <md-button ng-if="vm.verifiedEmails && !vm.verifiedEmails.includes(email)" translate="verify"
+                   ng-click="vm.verifyEmail($event, email)">Verify
+        </md-button>
+    </md-list-item>
+</md-list>

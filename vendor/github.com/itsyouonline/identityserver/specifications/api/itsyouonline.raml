@@ -1,0 +1,2179 @@
+#%RAML 1.0
+title: Itsyouonline
+version: 0.1
+baseUri: https://itsyou.online/api
+securitySchemes:
+  oauth_2_0: !include securitySchemes/oauth_2_0.raml
+
+types:
+  Label:
+    type: string
+    maxLength: 50
+    minLength: 2
+    pattern: ^[a-zA-Z\d\-_\s]{2,50}$
+
+  Avatar:
+    description: An avatar of a user
+    properties:
+      label: Label
+      source: string
+
+  UserAPIKey:
+    description: User specific API key
+    properties:
+        username: string
+        apikey: string
+        applicationid: string
+        scopes: string[]
+        label: Label
+
+  PublicKey:
+     description: PublicKey of a user
+     properties:
+        label: Label
+        publickey: string
+
+  AuthorizationMap:
+     description: Mapping between requested labels and real labels
+     properties:
+        requestedlabel: Label
+        reallabel: Label
+
+  DigitalWalletAuthorization:
+    description: Mapping between requested labels and real label. Also has a 'currency' property
+    properties:
+      requestedlabel: Label
+      reallabel: Label
+      currency:
+        type: string
+        minLength: 1
+        maxLength: 15
+
+  Authorization:
+    description: For an explanation about scopes and scopemapping, see https://github.com/itsyouonline/identityserver/blob/master/docs/oauth2/scopes.md
+    properties:
+        username: string
+        grantedTo:
+          type: string
+          description: The organization that is granted read access to some of the user's information
+        addresses?:
+          description: Mapping of the labels of the granted ones to the labels the organization requested.
+          properties:
+             type: AuthorizationMap[]
+        publicKeys?: AuthorizationMap[]
+        emailaddresses?:
+          description: Mapping of the labels of the granted ones to the labels the organization requested.
+          properties:
+             type: AuthorizationMap[]
+        phonenumbers?:
+          description: Mapping of the labels of the granted ones to the labels the organization requested.
+          properties:
+             type: AuthorizationMap[]
+        bankaccounts?:
+          description: Mapping of the labels of the granted ones to the labels the organization requested.
+          properties:
+             type: AuthorizationMap[]
+        facebook?: boolean
+        github?: boolean
+        organizations:
+          type: string[]
+          description: List of organizations the requesting organization can see your membership of.
+
+  BankAccount:
+    properties:
+        iban:
+          type: string
+          maxLength: 30
+        bic:
+          type: string
+          maxLength: 11
+        country:
+          type: string
+          maxLength: 40
+        label: Label
+
+  DigitalAssetAddress:
+    properties:
+      address: string
+      label: Label
+      expire: datetime
+      currencysymbol: string
+      noexpiration?:
+        type: boolean
+        description: Flag that represents whether or not this digital asset expires. If true, the expire field can be ignored.
+
+  Phonenumber:
+     properties:
+       phonenumber:
+         type: string
+         pattern: \+[0-9]{6,50}$
+       label: Label
+
+  Address:
+    properties:
+        city:
+            type: string
+            maxLength: 30
+        street:
+            type: string
+            maxLength: 50
+        nr:
+            type: string
+            maxLength: 10
+        other?:
+            type: string
+            maxLength: 30
+        country:
+            type: string
+            maxLength: 40
+        postalcode:
+            type: string
+            maxLength: 20
+        label: Label
+  FacebookAccount:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+      picture:
+        type: string
+      link:
+        type: string
+
+  GithubAccount:
+    properties:
+      login:
+        type: string
+      id:
+        type: integer
+      avatar_url:
+        type: string
+      html_url:
+        type: string
+      name:
+        type: string
+
+  EmailAddress:
+    properties:
+      label: Label
+      emailaddress:
+         type: string
+
+  User:
+    properties:
+        username:
+            type: string
+            maxLength: 30
+            pattern: ^[a-z0-9]{2,30}$
+            minLength: 2
+        firstname: string
+        lastname: string
+        publicKeys: string[]
+        expire?: datetime
+        digitalwallet: DigitalAssetAddress[]
+        emailaddresses: EmailAddress[]
+        phonenumbers: Phonenumber[]
+        addresses: Address[]
+        bankaccounts: BankAccount[]
+        facebook?:
+            type: FacebookAccount
+        github?:
+            type: GithubAccount
+
+    example:
+        username: bob
+        firstname: Bob
+        lastname: Johnson
+        publicKeys:
+            - 1GVS7544tvWM2TM13vNH8sboamJzL6mJ36
+        expire: 2018-10-20T16:41:41.090Z
+        emailaddresses:
+            - label: work
+              emailaddress: bob@company.com
+            - label: home
+              emailaddress: bob@example.com
+        digitalwallet:
+           - label: bibcoin
+             address: fdfgfgergerger
+             expire: 2018-10-20T16:41:41.090Z
+             currencysymbol: bb
+        phonenumbers:
+            - label: be
+              phonenumber: "+3212341234123"
+            - label: eg
+              phonenumber: "+2012341234123"
+        addresses:
+            - label: home
+              city: Springfield
+              street: Main street
+              nr: 45B
+              country: Tomorrowland
+              postalcode: T-9450
+            - label: work
+              city: Capital City
+              street: Capital street
+              nr: "1"
+              country: Tomorrowland
+              postalcode: T-1000
+        bankaccounts:
+            - label: kbc
+              iban: TL123451234512345
+              bic: ABCDEFGH
+              country: Tomorrowland
+
+  userview:
+    properties:
+        username:
+            type: string
+        publicKeys?: PublicKey[]
+        emailaddresses: EmailAddress[]
+        phonenumbers: Phonenumber[]
+        addresses: Address[]
+        bankaccounts: BankAccount[]
+        facebook?:
+            type: FacebookAccount
+        github?:
+            type: GithubAccount
+        organizations: string[]
+
+  JoinOrganizationInvitation:
+    properties:
+        organization: string
+        user: string
+        role:
+          type: string
+          enum: [owner, member, orgowner, orgmember]
+        created?: datetime
+        status:
+          type: string
+          enum: [pending, accepted, rejected]
+        method:
+          type: string
+          enum: [website, email, phone]
+        emailaddress: string
+        phonenumber: string
+        isorganization: boolean
+
+    example:
+      organization: mycoolsoccerclub
+      user: bob
+      role: owner
+      created: 2016-02-28T16:41:41.090Z
+      status: pending
+      method: website
+      emailaddress: ""
+      phonenumber: ""
+      isorganization: false
+
+  ContractSigningRequest:
+    properties:
+        contractId: string
+        party: string
+
+
+  Organization:
+    properties:
+      globalid:
+        type: string
+        minLength: 3
+        maxLength: 150
+        pattern: ^[a-z\d\-_\s]{3,150}$
+      publicKeys:
+        type: string[]
+        maxItems: 20
+      dns:
+        type: string[]
+        maxItems: 100
+        description: List of organization DNS.
+      owners:
+        type: string[]
+        maxItems: 20
+        description: List of users `usernames`.
+      members:
+        type: string[]
+        maxItems: 2000
+        description: List of users who are member in this organization.
+      orgowners:
+        type: string[]
+        description: List of other organizations who act as an owner in this organization.
+      orgmembers:
+        type: string[]
+        description: List of other organizations who act as a member in this organization.
+      includes:
+        type: string[]
+        maxItems: 100
+        description: globalId of sub organizations
+      requiredscopes:
+        type: RequiredScope[]
+        maxItems: 20
+        description: List of scopes that are required to join this organization
+      includesuborgsof:
+        type: string[]
+        description: List of orgowners and orgmembers who's children should be included in the organizations membershi or ownership hierarchy
+
+    example:
+      globalid: greenitglobe
+      publicKeys:
+        - 1A9WWh6iAE4RZGN7axy6xZbuWuLknqWLrV
+      dns:
+        - greenitglobe.com
+      owners:
+        - user1
+        - user2
+        - user3
+      members:
+        - user4
+      orgowners:
+        - organization1
+      orgmembers:
+        - organization2
+        - organization3
+      includes:
+        - admin.greenitglobe.com
+      requiredscopes:
+        - scope: user:name
+          accessscopes:
+            - organization:owner
+            - organization:member
+        - scope: user:email:personal email
+          accessscopes:
+            - organization:owner
+      includesuborgsof:
+        - organization2
+
+  OrganizationUser:
+    properties:
+      username:
+        type: string
+        description: username of the user
+      role:
+        type: string
+        description: role of the user in this organization, either organization:member or organization:owner
+      missingscopes:
+        type: string[]
+        description: list of required roles that the user didn't share yet.
+
+  GetOrganizationUsersResponseBody:
+    properties:
+      haseditpermissions: boolean
+      users: OrganizationUser[]
+
+  OrganizationTreeItem:
+    properties:
+      globalid:
+        type: string
+      children: OrganizationTreeItem[]
+
+  Member:
+    properties:
+      username:
+        type: string
+        description: Used when assigning a member to an organization.
+
+    example:
+      username: bob
+
+  OrganizationAPIKey:
+      properties:
+        label: Label
+        callbackURL?:
+          type: string
+          maxLength: 250
+        clientCredentialsGrantType?:
+          description: Indicates if this key may be used in a client credentials oauth2 flow.
+          type: boolean
+          default: false
+        secret?:
+          type: string
+          maxLength: 250
+
+  DnsAddress:
+      properties:
+        name:
+          type: string
+          minLength: 4
+          maxLength: 250
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9](?:\.[a-zA-Z]{2,})+$
+
+  Company:
+    properties:
+        globalid:
+            type: string
+            minLength: 3
+            pattern: ^[a-z\d\-_\s]{3,150}$
+            maxLength: 150
+        publicKeys:
+            type: string[]
+            maxItems: 20
+        expire:
+            type: datetime
+            required: false
+        organizations:
+            type: string[]
+            maxItems: 100
+            required: false
+        info:
+            type: string[]
+            maxItems: 20
+            required: false
+        taxnr:
+            type: string
+            required: false
+    example:
+        globalid: ilikecandy
+        publicKeys:
+            - 18SGHYSi8JCvAvTU6Ymv1HRmmu86Mq2Ypz
+        expire: 2016-02-28T16:41:41.090Z
+        info:
+          - info@ilikecandy.com
+        taxnr: BE1234123412341234
+
+  companyview:
+        type: Company
+
+
+  Signature:
+    properties:
+      signedBy: string
+      date: datetime
+      publicKey:
+        type: string
+        description: The public key used
+      signature:
+        type: string
+
+  Party:
+    properties:
+      type: string
+      name: string
+
+
+  Contract:
+    properties:
+      parties:
+        type: Party[]
+        minItems: 2
+        maxItems: 20
+        uniqueItems: true
+      content: string
+      contractType:
+        type: string
+        maxLength: 40
+        description: Free field to be used for tags by the party creating a contract
+      invalidates?:
+        type: string[]
+        maxItems: 10
+        description: list of contractId's this contract invalidates.
+      extends?:
+        type: string[]
+        maxItems: 10
+        description: list of contractId's this contract is an extension upon
+      expires: datetime
+      contractId:
+        type: string
+        description: |
+          The contractId is the hash of the parties, the content, the contractType,  and the expiration date.
+          To calculate the hash, take the json representation of the contract without the id and signatures, trim the newlines or spaces (except when they appear in the values) and encode in  utf8.
+          From this result, take a SHA256 followed by a RIPEMD160, next base58CheckEncode the result with a 0x00 prefix.
+
+      signatures: Signature[]
+  Error:
+    properties:
+      error: string
+
+
+  RegistryEntry:
+    properties:
+      Key:
+        type: string
+        minLength: 1
+        maxLength: 256
+      Value:
+        type: string
+        maxLength: 1024
+  RequiredScope:
+    properties:
+      scope:
+        type: string
+        maxLength: 1024
+        description: Scope which should be shared with an organization
+      accessscopes:
+        type: string[]
+        description: Which users can see the shared information.
+  LocalizedInfoText:
+    properties:
+      langkey: string
+      text: string
+  Membership:
+    properties:
+      username: string
+      role: string
+  MissingScopes:
+    properties:
+      organization: string
+      scopes: string[]
+securedBy: [ oauth_2_0 ]
+/users:
+  post:
+    displayName: CreateUser
+    description: Create a new user
+    body:
+      application/json:
+        type: User
+
+  /avatar/img/{hash}:
+    get:
+      displayName: GetAvatarImage
+      description: Get the avatar file associated with this id
+      responses:
+        200:
+          body:
+            image/*:
+              type: file
+        404:
+          description: No avatar file associated with this hash
+
+
+  /{username}:
+    get:
+      securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+      displayName: GetUser
+      responses:
+        200:
+          body:
+            application/json:
+              type: User
+    /name:
+      securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+      put:
+        displayName: UpdateUserName
+        description: Update the user his firstname and lastname
+        body:
+          application/json:
+            properties:
+              firstname: string
+              lastname: string
+        responses:
+          204:
+            description: Successfully updated firstname and lastname
+          404:
+            description: User not found
+
+    /password:
+      securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+      put:
+        displayName: UpdatePassword
+        description: Update the user his password
+        body:
+          application/json:
+            properties:
+              currentpassword: string
+              newpassword: string
+        responses:
+          204:
+            description: Password successfully updated
+          422:
+            description: Invalid password format or invallid currentpassword
+            body:
+              application/json:
+                type: Error
+    /emailaddresses:
+      securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+      get:
+        displayName: GetEmailAddresses
+        description: Get a list of the user his email addresses.
+        queryParameters:
+          validated?:
+            type: boolean
+            description: optional parameter to filter on only validated email addressses
+        responses:
+          200:
+            body:
+              application/json:
+                type: EmailAddress[]
+      post:
+        displayName: RegisterNewEmailAddress
+        description: Register a new email address
+        queryParameters:
+          lang:
+            type: string
+            description: language that the validation email should be in.
+        body:
+          application/json:
+            type: EmailAddress
+        responses:
+          201:
+            description: Registered a new email address
+            body:
+              application/json:
+                type: EmailAddress
+          409:
+              description: Label is already used.
+      /{label}:
+        put:
+          displayName: UpdateEmailAddress
+          description: Updates the label and/or value of an email address
+          queryParameters:
+            lang:
+              type: string
+              description: language that the validation email should be in.
+          body:
+            application/json:
+              type: EmailAddress
+          responses:
+            201:
+              description: Updated
+            409:
+              description: The new label is already used
+        delete:
+          displayName: DeleteEmailAddress
+          description: Removes an email address
+          responses:
+            204:
+              description: Email address removed.
+            409:
+              description: The last email address can not be removed.
+
+        /validate:
+          post:
+            displayName: ValidateEmailAddress
+            description: Sends validation email to email address
+            queryParameters:
+              lang:
+                type: string
+                description: language that the validation email should be in.
+            responses:
+              204:
+               description: Validation email has been send
+
+    /apikeys:
+      securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+      post:
+        displayName: AddApiKey
+        description: Adds an APIKey to the user
+        body:
+          application/json:
+            properties:
+              label: Label
+        responses:
+          201:
+            description: Added a APIKey to the user
+            body:
+              application/json:
+                type: UserAPIKey
+          409:
+            description: Label is already used.
+      get:
+        displayName: ListAPIKeys
+        description: Lists the API keys
+        responses:
+          200:
+            description: List of API keys
+            body:
+              application/json:
+                type: UserAPIKey[]
+      /{label}:
+        put:
+          displayName: UpdateAPIkey
+          description: Updates the label for the API key
+          body:
+            application/json:
+              properties:
+                label: Label
+          responses:
+            204:
+              description: API key updated
+            409:
+              description: The new label is already used
+        get:
+          displayName: GetAPIkey
+          description: Get an API key by label
+          responses:
+            200:
+              description: API key
+              body:
+                application/json:
+                  type: UserAPIKey
+
+        delete:
+          displayName: DeleteAPIkey
+          description: Removes an API key
+          responses:
+            204:
+              description: API key removed.
+
+    /avatar:
+      get:
+        securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+        displayName: GetAvatars
+        description: List all avatars for the user
+        responses:
+          200:
+            description: List of the avatars
+            body:
+              application/json:
+                type: Avatar
+
+      post:
+        securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+        displayName: CreateAvatarFromLink
+        description: Create a new avatar with the specified label from a link
+        body:
+          application/json:
+            type: Avatar
+        responses:
+          201:
+            description: New avatar created
+            body:
+              application/json:
+                type: Avatar
+          409:
+            description: Create request rejected
+            body:
+              application/json:
+                type: Error
+
+
+      /img/{label}:
+        post:
+          securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+          displayName: CreateAvatarFromImage
+          description: Create a new avatar with the specified label from a provided image file
+          body:
+            multipart/form-data:
+              description: the avatar image file, in the 'file' header
+              type: file
+          responses:
+            201:
+              description: New avatar created
+              body:
+                application/json:
+                  type: Avatar
+            409:
+              description: Create request rejected
+              body:
+                application/json:
+                  type: Error
+            413:
+              description: Uploaded file is too large
+
+      /{label}:
+        put:
+          securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+          displayName: UpdateAvatarLink
+          description: Update the avatar and possibly the link to the avatar
+          body:
+            application/json:
+              type: Avatar
+          responses:
+            200:
+              description: Avatar updated successfully
+              body:
+                application/json:
+                  type: Avatar
+            404:
+              description: Avatar not found
+            409:
+              description: Avatar update rejected
+              body:
+                application/json:
+                  type: Error
+
+        delete:
+          securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+          displayName: DeleteAvatar
+          description: Delete the avatar with the specified label
+          responses:
+            204:
+              description: Avatar deleted
+            404:
+              description: Avatar not found
+            409:
+              description: Trying to delete a protected avatar
+
+        /to/{newlabel}:
+          put:
+            securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+            displayName: UpdateAvatarFile
+            description: Update the avatar and possibly the avatar file stored on itsyou.online
+            body:
+              multipart/form-data:
+                description: the avatar image file, in the 'file' header
+                type: file
+            responses:
+              200:
+                description: Updated avatar
+                body:
+                  application/json:
+                    type: Avatar
+              404:
+                description: Avatar not found
+              409:
+                description: Avatar update rejected
+                body:
+                  application/json:
+                    type: Error
+              413:
+                description: Uploaded file is too large
+
+    /registry:
+      securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+      post:
+        displayName: AddUserRegistryEntry
+        description: Adds a RegistryEntry to the user's registry, if the key is already used, it is overwritten.
+        body:
+          application/json:
+            type: RegistryEntry
+        responses:
+          201:
+            description: Added the RegistryEntry to the user's registry
+            body:
+              application/json:
+                type: RegistryEntry
+          409:
+              description: Label is already used.
+      get:
+        displayName: ListUserRegistry
+        description: Lists the Registry entries
+        responses:
+          200:
+            description: List of Registry entries
+            body:
+              application/json:
+                type: RegistryEntry[]
+      /{key}:
+        delete:
+          displayName: DeleteUserRegistryEntry
+          description: Removes a RegistryEntry from the user's registry
+          responses:
+            204:
+              description: RegistryEntry removed.
+        get:
+          displayName: GetUserRegistryEntry
+          description: Get a RegistryEntry from the user's registry.
+          responses:
+            200:
+              description: Registry Entry
+              body:
+                application/json:
+                  type: RegistryEntry
+            404:
+              description: Not found
+
+    /github:
+      securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+      delete:
+        displayName: DeleteGithubAccount
+        description: Unlink Github Account
+        responses:
+          204:
+            description: Account unlinked
+
+    /facebook:
+      securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+      delete:
+        displayName: DeleteFacebookAccount
+        description: Delete the associated facebook account
+        responses:
+          204:
+            description: Deleted facebook account
+
+    /twofamethods:
+      securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+      get:
+        displayName: GetTwoFAMethods
+        description: Get the possible two-factor authentication methods"
+        responses:
+          200:
+            body:
+              application/json:
+                properties:
+                  totp: boolean
+                  sms: Phonenumber[]
+    /totp:
+      securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+      get:
+        displayName: GetTOTPSecret
+        description: 'Get a TOTP secret and issuer that can be used for setting up two-factor authentication.'
+        responses:
+          200:
+            body:
+              application/json:
+                properties:
+                  totpsecret: string
+                  totpissuer: string
+      post:
+        displayName: SetupTOTP
+        description: Enable two-factor authentication using TOTP.
+        body:
+          application/json:
+            properties:
+              totpcode:
+                type: string
+                description: This is a code that is generated by an authenticator application (e.g. Google Authenticator)
+              totpsecret:
+                type: string
+                description: The totp secret
+        responses:
+          422:
+            description: Invalid totpcode
+          204:
+            description: TOTP setup successfully
+      delete:
+        displayName: RemoveTOTP
+        description: Disable TOTP two-factor authentication.
+        responses:
+          409:
+            description: Cannot remove TOTP authentication because this is the last available login method
+          204:
+            description: TOTP successfully removed
+
+  /{username}/info:
+    get:
+      securedBy: [oauth_2_0: { scopes: [ "user:info", "user:admin" ] } ]
+      displayName: GetUserInformation
+      description: Get all of the user his information. This will be limited to the scopes that the user has authorized. See https://gig.gitbooks.io/itsyouonline/content/oauth2/scopes.html and https://gig.gitbooks.io/itsyouonline/content/oauth2/availableScopes.html for more information.
+      responses:
+        200:
+          body:
+            application/json:
+              type: userview
+
+  /{username}/addresses:
+    securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+    get:
+      displayName: GetUserAddresses
+      description: List of all of the user his email addresses.
+      responses:
+        200:
+          body:
+            application/json:
+              type: Address[]
+    post:
+      displayName: RegisterNewUserAddress
+      description: Register a new address
+      body:
+        application/json:
+          type: Address
+      responses:
+        201:
+          description: Registered a new address
+          body:
+            application/json:
+              type: Address
+        409:
+           description: Label is already used.
+    /{label}:
+      get:
+        displayName: GetUserAddressByLabel
+        description: Get the details of an address.
+        responses:
+          200:
+            body:
+              application/json:
+                type: Address
+      put:
+        displayName: UpdateUserAddress
+        description: Update the label and/or value of an existing address.
+        body:
+          application/json:
+            type: Address
+        responses:
+          201:
+            description: Updated
+          409:
+            description: The new label is already used
+      delete:
+          displayName: DeleteUserAddress
+          description: Removes an address
+          responses:
+              204:
+                description: Address removed.
+
+  /{username}/digitalwallet:
+    securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+    get:
+      displayName: GetDigitalWallet
+      description: List all of the user his digital wallets.
+      responses:
+        200:
+          body:
+            application/json:
+              type: DigitalAssetAddress[]
+    post:
+      displayName: RegisterNewDigitalAssetAddress
+      description: Register a new digital asset address
+      body:
+        application/json:
+           type: DigitalAssetAddress
+      responses:
+        201:
+          description: Registered a new address
+          body:
+            application/json:
+                type: DigitalAssetAddress
+        409:
+           description: Label is already used.
+    /{label}:
+      get:
+        displayName: GetDigitalAssetAddressByLabel
+        description: Get the details of a digital wallet address.
+        responses:
+          200:
+            body:
+              application/json:
+                type: DigitalAssetAddress
+      put:
+        displayName: UpdateDigitalAssetAddress
+        description: Update the label and/or value of an existing address.
+        body:
+          application/json:
+            type: DigitalAssetAddress
+        responses:
+          201:
+             description: Updated
+          409:
+             description: The new label is already used
+      delete:
+          displayName: DeleteDigitalAssetAddress
+          description: Removes an address
+          responses:
+              204:
+                description: Address removed.
+
+  /{username}/phonenumbers:
+    securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+    get:
+      displayName: GetUserPhoneNumbers
+      description: List of all of the user his phone numbers.
+      queryParameters:
+        validated:
+          type: string
+          description: optional queryParameter to filter on only validated phonenumbers
+      responses:
+        200:
+          body:
+            application/json:
+              type: Phonenumber[]
+    post:
+      displayName: RegisterNewUserPhonenumber
+      description: Register a new phonenumber
+      body:
+        application/json:
+          type: Phonenumber
+      responses:
+         201:
+           description: Registered a new phone number
+           body:
+             application/json:
+               type: Phonenumber
+         409:
+           description: Label is already used.
+    /{label}:
+      get:
+        displayName: GetUserPhonenumberByLabel
+        description: Get the details of a phone number.
+        responses:
+          200:
+            body:
+              application/json:
+                type: Phonenumber
+      put:
+        displayName: UpdateUserPhonenumber
+        description: Update the label and/or value of an existing phonenumber.
+        body:
+          application/json:
+              type: Phonenumber
+        responses:
+          201:
+              description: Updated
+          409:
+              description: The new label is already used
+      delete:
+        displayName: DeleteUserPhonenumber
+        description: Removes a phonenumber
+        queryParameters:
+          force?:
+            type: string
+            description: Set to `true` to remove this phone number even if its the last verified one, but only if totp has been set up
+        responses:
+          204:
+            description: Phone number removed.
+          404:
+            description: Phone number not found
+          409:
+            description: Phone number not removed because it is the last verified one and the force query parameter hasn't been set
+      /validate:
+        post:
+          displayName: ValidatePhonenumber
+          description: Sends a validation text message to the phone number.
+          responses:
+            200:
+              description: Validation number send
+              body:
+                application/json:
+                  properties:
+                    validationkey: string
+        put:
+          displayName: VerifyPhoneNumber
+          description: Verifies a phone number
+          body:
+            application/json:
+              properties:
+                smscode: string
+                validationkey: string
+          responses:
+            204:
+              description: Phone number verified
+            422:
+              description: Invalid validationkey or code
+              body:
+                application/json:
+                  type: Error
+
+  /{username}/banks:
+    securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+    post:
+      displayName: CreateUserBankAccount
+      description: Create new bank account
+      body:
+        application/json:
+            properties:
+                type: BankAccount
+      responses:
+        201:
+          body:
+            application/json:
+                properties:
+                    type: BankAccount
+    get:
+      displayName: GetUserBankAccounts
+      description: List of the user his bank accounts.
+      responses:
+        200:
+          body:
+            application/json:
+              type: BankAccount[]
+  /{username}/banks/{label}:
+    securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+    get:
+      displayName: GetUserBankAccountByLabel
+      description: Get the details of a bank account
+      responses:
+        200:
+          body:
+            application/json:
+              type: BankAccount
+    put:
+      displayName: UpdateUserBankAccount
+      description: Update an existing bankaccount and label.
+      body:
+        application/json:
+          type: BankAccount
+      responses:
+        200:
+          description: Bank account updated
+          body:
+            application/json:
+              type: BankAccount
+        404:
+          description: Bank account not found
+        409:
+          description: New label already in use
+    delete:
+      displayName: DeleteUserBankAccount
+      description: Delete a BankAccount
+      responses:
+        404:
+          description: BankAccount not found
+        204:
+          description: BankAccount deleted
+  /{username}/notifications:
+    securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+    get:
+      displayName: GetNotifications
+      description: Get the list of notifications, these are pending invitations or approvals or other requests.
+      responses:
+        200:
+          body:
+            application/json:
+              properties:
+                invitations: JoinOrganizationInvitation[]
+                approvals: JoinOrganizationInvitation[]
+                contractRequests: ContractSigningRequest[]
+                missingscopes : MissingScopes[]
+
+  /{username}/contracts:
+    securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+    get:
+      displayName: GetUserContracts
+      description: Get the contracts where the user is 1 of the parties. Order descending by date.
+      queryParameters:
+        includeExpired:
+          type: boolean
+          description: Include the expired contracts, by default only the active contracts are returned.
+          required: false
+        start:
+          type: integer
+          description: Start offset, useful for paging. Default is `0`.
+          required: false
+        max:
+          type: integer
+          description: Max page size, useful for paging. Default is `50`.
+          required: false
+          maximum: 250
+
+    post:
+      displayName: CreateUserContract
+      description: Create a new contract.
+      body:
+        application/json:
+          type: Contract
+      responses:
+        201:
+          body:
+            application/json:
+              type: Contract
+        401:
+            description: Unauthorized
+
+
+  /{username}/authorizations:
+    securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+    get:
+      displayName: GetAllAuthorizations
+      description: Get the list of authorizations.
+      responses:
+        200:
+          body:
+            application/json:
+              type: Authorization[]
+    /{grantedTo}:
+      get:
+        displayName: GetAuthorization
+        description: Get the authorization for a specific organization.
+        responses:
+          200:
+            body:
+              application/json:
+                type: Authorization
+          404:
+            description: No authorization for this organization was not found.
+      delete:
+        displayName: DeleteAuthorization
+        description: Remove the authorization for an organization, the granted organization will no longer have access the user's information.
+        responses:
+          204:
+            description: Successfully revoked authorization.
+      put:
+        displayName: UpdateAuthorization
+        description: Modify which information an organization is able to see.
+        body:
+          application/json:
+            type: Authorization
+        responses:
+          201:
+            description: Authorization updated successfully.
+
+  /{username}/organizations:
+    securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+    get:
+      displayName: GetUserOrganizations
+      description: Get the list organizations a user is owner or member of
+      responses:
+        200:
+          body:
+            application/json:
+              properties:
+                owner: string[]
+                member: string[]
+    /{globalid}/leave:
+      delete:
+        displayName: LeaveOrganization
+        description: Removes the user from an organization
+        responses:
+          404:
+            description: Organization not found
+            body:
+              application/json:
+                type: Error
+          204:
+            description: Successfully removed user from organization
+    /{globalid}/roles/{role}:
+        post:
+          displayName: AcceptMembership
+          description: Accept membership in organization
+          body:
+            application/json:
+              type: JoinOrganizationInvitation
+          responses:
+            201:
+              body:
+                application/json:
+                  type: JoinOrganizationInvitation
+        delete:
+          description: Reject membership invitation in an organization.
+          responses:
+            204:
+              description: Succesfully rejected invitation.
+
+  /{username}/publickeys:
+    securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+    get:
+      displayName: ListPublicKeys
+      description: Lists all public keys
+      responses:
+        200:
+          body:
+            application/json:
+              type: PublicKey[]
+        404:
+          description: Not found
+
+    post:
+      displayName: AddPublicKey
+      description: Add a public key
+      body:
+        application/json:
+          type: PublicKey
+      responses:
+        201:
+          body:
+            application/json:
+              type: PublicKey
+        404:
+          description: Not found
+        409:
+          description: Duplicate label
+
+    /{label}:
+      securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+      get:
+        displayName: GetPublicKey
+        description: Get a public key
+        responses:
+          200:
+            body:
+              application/json:
+                type: PublicKey
+          404:
+            description: Not found
+
+      put:
+        displayName: UpdatePublicKey
+        description: Upates the label and/or key of an existing public key
+        body:
+          application/json:
+            type: PublicKey
+        responses:
+          201:
+            body:
+              application/json:
+                type: PublicKey
+          404:
+            description: Not found
+          409:
+            description: Duplicate label
+
+      delete:
+        displayName: DeletePublicKey
+        description: Delete a public key
+        responses:
+          204:
+            description: Public key deleted
+          404:
+            description: Not found
+
+/organizations:
+  post:
+    displayName: CreateNewOrganization
+    description: Create a new organization. 1 user should be in the owners list. Validation is performed to check if the securityScheme allows management on this user.
+    body:
+      application/json:
+        type: Organization
+    responses:
+      201:
+        body:
+          application/json:
+            type: Organization
+      401:
+        description: Unauthorized
+  /{globalid}:
+    get:
+      displayName: GetOrganization
+      securedBy: [oauth_2_0: { scopes: [ "organization:member", "organization:owner" ] } ]
+      description: Get organization info
+      responses:
+        200:
+          body:
+            application/json:
+              type: Organization
+    put:
+      displayName: UpdateOrganization
+      securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
+      description: Update organization info
+      body:
+        application/json:
+          type: Organization
+      responses:
+        200:
+          body:
+            application/json:
+              type: Organization
+        404:
+          description: Not found
+    post:
+      securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
+      displayName: CreateNewSubOrganization
+      description: Create a new suborganization.
+      body:
+        application/json:
+          type: Organization
+      responses:
+        201:
+          body:
+            application/json:
+              type: Organization
+        404:
+          description: Parent organization does not exist
+          body:
+            application/json:
+              type: Error
+        422:
+          description: Maximum amount of organizations reached
+          body:
+            application/json:
+              type: Error
+    delete:
+      securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
+      displayName: DeleteOrganization
+      description: Deletes an organization and all data linked to it (join-organization-invitations, oauth_access_tokens, oauth_clients, logo)
+      responses:
+        401:
+          description: Unauthorized
+        404:
+          description: Organization not found
+          body:
+            application/json:
+              type: Error
+        204:
+          description: Organization and all child organizations deleted
+
+    /description:
+      post:
+        securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
+        displayName: SetDescription
+        description: Set the description for this organization for a given language key
+        body:
+          application/json:
+            type: LocalizedInfoText
+        responses:
+           201:
+             description: description set successfully
+             body:
+               application/json:
+                 type: LocalizedInfoText
+
+      put:
+        securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
+        displayName: UpdateDescription
+        description: Update the description for this organization for a given language key
+        body:
+          application/json:
+            type: LocalizedInfoText
+        responses:
+          200:
+            description: description updated successfully
+            body:
+              application/json:
+                type: LocalizedInfoText
+
+      /{langkey}:
+        get:
+          displayName: GetDescription
+          description: Get the description for an organization for this langkey
+          responses:
+            200:
+              description: Description retrieved successfully
+              body:
+                application/json:
+                  type: LocalizedInfoText
+        delete:
+          securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
+          displayName: DeleteDescription
+          description: Delete the description for this organization for a given language key
+          responses:
+            204:
+              description: Description deleted successfully
+        /withfallback:
+          get:
+            displayName: GetDescriptionWithFallback
+            description: Get the description for an organization for this langkey, try to use the English is there is no description for this langkey
+            responses:
+              200:
+                description: Description retrieved successfully
+                body:
+                  application/json:
+                    type: LocalizedInfoText
+
+    /logo:
+      get:
+        displayName: GetOrganizationLogo
+        description: Get the Logo from an organization
+        responses:
+          200:
+            description: logo retrieved successfully
+            body:
+              application/json:
+                type: string
+      put:
+        displayName: SetOrganizationLogo
+        securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
+        description: Set the organization Logo for the organization
+        body:
+          application/json:
+            properties:
+              logo: string
+        responses:
+          200:
+            description: updated successfully
+            body:
+              application/json:
+                description: The updated logo
+                type: string
+          413:
+            description: file size too large
+
+      delete:
+        displayName: DeleteOrganizationLogo
+        securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
+        description: Removes the Logo from an organization
+        responses:
+          204:
+            description: Logo deleted
+
+    /2fa:
+      /validity:
+        get:
+          displayName: Get2faValidityTime
+          description: Get the 2FA validity time for the organization, in seconds
+          responses:
+            200:
+              description: Get the 2FA validity time for this organization
+              body:
+                application/json:
+                  type: integer
+            404:
+              description: Organization not found
+        post:
+          displayName: Set2faValidityTime
+          securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
+          description: Update the 2FA validity time for the organization
+          body:
+            application/json:
+              type: integer
+          responses:
+            200:
+              description: Updated successfully
+            401:
+              description: Unauthorized
+            403:
+              description: No permission for this action
+            404:
+              description: Organization not found
+
+    /orgmembers:
+      securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
+      post:
+        displayName: SetOrgMember
+        description: Add another organization as a member of this one
+        body:
+          application/json:
+            properties:
+              orgmember: string
+        responses:
+          201:
+            description: Organization successfully added as a member
+          404:
+            description: Organization not found
+          409:
+            description: Organization is already an owner or a member
+          422:
+            description: Max amount of invitations reached.
+
+      put:
+        displayName: UpdateOrganizationOrgMemberShip
+        description: Update the membership status of an organization
+        body:
+          application/json:
+            properties:
+              org: string
+              role: string
+        responses:
+          200:
+            description: updated organization membership successfully
+            body:
+              application/json:
+                type: Organization
+          404:
+            description: Organization not found
+
+      /includesuborgs:
+        securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
+        post:
+          displayName: AddIncludeSubOrgsOf
+          description: Add an orgmember or orgowner organization to the includesuborgsof list
+          body:
+            application/json:
+              properties:
+                globalid: string
+          responses:
+            201:
+              description: organization addedd successfully
+              body:
+                application/json:
+                  properties:
+                    type: Organization
+            404:
+              description: Organization not found
+            409:
+              description: Organization is already in the list
+
+        /{orgmember}:
+          securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
+          delete:
+            displayName: RemoveIncludeSubOrgsOf
+            description: Remove an orgmember or orgowner organization to the includesuborgsof list
+            responses:
+              204:
+                description: organization removed from includelist
+              404:
+                description: organization not found
+
+      /{globalid2}:
+        delete:
+          displayName: DeleteOrgMember
+          description: Remove an organization as a member
+          responses:
+            204:
+              description: Organization member removed successfully
+            404:
+              description: The user or the organization does not exist.
+    /users:
+      get:
+        displayName: GetOrganizationUsers
+        securedBy: [oauth_2_0: { scopes: [ "organization:owner", "organization:member" ] } ]
+        description: Get all users from this organization, not including suborganizations.
+        responses:
+          200:
+            body:
+              application/json:
+                type: GetOrganizationUsersResponseBody
+    /ismember/{username}:
+      get:
+        displayName: UserIsMember
+        securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
+        description: Checks if the user has memberschip rights on the organization
+        responses:
+          200:
+            body:
+              application/json:
+                properties:
+                  IsMember: boolean
+    /orgowners:
+      securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
+      post:
+        displayName: SetOrgOwner
+        description: Add another organization as an owner of this one
+        body:
+          application/json:
+            properties:
+              orgowner: string
+        responses:
+          201:
+            description: Organization successfully added as an owner
+          404:
+            description: Organization not found
+          409:
+            description: Organization is already an owner or a member
+          422:
+            description: Max amount of invitations reached.
+
+      /{globalid2}:
+        delete:
+          displayName: DeleteOrgOwner
+          description: Remove an organization as an owner
+          responses:
+            204:
+              description: Organization owner removed successfully
+            404:
+              description: The organization does not exist.
+
+    /organizations/{invitingorg}/roles/{role}:
+      securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
+      post:
+        displayName: AcceptOrganizationInvite
+        description: Accept the invite for one of your organizations
+        body:
+          application/json:
+            type: JoinOrganizationInvitation
+        responses:
+          201:
+            description: Invite accepted
+            body:
+              application/json:
+                type: JoinOrganizationInvitation
+          404:
+            description: Invite not found
+
+      delete:
+        displayName: RejectOrganizationInvite
+        description: Reject the invite for one of your organizations
+        responses:
+          204:
+            description: Invite rejected
+          404:
+            description: Invite not found
+
+
+    /members:
+      securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
+      put:
+        displayName: UpdateOrganizationMemberShip
+        description: Update an organization membership
+        body:
+          application/json:
+            type: Membership
+        responses:
+          200:
+            description: updated successfully
+            body:
+              application/json:
+                description: The updated organization
+                type: Organization
+          404:
+            description: Organization not found
+          422:
+            description: Maximum amount of invites reached
+            body:
+              application/json:
+                type: Error
+
+      post:
+        displayName: AddOrganizationMember
+        description: Invite someone to become member of an organization.
+        body:
+          application/json:
+            properties:
+              searchstring: string
+        queryParameters:
+          invitenotification?:
+            type: string
+            description: Set to `none` to suppress sending an sms or email
+        responses:
+          201:
+            description: Member assigned successfully
+            body:
+              application/json:
+                type: Member
+          404:
+            description: Not found
+
+      /{username}:
+        delete:
+          displayName: RemoveOrganizationMember
+          description: Remove a member from an organization.
+          responses:
+            204:
+              description: Member deleted successfully
+            404:
+              description: The user or the organization does not exist.
+
+    /owners:
+      securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
+      post:
+        displayName: AddOrganizationOwner
+        description: Invite someone to become owner of an organization.
+        body:
+          application/json:
+            type: Member
+        queryParameters:
+          invitenotification?:
+            type: string
+            description: Set to `none` to suppress sending an sms or email
+        responses:
+          201:
+            description: Invite created successfully
+            body:
+              application/json:
+                type: Member
+          404:
+            description: The user or the organization does not exist.
+          409:
+            description: The user already is an owner.
+
+      /{username}:
+        delete:
+          displayName: RemoveOrganizationOwner
+          description: Remove an owner from organization
+          responses:
+            204:
+              description: Owner removed successfully
+            401:
+              description: Unauthorized
+            404:
+              description: The user or the organization does not exist.
+
+    /contracts:
+      securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
+      get:
+        displayName: GetOrganizationContracts
+        description: Get the contracts where the organization is 1 of the parties. Order descending by date.
+        queryParameters:
+          includeExpired:
+            type: boolean
+            description: Include the expired contracts, by default only the active contracts are returned.
+            required: false
+          start:
+            type: integer
+            description: Start offset, useful for paging. Default is `0`.
+            required: false
+          max:
+            type: integer
+            description: Max page size, useful for paging. Default is `50`.
+            required: false
+            maximum: 250
+
+      post:
+        displayName: CreateOrganizationContracty
+        description: Create a new contract.
+        body:
+          application/json:
+            type: Contract
+        responses:
+          201:
+            body:
+              application/json:
+                type: Contract
+
+    /invitations:
+      securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
+      get:
+        displayName: GetInvitations
+        description: Get the list of pending invitations for users to join this organization.
+        queryParameters:
+          status:
+            type: string
+            description: What status to filter the invitations on. Possible values are pending, accepted and rejected. When not provided, defaults to pending.
+            default: pending
+            required: false
+            enum:
+              - pending
+              - accepted
+              - rejected
+        responses:
+          200:
+            body:
+              application/json:
+                type: JoinOrganizationInvitation[]
+
+      /{username}:
+        delete:
+          displayName: RemovePendingOrganizationInvitation
+          description: Cancel a pending invitation.
+          responses:
+            204:
+              description: Invitation cancelled
+
+    /apikeys:
+      securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
+      get:
+        displayName: GetOrganizationAPIKeyLabels
+        description: Get the list of active api keys.
+        responses:
+          200:
+            body:
+              application/json:
+                type: string[]
+      post:
+        displayName: CreateNewOrganizationAPIKey
+        description: Create a new API Key, a secret itself should not be provided, it will be generated serverside.
+        body:
+          application/json:
+            type: OrganizationAPIKey
+        responses:
+          201:
+            body:
+              application/json:
+                type: OrganizationAPIKey
+          409:
+            description: Label is already used.
+      /{label}:
+        get:
+          displayName: GetOrganizationAPIKey
+          description: Get an api key from an organization
+          responses:
+            200:
+              body:
+                application/json:
+                 type: OrganizationAPIKey
+            404:
+              description: No API key with this label found
+        put:
+          displayName: UpdateOrganizationAPIKey
+          description: Updates the label or other properties of a key.
+          body:
+            application/json:
+              properties:
+                type: OrganizationAPIKey
+          responses:
+            201:
+                description: Updated
+            409:
+                description: New label is already used
+        delete:
+          displayName: DeleteOrganizationAPIKey
+          description: Removes an API key
+          responses:
+            204:
+              description: API key removed
+
+    /registry:
+      securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+      post:
+        displayName: AddOrganizationRegistryEntry
+        description: Adds a RegistryEntry to the organization's registry, if the key is already used, it is overwritten.
+        body:
+          application/json:
+            type: RegistryEntry
+        responses:
+          201:
+            description: Added the RegistryEntry to the user's registry
+            body:
+              application/json:
+                type: RegistryEntry
+          409:
+              description: Label is already used.
+      get:
+        displayName: ListOrganizationRegistry
+        description: Lists the RegistryEntries in an organization's registry.
+        responses:
+          200:
+            description: List of Registry Entries
+            body:
+              application/json:
+                    type: RegistryEntry[]
+    /registry/{key}:
+      delete:
+        securedBy: [oauth_2_0: { scopes: [ "user:admin" ] } ]
+        displayName: DeleteOrganizationRegistryEntry
+        description: Removes a RegistryEntry from the organization's registry
+        responses:
+          204:
+            description: RegistryEntry removed.
+
+      get:
+        displayName: GetOrganizationRegistryEntry
+        description: Get a RegistryEntry from the organization's registry.
+        responses:
+          200:
+            description: Registry Entry
+            body:
+              application/json:
+                type: RegistryEntry
+          404:
+            description: Not found
+
+    /dns:
+      securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
+      post:
+        displayName: CreateOrganizationDns
+        description: Creates a new DNS name associated with an organization
+        body:
+          application/json:
+            type: DnsAddress
+        responses:
+          409:
+            description: DNS name is already used.
+          201:
+            body:
+              application/json:
+                type: DnsAddress
+      /{dnsname}:
+        put:
+          displayName: UpdateOrganizationDns
+          description: Updates an existing DNS name associated with an organization
+          body:
+            application/json:
+              type: DnsAddress
+          responses:
+            200:
+              description: Renamed
+            409:
+              description: New DNS name is already used
+            404:
+              description: DNS Name not found
+        delete:
+          displayName: DeleteOrganizationDns
+          description: Removes a DNS name associated with an organization
+          responses:
+            204:
+              description: DNS name removed
+            404:
+              description: DNS Name not found
+
+    /tree:
+      securedBy: [oauth_2_0: { scopes: [ "organization:owner", "organization:member" ] } ]
+      get:
+        displayName: GetOrganizationTree
+        description: Tree structure of all suborganizations
+        responses:
+          200:
+            body:
+              application/json:
+                type: OrganizationTreeItem[]
+
+    /requiredscopes:
+      securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
+      post:
+        displayName: AddRequiredScope
+        description: Adds a required scope
+        body:
+          application/json:
+            type: RequiredScope
+        responses:
+          201:
+            description: Added the required scope to the organization.
+          409:
+            description: The required scope conflicts with an existing one
+      /{requiredscope}:
+        put:
+          displayName: UpdateRequiredScope
+          description: Updates a required scope
+          responses:
+            204:
+              description: Updated the required scope
+            404:
+              description: The required scope was not found.
+            409:
+              description: The new required scope conflicts with an existing one
+        delete:
+          displayName: DeleteRequiredScope
+          description: Deletes a required scope
+          responses:
+            204:
+              description: Deleted the required scope
+            404:
+              description: The required scope was not found.
+
+/companies:
+  post:
+    displayName: CreateCompany
+    description: Register a new company
+    body:
+      application/json:
+        type: Company
+  get:
+    displayName: GetCompanyList
+    description: Get companies. Authorization limits are applied to requesting user.
+    responses:
+      200:
+        body:
+          application/json:
+            type: Company[]
+  /{globalId}:
+    get:
+      displayName: GetCompany
+      securedBy: [oauth_2_0: { scopes: [ "company:read", "company:admin" ] } ]
+      description: Get organization info
+      responses:
+        200:
+          body:
+            application/json:
+              type: Company
+        401:
+          description: Unauthorized
+        404:
+          description: Not found
+    put:
+      displayName: UpdateCompany
+      securedBy: [oauth_2_0: { scopes: [ "company:admin" ] } ]
+      description: Update existing company. Updating ``globalId`` is not allowed.
+      responses:
+        200:
+          body:
+            application/json:
+              type: Company
+        403:
+          description: Updating globalId is Forbidden!
+    /info:
+      securedBy: [oauth_2_0: { scopes: [ "company:info" ] } ]
+      get:
+        displayName: GetCompanyInfo
+        responses:
+          200:
+            body:
+              application/json:
+                type: companyview
+    /validate:
+      get:
+        queryParameters:
+          token:
+            type: string
+
+    /contracts:
+      get:
+        displayName: GetCompanyContracts
+        securedBy: [oauth_2_0: { scopes: [ "company:admin", "company:contracts:read" ] } ]
+        description: Get the contracts where the organization is 1 of the parties. Order descending by date.
+        queryParameters:
+          includeExpired:
+            type: boolean
+            description: Include the expired contracts, by default only the active contracts are returned.
+            required: false
+          start:
+            type: integer
+            description: Start offset, useful for paging. Default is `0`.
+            required: false
+          max:
+            type: integer
+            description: Max page size, useful for paging. Default is `50`.
+            required: false
+            maximum: 250
+      post:
+          displayName: CreateCompanyContract
+          securedBy: [oauth_2_0: { scopes: [ "company:admin" ] } ]
+          description: Create a new contract.
+          body:
+            application/json:
+              type: Contract
+          responses:
+            201:
+              body:
+                application/json:
+                  type: Contract
+            401:
+              description: Unauthorized
+
+/contracts:
+  /{contractId}:
+    get:
+      displayName: GetContract
+      securedBy: [oauth_2_0: { scopes: [ "contract:read" ] } ]
+      description: Get a contract
+      responses:
+        200:
+          body:
+            application/json:
+              type: Contract
+        404:
+          description: Not found
+    /signatures:
+      post:
+        displayName: SignContract
+        securedBy: [oauth_2_0: { scopes: [ "contract:participant" ] } ]
+        description: Sign a contract
+        body:
+          application/json:
+            type: Signature

@@ -1,0 +1,21 @@
+<div flex layout="row">
+    <div flex></div>
+    <div layout="column" flex-gt-sm="80" flex="100" layout-padding>
+        <div layout ng-cloak>
+            <div flex="80">
+                <h1 ng-bind="::vm.requestingorganization"></h1>
+                <p translate='user.views.authorize.request'>Requests authorization to see some of your information</p>
+            </div>
+        </div>
+        <form ng-cloak method="post" layout="column" name="authorizeform" ng-submit="vm.submit($event)">
+            <authorization-details full></authorization-details>
+            <div style="margin-top: 10px;">
+                <div flex="100" flex-gt-sm="80" flex-gt-md="60" layout="row" layout-align="end center">
+                    <div flex></div>
+                    <md-button type="submit" class="md-raised md-primary" translate='user.views.authorize.authorize'>Authorize</md-button>
+                </div>
+            </div>
+        </form>
+    </div>
+    <div flex></div>
+</div>

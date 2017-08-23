@@ -33,11 +33,9 @@ func newVdiskManager(aggMq *aggmq.MQ, blockSize, flushSize int, configSource con
 	}
 }
 
-type flusherFactory func(vdiskID string, flusherConf *flusherConfig) (*flusher, error)
-
 // get or create the vdisk
 func (vt *vdiskManager) Get(ctx context.Context, vdiskID string, firstSequence uint64,
-	ff flusherFactory, conn *net.TCPConn, flusherConf *flusherConfig) (vd *vdisk, err error) {
+	conn *net.TCPConn, flusherConf *flusherConfig) (vd *vdisk, err error) {
 
 	vt.lock.Lock()
 	defer vt.lock.Unlock()
@@ -49,15 +47,9 @@ func (vt *vdiskManager) Get(ctx context.Context, vdiskID string, firstSequence u
 		return
 	}
 
-	// create the flusher
-	f, err := ff(vdiskID, flusherConf)
-	if err != nil {
-		return
-	}
-
 	// create vdisk
-	vd, err = newVdisk(ctx, vdiskID, vt.aggMq, vt.configSource, f,
-		firstSequence, flusherConf, vt.maxSegmentBufLen, vt.remove)
+	vd, err = newVdisk(ctx, vdiskID, vt.aggMq, vt.configSource,
+		firstSequence, flusherConf, vt.remove)
 	if err != nil {
 		return
 	}

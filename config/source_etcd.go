@@ -190,6 +190,7 @@ var etcdKeySuffixes = map[KeyType]string{
 	KeyVdiskNBD:        ":vdisk:conf:storage:nbd",
 	KeyVdiskTlog:       ":vdisk:conf:storage:tlog",
 	KeyClusterStorage:  ":cluster:conf:storage",
+	KeyClusterZeroStor: ":cluster:conf:zerostor",
 	KeyClusterTlog:     ":cluster:conf:tlog",
 	KeyNBDServerVdisks: ":nbdserver:conf:vdisks",
 }

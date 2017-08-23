@@ -52,11 +52,6 @@
   name = "github.com/stretchr/testify"
 
 [[constraint]]
-  # locked for now, as tlogserver is broken otherwise
-  revision = "29a747de4ae8017c16fbd08b2f0c4b8eee102df1"
-  name = "github.com/templexxx/reedsolomon"
-
-[[constraint]]
   branch = "master"
   name = "github.com/zero-os/0-log"
 

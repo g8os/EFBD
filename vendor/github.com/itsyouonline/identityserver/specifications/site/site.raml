@@ -1,0 +1,14 @@
+#%RAML 1.0
+title: ItsYouOnline
+version: 0.1
+baseUri: /
+/register:
+    description: Registration page
+    get:
+      displayName: Show user registration page
+      responses:
+        200:
+            body:
+                text/html: string
+    post:
+      displayName: Process user registration page

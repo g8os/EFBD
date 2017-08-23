@@ -9,8 +9,8 @@ import (
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
-	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
+	"github.com/zero-os/0-Disk/tlog/stor"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 )
 
@@ -19,7 +19,7 @@ import (
 // sent to tlog server
 type Player struct {
 	vdiskID      string
-	dec          *decoder.Decoder
+	storCli      *stor.Client
 	blockStorage storage.BlockStorage
 	connProvider ardb.ConnProvider
 	ctx          context.Context
@@ -35,30 +35,16 @@ func onReplayCbNone(seq uint64) error {
 }
 
 // NewPlayer creates new tlog player
-func NewPlayer(ctx context.Context, source config.Source, serverConfigs []config.StorageServerConfig,
-	vdiskID, privKey, hexNonce string, k, m int) (*Player, error) {
-	// create tlog redis pool
-	pool, err := tlog.AnyRedisPool(tlog.RedisPoolConfig{
-		VdiskID:                 vdiskID,
-		RequiredDataServerCount: k + m,
-		Source:                  source,
-		ServerConfigs:           serverConfigs,
-		AutoFill:                true,
-		AllowInMemory:           false,
-	})
-	if err != nil {
-		return nil, err
-	}
+func NewPlayer(ctx context.Context, source config.Source,
+	vdiskID, privKey string, k, m int) (*Player, error) {
 
 	// get config to create block storage
 	vdiskCfg, err := config.ReadVdiskStaticConfig(source, vdiskID)
 	if err != nil {
-		pool.Close()
 		return nil, err
 	}
 	nbdCfg, err := config.ReadNBDStorageConfig(source, vdiskID, vdiskCfg)
 	if err != nil {
-		pool.Close()
 		return nil, err
 	}
 
@@ -66,7 +52,6 @@ func NewPlayer(ctx context.Context, source config.Source, serverConfigs []config
 	// as the tlog player does not require hot reloading.
 	ardbProvider, err := ardb.StaticProvider(*nbdCfg, nil)
 	if err != nil {
-		pool.Close()
 		return nil, err
 	}
 
@@ -77,38 +62,41 @@ func NewPlayer(ctx context.Context, source config.Source, serverConfigs []config
 		BlockSize:       int64(vdiskCfg.BlockSize),
 	}, ardbProvider)
 	if err != nil {
-		pool.Close()
 		ardbProvider.Close()
 		return nil, err
 	}
 
-	return NewPlayerWithPoolAndStorage(ctx, pool, ardbProvider, blockStorage, vdiskID, privKey, hexNonce, k, m)
+	return NewPlayerWithStorage(ctx, source, ardbProvider, blockStorage, vdiskID, privKey, k, m)
 }
 
 // NewPlayerWithPoolAndStorage create new tlog player
-// with given redis pool and BlockStorage
-func NewPlayerWithPoolAndStorage(ctx context.Context, pool tlog.RedisPool,
+// with given BlockStorage
+func NewPlayerWithStorage(ctx context.Context, source config.Source,
 	connProvider ardb.ConnProvider, storage storage.BlockStorage,
-	vdiskID, privKey, hexNonce string, k, m int) (*Player, error) {
+	vdiskID, privKey string, k, m int) (*Player, error) {
 
-	dec, err := decoder.New(pool, k, m, vdiskID, privKey, hexNonce)
+	storConf, err := stor.ConfigFromConfigSource(source, vdiskID, privKey, k, m)
+	if err != nil {
+		return nil, err
+	}
+	storCli, err := stor.NewClient(storConf)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Player{
-		dec:          dec,
 		blockStorage: storage,
 		connProvider: connProvider,
 		ctx:          ctx,
 		vdiskID:      vdiskID,
+		storCli:      storCli,
 	}, nil
 
 }
 
 // Close releases all its resources
 func (p *Player) Close() error {
-	p.dec.Close()
+	p.storCli.Close()
 
 	// TODO:
 	// choose a universal error combinator solution
@@ -132,8 +120,6 @@ func (p *Player) Close() error {
 }
 
 // Replay replays the tlog by decoding data from the tlog blockchains.
-// lmt implements the decoder.Limiter interface which specify start and end of the
-// data we want to replay. It returns last sequence number it replayed.
 func (p *Player) Replay(lmt decoder.Limiter) (uint64, error) {
 	return p.ReplayWithCallback(lmt, onReplayCbNone)
 }
@@ -145,18 +131,18 @@ func (p *Player) ReplayWithCallback(lmt decoder.Limiter, onReplayCb OnReplayCb) 
 	var lastSeq uint64
 	var err error
 
-	aggChan := p.dec.Decode(lmt)
+	wrCh := p.storCli.Walk(lmt.FromEpoch(), lmt.ToEpoch())
 	for {
-		da, more := <-aggChan
+		wr, more := <-wrCh
 		if !more {
 			break
 		}
 
-		if da.Err != nil {
-			return lastSeq, da.Err
+		if wr.Err != nil {
+			return lastSeq, wr.Err
 		}
 
-		if lastSeq, err = p.ReplayAggregationWithCallback(da.Agg, lmt, onReplayCb); err != nil {
+		if lastSeq, err = p.ReplayAggregationWithCallback(wr.Agg, lmt, onReplayCb); err != nil {
 			return lastSeq, err
 		}
 	}

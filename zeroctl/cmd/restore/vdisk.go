@@ -16,13 +16,12 @@ import (
 
 // vdiskCfg is the configuration used for the restore vdisk command
 var vdiskCmdCfg struct {
-	TlogObjStorAddresses string
-	SourceConfig         config.SourceConfig
-	K, M                 int
-	PrivKey, HexNonce    string
-	StartTs              uint64 // start timestamp
-	EndTs                uint64 // end timestamp
-	Force                bool
+	SourceConfig config.SourceConfig
+	K, M         int
+	PrivKey      string
+	StartTs      uint64 // start timestamp
+	EndTs        uint64 // end timestamp
+	Force        bool
 }
 
 // VdiskCmd represents the restore vdisk subcommand
@@ -64,16 +63,8 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 
 	ctx := context.Background()
 
-	// parse optional server configs
-	serverConfigs, err := config.ParseCSStorageServerConfigStrings(vdiskCmdCfg.TlogObjStorAddresses)
-	if err != nil {
-		return fmt.Errorf(
-			"failed to parse given connection strings %q: %s",
-			vdiskCmdCfg.TlogObjStorAddresses, err.Error())
-	}
-
-	player, err := player.NewPlayer(ctx, configSource, serverConfigs, vdiskID,
-		vdiskCmdCfg.PrivKey, vdiskCmdCfg.HexNonce, vdiskCmdCfg.K, vdiskCmdCfg.M)
+	player, err := player.NewPlayer(ctx, configSource, vdiskID,
+		vdiskCmdCfg.PrivKey, vdiskCmdCfg.K, vdiskCmdCfg.M)
 	if err != nil {
 		return err
 	}
@@ -137,10 +128,6 @@ func checkVdiskExists(vdiskID string, configSource config.Source) error {
 }
 
 func init() {
-	VdiskCmd.Flags().StringVar(
-		&vdiskCmdCfg.TlogObjStorAddresses,
-		"storage-addresses", "",
-		"comma seperated list of redis compatible connectionstrings (format: '<ip>:<port>[@<db>]', eg: 'localhost:16379,localhost:6379@2'), if given, these are used for all vdisks, ignoring the given config")
 	VdiskCmd.Flags().Var(
 		&vdiskCmdCfg.SourceConfig, "config",
 		"config resource: dialstrings (etcd cluster) or path (yaml file)")
@@ -156,10 +143,6 @@ func init() {
 		&vdiskCmdCfg.PrivKey,
 		"priv-key", "12345678901234567890123456789012",
 		"private key")
-	VdiskCmd.Flags().StringVar(
-		&vdiskCmdCfg.HexNonce,
-		"nonce", "37b8e8a308c354048d245f6d",
-		"hex nonce used for encryption")
 	VdiskCmd.Flags().Uint64Var(
 		&vdiskCmdCfg.StartTs,
 		"start-timestamp", 0,

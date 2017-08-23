@@ -77,6 +77,7 @@ const (
 	KeyVdiskNBD
 	KeyVdiskTlog
 	KeyClusterStorage
+	KeyClusterZeroStor
 	KeyClusterTlog
 	KeyNBDServerVdisks
 )
