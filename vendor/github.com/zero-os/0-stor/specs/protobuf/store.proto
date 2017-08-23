@@ -1,0 +1,168 @@
+syntax = "proto3";
+
+// Types
+message Emtpy {
+}
+
+// message ACL {
+//     bool read = 1;
+//     bool write = 2;
+//     bool delete = 3;
+//     bool admin = 4;
+// }
+message Namespace {
+    string label = 1;
+    int64 spaceAvailale = 2;
+    int64 spaceUsed = 3;
+    int64 readRequestPerHour = 4;
+    int64 writeRequestPerHour = 5;
+    int64 nrObjects = 6;
+}
+
+// message NamespaceStat {
+//     int64 requestPerHour = 1;
+//     int64 nrObjects = 2;
+// }
+
+// message Reservation {
+//     string id = 1;
+//     string adminID  = 2; //ItYou.Online ID of the user that has right to administrate this reservation
+//     int64 created = 3; // timestamp of the date of creation of the reservation
+//     int64 updated = 4; // timestamp of the date of when the reservation has been renewed the last time
+//     int64 sizeReserved = 5;
+//     int64 sizeUsed = 6;
+//     int64 expireAt = 7; //timestamp of the expiration date
+// }
+
+message Object {
+    bytes key = 1;
+    bytes value = 2;
+    repeated string referenceList = 3;
+    // map<string, string> tags = 3;
+}
+
+// Namespace management
+message GetNamespaceRequest {
+    string label = 1;
+}
+message GetNamespaceReply {
+    Namespace namespace = 1;
+}
+
+service NamespaceManager {
+    rpc Get (GetNamespaceRequest) returns (GetNamespaceReply) {}
+}
+
+// Reservation management
+// Disabled for now, until reservation has been moved to blockchain
+
+// message CreateReservationRequest {
+//     string label = 1;
+//     int64 size = 2; // size to reserve in MiB
+//     int64 period = 3; //Number of days
+// }
+// message CreateReservationReply {
+//     Reservation reservation = 1;
+// }
+//
+// message ListReservationRequest {
+//     string label = 1;
+// }
+// message ListReservationReply {
+//     repeated Reservation reservations = 1;
+// }
+//
+// message GetReservationRequest {
+//     string label = 1;
+//     string id = 2;
+// }
+// message GetReservationReply {
+//     Reservation reservation = 1;
+// }
+//
+// message RenewReservationRequest {
+//     string label = 1;
+//     string id = 2;
+//     int64 size = 3; // size to reserve in MiB
+//     int64 period = 4; //Number of days
+// }
+// message RenewReservationReply {
+//     Reservation reservation = 1;
+// }
+//
+// service ReservationManager {
+//     rpc Create (CreateObjectRequest) returns (CreateReservationReply) {}
+//     rpc List (ListReservationRequest) returns (stream Reservation) {}
+//     rpc Get (GetReservationRequest) returns (GetReservationReply) {}
+//     rpc Renew (RenewReservationRequest) returns (RenewReservationReply) {}
+// }
+
+// Object management
+message ListObjectsRequest {
+    string label = 1;
+}
+// message ListObjectsReply {
+//     repeated string ids = 1;
+// }
+
+message CreateObjectRequest {
+    string Label = 1;
+    Object object = 2;
+}
+message CreateObjectReply {}
+
+message ExistsObjectRequest {
+    string Label = 1;
+    bytes key = 2;
+}
+message ExistsObjectReply {
+    bool exists = 1;
+}
+
+message GetObjectRequest {
+    string Label = 1;
+    bytes key = 2;
+}
+message GetObjectReply {
+    Object object = 2;
+}
+
+message DeleteObjectRequest {
+    string Label = 1;
+    bytes key = 2;
+}
+message DeleteObjectReply {}
+
+message UpdateReferenceListRequest{
+    string label = 1;
+    bytes key = 2;
+    repeated string referenceList = 3;
+}
+
+message UpdateReferenceListReply {}
+
+message CheckRequest {
+    string label = 1;
+    repeated string ids = 2;
+}
+
+message CheckResponse {
+    string id = 1;
+    Status status = 2;
+
+    enum Status {
+        ok = 0;
+        corrupted = 1;
+        missing = 2;
+  }
+}
+
+service ObjectManager {
+    rpc Create (CreateObjectRequest) returns (CreateObjectReply) {}
+    rpc List (ListObjectsRequest) returns (stream Object) {}
+    rpc Get (GetObjectRequest) returns (GetObjectReply) {}
+    rpc Exists (ExistsObjectRequest) returns (ExistsObjectReply) {}
+    rpc Delete (DeleteObjectRequest) returns (DeleteObjectReply) {}
+    rpc UpdateReferenceList(UpdateReferenceListRequest) returns (UpdateReferenceListReply) {}
+    rpc Check(CheckRequest) returns (stream CheckResponse) {}
+}

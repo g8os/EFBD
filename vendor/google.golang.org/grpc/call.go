@@ -23,8 +23,7 @@ import (
 	"io"
 	"time"
 
-	"context"
-
+	"golang.org/x/net/context"
 	"golang.org/x/net/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/peer"
@@ -75,9 +74,6 @@ func recvResponse(ctx context.Context, dopts dialOptions, t transport.ClientTran
 		dopts.copts.StatsHandler.HandleRPC(ctx, inPayload)
 	}
 	c.trailerMD = stream.Trailer()
-	if peer, ok := peer.FromContext(stream.Context()); ok {
-		c.peer = peer
-	}
 	return nil
 }
 
@@ -262,6 +258,9 @@ func invoke(ctx context.Context, method string, args, reply interface{}, cc *Cli
 				continue
 			}
 			return toRPCErr(err)
+		}
+		if peer, ok := peer.FromContext(stream.Context()); ok {
+			c.peer = peer
 		}
 		err = sendRequest(ctx, cc.dopts, cc.dopts.cp, &c, callHdr, stream, t, args, topts)
 		if err != nil {

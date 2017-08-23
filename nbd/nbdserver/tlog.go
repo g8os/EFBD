@@ -17,9 +17,8 @@ import (
 )
 
 const (
-	tlogFlushWaitFirstRetry  = 5 * time.Second  // retry(1st) force flush after this timeout
-	tlogFlushWaitSecondRetry = 10 * time.Second // retry(2nd) force flush after this timeout
-	tlogFlushWait            = 15 * time.Second // maximum duration we wait for flush to finish
+	tlogFlushWaitRetry    = 5 * time.Second // retry force flush after this timeout
+	tlogFlushWaitRetryNum = 3
 )
 
 // newTlogStorage creates a tlog storage BlockStorage,
@@ -228,17 +227,22 @@ func (tls *tlogStorage) Flush() (err error) {
 	}()
 
 	var finished bool
+	var forceFlushNum int
 	for !finished {
 		select {
-		case <-time.After(tlogFlushWait):
-			// if timeout, signal the condition variable anyway
-			// to avoid the goroutine blocked forever
-			tls.cacheEmptyCond.Signal()
-			return errFlushTimeout
-		case <-time.After(tlogFlushWaitFirstRetry): // retry it
+		case <-time.After(tlogFlushWaitRetry): // retry it
 			tls.tlog.ForceFlushAtSeq(latestSeq)
-		case <-time.After(tlogFlushWaitSecondRetry): // retry it
-			tls.tlog.ForceFlushAtSeq(latestSeq)
+
+			forceFlushNum++
+
+			if forceFlushNum >= tlogFlushWaitRetryNum {
+				// if reach max retry number
+				// signal the condition variable anyway
+				// to avoid the goroutine blocked forever
+				tls.cacheEmptyCond.Signal()
+				return errFlushTimeout
+			}
+
 		case <-doneCh:
 			// wait returned
 			finished = true

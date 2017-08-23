@@ -1,0 +1,87 @@
+<md-dialog>
+    <form name="dataform">
+        <md-toolbar>
+            <div class="md-toolbar-tools">
+                <h2><span ng-if="::!originalLabel" translate='add_avatar'>Add an avatar</span>
+                    <span ng-if="::originalLabel" translate='avatar'>Avatar</span></h2>
+                <span flex></span>
+                <md-button class="md-icon-button" ng-click="cancel()">
+                    <md-icon md-svg-src="assets/img/ic_close_24px.svg" aria-label translate-attr="{ 'aria-label': 'closedialog' }"></md-icon>
+                </md-button>
+            </div>
+        </md-toolbar>
+        <md-dialog-content>
+            <div class="md-dialog-content avatar-label-input" layout="column">
+                <md-input-container>
+                    <label translate='label'>Label</label>
+                    <input ng-model="data.label" minlength="2" required type="text" md-autofocus="true"
+                           name="labelinput" md-maxlength="50" ng-pattern="/^[a-zA-Z\d\-_\s]{2,50}$/">
+                    <div ng-messages="dataform.labelinput.$error">
+                        <div ng-message="minlength" translate='labelminlength'>At least 2 characters required</div>
+                        <div ng-message="md-maxlength" translate='labelmaxlength'>The label cannot be longer than 50 characters</div>
+                        <div ng-message="pattern" translate="invalid_label"></div>
+                    </div>
+                    <div ng-messages="validationerrors" md-auto-hide="false">
+                        <div ng-message="duplicate_label, duplicate" translate='labelduplicate'>This label is already used</div>
+                        <div ng-message="reserved_label, assign_reserved_label" translate='reserved_label'>This label is reserved, please use another one</div>
+                        <div ng-message="changing_protected_label" translate='changing_protected_label'>This label is protected and cannot be changed</div>
+                        <div ng-message="max_avatar_amount" translate='max_avatar_amount'>You have reached the maximum amount of avatars.</div>
+                        <div ng-message="delete_protected_label" translate='delete_protected_label'>This label is protected and can't be deleted</div>
+                        <div ng-message="file_too_large" translate='avatar_file_too_large'>The file is too large, the maximum upload limit is 100KB.</div>
+                    </div>
+                </md-input-container>
+                <div layout=row layout-align='space-between center'>
+                    <span translate='avatar_url'>avatar url</span>
+                    <md-switch ng-model="data.fileupload" aria-label="Avatar uses a file uploaded on ItsYou.Online" translate-attr="{ 'aria-label': 'avatar_file_upload' }"></md-switch>
+                    <span translate='avatar_file'>avatar file></span>
+                </div>
+            </div>
+            <div class="md-dialog-content avatar-link-upload" layout="column" ng-if="!data.fileupload">
+                <md-input-container class='avatar-link-input'>
+                    <label translate='avatar_url'>Avatar url</label>
+                    <input ng-model="data.link" required type="text" name="avatarlink"/>
+                </md-input-container>
+            </div>
+            <div class="md-dialog-content avatar-file-upload" layout="column" ng-if="data.fileupload">
+                <label for='upload-avatar-file' class='md-button md-raised md-primary'
+                    md-ink-ripple translate='upload_avatar'>Upload avatar</label>
+                <md-input-container class='fake-container'>
+                    <input accept="image/*" type="file" name="avatarfile"
+                        id='upload-avatar-file' custom-on-change="updateFile"
+                        aria-label="Upload avatar button"
+                        translate-attr="{ 'aria-label': 'upload_avatar_button' }"/>
+                    <div ng-messages="validationerrors" md-auto-hide="false">
+                        <div ng-message='no_file_selected' translate='no_file_selected'>No file selected</div>
+                    </div>
+                </md-input-container>
+            </div>
+            <div class='md-dialog-content avatar-container' layout='column' flex layout-align='center center'>
+                <md-list>
+                    <md-list-item class="md-1-line" aria-label="Avatar" ng-if='data.fileupload'>
+                        <img ng-src="{{data.file}}" id='avatar-file-preview'
+                            class="md-avatar avatar-preview" ng-show='data.file'/>
+                    </md-list-item>
+                    <md-list-item class="md-1-line" aria-label="Avatar" ng-if='!data.fileupload'>
+                        <img ng-src="{{data.link}}" class="md-avatar avatar-preview"
+                            ng-show='data.link'/>
+                    </md-list-item>
+                </md-list>
+            </div>
+        </md-dialog-content>
+        <md-dialog-actions layout="row" layout-align="space-between center">
+            <md-button class="md-warn" ng-click="remove(originalLabel)" ng-if="::originalLabel" translate='delete'>
+                Delete
+            </md-button>
+            <span flex></span>
+            <md-button ng-click="cancel()" translate='cancel'>
+                Cancel
+            </md-button>
+            <md-button class="md-primary" type="submit" ng-click="create(data)" ng-if="::!originalLabel" translate='create'>
+                Create
+            </md-button>
+            <md-button class="md-primary" type="submit" ng-click="update(originalLabel, data)" ng-if="::originalLabel" translate='save'>
+                Save
+            </md-button>
+        </md-dialog-actions>
+    </form>
+</md-dialog>

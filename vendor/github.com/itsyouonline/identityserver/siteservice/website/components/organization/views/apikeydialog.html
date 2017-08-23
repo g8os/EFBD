@@ -1,0 +1,78 @@
+<md-dialog>
+    <form name="apikeyform">
+        <md-toolbar>
+            <div class="md-toolbar-tools">
+                <h2><span ng-if="!apikey.secret" translate='organization.views.apikeydialog.createkey'>Create API Key</span>
+                    <span ng-if="apikey.secret" translate='organization.views.apikeydialog.key'>API Key</h2>
+                <span flex></span>
+                <md-button class="md-icon-button" ng-click="cancel()">
+                    <md-icon md-svg-src="assets/img/ic_close_24px.svg" aria-label="Close dialog" translate-attr="{ 'aria-label': 'closedialog' }"></md-icon>
+                </md-button>
+            </div>
+        </md-toolbar>
+        <md-dialog-content>
+            <div class="md-dialog-content" layout="column">
+                <md-input-container>
+                    <label translate='label'>Label</label>
+                    <input ng-model="label" minlength="2" required type="text" md-autofocus="true" name="labelinput"
+                           md-maxlength="50" ng-pattern="/^[a-zA-Z\d\-_\s]{2,50}$/">
+                    <div ng-messages="apikeyform.labelinput.$error">
+                        <div ng-message="minlength" translate='labelminlength'>At least 2 characters required</div>
+                        <div ng-message="md-maxlength" translate='labelmaxlength'>The label cannot be longer than 50 characters</div>
+                    </div>
+                    <div ng-messages="validationerrors" md-auto-hide="false">
+                        <div ng-message="duplicate" translate='labelduplicate'>This label is already used</div>
+                    </div>
+                </md-input-container>
+                <md-input-container>
+                    <label translate='organization.views.apikeydialog.callback'>Callback URL</label>
+                    <input ng-model="apikey.callbackURL" type="text" name="callbackurl" md-maxlength="250">
+                    <div ng-messages="apikeyform.callbackurl.$error">
+                        <div ng-message="required" translate='organization.views.apikeydialog.callbackrequired'>This field is required</div>
+                        <div ng-message="md-maxlength" translate='organization.views.apikeydialog.callbackmaxlength'>The callback url cannot be longer than 250 characters</div>
+                    </div>
+                </md-input-container>
+                <div>
+                    <md-switch ng-model="apikey.clientCredentialsGrantType">
+                        <span translate='organization.views.apikeydialog.clientcredentials'>May be used in client credentials grant types</span>
+                    </md-switch>
+                    <md-tooltip>
+                        <span translate='organization.views.apikeydialog.clientcredentialshelp'>An application without a UI can use this key to access the information of this organization
+                            without a user granting access
+                        </span>
+                    </md-tooltip>
+                </div>
+                <md-input-container>
+                    <label translate='organization.views.apikeydialog.secret'>Secret</label>
+                    <input ng-model="apikey.secret" type="text" disabled placeholder="- generated when saved -"
+                          translate-attr="{placeholder: 'organization.views.apikeydialog.secretplaceholder'}"/>
+                </md-input-container>
+                <div>
+                    <p translate='organization.views.apikeydialog.secrethelp' translate-value-organization="{{organization}}">
+                        To use this API secret, use "<span ng-bind="::organization"></span>" as clientid and this API secret as client secret.
+                    </p>
+                </div>
+            </div>
+        </md-dialog-content>
+        <md-dialog-actions layout="row" layout-align="space-between center">
+            <md-button class="md-warn" ng-click="deleteAPIKey(savedLabel)" ng-if="apikey.secret" translate='delete'>
+                Delete
+            </md-button>
+            <span flex></span>
+            <md-button ng-click="cancel()" ng-if="!apikey.secret || originalLabel" translate='cancel'>
+                Cancel
+            </md-button>
+            <md-button class="md-primary" type="submit" ng-click="create(label, apikey)" ng-if="!apikey.secret"
+                       ng-disabled="!apikeyform.$valid" translate='create'>
+                Create
+            </md-button>
+            <md-button class="md-primary" type="submit" ng-click="update(savedLabel, label)"
+                       ng-if="apikey.secret && originalLabel" ng-disabled="!apikeyform.$valid" translate='save'>
+                Save
+            </md-button>
+            <md-button class="md-primary" type="submit" ng-click="cancel()" ng-if="apikey.secret && (!originalLabel)" translate='ok'>
+                OK
+            </md-button>
+        </md-dialog-actions>
+    </form>
+</md-dialog>

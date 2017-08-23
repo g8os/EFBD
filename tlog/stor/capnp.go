@@ -2,14 +2,13 @@ package stor
 
 import (
 	"bytes"
-	"time"
 
 	"zombiezen.com/go/capnproto2"
 
 	"github.com/zero-os/0-Disk/tlog/schema"
 )
 
-func (c *Client) encodeCapnp(blocks []*schema.TlogBlock) ([]byte, error) {
+func (c *Client) encodeCapnp(blocks []*schema.TlogBlock, timestamp uint64) ([]byte, error) {
 	// create the aggregation object
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(c.capnpBuf))
 	if err != nil {
@@ -21,7 +20,7 @@ func (c *Client) encodeCapnp(blocks []*schema.TlogBlock) ([]byte, error) {
 	}
 
 	agg.SetSize(uint64(len(blocks)))
-	agg.SetTimestamp(uint64(time.Now().UnixNano()))
+	agg.SetTimestamp(timestamp)
 	agg.SetVdiskID(c.vdiskID)
 
 	// insert the blocks to the aggregation

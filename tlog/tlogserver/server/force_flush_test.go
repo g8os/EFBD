@@ -19,21 +19,27 @@ import (
 // 4. create goroutine to wait for force flushed seq
 // 5. client send the logs
 func TestForceFlushAtSeq(t *testing.T) {
+	const (
+		vdiskID       = "1234567890"
+		firstSequence = 0
+	)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
 	// Step #1
 	// create and start server
-	s, conf, err := createTestServer(t, 1000)
+	conf := testConf
+	conf.FlushTime = 1000
+	cleanFunc, stubSource, _ := newZeroStorConfig(t, vdiskID, conf.PrivKey, conf.K, conf.M)
+	defer cleanFunc()
+
+	// start the server
+	s, err := NewServer(conf, stubSource)
 	assert.Nil(t, err)
 
 	go s.Listen(ctx)
 
 	t.Logf("listen addr=%v", s.ListenAddr())
-	const (
-		vdiskID       = "12345"
-		firstSequence = 0
-	)
 
 	// #Step 2
 	numLogs := conf.FlushSize + 10
@@ -91,21 +97,27 @@ func TestForceFlushAtSeqPossibleRace(t *testing.T) {
 // 4. client send the logs
 // 5. client force flushed that sequence
 func testForceFlushAtSeqPossibleRace(t *testing.T, withSleep bool) {
+	const (
+		vdiskID       = "12345"
+		firstSequence = 0
+	)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
 	// Step #1
 	// create and start server
-	s, conf, err := createTestServer(t, 1000)
+	conf := testConf
+	conf.FlushTime = 1000
+	cleanFunc, stubSource, _ := newZeroStorConfig(t, vdiskID, conf.PrivKey, conf.K, conf.M)
+	defer cleanFunc()
+
+	// start the server
+	s, err := NewServer(conf, stubSource)
 	assert.Nil(t, err)
 
 	go s.Listen(ctx)
 
 	t.Logf("listen addr=%v", s.ListenAddr())
-	const (
-		vdiskID       = "12345"
-		firstSequence = 0
-	)
 
 	// #Step 2
 	numLogs := conf.FlushSize + 10

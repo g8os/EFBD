@@ -1,28 +1,59 @@
 package stor
 
 import (
-	"github.com/zero-os/0-stor/client/meta"
+	"context"
+	"time"
+
+	"github.com/coreos/etcd/clientv3"
 )
 
-func (c *Client) getLastMetaKey() (metaKey []byte, md *meta.Meta, err error) {
-	md, err = c.storClient.GetMeta(c.lastMetaEtcdKey)
-	if err != nil {
-		return
-	}
+const (
+	metaOpTimeout = 10 * time.Second
+)
 
-	metaKey, err = md.Key()
-	if err != nil {
-		return
-	}
-
-	md, err = c.storClient.GetMeta(metaKey)
-	return
+func newEtcdClient(shards []string) (*clientv3.Client, error) {
+	return clientv3.New(clientv3.Config{
+		Endpoints:   shards,
+		DialTimeout: metaOpTimeout,
+	})
 }
-func (c *Client) saveLastMetaKey(key []byte) error {
-	md, err := meta.New(key, 0, nil)
+
+func (c *Client) getRawMeta(key []byte) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), metaOpTimeout)
+	defer cancel()
+
+	resp, err := c.metaCli.Get(ctx, string(key))
 	if err != nil {
-		return err
+		return nil, err
+	}
+	if len(resp.Kvs) != 1 {
+		return nil, nil
 	}
 
-	return c.storClient.PutMeta(c.lastMetaEtcdKey, md)
+	return resp.Kvs[0].Value, nil
+
+}
+
+func (c *Client) getFirstMetaKey() ([]byte, error) {
+	return c.getRawMeta(c.firstMetaEtcdKey)
+}
+
+func (c *Client) saveFirstMetaKey() error {
+	return c.saveRawMeta(c.firstMetaEtcdKey, c.firstMetaKey)
+}
+
+func (c *Client) getLastMetaKey() ([]byte, error) {
+	return c.getRawMeta(c.lastMetaEtcdKey)
+}
+
+func (c *Client) saveLastMetaKey() error {
+	return c.saveRawMeta(c.lastMetaEtcdKey, c.lastMetaKey)
+}
+
+func (c *Client) saveRawMeta(key, val []byte) error {
+	ctx, cancel := context.WithTimeout(context.Background(), metaOpTimeout)
+	defer cancel()
+
+	_, err := c.metaCli.Put(ctx, string(key), string(val))
+	return err
 }

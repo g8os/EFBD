@@ -23,6 +23,10 @@ import (
 // (5) Client #2 send another (n*FlushSize) logs
 // (6) Client #2 must receive flush response for all of it's logs
 func TestResetFirstSequence(t *testing.T) {
+	const (
+		additionalLogs = 5
+		vdiskID        = "12345"
+	)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
@@ -30,20 +34,16 @@ func TestResetFirstSequence(t *testing.T) {
 	conf := testConf
 	conf.FlushTime = 100 // make it high value to avoid flush by timeout
 
-	// create inmemory redis pool factory
-	poolFactory := tlog.InMemoryRedisPoolFactory(conf.RequiredDataServers())
+	cleanFunc, stubSource, _ := newZeroStorConfig(t, vdiskID, conf.PrivKey, conf.K, conf.M)
+	defer cleanFunc()
 
 	// start the server
-	s, err := NewServer(conf, nil, poolFactory)
+	s, err := NewServer(conf, stubSource)
 	assert.Nil(t, err)
 
 	go s.Listen(ctx)
 
 	t.Logf("listen addr=%v", s.ListenAddr())
-	const (
-		additionalLogs = 5
-		vdiskID        = "12345"
-	)
 	firstNumLogs := conf.FlushSize + additionalLogs
 
 	// Step #1

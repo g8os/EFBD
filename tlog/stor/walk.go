@@ -9,6 +9,7 @@ type WalkResult struct {
 	Err error
 }
 
+// Walk walks the history from fromEpoch to toEpoch.
 func (c *Client) Walk(fromEpoch, toEpoch uint64) <-chan *WalkResult {
 
 	wrCh := make(chan *WalkResult, 2)
@@ -33,20 +34,8 @@ func (c *Client) Walk(fromEpoch, toEpoch uint64) <-chan *WalkResult {
 				return
 			}
 
-			// check the epoch
-			epoch := agg.Timestamp()
-			if epoch < fromEpoch {
-				// still long way to go, proceed to next key
-				continue
-			}
-			if epoch > toEpoch {
-				// we passed it
-				return
-			}
-
 			wr.Agg = agg
 			wrCh <- wr
-			return
 		}
 	}()
 	return wrCh

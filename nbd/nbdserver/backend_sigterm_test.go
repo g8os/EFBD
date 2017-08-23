@@ -2,10 +2,9 @@ package main
 
 import (
 	"context"
-	"syscall"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
@@ -45,16 +44,12 @@ func TestBackendSigtermHandler(t *testing.T) {
 	testBackendSigtermHandler(ctx, t, vdiskID, blockSize, size, blockStorage)
 
 	// test Tlog Storage
-	testBackendSigtermHandler(ctx, t, vdiskID, blockSize, size, func() storage.BlockStorage {
+	tlogStorage, cleanup := func() (storage.BlockStorage, func()) {
 		storage := newInMemoryStorage(vdiskID, blockSize)
-		if !assert.NotNil(t, storage) {
-			return nil
-		}
+		require.NotNil(t, storage)
 
-		tlogrpc := newTlogTestServer(context.Background(), t)
-		if !assert.NotEmpty(t, tlogrpc) {
-			return nil
-		}
+		tlogrpc, cleanup := newTlogTestServer(context.Background(), t, vdiskID)
+		require.NotEmpty(t, tlogrpc)
 
 		source := config.NewStubSource()
 		defer source.Close()
@@ -63,24 +58,23 @@ func TestBackendSigtermHandler(t *testing.T) {
 		})
 
 		tls, err := newTlogStorage(ctx, vdiskID, "tlogcluster", source, blockSize, storage, nil)
-		if !assert.NoError(t, err) || !assert.NotNil(t, tls) {
-			return nil
-		}
+		require.NoError(t, err)
+		require.NotNil(t, tls)
 
-		return tls
-	}())
+		return tls, cleanup
+	}()
+	defer cleanup()
+
+	testBackendSigtermHandler(ctx, t, vdiskID, blockSize, size, tlogStorage)
 }
 
 func testBackendSigtermHandler(ctx context.Context, t *testing.T, vdiskID string, blockSize int64, size uint64, storage storage.BlockStorage) {
-	if !assert.NotNil(t, storage) {
-		return
-	}
+	require.NotNil(t, storage)
 
-	vComp := new(vdiskCompletion)
+	vComp := newVdiskCompletion()
 	backend := newBackend(vdiskID, size, blockSize, storage, vComp, nil)
-	if !assert.NotNil(t, backend) {
-		return
-	}
+	require.NotNil(t, backend)
+
 	go backend.GoBackground(ctx)
 	defer backend.Close(ctx)
 
@@ -90,18 +84,16 @@ func testBackendSigtermHandler(ctx context.Context, t *testing.T, vdiskID string
 	}
 
 	bw, err := backend.WriteAt(ctx, someContent, 0)
-	if !assert.NoError(t, err) || !assert.Equal(t, blockSize, bw) {
-		return
-	}
-	bw, err = backend.WriteAt(ctx, someContent, blockSize)
-	if !assert.NoError(t, err) || !assert.Equal(t, blockSize, bw) {
-		return
-	}
+	require.NoError(t, err)
+	require.Equal(t, blockSize, bw)
 
-	// sending SIGTERM
-	syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+	bw, err = backend.WriteAt(ctx, someContent, blockSize)
+	require.NoError(t, err)
+	require.Equal(t, blockSize, bw)
+
+	vComp.StopAll()
 
 	// make sure we get completion error object
 	errs := vComp.Wait()
-	assert.Equal(t, 0, len(errs), "expected no errs, but received: %v", errs)
+	require.Equal(t, 0, len(errs), "expected no errs, but received: %v", errs)
 }

@@ -1,0 +1,18 @@
+version: '2'
+
+services:
+
+  identityserver:
+    build: .
+    ports:
+      - "8443:8443"
+    volumes:
+      - .:/go/src/github.com/itsyouonline/identityserver
+    links:
+      - mongo
+    command: -c "mongo:27017"
+
+  mongo:
+    image: mongo
+    ports:
+      - "27017:27017"

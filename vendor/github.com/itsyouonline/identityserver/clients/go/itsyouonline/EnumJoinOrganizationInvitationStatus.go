@@ -1,0 +1,9 @@
+package itsyouonline
+
+type EnumJoinOrganizationInvitationStatus string
+
+const (
+	EnumJoinOrganizationInvitationStatuspending  EnumJoinOrganizationInvitationStatus = "pending"
+	EnumJoinOrganizationInvitationStatusaccepted EnumJoinOrganizationInvitationStatus = "accepted"
+	EnumJoinOrganizationInvitationStatusrejected EnumJoinOrganizationInvitationStatus = "rejected"
+)

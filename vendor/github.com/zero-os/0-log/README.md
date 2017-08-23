@@ -20,17 +20,20 @@ Multi-line:
 ```
 
 ## Supported log levels
+
 The package currently supports following log levels from the [0-Core log monitor][monitorLevels]:
 
 * 1: stdout
 * 2: stderr
+* 10: statistics/monitoring message
 * 20: result message, JSON
 
 ## Usage
+
 ```go
 package main
 
-import zerolog "github.com/zero-os/0-log"
+import "github.com/zero-os/0-log"
 
 func main() {
     // print to the zero-os stdout (single-line)
@@ -42,8 +45,7 @@ func main() {
     // output: 2::Hello world 
 
     // print a multi-line message
-    // Log() detects if a message is multi-lined
-    // and applies the multi-line format if it is
+    // Log() detects if a message is multi-lined and applies the multi-line format if so
     zerolog.Log(zerolog.LevelStdout, "Hello\nworld")
     /* output: 
     1:::
@@ -52,11 +54,30 @@ func main() {
     :::
     */
 
+    // print a statistics message
+    msgStat := zerolog.MsgStatistics{
+        // statistic key (required)
+        Key: "somekey",
+        // statistic value (float)
+        // (required)
+        Value: 123.456,
+        // statistic aggregation strategy (average or differentiate)
+        // (required)
+        Operation: zerolog.AggregationAverages,
+        // statistics tags map (optional)
+        Tags: zerolog.MetricTags{
+            "foo":   "bar",
+            "hello": "world",
+        },
+    }
+    zerolog.Log(zerolog.LevelStatistics, msgStat)
+    // output: 10::somekey:123.456000|A|foo=bar,hello=world
+
     // print a json result message
-	type testStruct struct {
-		Message string `json:"message"`
-	}
-	zerolog.Log(zerolog.LevelJSON, testStruct{
+    type testStruct struct {
+        Message string `json:"message"`
+    }
+    zerolog.Log(zerolog.LevelJSON, testStruct{
         Message: "Hello world",
     })
     // output: 20::{"message":"Hello world"}

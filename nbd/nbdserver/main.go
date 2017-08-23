@@ -180,7 +180,7 @@ func handleSigterm(bf *backendFactory, cancelFunc context.CancelFunc) {
 	go func() {
 		<-sigs
 
-		errs := bf.Wait()
+		errs := bf.StopAndWait()
 		for _, err := range errs {
 			// TODO : log to stderr properly
 			// depends on : https://github.com/zero-os/0-Disk/issues/300

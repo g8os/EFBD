@@ -1,0 +1,533 @@
+{
+    "accept": "Aanvaardt",
+    "add": "Voeg toe",
+    "address": "Adres",
+    "bank_account": "Bankrekening",
+    "cancel": "Annuleer",
+    "change": "Wijzig",
+    "close": "Sluiten",
+    "closedialog": "Sluit dialoogventer",
+    "country": "Land",
+    "create": "Maak",
+    "currency_symbol": "Valuta symbool",
+    "delete": "Verwijder",
+    "dial_code": "Kiescode",
+    "digital_wallet_address": "Digital wallet adres",
+    "emailmaxlength": "The email address cannot be longer than 80 characters",
+    "email_address": "Email adres",
+    "error": "Fout",
+    "facebook_account": "Facebook account",
+    "field_required": "Dit veld is verplicht.",
+    "full_access": "Volledige toegang",
+    "full_name": "Volledige naam",
+    "github_account": "Github account",
+    "invalid_email_address": "Ongeldig email adres",
+    "invalid_label": "Ongeldig label",
+    "invalid_username": "Ongeldige gebruikersnaam. Enkel tekens a-z, 0-9, streepjes, underscores en spaties zijn toegelaten",
+    "invalidphonenumber": "Ongeldig telefoonnummer",
+    "invited_on_date": "Uitgenodigt op {{timestamp}}",
+    "label": "Label",
+    "labelduplicate": "Dit label wordt al gebruikt",
+    "labelmaxlength": "Het label kan niet langer zijn dan 50 karakters",
+    "labelminlength": "Er zijn minstens 2 tekens nodig",
+    "login": {
+        "views": {
+            "forgotpassword": {
+                "forgotpassword": "Wachtwoord vergeten",
+                "recoverymailsend": "Een herstel email is gestuurd.",
+                "user": "Gebruikersnaam of email",
+                "userminlength": "Er zijn minstens 2 tekens nodig",
+                "userinvalid": "Een gebruiker met deze gebruikersnaam of email is niet gevonden",
+                "sendrecoverymail": "Stuur herstel email",
+                "back": "Terug naar inloggen"
+            },
+            "loginform": {
+                "login": "Inloggen",
+                "loginhelp": "Je kan inloggen met je gebruikersnaam, bevestigde email of telefoonnummer.",
+                "loginplaceholder": "Gebruikersnaam, email adres of telefoonnummer",
+                "password": "Wachtwoord",
+                "invalidcredentials": "Ongeldige credentials",
+                "forgotpassword": "Wachtwoord vergeten?",
+                "loginbtn": "Inloggen"
+            },
+            "resetpassword": {
+                "forgotpassword": "Wachtwoord vergeten",
+                "newpassword": "Nieuw wachtwoord",
+                "newpasswordminlength": "Er zijn minstens 6 tekens nodig",
+                "confirmnewpass": "Bevestig nieuw wachtwoord",
+                "passwordmatch": "De wachtwoorden komen niet overeen",
+                "submit": "Dien in"
+            },
+            "twofactorauthentication": {
+                "login": "Inloggen",
+                "method": "Authenticatie methode",
+                "code": "Code",
+                "invalidcode": "Ongeldige code",
+                "codelength": "De code moet 6 tekens lang zijn",
+                "next": "Volgende",
+                "resend": "Herstuur code",
+                "loginbtn": "Inloggen"
+            }
+        },
+        "2facontroller": {
+            "sms": "Klik op de link in de sms die naar je telefoon gestuurd is, of vul de code uit de sms hier in om verder te gaan.",
+            "totp": "Vul de 6 cijferige code van de Authenticatie-toepassing op je telefoon in."
+        }
+    },
+    "max_x_characters_allowed": "Maximum {{ length }} karakters zijn toegestaan.",
+    "member": "Lid",
+    "member_of_organization": "Lid van organizatie",
+    "members": "Leden",
+    "min_x_characters_required": "Er zijn minstens {{ length }} karakters nodig.",
+    "oauth_default_description": "Beste {{externalsite}} klant, Wij maken gebruik van het onafhankelijke ItsYou.Online identity management system om de toegang tot je {{externalsite}} producten ten zeerste te beschermen. Gelieve aan te melden bij je ItsYou.Online account om de {{externalsite}} onboarding te voltooien.",
+    "ok": "OK",
+    "organization": {
+        "views": {
+            "addorganizationmemberdialog": {
+                "addorg": "Voeg een organizatie toe",
+                "globalid": "globalid",
+                "duplicate": "Deze organizatie is al een deel van de organizatie",
+                "nosuchorg": "Geen organizatie gevonden met deze globalid",
+                "help": "Dit zal de organizatie toevoegen aan {{organization}}"
+            },
+            "apikeydialog": {
+                "createkey": "Maak API Key",
+                "key": "API Key",
+                "callback": "Callback URL",
+                "callbackrequired": "Dit veld is verplicht",
+                "callbackmaxlength": "De callback url kan niet langer zijn dan 250 tekens",
+                "clientcredentials": "Kan gebruikt worden in client credentials grant type",
+                "clientcredentialshelp": "Een toepassing zonder UI kan deze sleutel gebruiken om toegang te krijgen tot de informatie van deze organizatie zoner dat een gebruiker toegang geeft.",
+                "secret": "Geheim",
+                "secretplaceholder": "- gegenereerd bij opslaan -",
+                "secrethelp": "Gebruik {{organization}} als clientid en dit API geheim om dit API geheim te gebruiken."
+            },
+            "changeorganizationroledialog": {
+                "edit": "Organizatie lidmaatschap bewerken",
+                "edithelp": "Je kan de rol van {{org}} in de organizatie {{organization}} hier aanpassen.",
+                "removeorgmember": "Verwijder organizatie als lid"
+            },
+            "changeroledialog": {
+                "edit": "Organizatie lidmaatschap bewerken",
+                "edithelp": "Je kan de rol van {{user}} in de organizatie {{organization}} hier aanpassen.",
+                "removemember": "Verwijder lid"
+            },
+            "createorganizationdialog": {
+                "neworg": "Nieue organizatie",
+                "createchild": "Maak een suborganizatie in {{org}}",
+                "createnew": "Maak een nieuwe organizatie"
+            },
+            "detail": {
+                "organization": "Organizatie",
+                "people": "Mensen",
+                "owners": "Eigenaars",
+                "editowner": "Bewerk eigenaar",
+                "organizationowners": "Organizatie eigenaars",
+                "organizationowner": "Organizatie eigenaar",
+                "editorganizationowner": "Bewerk organizatie eigenaar",
+                "members": "Leden",
+                "editmember": "Bewerk lid",
+                "organizationmembers": "Organizatie leden",
+                "organizationmember": "Organizatie lid",
+                "editorganizationmember": "Bewerk organizatie lid",
+                "pendinginvitations": "Openstaande uitnodigingen",
+                "invite": "Nodig iemand uit",
+                "invitehelp": "Nodig iemand uit om lid te worden van {{organization}}",
+                "addorganization": "Voeg organizatie toe",
+                "addorganizationhelp": "Voeg een andere organizatie toe als lid of eigenaar van {{organization}}",
+                "structure": "Structuur",
+                "createsuborg": "Maak suborganizatie",
+                "settings": "Instellingen",
+                "domains": "Domeinnamen",
+                "adddomain": "Voeg domeinnaam toe",
+                "adddomainhelp": "Voeg een domeinnaam toe die eigendom is van {{organization}}",
+                "apiaccesskeys": "API Access keys",
+                "apiaccesskeyshelp": "API Access keys zijn nodig om toegang te krijgen tot de Itsyou.online api via OAuth2",
+                "addapiaccesskey": "Voeg API access key toe",
+                "logo": "Organizatie logo",
+                "logohelp": "Dit logo wordt getoond wanneer een gebruiker aanmeld bij een externe site via OAuth2",
+                "changelogo": "Wijzig organizatie logo",
+                "setlogo": "Stel organizatie logo in",
+                "deleteorganization": "Verwijder organizatie",
+                "deleteorganizationwarning": "Een organizatie verwijderen is onomkeerbaar en zal alle domeinnamen en API keys verwijderen die ermee geassocieerd zijn.",
+                "leaveorganization": "Verlaat organizatie",
+                "leaveorganizationwarning": "Als je een organizatie verlaat kan je niet opnieuw lid worden tenzij je opnieuw wordt uitgenodigt.",
+                "addrequiredsharedinfo": "Voeg gewenste gedeelde informatie toe",
+                "requiredsharedinfo": "Gewenste gedeelde informatie",
+                "sharedwith": "Gedeeld met: ",
+                "description": "Organizatie beschrijving",
+                "descriptionhelp": "Deze beschrijving wordt getoond wanneer een gebruiker aanmeld bij een externe site via OAuth2",
+                "changedescription": "Wijzig organizatie beschrijving"
+            },
+            "dnsdialog": {
+                "newdomain": "Nieuwe domeinnaam",
+                "updatedomain": "Domeinnaam aanpassen",
+                "domain": "Domeinnaam",
+                "domainminlength": "Er zijn minstens 4 tekens nodig",
+                "invaliddomain": "Ongeldige domeinnaam",
+                "domainduplicate": "Deze domeinnaam is al een deel van deze organizatie"
+            },
+            "invitationdialog": {
+                "invitesomeone": "Nodig iemand uit",
+                "usermailphone": "Gebruikersnaam, email of telefoonnummer",
+                "inviteduplicate": "Deze gebruiker is al lid geworden van de organizatie",
+                "invitenosuchuser": "Geen gebruiker gevonden met deze gebruikersnaam",
+                "invitesend": "Er zal een verzoek om lid te worden van de organizatie gestuurd worden.",
+                "invitesend2": "Als een uitnodiging gestuurd wordt op email of telefoonnummer en er geen gebruiker gevonden word, zal er een email of sms gestuurd worden in de plaats.",
+                "invitesend3": "De gebruiker moet deze uitnodiging aanvaarden om<br/>een lid te worden van de organizatie.",
+                "invite": "Nodig uit"
+            },
+            "logodialog": {
+                "newlogo": "Nieuw logo",
+                "updatelogo": "Wijzig logo",
+                "logo": "Logo",
+                "filetoolarge": "De bestandsgrootte van het (verkleind) bestand is te groot.",
+                "filedrop": "Of sleep een bestand in het gebied hieronder."
+            },
+            "requiredscopesdialog": {
+                "newrequiredinfo": "Nieuwe vereiste informatie",
+                "updaterequiredinfo": "Bewerk vereiste informatie",
+                "requiredinformationscope": "Vereiste information scope",
+                "requiredinformationscopepattern": "Ongeldige scope. Scope moet starten met \"user:\"",
+                "duplicatescope": "De vereiste scope bestaat reeds",
+                "requiredinformationscopeinvalid": "Ongeldige scope",
+                "accessscope": "Access scope",
+                "noaccessscopeselected": "Gelieve een of meerdere access scopes te kiezen",
+                "accessscopeinfo": "De access scope bepaalt wie de gedeelde informatie kan zien"
+            },
+            "descriptiondialog": {
+                "descriptions": "Beschrijvingen",
+                "language": "taal",
+                "description": "Beschrijving",
+                "enterdescription": "Vul hier de beschrijving in voor de gekozen taal"
+            }
+        },
+        "controller": {
+            "confirmdelete": "Ben je zeker dat je de organizatie {{organization}} wil verwijderen?",
+            "deleteorg": "Verwijder organizatie",
+            "deleteorganization": "Verwijder organizatie {{organization}}",
+            "yes": "Ja",
+            "no": "Nee",
+            "haschildren": "Deze organizatie kan niet worden verwijdert omdat er nog suborganisaties zijn.",
+            "confirmleave": "Ben je zeker dat je de organizatie {{organization}} wil verlaten?",
+            "leaveorg": "Verlaat organizatie",
+            "leaveorganization": "Verlaat organizatie {{organization}}",
+            "notfound": "Gebruiker of organizatie niet gevonden",
+            "loadingkey": "-- Laden --",
+            "cantchangerole": "Kon rol niet aanpassen, gelieve het later opnieuw te proberen",
+            "missinginfo": "Ontbrekende informatie",
+            "missinguserinfo": "Deze gebruiker heeft (een deel van) de gevraagde informatie niet gedeeld:<br />"
+        }
+    },
+    "organization_globalid": "Organizatie globalId",
+    "organization_include_orgmember_suborgs": "Suborganisaties van deze organizatie opnemen in de ledenlijst",
+    "organization_include_orgowner_suborgs": "Suborganisaties van deze organizatie opnemen in de eigenarenlijst",
+    "organization_invite_organization": "Nodig organizatie uit",
+    "organization_invite_organization_duplicate": "De uitgenodigde organizatie is al lid van de organzatie",
+    "organization_invite_organization_help": "Nodig een andere organizatie uit om deel te worden van {{organization}}",
+    "organization_invite_organization_nosuchorganization": "Geen organizatie gevonden met het gegeven globalid",
+    "organization_invite_organization_owner_must_accept": "Een eigenaar van de organizatie moet deze uitnodiging aanvaarden <br/> om de uitgenodigde organizatie lid te maken van deze organizatie.",
+    "organization_invited_by": "Jouw organizatie {{invitedorg}} is uitgenodigt om een deel te worden van de {{invitingorg}} organizatie",
+    "organization_name": "Naam van de organizatie",
+    "organization_name_pattern": "Ongeldige organizatie naam.<br/>Enkel tekens a-z, 0-9, streepjes,<br/>underscores en spaties zijn toegelaten",
+    "organization_with_name_exists": "Er bestaat een organizatie met deze naam. Kies een andere naam.",
+    "owner": "Eigenaar",
+    "owner_of_email": "Eigenaar van email address",
+    "owner_of_email_x": "Eigenaar van email address {{ email }}",
+    "owners": "Eigenaars",
+    "pending_invites_for_organization": "Openstaande uitnodigingen voor jouw organisaties",
+    "phone_number": "Telefoonnummer",
+    "phonenumber": "Telefoonnummer",
+    "phonenumberpattern": "Ongeldig telefoonnummer. Telefoonnummer mag enkel cijfers bevatten",
+    "please_verify_email_x": "Gelieve het email address {{ email }} te valideren voor door te gaan.",
+    "public_key": "Public key",
+    "register": "Registreer",
+    "registration": {
+        "views": {
+            "registrationform": {
+                "register": "Registreer",
+                "username": "Gebruikersnaam",
+                "usernametaken": "Deze gebruikersnaam is al bezet",
+                "invalidusername": "Ongeldige gebruikersnaam. Enkel letters a-z, 0-9, streepjes, underscores en spaties zijn toegelaten",
+                "email": "Email",
+                "password": "Wachtwoord",
+                "invalidpassword": "Wachtwoord moet minstens 6 tekens bevatten.",
+                "confirmpassword": "Wachtwoord bevestigen",
+                "passwordmatch": "De wachtwoorden komen niet overeen",
+                "2famethod": "2-Factor authenticatie methode",
+                "sms": "SMS",
+                "app": "Authenticatie-toepassing",
+                "2facode": "2-Factor authenticatie code",
+                "invalid2facode": "Er is een ongeldige code gegeven",
+                "2fahelp": "Scan deze afbeelding met een 2-factor authenticatie toepassing op je telefoon",
+                "signup": "Registreer"
+            },
+            "registrationresendsms": {
+                "resendsms": "Herstuur SMS",
+                "enterphone": "Gelieve je telefoonnummer in te geven",
+                "sendsms": "Herstuur bevestigings-SMS"
+            },
+            "registrationsmsform": {
+                "smsconfirmation": "SMS bevestiging",
+                "smshelp": "Klik op de link in de sms die naar je telefoon gestuurd is of vul de code uit de sms hier in",
+                "smscode": "Code gestuurd via sms",
+                "invalidcode": "Ongeldige code",
+                "resend": "Herstuur...",
+                "submit": "Dien in"
+            }
+        }
+    },
+    "reject": "Weiger",
+    "remove_invitation": "Verwijder uitnodiging",
+    "role": "Rol",
+    "save": "Sla op",
+    "shared": {
+        "directives": {
+            "footer": {
+                "documentation": "Documentatie",
+                "apidocumentation": "API Documentatie",
+                "source": "Broncode op Github"
+            },
+            "header": {
+                "cookiewarning": "Deze site maakt gebruik van cookies. Door verder te gaan ga je akkoord met ons gebrik van cookies.",
+                "dismiss": "Akkoord",
+                "nonotifcations": "Je hebt geen ongelezen meldingen",
+                "onenotification": "Je hebt 1 ongelezen melding",
+                "unreadnotifications": "Je hebt {{count}} ongelezen meldingen",
+                "profile": "Profiel",
+                "organizations": "organisaties",
+                "sharedinfo": "Gedeelde informatie",
+                "signout": "Afmelden",
+                "register": "Registreer",
+                "signin": "Inloggen",
+                "language": "taal",
+                "notifications": "meldingen"
+            }
+        }
+    },
+    "shared_information": "Gedeelde informatie",
+    "update": "Pas aan",
+    "user": {
+        "views": {
+            "addressdialog": {
+                "addaddress": "Voeg een adres toe",
+                "street": "Sraat",
+                "number": "Nr",
+                "postalcode": "Postcode",
+                "city": "Stad",
+                "country": "Land",
+                "remarks": "Opmerkingen"
+            },
+            "apikeydialog": {
+                "newapikey": "Nieuwe API Key",
+                "apikey": "API Key",
+                "appid": "Application ID",
+                "appidplaceholder": "- getoond na opslaan -",
+                "secret": "Geheim",
+                "secretplaceholder": "- gegenereerd bij opslaan -"
+            },
+            "authorizationdialog": {
+                "sharedinfo": "Informatie gedeelt met {{grantedto}}",
+                "sharewith": "Informatie om te delen met {{grantedto}}",
+                "authorizationrequest": "{{grantedto}} vraagt toestemming om een deel van jouw informatie te zien.",
+                "changeauthorization": "Hier kan je veranderen tot welke informatie {{grantedto}} toegang heeft.",
+                "grant": "Geef toestemming"
+            },
+            "authorizations": {
+                "sharedinfo": "Gedeelde informatie",
+                "notsharing": "Je deelt momenteel geen informatie van je profiel",
+                "sharingorgs": "organisaties waarmee je informatie deelt:"
+            },
+            "authorize": {
+                "request": "Vraagt toestemming om een deel van je informatie te zien",
+                "authorize": "Geeft toestemming"
+            },
+            "bankaccountdialog": {
+                "registerbankaccount": "Registreer een bankrekening",
+                "bic": "BIC",
+                "bicpattern": "Deze waarde moet 8 of 11 karakters lang zijn.",
+                "iban": "IBAN",
+                "ibanmaxlength": "Deze waarde mag maxiaal 30 karakters lang zijn.",
+                "country": "Land"
+            },
+            "digitalwallet": {
+                "registerwallet": "Registreer een digital wallet adres",
+                "digitalwallet": "Digital wallet adres details",
+                "hasexpiredate": "Deze wallet heeft een vervaldatum",
+                "expirydate": "Vervaldatum"
+            },
+            "emaildialog": {
+                "registeremail": "Registreer email adres",
+                "emailpattern": "Ongeldig email adres"
+            },
+            "namedialog": {
+                "updatename": "Naam wijzigen",
+                "firstname": "Voornaam",
+                "lastname": "Achternaam"
+            },
+            "notifications": {
+                "notifications": "Meldingen",
+                "pendinginvites": "Openstaande organizatie uitnodigingen",
+                "security": "Veiligheidsmeldingen",
+                "securitynotice": "Veiligheidsmelding",
+                "resolve": "Los op",
+                "notsharinginfo": "Een deel van de vereiste informatie wordt niet gedeelt met {{org}}"
+            },
+            "organizations": {
+                "organizations": "organisaties",
+                "createnew": "Maak nieuwe",
+                "organization": "Organizatie"
+            },
+            "phonedialog": {
+                "registerphonenumber": "Registreer een telefoonnummer",
+                "phonenumberminlength": "Niet genoeg cijfers",
+                "updatelastverified": "Je kan je laatste bevestigde telefoonnummer niet wijzigen. Gelieve een nieuw telefoonnummer te configureren in de plaats."
+            },
+            "pubkeydialog": {
+                "newpubkey": "Nieuwe public key",
+                "pubkeypattern": "Ongeldige public key, ssh sleutels starten met 'ssh-rsa AAAAB3NzaC1yc2E'",
+                "pastehere": "plak je publieke ssh key hier"
+            },
+            "resetpassdialog": {
+                "changepass": "Wachtwoord wijzigen",
+                "currentpass": "Huidig wachtwoord",
+                "currentpassinvalid": "Foutief wachtwoord",
+                "newpass": "Nieuw wachtwoord",
+                "newpassminlength": "Wachtwoord moet minstens 6 tekens lang zijn",
+                "confirmnewpass": "Bevestig nieuw wachtwoord",
+                "passidentical": "De wachtwoorden komen niet overeen"
+            },
+            "settings": {
+                "settings": "Instellingen",
+                "apikeys": "API keys",
+                "apikey": "API key",
+                "security": "Beveiliging",
+                "password": "Wachtwoord",
+                "change": "Verander",
+                "authenticatorapp": "Authenticatie-toepassing",
+                "setup": "Instellen",
+                "remove": "Verwijder"
+            },
+            "totpdialog": {
+                "setupapp": "Authenticatie-toepassing opzetten",
+                "qrcode": "Scan deze QR code met een 2-factor authenticatie app op je telefoon en geef de code in.",
+                "2facode": "2-Factor authenticatie code",
+                "invalidcode": "Er is een ongeldige code gegeven",
+                "codemaxlength": "De code moet 6 tekens lang zijn"
+            },
+            "verifyphonedialog": {
+                "verifyphone": "Telefoonnummer bevestigen",
+                "help": "Klik op de link in de sms die naar je telefoonnummer<br/>werd gestuurd of vul de code uit de sms hier in om <br/>jouw telefoonnummer {{phone}} ({{label}}) te bevestigen",
+                "code": "Code",
+                "codeminlength": "De code moet 6 karakters lang zijn",
+                "codeinvalid": "Ongeldige code ingevoerd",
+                "codemaxlength": "De code moet 6 karakters lang zijn"
+            },
+            "profile": {
+                "profile": "Profiel",
+                "emailaddresses": "Email adressen",
+                "verified": "Bevestigd",
+                "phonenumbers": "Telefoonnummers",
+                "nofacebook": "Je hebt je Facebook account nog niet toegevoegd.",
+                "nogithub": "Je hebt je Github account nog niet toegevoegd.",
+                "addresses": "Adressen",
+                "bankaccounts": "Bankrekeningen",
+                "digitalwallet": "Digital wallet",
+                "expiringwallet": "Verloopt {{expirydate}}, symbool {{symbol}}",
+                "noneexpiringwallet": "Verloopt nooit, symbool {{symbol}}",
+                "pubkeys": "Public keys"
+            }
+        },
+        "directives": {
+            "authorizationdetails": {
+                "yourusername": "Jouw gebruikersnaam",
+                "yourfullname": "Jouw volledige naam",
+                "orgmembership": "Organizatie lidmaatschap",
+                "memberof": "Lid van {{label}}",
+                "acceptinvite": "(this will accept the invitation for this organization)",
+                "emailaddress": "Email adres",
+                "emailaddressfor": "Email adres voor {{label}}",
+                "email": "Email",
+                "none": "Geen",
+                "createnew": "Maak nieuwe",
+                "phonenumberfor": "Telefoonnummer voor {{label}}",
+                "addressfor": "Adres voor {{label}}",
+                "bankaccountfor": "Bankrekening voor {{label}}",
+                "digitalwalletfor": "Digital wallet adres voor {{label}}",
+                "currency": "(munt {{currency}})",
+                "yourgithub": "Jouw Github account",
+                "yourfacebook": "Jouw Facebook account",
+                "pubkey": "Public key",
+                "pubkeyfor": "Public key voor {{label}}"
+            }
+        },
+        "controller": {
+            "verifiedemails": "Je hebt geen bevestigde email adressen. Je zal je account niet kunnen herstellen als je er niet ten minste een bevestigd.",
+            "nonotifcations": "Geen openstaande meldingen",
+            "passwordupdated": "Wachtwoord gewijzigd",
+            "passwordchanged": "Je wachtwoord is gewijzigd.",
+            "close": "Sluiten",
+            "emailsent": "Bevestigingsemail gestuurd",
+            "emailsentto": "Er is een bevestigingsemail naar {{email}} gestuurd.",
+            "error": "Error",
+            "couldnotsend": "Kon bevestigingsemail niet sturen. Gelieve het later opnieuw te proberen.",
+            "errorwhilesending": "Error bij het sturen van de bevestigingsemail",
+            "cantremoveauthapp": "Kan authenticator niet verwijderen",
+            "cantremoveauthappmsg": "Je kan je Authenticatie-toepassing niet verwijderen omdat dit je laatste 2-Factor authenticatie methode is.<br />Voeg een telefoonnummer toe en bevestig deze om je Authenticatie-toepassing te kunnen verwijderen.",
+            "removeauthenticator": "Authenticator verwijderen",
+            "confirmremoveauthenticator": "Ben je zeker dat je de Authenticatie-toepassing wil verwijderen?",
+            "yes": "Ja",
+            "no": "Nee"
+        }
+    },
+    "verify": "Valideer",
+    "delete_org_with_children": "Deze organizatie heeft suborganisaties. Als je deze organizatie verwijdert, worden ook ALLE suborganisaties verwijderd. Ben je echt zeker?",
+    "reject": "Weiger",
+    "accept": "Aanvaardt",
+    "username_taken": "Deze gebruikersnaam is al bezet",
+    "user_with_name_exists": "Er bestaat al een gebruiker met deze naam. Kies een andere naam.",
+    "avatar": "Avatar",
+    "avatar_url": "Avatar url",
+    "avatar_file": "Avatar bestand",
+    "add_avatar": "Voeg avatar toe",
+    "avatar_file_upload": "Avatar is een bestand op ItsYou.Online",
+    "avatar_for": "Avatar voor {{label}}",
+    "upload_avatar": "Upload avatar",
+    "upload_avatar_button": "Upload avatar knop",
+    "content_identity_top": "jouw digitale identiteit",
+    "content_identity_bottom": "in jouw eigen handen",
+    "quote_online_presence": "Online aanwezigheid betekent interactie. Bedrijven hebben uw identiteit nodig die u op verschillende manieren aanbiedt, afhankelijk van het bedrijf, de persoon of de context.",
+    "content_communicate_top": "U communiceert over verschillende kanalen en",
+    "content_communicate_bottom": "in verschillende contexten, maar het is altijd u",
+    "quote_grinch": "“Toen dacht de Grinch aan iets waar hij nog niet eerder aan had gehad!! Wat als Kerstmis, dacht hij, niet uit een winkel komt. Wat als Kerstmis ... misschien ... een beetje meer betekent!”",
+    "dr_seuss": "Dr. Seuss ",
+    "quote_communication_identity": "Een identiteit bij het communiceren gaat niet over het kanaal of de provider, het gaat over wie je praat in welke context.",
+    "content_share_top": "Deel actuele informatie",
+    "content_share_bottom": "maar alleen zo veel als u wilt",
+    "quote_share": "Wees niet meer bang om je gezicht te tonen. Deel de informatie die u wilt delen aan een serviceprovider en zorg ervoor dat uw andere informatie veilig is.",
+    "avatar_file_too_large": "Het bestand is te groot, de maximale uploadlimiet is 100 KB.",
+    "existing_qrcode": "Jouw QR code die ingesteld is voor gebruik met een authenticatie-toepassing.",
+    "auth_app_qr_code": "Authenticatie-toepassing QR code",
+    "qrcode": "QR code",
+    "qrcode_view":"Bekijk bestaande QR code",
+    "no_notifcations": "Je hebt geen meldingen.",
+    "last_owner": "Je bent de laatste eigenaar van deze organizatie, dus je kan deze niet verlaten.",
+    "error": "Error",
+    "new_parent_ownership": "Deze actie vereist dat u eigendomsrechten heeft op de nieuwe ouderorganizatie.",
+    "new_parent_doesn't_exist": "De nieuwe ouderorganizatie bestaat niet.",
+    "new_name_collision": "Deze verhuizing zou een duplicate naam veroorzaken.",
+    "move_to_child": "U kunt organizaties niet verplaatsen naar een suborganizatie van zichzelf.",
+    "move_suborganization": "Verhuis suborganizatie",
+    "move_a_suborganization": "Verhuis een suborganizatie",
+    "suborganization_to_move": "Suborganizatie om te verhuizen",
+    "newparent_globalid": "Globalid v.d. nieuwe ouder",
+    "username": "Gebruikersnaam",
+    "validate_email": "Valideer email",
+    "send_email": "Stuur email",
+    "back_to_login": "Terug naar login",
+    "username_minlength": "Gebruikersnaam moet minstens 3 tekens lang zijn",
+    "user_not_found": "Gebruiker niet gevonden",
+    "unable_to_validate_email": "Kan geen e-mailadres voor deze gebruiker valideren",
+    "email_validation_link": "Er is een email validatie link verzonden.",
+    "back": "Terug"
+}

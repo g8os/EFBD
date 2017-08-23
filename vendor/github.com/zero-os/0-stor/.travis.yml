@@ -1,0 +1,22 @@
+language: go
+sudo: true
+dist: trusty
+
+go:
+  - 1.8
+
+before_install:
+  - sudo apt-get -qq update
+  - sudo apt-get install -y npm
+  - sudo npm install -g raml2html
+
+install:
+  - go get github.com/Jumpscale/go-raml
+  - go get -v github.com/stretchr/testify/...
+  - go get github.com/itsyouonline/identityserver/clients/go/itsyouonline
+
+script:
+  - bash test.sh
+
+after_success:
+  - bash <(curl -s https://codecov.io/bash)

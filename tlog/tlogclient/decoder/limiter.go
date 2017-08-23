@@ -1,6 +1,8 @@
 package decoder
 
 import (
+	"time"
+
 	"github.com/zero-os/0-Disk/tlog/schema"
 )
 
@@ -22,6 +24,10 @@ type Limiter interface {
 
 	// EndBlock returns true if it is the end of block we want to decode
 	EndBlock(schema.TlogBlock) bool
+
+	FromEpoch() uint64
+
+	ToEpoch() uint64
 }
 
 // LimitByTimestamp implements limiter based on the timestamp
@@ -32,10 +38,21 @@ type LimitByTimestamp struct {
 
 // NewLimitByTimestamp creates new LimitByTimestamp limiter
 func NewLimitByTimestamp(startTs, endTs uint64) LimitByTimestamp {
+	if endTs == 0 {
+		endTs = uint64(time.Now().UnixNano())
+	}
 	return LimitByTimestamp{
 		startTs: startTs,
 		endTs:   endTs,
 	}
+}
+
+func (lbt LimitByTimestamp) FromEpoch() uint64 {
+	return lbt.startTs
+}
+
+func (lbt LimitByTimestamp) ToEpoch() uint64 {
+	return lbt.endTs
 }
 
 // EndAgg implements Limiter.EndAgg
@@ -78,6 +95,7 @@ func (lbt LimitByTimestamp) StartBlock(block schema.TlogBlock) bool {
 type LimitBySequence struct {
 	startSeq uint64
 	endSeq   uint64
+	endTs    uint64
 }
 
 // NewLimitBySequence creates new LimitBySequence object
@@ -85,7 +103,16 @@ func NewLimitBySequence(startSeq, endSeq uint64) LimitBySequence {
 	return LimitBySequence{
 		startSeq: startSeq,
 		endSeq:   endSeq,
+		endTs:    uint64(time.Now().UnixNano()),
 	}
+}
+
+func (lbs LimitBySequence) FromEpoch() uint64 {
+	return 0
+}
+
+func (lbs LimitBySequence) ToEpoch() uint64 {
+	return lbs.endTs
 }
 
 // EndAgg implements Limiter.EndAgg

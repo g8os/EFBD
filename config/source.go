@@ -63,6 +63,10 @@ type Key struct {
 	Type KeyType
 }
 
+func (k Key) String() string {
+	return fmt.Sprintf("%s(%s)", k.Type, k.ID)
+}
+
 // KeyType defines the type of a key,
 // which together with the ID makes it unique.
 type KeyType uint8
@@ -77,6 +81,35 @@ const (
 	KeyClusterTlog
 	KeyNBDServerVdisks
 )
+
+// KeyType string representations
+const (
+	KeyVdiskStaticStr     = "VdiskStatic"
+	KeyVdiskNBDStr        = "VdiskNBD"
+	KeyVdiskTlogStr       = "VdiskTlog"
+	KeyClusterStorageStr  = "ClusterStorage"
+	KeyClusterTlogStr     = "ClusterTlog"
+	KeyNBDServerVdisksStr = "NBDServerVdisks"
+)
+
+func (kt KeyType) String() string {
+	switch kt {
+	case KeyVdiskStatic:
+		return KeyVdiskStaticStr
+	case KeyVdiskNBD:
+		return KeyVdiskNBDStr
+	case KeyVdiskTlog:
+		return KeyVdiskTlogStr
+	case KeyClusterStorage:
+		return KeyClusterStorageStr
+	case KeyClusterTlog:
+		return KeyClusterTlogStr
+	case KeyNBDServerVdisks:
+		return KeyNBDServerVdisksStr
+	default:
+		return ""
+	}
+}
 
 func watchContext(ctx context.Context) context.Context {
 	if ctx != nil {

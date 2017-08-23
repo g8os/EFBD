@@ -381,4 +381,4 @@ A note about message ordering: when implementing a server method, you
 are responsible for acknowledging delivery of a method call.  Failure to
 do so can cause deadlocks.  See the server.Ack function for more details.
 */
-package capnp
+package capnp // import "zombiezen.com/go/capnproto2"

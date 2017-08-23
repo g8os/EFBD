@@ -28,8 +28,7 @@ import (
 	"sync"
 	"time"
 
-	"context"
-
+	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
@@ -520,6 +519,6 @@ const SupportPackageIsVersion3 = true
 const SupportPackageIsVersion4 = true
 
 // Version is the current grpc version.
-const Version = "1.5.0-dev"
+const Version = "1.5.2"
 
 const grpcUA = "grpc-go/" + Version

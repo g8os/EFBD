@@ -9,10 +9,15 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
 )
+
+func init() {
+	log.SetLevel(log.DebugLevel)
+}
 
 // implements the writerFlusher
 type pipeWriterFlush struct {
@@ -127,9 +132,11 @@ func TestResendTimeout(t *testing.T) {
 		numLogs       = 500
 	)
 
+	clean, configSource, _ := newZeroStorDefaultConfig(t, vdisk)
+	defer clean()
 	// only used in client.connect
 	// TODO : remove the need to this unused server
-	unusedServer, _, err := createTestServer()
+	unusedServer, err := server.NewServer(testConf, configSource)
 	assert.Nil(t, err)
 	go unusedServer.Listen(ctx)
 

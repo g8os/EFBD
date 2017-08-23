@@ -1,0 +1,15 @@
+<html>
+    <body>
+        <h1>Itsyou.online authentication example</h1>
+        <form id="mainform" action="login" method="post">
+            client_id:<br/>
+            <input type="text" id="client_id" name="client_id" placeholder="Organization name" required /><br/>
+            secret:<br/>
+            <input type="text" name="secret" placeholder="API key secret" required /><br/>
+            requested scopes:<br/>
+            <input type="text" name="requested_scopes" value="user:email:main"/><br/>
+            <br/>
+            <button type="submit">Log in</button>
+        </form>
+    </body>
+</html>

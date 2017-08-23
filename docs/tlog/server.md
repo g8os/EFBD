@@ -15,7 +15,6 @@ settings directly related to flush:
 - `flush-time`: maximum time we can wait entries before flushing it (default = 25 seconds)
 - `k` : number of erasure encoded data pieces
 - `m` : number of erasure encoded coding/parity pieces
-- `nonce`: hex nonce used for encryption 
 - `priv-key`: encryption private key
 
 ## TLog Data structure
@@ -47,9 +46,6 @@ operation			# disk operation
 
 See the [TLog capnp schema file][tlogschema] for more information and details.
 
-## Metadata
-
-TLog has a very simple [metadata (4)][metadata] structure, and only stores the [hashes][hash] of the last 5 [aggregations][aggregation]. This allows us to use the previous [hash] in case the very last [hash][hash] is corrupted.
 
 ## NBD Server slave sync feature
 
@@ -87,16 +83,10 @@ Usage of bin/tlogserver:
     	optionally log to the specified file, instead of the stderr
   -m int
     	M variable of the erasure encoding (default 2)
-  -memorystorage
-    	Stores the (meta)data in memory only, usefull for testing or benchmarking (overwrites the storage-addresses flag)
-  -nonce string
-    	hex nonce used for encryption (default "37b8e8a308c354048d245f6d")
   -priv-key string
     	private key (default "12345678901234567890123456789012")
   -profile-address string
     	Enables profiling of this server as an http service
-  -storage-addresses string
-    	comma seperated list of redis compatible connectionstrings (format: '<ip>:<port>[@<db>]', eg: 'localhost:16379,localhost:6379@2'), if given, these are used for all vdisks, ignoring the given config
   -v	log verbose (debug) statements
   -with-slave-sync
     	sync to ardb slave

@@ -1,0 +1,46 @@
+<form ng-cloak layout="row" name="twoFaForm" ng-submit="vm.login()">
+    <div flex></div>
+    <md-card class="form-card" flex="100" flex-gt-xs="80" flex-gt-sm="50" flex-gt-md="40" flex-gt-lg="30">
+        <md-card-title>
+            <md-card-title-text>
+                <span class="md-headline" translate='login.views.twofactorauthentication.login'>Login</span>
+                <span class="md-subhead" ng-bind="vm.getHelpText()"></span>
+            </md-card-title-text>
+        </md-card-title>
+        <md-card-content>
+            <div layout="column">
+                <md-input-container ng-show="vm.step === 'choice'">
+                    <label translate='login.views.twofactorauthentication.method'>Authentication method</label>
+                    <md-select ng-model="vm.selectedTwoFaMethod">
+                        <md-option ng-repeat="(method, label) in vm.possibleTwoFaMethods" value="{{ ::method }}"
+                                   ng-bind="::label">
+                        </md-option>
+                    </md-select>
+                </md-input-container>
+                <md-input-container ng-show="vm.step === 'code'">
+                    <label for="code" translate='login.views.twofactorauthentication.code'>Code</label>
+                    <input type="text" md-maxlength="6" ng-minlength="6" required id="code"
+                           name="code" ng-model="vm.code" autocomplete="off" ng-change="vm.resetValidation()">
+                    <div ng-messages="twoFaForm.code.$error" md-auto-hide="false">
+                        <div ng-message="invalid_code" translate='login.views.twofactorauthentication.invalidcode'>Invalid code</div>
+                        <div ng-message="md-maxlength" translate='login.views.twofactorauthentication.codelength'>The code must be 6 characters long</div>
+                    </div>
+                </md-input-container>
+            </div>
+        </md-card-content>
+        <md-card-actions layout="row"
+                         layout-align="{{vm.shouldShowSendButton() ? 'space-between center' : 'end center'}}">
+            <md-button class="md-raised md-primary" ng-show="vm.step === 'choice'" ng-click="vm.nextStep()" translate='login.views.twofactorauthentication.next'>
+                Next
+            </md-button>
+            <md-button ng-if="vm.shouldShowSendButton()" class="md-raised" ng-click="vm.sendSmsCode()" translate='login.views.twofactorauthentication.resend'>
+                Resend code
+            </md-button>
+            <md-button type="submit" class="md-raised md-primary" ng-disabled="!twoFaForm.$valid"
+                       ng-show="vm.step === 'code'" translate='login.views.twofactorauthentication.loginbtn'>
+                Login
+            </md-button>
+        </md-card-actions>
+    </md-card>
+    <div flex></div>
+</form>

@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/player"
 	cmdConf "github.com/zero-os/0-Disk/zeroctl/cmd/config"
@@ -15,12 +16,12 @@ import (
 
 // vdiskCfg is the configuration used for the restore vdisk command
 var vdiskCmdCfg struct {
-	TlogObjStorAddresses string
-	SourceConfig         config.SourceConfig
-	K, M                 int
-	PrivKey, HexNonce    string
-	StartTs              uint64 // start timestamp
-	EndTs                uint64 // end timestamp
+	SourceConfig config.SourceConfig
+	K, M         int
+	PrivKey      string
+	StartTs      uint64 // start timestamp
+	EndTs        uint64 // end timestamp
+	Force        bool
 }
 
 // VdiskCmd represents the restore vdisk subcommand
@@ -55,18 +56,15 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 	}
 	log.SetLevel(logLevel)
 
-	ctx := context.Background()
-
-	// parse optional server configs
-	serverConfigs, err := config.ParseCSStorageServerConfigStrings(vdiskCmdCfg.TlogObjStorAddresses)
+	err = checkVdiskExists(vdiskID, configSource)
 	if err != nil {
-		return fmt.Errorf(
-			"failed to parse given connection strings %q: %s",
-			vdiskCmdCfg.TlogObjStorAddresses, err.Error())
+		return err
 	}
 
-	player, err := player.NewPlayer(ctx, configSource, serverConfigs, vdiskID,
-		vdiskCmdCfg.PrivKey, vdiskCmdCfg.HexNonce, vdiskCmdCfg.K, vdiskCmdCfg.M)
+	ctx := context.Background()
+
+	player, err := player.NewPlayer(ctx, configSource, vdiskID,
+		vdiskCmdCfg.PrivKey, vdiskCmdCfg.K, vdiskCmdCfg.M)
 	if err != nil {
 		return err
 	}
@@ -75,11 +73,61 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 	return err
 }
 
+// checkVdiskExists checks if the vdisk in question already/still exists,
+// and if so, and the force flag is specified, delete the (meta)data.
+func checkVdiskExists(vdiskID string, configSource config.Source) error {
+	staticConfig, err := config.ReadVdiskStaticConfig(configSource, vdiskID)
+	if err != nil {
+		return fmt.Errorf(
+			"cannot read static vdisk config for vdisk %s: %v", vdiskID, err)
+	}
+	nbdStorageConfig, err := config.ReadNBDStorageConfig(configSource, vdiskID, staticConfig)
+	if err != nil {
+		return fmt.Errorf(
+			"cannot read nbd storage config for vdisk %s: %v", vdiskID, err)
+	}
+
+	exists, err := storage.VdiskExists(
+		vdiskID, staticConfig.Type, &nbdStorageConfig.StorageCluster)
+	if !exists {
+		return nil // vdisk doesn't exist, so nothing to do
+	}
+	if err != nil {
+		return fmt.Errorf("couldn't check if vdisk %s already exists: %v", vdiskID, err)
+	}
+
+	if !vdiskCmdCfg.Force {
+		return fmt.Errorf("cannot restore vdisk %s as it already exists", vdiskID)
+	}
+
+	vdisks := map[string]config.VdiskType{vdiskID: staticConfig.Type}
+
+	// delete metadata (if needed)
+	if nbdStorageConfig.StorageCluster.MetadataStorage != nil {
+		cfg := nbdStorageConfig.StorageCluster.MetadataStorage
+		err := storage.DeleteMetadata(*cfg, vdisks)
+		if err != nil {
+			return fmt.Errorf(
+				"couldn't delete metadata for vdisk %s from %s@%d: %v",
+				vdiskID, cfg.Address, cfg.Database, err)
+		}
+	}
+
+	// delete data (if needed)
+	for _, serverConfig := range nbdStorageConfig.StorageCluster.DataStorage {
+		err := storage.DeleteData(serverConfig, vdisks)
+		if err != nil {
+			return fmt.Errorf(
+				"couldn't delete data for vdisk %s from %s@%d: %v",
+				vdiskID, serverConfig.Address, serverConfig.Database, err)
+		}
+	}
+
+	// vdisk did exist, but we were able to delete all the exiting (meta)data
+	return nil
+}
+
 func init() {
-	VdiskCmd.Flags().StringVar(
-		&vdiskCmdCfg.TlogObjStorAddresses,
-		"storage-addresses", "",
-		"comma seperated list of redis compatible connectionstrings (format: '<ip>:<port>[@<db>]', eg: 'localhost:16379,localhost:6379@2'), if given, these are used for all vdisks, ignoring the given config")
 	VdiskCmd.Flags().Var(
 		&vdiskCmdCfg.SourceConfig, "config",
 		"config resource: dialstrings (etcd cluster) or path (yaml file)")
@@ -95,10 +143,6 @@ func init() {
 		&vdiskCmdCfg.PrivKey,
 		"priv-key", "12345678901234567890123456789012",
 		"private key")
-	VdiskCmd.Flags().StringVar(
-		&vdiskCmdCfg.HexNonce,
-		"nonce", "37b8e8a308c354048d245f6d",
-		"hex nonce used for encryption")
 	VdiskCmd.Flags().Uint64Var(
 		&vdiskCmdCfg.StartTs,
 		"start-timestamp", 0,
@@ -107,4 +151,8 @@ func init() {
 		&vdiskCmdCfg.EndTs,
 		"end-timestamp", 0,
 		"end timestamp in nanosecond(default 0: until the end)")
+	VdiskCmd.Flags().BoolVarP(
+		&vdiskCmdCfg.Force,
+		"force", "f", false,
+		"when given delete the vdisk if it already existed")
 }

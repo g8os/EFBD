@@ -1,0 +1,686 @@
+body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    font-family: 'Arial', sans-serif;
+}
+
+h2 { font-weight: normal; font-size: 40px; text-align: center; padding: 0; color: #FFFFFF; }
+
+.homepage h2 {
+    margin: 0;
+}
+
+h3 { font-weight: normal; font-size: 16px; text-align: center; margin: 5px 0; padding: 0; }
+
+.homapage h3 {
+    z-index: 1;
+    position: relative;
+}
+
+.homepage h4 {
+    z-index: 1;
+    position: relative;
+}
+
+h4 {
+    font-weight: normal;
+    margin: 5px 0;
+    padding: 0;
+}
+.center { margin: 0 auto; }
+.content { margin: 0 auto; width: 960px; }
+.clear { clear: both; }
+
+@media screen and (max-width: 400px) {
+
+    h2 {
+        font-size: 2em;
+    }
+
+    h3.quotes {
+        font-size: 1.5em;
+    }
+
+}
+
+md-dialog > md-dialog-content > h2 {
+    color: rgba(0, 0, 0, 0.87);
+    text-align: left;
+}
+
+.md-list-item-text h3 {
+    text-align: left;
+}
+
+md-dialog md-dialog-actions {
+    padding-left: 0;
+}
+
+.green {
+    color: #008000;
+}
+/*= HEADER & NAVIGATION
+--------------------------------------------------------*/
+#header {
+    width: 100%;
+    background: #939598;
+    height: 80px;
+    position: relative;
+    z-index: 2;
+}
+
+.cookie-warning-container{
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height:40px;
+    font-weight:bold;
+    font-size:14px;
+    line-height: 20px;
+    text-align: center;
+    background: #878787;
+    color: #FFFFFF;
+    padding: 0 10px;
+}
+
+@media (max-width: 760px) {
+    .cookie-warning-container {
+        height: 65px;
+        padding-top: 5px;
+    }
+}
+
+.cookie-warning-container .md-button {
+    height: 25px;
+    min-height:25px;
+    line-height: 25px;
+}
+
+#logo a {
+    text-decoration: none;
+    float: left;
+    background: url(../img/its-you-online.gif) no-repeat;
+    margin-top: -61px;
+    height: 120px;
+    width: 360px;
+    background-size: cover;
+}
+
+.mobile-logo {
+  text-decoration: none;
+  float: left;
+  background: url(../img/its-you-online.png) no-repeat;
+  margin-top: 17px;
+  height: 40px;
+  width: 320px;
+  background-size: cover;
+}
+
+
+/*= LOGO ANIMATION
+--------------------------------------------------------*/
+
+.logo-base a {
+    text-decoration: none;
+    float: left;
+}
+
+/*= QUOTES AND SOME ELEMENTS
+--------------------------------------------------------*/
+.quotes { font-family: 'arial', serif; font-weight: normal; font-size: 29px; text-align: left; margin: 50px auto; line-height: 39px; }
+
+.author_name_gray {
+    font-family: 'Arial', sans-serif;
+    margin: 70px 0 0 75px;
+    color: #94a4a4;
+    font-size: 20px;
+}
+.quotes_container { width: 800px; margin: 0 auto; }
+/*= BUTTONS
+--------------------------------------------------------*/
+
+ul.built { list-style: none; margin: 0 auto; width: 730px; }
+.built li img { float: left; padding-right: 34px; }
+/*= SLIDES STYLING
+--------------------------------------------------------*/
+
+#slide1, #slide2 { width: 100%; }
+#slide1 { background:url('../img/masks.jpg') 50% 0 no-repeat fixed; color: #fff; height: 495px; margin: 0; padding: 200px 0 260px 0; background-size: cover; }
+#slide2 { background-color: #ededed; color: #333333; height: 300px; margin: 0 auto; overflow: hidden; padding: 200px 0; }
+#slide3 { background: url(../img/girlbehindmask.jpg) 50% 0 no-repeat fixed; color: #fff; height: 400px; padding: 270px 0 0 0; background-size: cover; }
+#slide4 { background-color: #ededed; color: #333333; height: 300px; padding: 200px 0; }
+#slide5 { background: url(../img/connectionsonfingers.jpg) 50% 0 no-repeat fixed; height: 200px; margin: 0 auto; padding: 250px 0; color: #fff; background-size: cover; }
+#slide6 { background-color: #ededed; color: #333333; height: 300px; padding: 50px 0 270px 0; }
+/*= FOOTER
+--------------------------------------------------------*/
+
+.wrapper {
+    min-height: 100%;
+    margin: 0 auto -120px;
+}
+
+.footer, .push {
+    height: 120px;
+}
+
+#slide1 .content { margin-top: 220px; background: rgba(72, 72, 72, 0.2); }
+
+.bg {
+    background: #eeeeee
+}
+
+.form-card {
+    margin: 30px 20px;
+    padding: 0 10px 10px;
+}
+
+.md-subheader{
+    background-color: transparent !important;
+}
+
+@media (max-width: 1200px) {
+.content { width: 960px; }
+.quotes_container { width: 800px; }
+}
+@media (max-width: 1024px) {
+.content { width: 900px; }
+.quotes_container { width: 800px; }
+
+    #slide7 {
+        padding: 49px 0 120px 0 !important;
+    }
+
+    #slide7 .text-center {
+        width: 320px;
+    }
+}
+@media (max-width: 900px) {
+.content { width: 100%; }
+.quotes_container { width: 100%; }
+.quotes { padding-right: 30px; padding-left: 30px; }
+
+    .doc a {
+        display: inline-block;
+        float: none !important;
+    }
+}
+@media (max-width: 768px) {
+.content { width: 100%; }
+.quotes_container { width: 100%; }
+.quotes { padding-right: 30px; padding-left: 30px; }
+#slide6 { padding-bottom: 450px; }
+
+    .homepage #logo { display: block; padding: 0 30px; text-align: center; }
+
+    .homepage #logo a { float: none; }
+
+    .homepage .sign-wrap { float: none !important; text-align: center; margin-top:15px !important;}
+
+    .homepage .sign-wrap a { margin: 0 20px 0 0 !important; }
+
+    .homepage #header { padding: 10px 0; }
+}
+#slide3 .content { background: rgba(72, 72, 72, 0.2); }
+#slide5 .content { background: rgba(175, 175, 175, 0.2); }
+
+#slide7 {
+    height: 120px;
+    padding: 49px 0 0 0;
+}
+#slide7.footer {
+    background: none;
+}
+
+.homepage h2 {
+    text-shadow: 2px 2px #3C3C3C;
+}
+
+.homepage #slide7 {
+    background-color: #ededed;
+}
+
+.homepage .footer-button {
+    background-color: rgb(77, 115, 138);
+    color: rgba(255, 255, 255, 0.87);
+}
+
+.footer-button {
+    width: 250px;
+    height: 60px;
+}
+
+.footer-button-icon {
+    font-size: 28px;
+    margin-right: 15px;
+}
+
+.descriptioninput {
+    min-width: 400px;
+}
+
+.sign-wrap {
+    margin-top: 15px;
+}
+
+.sign-wrap a:hover {
+    opacity: 0.9;
+}
+
+.sign-wrap a {
+    color: #FFF;
+    text-decoration: none;
+}
+
+.sign-wrap a i {
+    margin: 0 6px 0 0;
+    font-size: 15px;
+}
+
+.header-sign-wrap a {
+    text-decoration: none;
+}
+
+md-select.header-select.md-default-theme:not([disabled]):focus .header-select.md-select-value,
+md-select.header-select:not([disabled]):focus .md-select-value {
+    color: #fff !important;
+}
+
+.header-select {
+    color: #fff;
+    text-decoration: none;
+    align-content: center;
+    margin: 16px 20px 0 0;
+    border-bottom-style: none;
+    padding: 0;
+}
+
+.md-select-value .md-select-icon {
+    width: auto;
+}
+
+.header-sign-wrap i {
+  align-content: center;
+  color: #FFF;
+  text-decoration: none;
+  margin: 20px 6px 0 0;
+}
+
+.homepage .sign-wrap a {
+    margin-left: 10px;
+}
+
+.header-menu-item+.header-menu-item:before {
+    content: "";
+    position: absolute;
+    left: 10%;
+    width: 80%;
+    border-top: 1px solid #AAAAAA;
+}
+
+.header-pushmenu-item {
+  border-bottom: 1px solid #939598;
+  color: #939598;
+  background-color: #FFF;
+}
+
+.menu-hamburger {
+  color: #FFF;
+  padding-top: 20px;
+}
+
+.push-sub-menu-button {
+  padding-left: 40px !important;
+}
+
+.push-menu-button {
+  padding-left: 24px !important;
+}
+
+@media (max-width: 650px) {
+  #logo a {
+    width: 300px;
+    height: 100px;
+    margin-top: -44px;
+  }
+  .menu-hamburger {
+    padding-top: 23px;
+  }
+}
+
+/*= PUBLIC KEYS
+--------------------------------------------------------*/
+.public-key {
+  word-break: break-all;
+}
+
+.tree ul {
+    padding-top: 20px;
+    position: relative;
+    transition: all 0.5s;
+    -webkit-transition: all 0.5s;
+    -moz-transition: all 0.5s;
+}
+
+.tree li {
+    float: left;
+    text-align: center;
+    list-style-type: none;
+    position: relative;
+    padding: 20px 5px 0 5px;
+    transition: all 0.5s;
+    -webkit-transition: all 0.5s;
+    -moz-transition: all 0.5s;
+}
+
+/*We will use ::before and ::after to draw the connectors*/
+
+.tree li::before, .tree li::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 50%;
+    border-top: 1px solid #ccc;
+    width: 50%;
+    height: 20px;
+}
+
+.tree li::after {
+    right: auto;
+    left: 50%;
+    border-left: 1px solid #ccc;
+}
+
+/*We need to remove left-right connectors from elements without any siblings*/
+.tree li:only-child::after, .tree li:only-child::before {
+    display: none;
+}
+
+/*Remove space from the top of single children*/
+.tree li:only-child {
+    padding-top: 0;
+}
+
+/*Remove left connector from first child and right connector from last child*/
+.tree li:first-child::before, .tree li:last-child::after {
+    border: 0 none;
+}
+
+/*Adding back the vertical connector to the last nodes*/
+.tree li:last-child::before {
+    border-right: 1px solid #ccc;
+    border-radius: 0 5px 0 0;
+    -webkit-border-radius: 0 5px 0 0;
+    -moz-border-radius: 0 5px 0 0;
+}
+
+.tree li:first-child::after {
+    border-radius: 5px 0 0 0;
+    -webkit-border-radius: 5px 0 0 0;
+    -moz-border-radius: 5px 0 0 0;
+}
+
+/* add downward connectors from parents*/
+.tree ul ul::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    border-left: 1px solid #ccc;
+    width: 0;
+    height: 20px;
+}
+
+.tree li a {
+    border: 1px solid #ccc;
+    padding: 7px 10px;
+    text-decoration: none;
+    color: #666;
+    font-size: 1em;
+    display: inline-block;
+    cursor: pointer;
+
+    border-radius: 5px;
+    -webkit-border-radius: 5px;
+    -moz-border-radius: 5px;
+
+    transition: all 0.5s;
+    -webkit-transition: all 0.5s;
+    -moz-transition: all 0.5s;
+}
+
+/* Apply the hover effect on the lineage of the element also*/
+.tree li a:hover, .tree li a:hover + ng-include ul li a {
+    background: #c8e4f8 !important;
+    color: #000;
+    border: 1px solid #94a0b4;
+}
+
+/*Connector styles on hover*/
+/*noinspection CssOptimizeSimilarProperties*/
+.tree li a:hover + ng-include ul li::after,
+.tree li a:hover + ng-include ul li::before,
+.tree li a:hover + ng-include ul::before,
+.tree li a:hover + ng-include ul ul::before {
+    border-color: #94a0b4;
+    border-width: 2px;
+}
+
+.tree .active-organization > a {
+    background: rgba(48, 145, 187, 0.92);
+    color: #ffffff;
+    border: 1px solid #94a0b4;
+    font-weight: bold;
+}
+
+.tree li.creating a {
+    background: rgba(255, 165, 0, 0.3);
+    color: #000000;
+}
+
+.treeview {
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+ul.organizationstree {
+  list-style-type: none;
+  padding-left:20px;
+}
+
+/* Apply a small visual style to show the node depth */
+li > ul.organizationstree {
+  border-left: dotted 0.5px;
+  margin-left: 30px;
+  padding-left: 5px;
+}
+
+.organizationstreenode {
+  text-align: left;
+  margin: 0px 0px;
+  width: 100%;
+  text-transform: none;
+}
+
+/* Hide the icon but don't remove it from the DOM, small hack to ensure that all organizations are lined up*/
+.hiddenicon {
+  opacity: 0;
+}
+
+.nodecontainer {
+  padding-left: 10px;
+}
+
+.breadcrumb-container {
+    padding: 0 8px;
+}
+.breadcrumb-link {
+    color: #000000;
+    text-decoration: none;
+}
+
+.breadcrumb-link:hover, .breadcrumb-link:active {
+    text-decoration: underline;
+}
+
+.dirty-background {
+    background-color: #e6e6e6;
+}
+
+#logo-upload-preview {
+    border-style: dashed;
+    border-radius: 25px;
+    border-width: 3px;
+    border-color: #939598;
+}
+
+.logoviewer {
+    padding-top: 8px;
+    padding-bottom: 8px;
+}
+
+.file-drop-info {
+    color: #939598;
+    text-align: left;
+}
+
+.file-input {
+    border-color: transparent !important;
+}
+
+.loginprompt {
+    color: #939598;
+    text-align: center;
+}
+
+#login-logo {
+    margin: auto;
+    display: block;
+}
+
+#register-logo {
+    margin: auto;
+    display: block;
+}
+
+.forgot-password {
+    color: #838589;
+    text-decoration: none;
+}
+
+.login-header {
+    color: #4d738a;
+}
+
+.badge {
+    color: #ffffff;
+    background-color: rgba(48, 145, 187, 0.92);
+    padding: 3px 6px;
+    display: inline-block;
+    min-width: 10px;
+    font-size: 12px;
+    font-weight: bold;
+    line-height: 1;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: middle;
+    border-radius: 10px;
+}
+
+.notification-bell {
+    position: relative;
+    display: inline-block;
+}
+
+.notification-bell-unread {
+    position: absolute;
+    top: 13px;
+    right: -2px;
+    z-index: 2;
+    width: 14px;
+    height: 14px;
+    color: #ffffff;
+    background-color: rgb(87, 207, 235);
+    border: 0px solid #f3f3f3;
+    border-radius: 20px;
+}
+
+#notificationsCount {
+    position: absolute;
+    line-height: 1;
+    font-size: 10px;
+    font-weight: bold;
+    top: 3px;
+    right: 4.5px;
+}
+
+#notificationsCountMany {
+    position: absolute;
+    line-height: 1;
+    font-size: 9px;
+    font-weight: bold;
+    top: 3px;
+    right: 2px;
+}
+
+#profilemenu {
+    cursor: pointer;
+}
+
+#upload-avatar-file {
+    display: none;
+}
+
+.avatar-preview {
+    width: 120px !important;
+    height: 120px !important;
+    margin-left: 16px;
+}
+
+.fake-container {
+    height: 0px;
+    margin: 0px;
+    padding: 0px;
+}
+
+.avatar-file-upload ~ .avatar-container, .avatar-link-upload ~ .avatar-container {
+    padding-top: 0px;
+}
+
+.avatar-label-input ~ .avatar-file-upload, .avatar-label-input ~ .avatar-link-upload {
+    padding-top: 0px;
+}
+
+.list-item-secondary-button-padding p {
+    padding-right: 120px;
+}
+
+.tab-you, .tab-settings {
+    margin-top: 20px;
+}
+
+.tab-you md-toolbar, .tab-settings md-toolbar {
+    min-height: 48px;
+}
+
+.tab-you md-toolbar .md-toolbar-tools, .tab-settings md-toolbar .md-toolbar-tools {
+    height: 48px;
+    min-height: 48px;
+}
+
+.loading-container {
+    min-height: 300px;
+}
+
+p.verified {
+    margin-right: 20px;
+}
+
+.validation-error {
+    color: rgb(221, 44, 0);
+}
+
+.countryoption > .md-text  {
+    width: 100%;
+}

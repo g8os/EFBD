@@ -54,7 +54,7 @@ func testBackendReadWrite(ctx context.Context, t *testing.T, vdiskID string, blo
 		return
 	}
 
-	vComp := new(vdiskCompletion)
+	vComp := newVdiskCompletion()
 	backend := newBackend(vdiskID, size, blockSize, storage, vComp, nil)
 	if !assert.NotNil(t, backend) {
 		return

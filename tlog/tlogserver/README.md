@@ -4,15 +4,9 @@
 - TLOG Server store received log entries and store it in memmory
 - After storing log entry it replies to the client on successfull transaction.
 - after timeout or size of the aggregation is reached, we `Flush` it:
-	- aggregate the entries
-	- compress the aggregate
-	- encrypt the compressed aggregate
-	- erasure encode the encrypted aggregate
-	- store each pieces of erasure encoded pieces to ardb in parallel way
-
-- Ideal setup would be to spread erasure coded pieces on different ardb instances.
-- Each instance is used to keep erasure coded part according to its index (erasure coded part index == ardb instance index)
-- We keep only backward links in our blockchain of history. We will add separate forward lining structure later in case it will be needed for the speed of recovery
+	- aggregate the entries in capnp format
+	- store the data to [0-stor](https://github.com/zero-os/0-stor) server using compress, encrypt, 
+	  and distribution (erasure encoding) pipelines
 
 
 ## Flush Settings
@@ -22,7 +16,6 @@ settings directly related to flush:
 - flush-time: maximum time we can wait entries before flushing it (default = 25 seconds)
 - k : number of erasure encoded data pieces
 - m : number of erasure encoded coding/parity pieces
-- nonce: hex nonce used for encryption 
 - priv-key: encryption private key
 
 ## Tlog Data structure
@@ -50,17 +43,6 @@ timestamp(uint64)
 operation			# disk operation
 ```
 
-## Metadata
-
-Tlog has very simple metadata, it only need to store hash of the last aggregation.
-
-Because the way we store the data (erasure coded part index == ardb instance index) we don't need
-to store which instance we use to store a data.
-
-Tlog server do these to increases reliability:
-
-- store 5 last hashes. In case of the very last hash is corrupted, we can use previous hash
-- store the metadata on all ardb instances
 
 ## Tlog Server Configuration
 
@@ -86,18 +68,6 @@ TODO : when hot reload the config, re-enable the slave sync if possible.
 
 Use `tlogserver -h` or `tlogserver --help` to get more information about all available flags.
 
-## erasure coding
-
-It use [isa-l](https://github.com/01org/isa-l) C library and [templexxx/reedsolomon](https://github.com/templexxx/reedsolomon) Go library for erasure coding.
-
-Only one can be used at a time.
-
-By default, the erasure coding is done in go.
-
-When using the C isa-l library for the erasure coding, `-tags isal` needs be passed to go build.
-And `GODEBUG=cgocheck=0` environment variable need to be set in order to run it.
-
-
 **Build**
 
 From this repo root directory
@@ -110,20 +80,13 @@ make tlogserver
 
 Run it
 ```
-./bin/tlogserver  -storage-addresses=127.0.0.1:16379 -k 16 -m 4
+./bin/tlogserver  -k 16 -m 4
 ```
 
 It starts tlog server that:
 - listen on default listen address 0.0.0.0:11211
-- need 16 data shards and 4 parity/coding shards -> total 20 ardb 
-- first ardb address is `127.0.0.1:16379`, the seconds is in same IP but in port `16380`, the third in port `16381`, and so on...
+- need 16 data shards and 4 parity/coding shards -> total 20 0-stor server
 
-To specify each ardb adddress, use array as address, example:`-storage-addresses=127.0.0.1:16379,127.0.0.1:16380,127.0.0.1:16381` to specify 3 ardbs
 
 Use tlog client as described in [client readme](../tlogclient/readme.md) to send transaction log to this tlog server.
 
-
-**benchmark**
-```
-GODEBUG=cgocheck=0 go test -tags isal -bench=.
-```

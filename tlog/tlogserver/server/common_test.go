@@ -10,20 +10,6 @@ import (
 	"github.com/zero-os/0-Disk/tlog/tlogclient"
 )
 
-func createTestServer(t *testing.T, flushTime int) (*Server, *Config, error) {
-	conf := DefaultConfig()
-	conf.ListenAddr = "127.0.0.1:0"
-	if flushTime > 0 {
-		conf.FlushTime = flushTime
-	}
-
-	// create inmemory redis pool factory
-	poolFactory := tlog.InMemoryRedisPoolFactory(conf.RequiredDataServers())
-
-	s, err := NewServer(conf, nil, poolFactory)
-	return s, conf, err
-}
-
 // wait for sequence seqWait to be flushed
 func testClientWaitSeqFlushed(ctx context.Context, t *testing.T, respChan <-chan *tlogclient.Result,
 	cancelFunc func(), seqWait uint64, exactSeq bool) {

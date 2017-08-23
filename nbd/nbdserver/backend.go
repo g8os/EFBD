@@ -3,9 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/zero-os/0-Disk/log"
@@ -223,10 +220,6 @@ func (ab *backend) GoBackground(ctx context.Context) {
 	ab.vComp.Add()
 	defer ab.vComp.Done()
 
-	log.Debugf("vdisk '%s' is listening for SIGTERM signal", ab.vdiskID)
-	sigTerm := make(chan os.Signal, 1)
-	signal.Notify(sigTerm, syscall.SIGTERM)
-
 	// wait until some event frees up this goroutine,
 	// either because the context is Done,
 	// or because we received a SIGTERM handler,
@@ -235,8 +228,8 @@ func (ab *backend) GoBackground(ctx context.Context) {
 	case <-ctx.Done():
 		log.Debugf("aborting background thread for vdisk %s's backend", ab.vdiskID)
 
-	case <-sigTerm:
-		log.Infof("vdisk '%s' received SIGTERM", ab.vdiskID)
+	case <-ab.vComp.Stopped():
+		log.Infof("vdisk '%s' received `Stop` command from vdisk completion", ab.vdiskID)
 
 		// execute flush
 		done := make(chan error, 1)

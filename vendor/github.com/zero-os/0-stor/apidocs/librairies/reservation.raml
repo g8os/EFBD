@@ -1,0 +1,170 @@
+#%RAML 1.0 Library
+
+usage:  |
+  This library defines the interface any API should implement to support GIG reservation mechanisnm
+
+securitySchemes:
+  itsyouonline: !include https://raw.githubusercontent.com/gig-cockpit/raml-definitions/master/securityScheme/iyo.raml
+  dataAccessToken:
+    type: Pass Through
+    description: |
+      In order to access a resource that has been reserved, we need to fist create a reservation.
+      The access data token return by the reservation request need then to be passed in the following requests
+      that access reserved ressources
+    describedBy:
+      headers:
+        DataAccessToken:
+          type: string
+          required: true
+      responses:
+        401:
+          description: |
+              None, bad or expired token. To fix, request a new reservation token
+        402:
+          description: |
+            The requests you are trying to do is too big compare to the quota left in your reservation.
+            Create a new reservation to increase your allocated storage quota
+        403:
+          description: |
+              Forbiden, you don't have the right to perform this action.
+  reservationToken:
+    type: Pass Through
+    description: |
+      In order to managed a reservation you need to pass the reservation token in the header.
+      The reservation token is generation during the creation of the reservation and it's linked to the user that created the reservation
+      This give the management right of a reservation only to its creater
+    describedBy:
+      headers:
+        ReservationToken:
+          type: string
+          required: true
+      responses:
+        401:
+          description: |
+              None, bad or expired token. To fix, request a new reservation token
+        402:
+          description: |
+            The requests you are trying to do is too big compare to the quota left in your reservation.
+            Create a new reservation to increase your allocated storage quota
+        403:
+          description: |
+              Forbiden, you don't have the right to perform this action.
+
+
+types:
+  Error:
+    properties:
+      error:
+        type: string
+        required: true
+
+  ReservationRequest:
+    properties:
+      size:
+        description: |
+          Storage size you want to reserve in MiB
+        required: true
+        type: integer
+        format: int64
+        minimum: 1
+      period: # TODO: do we use period, or exact epoch ?
+        description: |
+          Number of days the reservation is valid
+        required: true
+        type: integer
+        format: int64
+        minimum: 1
+    examples:
+      properties:
+        size: 128
+        period: 30
+
+  Reservation:
+    properties:
+      id:
+        type: string
+        pattern: ^\w+$
+      adminId:
+        type: string
+        description: ItYou.Online ID of the user that has right to administrate this reservation
+        pattern: ^\w+$
+      created:
+        type: integer
+        format: int64
+      updated:
+        type: integer
+        format: int64
+      sizeReserved:
+        description: |
+          Storage size of the reservation in MiB
+        required: true
+        type: number
+        format: float
+        minimum: 1
+        multipleOf: 1
+      sizeUsed:
+        description: |
+          Storage size of the reservation already used
+        required: true
+        type: number
+        format: float
+        minimum: 1
+      expireAt:
+        description: |
+          Expiration date
+        type: datetime
+
+resourceTypes:
+  reservableCollection:
+    usage: This resourceType should be used for any collection of items that can be reserved
+    get:
+      securedBy: [ itsyouonline : { scopes: ["user:name"] } ]
+      displayName: ListReservations
+      description: |
+        Return a list of all the existing reservation for the give resource
+    post:
+      securedBy: [ itsyouonline : { scopes: ["user:name"] } ]
+      displayName: CreateReservation
+      description: |
+        Create a reservation for the given resource.
+      body:
+        application/json:
+          type: ReservationRequest
+      responses:
+        200:
+          description: |
+            Reservation created. The response contains two tokens.
+            reservationToken, used to managed this reservation.
+            dataAccessToken, used to perform action on the data in this reservation
+          body:
+            application/json:
+              properties:
+                reservation:
+                  type: Reservation
+                reservationToken:
+                  type: string
+                dataAccessToken:
+                  type: string
+        403:
+          description: |
+            The reservation has not been created. Possible reason, not enough space left on the server, ...
+            Inpsect error message for more detail
+          body:
+            application/json:
+              type: Error
+  reservableMember:
+    get:
+      securedBy: [ reservationToken ]
+      description: |
+        Return information about a reservation
+      body:
+        application/json:
+          type: Reservation
+    put:
+      displayName: UpdateReservation
+      securedBy: [ reservationToken ]
+      description: |
+        Renew an existing reservation
+      body:
+        application/json:
+          type: ReservationRequest
