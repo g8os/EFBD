@@ -112,12 +112,21 @@ Sent when receiving an invalid config for a certain key, while reading or watchi
 
 This message is send in the hope that the config can be made valid by receiving an(other) update from the [0-Orchestrator][zeroOrchestrator].
 
+## Broadcast statistics 
+
+The `BroadcastStatistics` function in the `0-Disk/log` package logs statistical messages using the [0-Log library][zeroLog] to broadcast messages for the [0-core log monitor][zeroCoreLogMonitor] using the [Statistics Log message format spec][StatLogSpec]. The broadcasted statistics messages are send at [log level 10 (statistics/monitoring message)][loglevels]. 
+
+More in-depth information about the actual implementation in 0-Disk can be found in [the log module Godocs][zeroDiskLogGodcs].
+
+### Logged statistics
+
+    // TODO: describe format of statistics broadcasted + services that broadcast them
+
 [zeroLog]: https://github.com/zero-os/0-log/
-[zeroStor]: https://github.com/zero-os/0-stor/
 [loglevels]: https://github.com/zero-os/0-log/blob/master/README.md#supported-log-levels
-[sourceinterface]: https://godoc.org/github.com/zero-os/0-Disk/config/#Source
 [zeroCoreLogMonitor]: https://github.com/zero-os/0-core/blob/master/docs/monitoring/README.md#monitoring
 [zeroOrchestrator]: https://github.com/zero-os/0-orchestrator
+[StatLogSpec]: https://github.com/zero-os/0-core/blob/master/docs/monitoring/stats.md#statistics-log-message-format
 
 [ardb]: /docs/glossary.md#ardb
 [tlog]: /docs/glossary.md#tlog
