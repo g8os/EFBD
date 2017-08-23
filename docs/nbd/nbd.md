@@ -23,6 +23,7 @@ Next:
 - [Building your NBD Server](building.md).
 - [Configuring your NBD Server](config.md).
 - [Using your NBD Server](using.md).
+- [Backing up your vdisks](backup.md).
 
 [tlogserver]: /docs/tlog/server.md
 

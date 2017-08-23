@@ -1,0 +1,66 @@
+digraph {
+    label = "bencode-encoded deduped map example"
+    rankdir = "LR"
+
+    subgraph clusterDedupedMap {
+        label = "Deduped Map"
+        style = "dotted"
+
+        keyH [
+            label = "key\n\"h\""
+            shape = "square"
+        ]
+        keyI [
+            label = "key\n\"i\""
+            shape = "square"
+        ]
+        keyC [
+            label = "key\n\"c\""
+            shape = "square"
+        ]
+
+        valueH [
+            shape = "record"
+            label = "<t> (block hashes) | <1> hash i | <2> hash i+1 | ... | <3> hash n"
+        ]
+
+        valueI [
+            shape = "record"
+            label = "<t> (block indices) | <1> index i | <2> index i+1 | ... | <3> index n"
+        ]
+
+        valueC [
+            label = "n\n(block index/hash count)"
+            shape = "rectangle"
+        ]
+
+        keyH -> valueH:t
+        keyI -> valueI:t
+        keyC -> valueC
+
+        valueH:1 -> valueI:1
+        valueH:2 -> valueI:2
+        valueH:3 -> valueI:3
+    }
+
+    subgraph clusterBlocks {
+        style = "invis"
+
+        dedupedBlock1 [
+            shape = "rectangle"
+            label = "deduped block\ni"
+        ]
+        dedupedBlock2 [
+            shape = "rectangle"
+            label = "deduped block\ni+9"
+        ]
+        dedupedBlock3 [
+            shape = "rectangle"
+            label = "deduped block\nn"
+        ]
+    }
+
+    valueI:1 -> dedupedBlock2
+    valueI:2 -> dedupedBlock1
+    valueI:3 -> dedupedBlock2
+}

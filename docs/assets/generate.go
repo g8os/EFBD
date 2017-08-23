@@ -13,3 +13,9 @@ package assets
 //go:generate dot -Tpng -o config_hotreload_composition.png src/config_hotreload_composition.dot
 
 //go:generate dot -Tpng -o zerodisk_overview.png src/zerodisk_overview.dot
+
+//go:generate dot -Tpng -o backup_deduped_map.png src/backup_deduped_map.dot
+//go:generate dot -Tpng -o backup_block_inflation.png src/backup_block_inflation.dot
+//go:generate dot -Tpng -o backup_block_deflation.png src/backup_block_deflation.dot
+//go:generate dot -Tpng -o backup_overview_export.png src/backup_overview_export.dot
+//go:generate dot -Tpng -o backup_overview_import.png src/backup_overview_import.dot

@@ -1,0 +1,115 @@
+digraph {
+    rankdir = "LR"
+
+    subgraph clusterPartB {
+    style = "invis"
+
+    checkHashIsCorrect1_Out [
+        label = "...is correct"
+        shape = "parallelogram"
+    ]
+     checkHashIsCorrect2_Out [
+        label = "...is correct"
+        shape = "parallelogram"
+    ]
+
+    decrypter_1 [
+        label = "decrypter\ni"
+    ]
+    decrypter_2 [
+        label = "decrypter\ni+j"
+    ]
+    checkHashIsCorrect1_Out -> decrypter_1 [
+        label = "decrypt\neach block\n(2.2)"
+        style = "dashed"
+    ]
+    checkHashIsCorrect2_Out -> decrypter_2 [
+        label = "decrypt\neach block\n(2.2)"
+        style = "dashed"
+    ]
+
+    decompressor1 [
+        label = "decompressor\ni"
+    ]
+    decompressor2 [
+        label = "decompressor\ni+j"
+    ]
+    decrypter_1 -> decompressor1 [
+        label = "decompress\neach block\n(2.2)"
+    ]
+    decrypter_2 -> decompressor2 [
+        label = "decompress\neach block\n(2.2)"
+    ]
+
+    blockFetcher [
+        label = "block fetcher"
+    ]
+    decompressor1 -> blockFetcher [
+        label = "order\nand resize\n(2.3)"
+    ]
+    decompressor2 -> blockFetcher [
+        label = "order\nand resize\n(2.3)"
+    ]
+
+    ardbCluster [
+        shape = "cylinder"
+        label = "ARDB\ncluster"
+    ]
+
+    blockFetcher -> ardbCluster [
+        label = "store block\n(2.4)"
+    ]
+    blockFetcher -> ardbCluster [
+        label = "store block\n(2.4)"
+    ]
+    }
+
+    subgraph clusterPartA {
+    style = "invis"
+
+    storageServer [
+        shape = "cylinder"
+        label = "Storage Server\n(FTP)"
+    ]
+
+    dedupedMap [
+        shape = "record"
+        label = "<t> (Deduped Map) |
+                 <1> block(i) \-\> hash(i) |
+                 <2> block(i+1) \-\> hash(i+1) |
+                 <3> block(i+j) \-\> hash(i+j)"
+    ]
+
+    storageServer -> dedupedMap:t [
+        label = "load deduped map\n(1)"
+    ]
+
+    block2 [
+        label = "block\ni+1"
+        shape = "rectangle"
+    ]
+    block1 [
+        label = "block\ni"
+        shape = "rectangle"
+    ]
+    storageServer -> block2 [
+        label = "read block\n(2.1)"
+    ]
+    storageServer -> block1 [
+        label = "read block\n(2.1)"
+    ]
+    dedupedMap:2 -> block2 [ dir = "none" ]
+    dedupedMap:1 -> block1 [ dir = "none" ]
+
+    checkHashIsCorrect1_In [
+        label = "check hash..."
+        shape = "parallelogram"
+    ]
+     checkHashIsCorrect2_In [
+        label = "check hash..."
+        shape = "parallelogram"
+    ]
+    block1 -> checkHashIsCorrect1_In
+    block2 -> checkHashIsCorrect2_In
+    }
+}

@@ -1,0 +1,56 @@
+digraph {
+    subgraph clusterScenario1 {
+        label = "scenario 1"
+        color = "none"
+
+        scen1_block_src_1 [
+            label = "X"
+            shape = "plaintext"
+        ]
+        scen1_block_src_2 [
+            label = "X"
+            shape = "plaintext"
+        ]
+    }
+
+    subgraph clusterScenario2 {
+        label = "scenario 2"
+        color = "none"
+
+        scen2_block_src_1 [
+            label = "1"
+            shape = "square"
+        ]
+        scen2_block_src_2 [
+            label = "X"
+            shape = "plaintext"
+        ]
+        scen2_block_dst [
+            label = "<1> 0 | <2> 1"
+            shape = "record"
+        ]
+
+        scen2_block_src_1 -> scen2_block_dst:2
+    }
+
+    subgraph clusterScenario3 {
+        label = "scenario 3"
+        color = "none"
+
+        scen3_block_src_1 [
+            label = "1"
+            shape = "square"
+        ]
+        scen3_block_src_2 [
+            label = "1"
+            shape = "square"
+        ]
+        scen3_block_dst [
+            label = "<1> 1 | <2> 1"
+            shape = "record"
+        ]
+
+        scen3_block_src_1 -> scen3_block_dst:1
+        scen3_block_src_2 -> scen3_block_dst:2
+    }
+}

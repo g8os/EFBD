@@ -12,6 +12,10 @@ var (
 	// ErrInvalidConfig is the error returned when giving an invalid
 	// storage (driver) config to the NewStorageDriver function.
 	ErrInvalidConfig = errors.New("invalid storage driver config")
+
+	// ErrDataDidNotExist is returned from a ServerDriver's Getter
+	// method in case the requested data does not exist on the server.
+	ErrDataDidNotExist = errors.New("requested data did not exist")
 )
 
 // NewStorageDriver creates a new storage driver,

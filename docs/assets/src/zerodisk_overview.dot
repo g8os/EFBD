@@ -26,7 +26,6 @@ graph zerodisk_overview {
 
     subgraph clusterTlogClient {
       style=dotted
-      color=transparent
       label="tlogclient module"
 
       tlogclient

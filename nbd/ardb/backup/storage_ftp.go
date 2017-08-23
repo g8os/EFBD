@@ -17,12 +17,6 @@ import (
 	"github.com/secsy/goftp"
 )
 
-var (
-	// ErrDataDidNotExist is returned from a ServerDriver's Getter
-	// method in case the requested data does not exist on the server.
-	ErrDataDidNotExist = errors.New("requested data did not exist")
-)
-
 // NewFTPStorageConfig creates a new FTP Storage Config,
 // based on a given string
 func NewFTPStorageConfig(data string) (cfg FTPStorageConfig, err error) {

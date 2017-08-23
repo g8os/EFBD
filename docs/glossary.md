@@ -20,7 +20,7 @@ ARDB (or "A Redis Database") is the collective term used for the underlying stor
 
 ### backup
 
-Using the [zeroctl](#zeroctl) tool, one can make a backup of a [vdisk](#vdisk) using the [export command][cmdexport]. The backup can then be restored again using the [import command][cmdimport], either as a new [vdisk](#vdisk), or overwriting an existing [vdisk](#vdisk).
+Using the [zeroctl](#zeroctl) tool, one can make a backup of a [vdisk](#vdisk) using the [export command](#export). The backup can then be restored again using the [import command](#import), either as a new [vdisk](#vdisk), or overwriting an existing [vdisk](#vdisk).
 
 ### block
 
@@ -56,6 +56,10 @@ Database (db) is one of the available [vdisk](#vdisk) types. It uses the [nonded
 
 Configurations for all [vdisks](#vdisk) to be mounted by a given [NBD Server][nbd] and supported by other 0-Disk services such as the [TLog Server][tlogserver], are stored in an [etcd][etcd] cluster. [0-Orchestrator][0-Orchestrator] sets up this cluster and writes all these configurations to the cluster. 0-Disk services consider this cluster as read-only. For more information about this use case of [etcd][etcd] check out the [etcd config docs][etcdConfigDocs].
 
+### export
+
+The export command of the [zeroctl](#zeroctl) tool can be used to create a snapshot of a [vdisk](#vdisk) in the current state. This snapshot can be used to restore the [vdisk](#vdisk) at a later timestamp or create a new [vdisk](#vdisk) using this snapshot and thus current [vdisk](#vdisk)'s state. See the [export zeroctl docs][cmdexport] for more info.
+
 ### hash
 
 A hash function is any function that can be used to map data of arbitrary size to data of fixed size. In the case of 0-Disk it can be assumed that the [blake2b][blake2b] cryptographic hashing algorithm is used, unless explicitly specified otherwise. A hash is the name for the fixed-sized data produced by the hashing algorithm.
@@ -63,6 +67,10 @@ A hash function is any function that can be used to map data of arbitrary size t
 ### hotreload
 
 Any 0-Disk config supports hot reloading as an optional feature, for where it is needed. Meaning that the config can be reloaded without having to restart the application/process using it. See the [config docs][config] for more info.
+
+### import
+
+The import command of the [zeroctl](#zeroctl) tool can be used to restore a [vdisk](#vdisk) or a create a new one, using a previously created [snapshot](#snapshot). See the [import zeroctl docs][cmdimport] for more info.
 
 ### index
 
@@ -147,6 +155,10 @@ An [LBA](#lba) sector contains 128 hashes, and is kept in an LRU [cache (2)](#ca
 ### slave
 
 A slave [storage (1)](#storage) cluster is a mirror of a vdisk's primary [storage (1)](#storage) cluster by the [TLog server][tlogserver]. Such that in case of failure the primary [storage (1)](#storage) cluster can be restored using the slave [storage (1)](#storage) cluster.
+
+### snapshot
+
+A snapshot of a [vdisk](#vdisk) can be created using the [zeroctl](#zeroctl) tool, using the [export command](#export). This snapshot can afterwards be used to restore a [vdisk](#vdisk) or create a new [vdisk](#vdisk) using the [import command](#import), also from the [zeroctl](#zeroctl) tool.
 
 ### storage
 
