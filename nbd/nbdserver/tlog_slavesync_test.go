@@ -31,8 +31,8 @@ func testSlaveSyncReal(t *testing.T, isRead bool) {
 	t.Log("== Start tlogserver with slave syncer== ")
 	tlogConf := server.DefaultConfig()
 	tlogConf.ListenAddr = ""
-	tlogConf.K = 1
-	tlogConf.M = 1
+	tlogConf.DataShards = 1
+	tlogConf.ParityShards = 1
 
 	t.Log("create slave syncer")
 	t.Log("create inmemory redis pool for ardb slave")
@@ -187,8 +187,8 @@ func TestSlaveSyncRestart(t *testing.T) {
 
 	tlogConf := server.DefaultConfig()
 	tlogConf.ListenAddr = ""
-	tlogConf.K = 1
-	tlogConf.M = 1
+	tlogConf.DataShards = 1
+	tlogConf.ParityShards = 1
 	tlogConf.ConfigInfo = zerodisk.ConfigInfo{
 		Resource:     tlogConfPath,
 		ResourceType: zerodisk.FileConfigResource,

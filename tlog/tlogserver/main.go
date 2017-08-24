@@ -31,8 +31,8 @@ func main() {
 	flag.IntVar(&conf.FlushSize, "flush-size", conf.FlushSize, "flush size")
 	flag.IntVar(&conf.FlushTime, "flush-time", conf.FlushTime, "flush time (seconds)")
 	flag.IntVar(&conf.BlockSize, "block-size", conf.BlockSize, "block size (bytes)")
-	flag.IntVar(&conf.DataShards, "data-shards", conf.DataShards, "data shards(K) variable of the erasure encoding")
-	flag.IntVar(&conf.ParityShards, "parity-shards", conf.ParityShards, "parity shards(M) variable of the erasure encoding")
+	flag.IntVar(&conf.DataShards, "data-shards", conf.DataShards, "data shards (K) variable of the erasure encoding")
+	flag.IntVar(&conf.ParityShards, "parity-shards", conf.ParityShards, "parity shards (M) variable of the erasure encoding")
 	flag.StringVar(&conf.PrivKey, "priv-key", conf.PrivKey, "private key")
 	flag.StringVar(&profileAddr, "profile-address", "", "Enables profiling of this server as an http service")
 	flag.Var(&sourceConfig, "config", "config resource: dialstrings (etcd cluster) or path (yaml file)")
@@ -128,7 +128,7 @@ func init() {
 
 		fmt.Fprintln(os.Stderr, "tlogserver", zerodisk.CurrentVersion)
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, fmt.Sprintf("usage: %s [flags] config_resource", exe))
+		fmt.Fprintln(os.Stderr, fmt.Sprintf("usage: %s [flags]", exe))
 		flag.PrintDefaults()
 	}
 }
