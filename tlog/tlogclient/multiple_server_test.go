@@ -135,11 +135,11 @@ func testTwoServers(t *testing.T, ttConf testTwoServerConf) {
 
 	// tlog conf
 	tlogConf := testConf
-	tlogConf.K = 1
-	tlogConf.M = 1
+	tlogConf.DataShards = 1
+	tlogConf.ParityShards = 1
 	tlogConf.FlushSize = 25
 
-	storCluster, err := embeddedserver.NewZeroStorCluster(tlogConf.K + tlogConf.M)
+	storCluster, err := embeddedserver.NewZeroStorCluster(tlogConf.DataShards + tlogConf.ParityShards)
 	require.Nil(t, err)
 	defer storCluster.Close()
 
@@ -247,7 +247,7 @@ func createTestTlogServer(ctx context.Context, t *testing.T, conf *server.Config
 	mdServer *embedserver.Server, vdiskID string) (*server.Server, stor.Config) {
 
 	_, configSource, storConf := newZeroStorConfigFromCluster(t, storCluster, mdServer, vdiskID,
-		conf.PrivKey, conf.K, conf.M)
+		conf.PrivKey, conf.DataShards, conf.ParityShards)
 
 	tlogServer, err := server.NewServer(conf, configSource)
 	require.Nil(t, err)

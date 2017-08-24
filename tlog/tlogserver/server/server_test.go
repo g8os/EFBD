@@ -23,12 +23,12 @@ import (
 
 var (
 	testConf = &Config{
-		K:          1,
-		M:          1,
-		ListenAddr: "127.0.0.1:0",
-		FlushSize:  25,
-		FlushTime:  10,
-		PrivKey:    "12345678901234567890123456789012",
+		DataShards:   1,
+		ParityShards: 1,
+		ListenAddr:   "127.0.0.1:0",
+		FlushSize:    25,
+		FlushTime:    10,
+		PrivKey:      "12345678901234567890123456789012",
 	}
 )
 
@@ -103,7 +103,7 @@ func TestEndToEnd(t *testing.T) {
 
 	log.Infof("in memory redis pool")
 
-	cleanFunc, stubSource, storConfig := newZeroStorConfig(t, expectedVdiskID, conf.PrivKey, conf.K, conf.M)
+	cleanFunc, stubSource, storConfig := newZeroStorConfig(t, expectedVdiskID, conf.PrivKey, conf.DataShards, conf.ParityShards)
 	defer cleanFunc()
 
 	// start the server
@@ -215,7 +215,7 @@ func TestUnordered(t *testing.T) {
 	// config
 	conf := testConf
 
-	cleanFunc, stubSource, storConfig := newZeroStorConfig(t, vdiskID, conf.PrivKey, conf.K, conf.M)
+	cleanFunc, stubSource, storConfig := newZeroStorConfig(t, vdiskID, conf.PrivKey, conf.DataShards, conf.ParityShards)
 	defer cleanFunc()
 
 	// start the server

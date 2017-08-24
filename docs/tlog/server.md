@@ -13,8 +13,8 @@ The code for the tlogserver can be found in the [/tlog/tlogserver](/tlog/tlogser
 settings directly related to flush:
 - `flush-size`: minimum number of blocks to be flushed (default = 25)
 - `flush-time`: maximum time we can wait entries before flushing it (default = 25 seconds)
-- `k` : number of erasure encoded data pieces
-- `m` : number of erasure encoded coding/parity pieces
+- `data-shards` : number of erasure encoded data pieces
+- `parity-shards` : number of erasure encoded coding/parity pieces
 - `priv-key`: encryption private key
 
 ## TLog Data structure
@@ -66,23 +66,25 @@ After the [NBD][nbd] Server switches to the [slave][slave] [storage (1)][storage
 $ tlogserver -h
 tlogserver 1.1.0-alpha
 
-Usage of bin/tlogserver:
+usage: tlogserver [flags]
   -address string
     	Address to listen on (default "0.0.0.0:11211")
   -block-size int
     	block size (bytes) (default 4096)
-  -config string
-    	Zerodisk Config YAML File (default "config.yml")
+  -config value
+    	config resource: dialstrings (etcd cluster) or path (yaml file)
+  -data-shards int
+    	data shards (K) variable of the erasure encoding (default 4)
   -flush-size int
     	flush size (default 25)
   -flush-time int
     	flush time (seconds) (default 25)
-  -k int
-    	K variable of the erasure encoding (default 4)
+  -id string
+    	The server ID (default: default) (default "default")
   -logfile string
     	optionally log to the specified file, instead of the stderr
-  -m int
-    	M variable of the erasure encoding (default 2)
+  -parity-shards int
+    	parity shards (M) variable of the erasure encoding (default 2)
   -priv-key string
     	private key (default "12345678901234567890123456789012")
   -profile-address string
