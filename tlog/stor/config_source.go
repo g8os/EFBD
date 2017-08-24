@@ -4,7 +4,7 @@ import (
 	"github.com/zero-os/0-Disk/config"
 )
 
-func ConfigFromConfigSource(source config.Source, vdiskID, privKey string, k, m int) (conf Config, err error) {
+func ConfigFromConfigSource(source config.Source, vdiskID, privKey string, dataShards, parityShards int) (conf Config, err error) {
 	// read vdisk config
 	vdiskConf, err := config.ReadVdiskTlogConfig(source, vdiskID)
 	if err != nil {
@@ -40,8 +40,8 @@ func ConfigFromConfigSource(source config.Source, vdiskID, privKey string, k, m 
 		IyoSecret:       zsc.IYO.Secret,
 		ZeroStorShards:  serverAddrs,
 		MetaShards:      metaServerAddrs,
-		DataShardsNum:   k,
-		ParityShardsNum: m,
+		DataShardsNum:   dataShards,
+		ParityShardsNum: parityShards,
 		EncryptPrivKey:  privKey,
 	}, nil
 }

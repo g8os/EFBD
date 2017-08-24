@@ -23,12 +23,12 @@ var (
 
 func init() {
 	testConf.ListenAddr = "127.0.0.1:0"
-	testConf.K = 1
-	testConf.M = 1
+	testConf.DataShards = 1
+	testConf.ParityShards = 1
 }
 
 func newZeroStorDefaultConfig(t *testing.T, vdiskID string) (func(), *config.StubSource, stor.Config) {
-	return newZeroStorConfig(t, vdiskID, testConf.PrivKey, testConf.K, testConf.M)
+	return newZeroStorConfig(t, vdiskID, testConf.PrivKey, testConf.DataShards, testConf.ParityShards)
 }
 
 func newZeroStorConfig(t *testing.T, vdiskID, privKey string,

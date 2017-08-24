@@ -14,8 +14,8 @@
 settings directly related to flush:
 - flush-size: minimum number of blocks to be flushed (default = 25)
 - flush-time: maximum time we can wait entries before flushing it (default = 25 seconds)
-- k : number of erasure encoded data pieces
-- m : number of erasure encoded coding/parity pieces
+- data-shards : number of erasure encoded data pieces
+- parity-shards : number of erasure encoded coding/parity pieces
 - priv-key: encryption private key
 
 ## Tlog Data structure
@@ -80,7 +80,7 @@ make tlogserver
 
 Run it
 ```
-./bin/tlogserver  -k 16 -m 4
+./bin/tlogserver  -data-shards 16 -parity-shards 4
 ```
 
 It starts tlog server that:

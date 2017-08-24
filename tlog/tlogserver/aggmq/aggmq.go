@@ -16,10 +16,10 @@ var (
 // AggProcessorConfig defines config given to the aggregation
 // processor
 type AggProcessorConfig struct {
-	VdiskID string
-	K       int
-	M       int
-	PrivKey string
+	VdiskID      string
+	DataShards   int
+	ParityShards int
+	PrivKey      string
 }
 
 // AggProcessorReq defines request to the processor provider

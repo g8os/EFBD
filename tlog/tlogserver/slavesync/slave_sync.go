@@ -123,7 +123,7 @@ func newSlaveSyncer(ctx context.Context, configSource config.Source, apc aggmq.A
 
 func (ss *slaveSyncer) init() error {
 	// tlog replay player
-	player, err := player.NewPlayer(ss.ctx, ss.configSource, ss.apc.VdiskID, ss.apc.PrivKey, ss.apc.K, ss.apc.M)
+	player, err := player.NewPlayer(ss.ctx, ss.configSource, ss.apc.VdiskID, ss.apc.PrivKey, ss.apc.DataShards, ss.apc.ParityShards)
 	if err != nil {
 		return err
 	}

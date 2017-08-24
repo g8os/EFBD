@@ -36,7 +36,7 @@ func onReplayCbNone(seq uint64) error {
 
 // NewPlayer creates new tlog player
 func NewPlayer(ctx context.Context, source config.Source,
-	vdiskID, privKey string, k, m int) (*Player, error) {
+	vdiskID, privKey string, dataShards, parityShards int) (*Player, error) {
 
 	// get config to create block storage
 	vdiskCfg, err := config.ReadVdiskStaticConfig(source, vdiskID)
@@ -66,16 +66,16 @@ func NewPlayer(ctx context.Context, source config.Source,
 		return nil, err
 	}
 
-	return NewPlayerWithStorage(ctx, source, ardbProvider, blockStorage, vdiskID, privKey, k, m)
+	return NewPlayerWithStorage(ctx, source, ardbProvider, blockStorage, vdiskID, privKey, dataShards, parityShards)
 }
 
-// NewPlayerWithPoolAndStorage create new tlog player
+// NewPlayerWithStorage create new tlog player
 // with given BlockStorage
 func NewPlayerWithStorage(ctx context.Context, source config.Source,
 	connProvider ardb.ConnProvider, storage storage.BlockStorage,
-	vdiskID, privKey string, k, m int) (*Player, error) {
+	vdiskID, privKey string, dataShards, parityShards int) (*Player, error) {
 
-	storConf, err := stor.ConfigFromConfigSource(source, vdiskID, privKey, k, m)
+	storConf, err := stor.ConfigFromConfigSource(source, vdiskID, privKey, dataShards, parityShards)
 	if err != nil {
 		return nil, err
 	}

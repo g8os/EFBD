@@ -34,7 +34,7 @@ func TestResetFirstSequence(t *testing.T) {
 	conf := testConf
 	conf.FlushTime = 100 // make it high value to avoid flush by timeout
 
-	cleanFunc, stubSource, _ := newZeroStorConfig(t, vdiskID, conf.PrivKey, conf.K, conf.M)
+	cleanFunc, stubSource, _ := newZeroStorConfig(t, vdiskID, conf.PrivKey, conf.DataShards, conf.ParityShards)
 	defer cleanFunc()
 
 	// start the server

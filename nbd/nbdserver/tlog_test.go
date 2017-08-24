@@ -184,12 +184,12 @@ func testTlogStorageForceFlush(ctx context.Context, t *testing.T, vdiskID string
 
 func newTlogTestServer(ctx context.Context, t *testing.T, vdiskID string) (string, func()) {
 	testConf := &server.Config{
-		K:          4,
-		M:          2,
-		ListenAddr: "",
-		FlushSize:  25,
-		FlushTime:  25,
-		PrivKey:    "12345678901234567890123456789012",
+		DataShards:   4,
+		ParityShards: 2,
+		ListenAddr:   "",
+		FlushSize:    25,
+		FlushTime:    25,
+		PrivKey:      "12345678901234567890123456789012",
 	}
 
 	configSource, _, cleanup := newZeroStorConfig(t, vdiskID, testConf)
@@ -262,12 +262,12 @@ func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
 	t.Log("1. Start a tlogserver;")
 
 	testConf := &server.Config{
-		K:          4,
-		M:          2,
-		ListenAddr: "",
-		FlushSize:  1,
-		FlushTime:  1,
-		PrivKey:    "12345678901234567890123456789012",
+		DataShards:   4,
+		ParityShards: 2,
+		ListenAddr:   "",
+		FlushSize:    1,
+		FlushTime:    1,
+		PrivKey:      "12345678901234567890123456789012",
 	}
 
 	configSource, _, cleanup := newZeroStorConfig(t, vdiskID, testConf)
@@ -401,7 +401,7 @@ func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
 
 	t.Log("replay from tlog except the last block")
 	player, err := player.NewPlayerWithStorage(ctx, configSource, nil, storage, vdiskID,
-		testConf.PrivKey, testConf.K, testConf.M)
+		testConf.PrivKey, testConf.DataShards, testConf.ParityShards)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -891,7 +891,7 @@ func init() {
 func newZeroStorConfig(t *testing.T, vdiskID string, tlogConf *server.Config) (*config.StubSource, stor.Config, func()) {
 
 	// stor server
-	storCluster, err := embeddedserver.NewZeroStorCluster(tlogConf.K + tlogConf.M)
+	storCluster, err := embeddedserver.NewZeroStorCluster(tlogConf.DataShards + tlogConf.ParityShards)
 	require.Nil(t, err)
 
 	var servers []config.ServerConfig
@@ -913,8 +913,8 @@ func newZeroStorConfig(t *testing.T, vdiskID string, tlogConf *server.Config) (*
 		IyoSecret:       os.Getenv("iyo_secret"),
 		ZeroStorShards:  storCluster.Addrs(),
 		MetaShards:      []string{mdServer.ListenAddr()},
-		DataShardsNum:   tlogConf.K,
-		ParityShardsNum: tlogConf.M,
+		DataShardsNum:   tlogConf.DataShards,
+		ParityShardsNum: tlogConf.ParityShards,
 		EncryptPrivKey:  tlogConf.PrivKey,
 	}
 

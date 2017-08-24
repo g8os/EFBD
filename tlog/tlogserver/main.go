@@ -31,8 +31,8 @@ func main() {
 	flag.IntVar(&conf.FlushSize, "flush-size", conf.FlushSize, "flush size")
 	flag.IntVar(&conf.FlushTime, "flush-time", conf.FlushTime, "flush time (seconds)")
 	flag.IntVar(&conf.BlockSize, "block-size", conf.BlockSize, "block size (bytes)")
-	flag.IntVar(&conf.K, "k", conf.K, "K variable of the erasure encoding")
-	flag.IntVar(&conf.M, "m", conf.M, "M variable of the erasure encoding")
+	flag.IntVar(&conf.DataShards, "data-shards", conf.DataShards, "data shards(K) variable of the erasure encoding")
+	flag.IntVar(&conf.ParityShards, "parity-shards", conf.ParityShards, "parity shards(M) variable of the erasure encoding")
 	flag.StringVar(&conf.PrivKey, "priv-key", conf.PrivKey, "private key")
 	flag.StringVar(&profileAddr, "profile-address", "", "Enables profiling of this server as an http service")
 	flag.Var(&sourceConfig, "config", "config resource: dialstrings (etcd cluster) or path (yaml file)")
@@ -59,13 +59,13 @@ func main() {
 		log.SetHandlers(handler)
 	}
 
-	log.Debugf("flags parsed: address=%q flush-size=%d flush-time=%d block-size=%d k=%d m=%d priv-key=%q profile-address=%q config=%q storage-addresses=%q logfile=%q id=%q",
+	log.Debugf("flags parsed: address=%q flush-size=%d flush-time=%d block-size=%d data-shards=%d parity-shards=%d priv-key=%q profile-address=%q config=%q storage-addresses=%q logfile=%q id=%q",
 		conf.ListenAddr,
 		conf.FlushSize,
 		conf.FlushTime,
 		conf.BlockSize,
-		conf.K,
-		conf.M,
+		conf.DataShards,
+		conf.ParityShards,
 		conf.PrivKey,
 		profileAddr,
 		sourceConfig.String(),
