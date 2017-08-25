@@ -16,6 +16,11 @@ func (c *Client) Walk(fromEpoch, toEpoch uint64) <-chan *WalkResult {
 	go func() {
 		defer close(wrCh)
 
+		if len(c.firstMetaKey) == 0 {
+			// we have no data yet
+			return
+		}
+
 		for res := range c.storClient.Walk([]byte(c.firstMetaKey), fromEpoch, toEpoch) {
 			wr := &WalkResult{}
 

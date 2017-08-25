@@ -97,7 +97,6 @@ func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, config
 	firstSequence uint64, flusherConf *flusherConfig, cleanup vdiskCleanupFunc) (*vdisk, error) {
 
 	var aggComm *aggmq.AggComm
-	var withSlaveSyncer bool
 
 	// create slave syncer
 	apc := aggmq.AggProcessorConfig{
@@ -128,7 +127,7 @@ func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, config
 		flusherConf:        flusherConf,
 
 		clientsTab:      make(map[string]*net.TCPConn),
-		withSlaveSyncer: withSlaveSyncer,
+		withSlaveSyncer: false,
 		aggComm:         aggComm,
 		aggMq:           aggMq,
 		apc:             apc,
@@ -270,6 +269,7 @@ func (vd *vdisk) waitSlaveSync() error {
 		log.Error("waitSlaveSync command received on vdisk with no slave syncer")
 		return nil
 	}
+	log.Debugf("waitSlaveSync for vdisk: %v", vd.id)
 
 	// send the command
 	cmd := vdiskFlusherCmd{
@@ -286,6 +286,7 @@ func (vd *vdisk) waitSlaveSync() error {
 		// so we disable it and kill the slave syncer
 		vd.destroySlaveSync()
 	}
+	log.Debugf("waitSlaveSync for vdisk %v finished with err:%v", vd.id, err)
 
 	return err
 }
@@ -622,6 +623,7 @@ func (vd *vdisk) manageSlaveSync() error {
 	vd.ssMux.Lock()
 	defer vd.ssMux.Unlock()
 
+	// it means the slave syncer doesn't activated globally
 	if vd.aggMq == nil {
 		return nil
 	}
@@ -632,8 +634,9 @@ func (vd *vdisk) manageSlaveSync() error {
 		return err
 	}
 
-	// it shouldn't be exist, simply return
-	if conf.SlaveStorageClusterID != "" {
+	// we have no slave to sync, simply return
+	if conf.SlaveStorageClusterID == "" {
+		log.Infof("No slave for vdisk ID %v", vd.id)
 		// kill the slave syncer first
 		if vd.withSlaveSyncer {
 			vd.aggComm.Destroy()
@@ -642,17 +645,21 @@ func (vd *vdisk) manageSlaveSync() error {
 		return nil
 	}
 
-	if !vd.withSlaveSyncer {
-		aggComm, err := vd.aggMq.AskProcessor(vd.apc)
-		if err != nil {
-			return err
-		}
-
-		vd.aggComm = aggComm
-		vd.withSlaveSyncer = true
-	} else {
+	if vd.withSlaveSyncer {
+		log.Infof("Restart slave syncer for vdisk: %v", vd.id)
 		// slave syncer already exist, simply restart it
 		vd.aggComm.SendCmd(aggmq.CmdRestartSlaveSyncer, 0)
+		return nil
 	}
+
+	log.Infof("Activate slave syncer for vdisk: %v", vd.id)
+	// activate slave syncer
+	aggComm, err := vd.aggMq.AskProcessor(vd.apc)
+	if err != nil {
+		return err
+	}
+
+	vd.aggComm = aggComm
+	vd.withSlaveSyncer = true
 	return nil
 }

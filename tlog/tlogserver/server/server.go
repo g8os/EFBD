@@ -261,6 +261,7 @@ func (s *Server) handleCommand(vd *vdisk, br *bufio.Reader, mType uint8) error {
 		}
 	case tlog.MessageWaitNbdSlaveSync:
 		vd.waitSlaveSync()
+		log.Debugf("sending BlockStatusWaitNbdSlaveSyncReceived to vdisk: %v", vd.id)
 		vd.respChan <- &BlockResponse{
 			Status: tlog.BlockStatusWaitNbdSlaveSyncReceived.Int8(),
 		}
