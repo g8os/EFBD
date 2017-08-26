@@ -9,19 +9,23 @@ jobs:
       install: skip
       script: TIMEOUT=5m make testgo
     - stage: test
-      go: 1.8
+      go: 1.9
+      install: skip
+      script: TIMEOUT=5m make testgo
+    - stage: test
+      go: 1.9
       install: skip
       script: TIMEOUT=5m make testrace_core
     - stage: test
-      go: 1.8
+      go: 1.9
       install: skip
       script: TIMEOUT=5m make testrace_tlog
     - stage: test
-      go: 1.8
+      go: 1.9
       install: skip
       script: TIMEOUT=10m make testrace_gonbdserver
     - stage: test
-      go: 1.8
+      go: 1.9
       install:
         - go get -u github.com/Jumpscale/go-raml
         - ./scripts/install_capnp_unix.sh
