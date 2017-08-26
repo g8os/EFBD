@@ -216,6 +216,7 @@ func nonDedupedVdiskExistsOnServer(key string, server config.StorageServerConfig
 
 // ListNonDedupedBlockIndices returns all indices stored for the given nondeduped storage.
 // This function will always either return an error OR indices.
+// If this function returns indices, they are guaranteed to be in order from smallest to biggest.
 func ListNonDedupedBlockIndices(vdiskID string, cluster *config.StorageClusterConfig) ([]int64, error) {
 	if cluster == nil {
 		return nil, errors.New("no cluster config given")

@@ -254,10 +254,10 @@
   revision = "53be0d36a84c2a886ca057d34b6aa4468df9ccb4"
 
 [[projects]]
+  branch = "master"
   name = "github.com/pierrec/lz4"
   packages = ["."]
-  revision = "5c9560bfa9ace2bf86080bf40d46b34ae44604df"
-  version = "v1.0"
+  revision = "5a3d2245f97fc249850e7802e3c01fad02a1c316"
 
 [[projects]]
   name = "github.com/pierrec/xxHash"
@@ -300,6 +300,12 @@
   name = "github.com/prometheus/procfs"
   packages = [".","xfs"]
   revision = "e645f4e5aaa8506fc71d6edbc5c4ff02c04c46f2"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/secsy/goftp"
+  packages = ["."]
+  revision = "503caa01c039d70e4597a23cf5c663cc1d8a53b6"
 
 [[projects]]
   branch = "master"
@@ -373,6 +379,12 @@
   revision = "5efa3251c7f7d05e5d9704a69a984ec9f1386a40"
 
 [[projects]]
+  name = "github.com/ulikunitz/xz"
+  packages = [".","internal/hash","internal/xlog","lzma"]
+  revision = "0c6b41e72360850ca4f98dc341fd999726ea007f"
+  version = "v0.5.4"
+
+[[projects]]
   name = "github.com/xiang90/probing"
   packages = ["."]
   revision = "07dd2e8dfe18522e9c447ba95f2fe95262f63bb2"
@@ -383,6 +395,12 @@
   name = "github.com/yuin/gopher-lua"
   packages = [".","ast","parse","pm"]
   revision = "2243d714d6c94951d8ccca8c851836ff47d401c9"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/zeebo/bencode"
+  packages = ["."]
+  revision = "03ce512f17ce5deb2c024518d504c6419f04d39d"
 
 [[projects]]
   branch = "master"
@@ -459,6 +477,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "10d452d6b63d1b94f2eebaf1cf202a181eb6c8fcc8ecd184fc3b15ab59ca38f9"
+  inputs-digest = "ae12cbed10c603b8109824e899b415df349b46f85e0320ed9babe7a73e600ad9"
   solver-name = "gps-cdcl"
   solver-version = 1

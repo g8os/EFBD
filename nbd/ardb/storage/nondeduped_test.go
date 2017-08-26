@@ -349,11 +349,13 @@ func TestNonDedupedVdiskExists(t *testing.T) {
 	}
 }*/
 
+// This test tests both if the amount of block indices listed for a nondeduped vdisk is correct,
+// as well as the fact that all block indices are always in sorted order from small to big.
 func TestListNonDedupedBlockIndices(t *testing.T) {
 	const (
 		vdiskID    = "a"
 		blockSize  = 8
-		blockCount = 9
+		blockCount = 16
 	)
 
 	redisProvider := redisstub.NewInMemoryRedisProviderMultiServers(4, false)
@@ -374,20 +376,30 @@ func TestListNonDedupedBlockIndices(t *testing.T) {
 
 	// store all blocks, and make sure the List returns all indices correctly
 	for i := 0; i < blockCount; i++ {
+		blockIndex := int64(i * i)
+
 		// store a block
 		data := make([]byte, blockSize)
 		_, err := rand.Read(data)
 		if err != nil {
 			t.Fatalf("couldn't generate a random block (%d): %v", i, err)
 		}
-		err = storage.SetBlock(int64(i), data)
+		err = storage.SetBlock(blockIndex, data)
 		if err != nil {
-			t.Fatalf("couldn't set block (%d): %v", i, err)
+			t.Fatalf("couldn't set block (%d): %v", blockIndex, err)
 		}
 
 		err = storage.Flush()
 		if err != nil {
-			t.Fatalf("couldn't flush storage (step %d): %v", i, err)
+			t.Fatalf("couldn't flush storage (step %d): %v", blockIndex, err)
+		}
+
+		fetchedData, err := storage.GetBlock(blockIndex)
+		if err != nil {
+			t.Fatalf("couldn't get block (%d): %v", blockIndex, err)
+		}
+		if !assert.Equal(t, data, fetchedData) {
+			t.Fatalf("couldn't get correct block %d", blockIndex)
 		}
 
 		// now test if listing the indices is correct
@@ -396,8 +408,8 @@ func TestListNonDedupedBlockIndices(t *testing.T) {
 			t.Fatalf("couldn't list deduped block indices (step %d): %v", i, err)
 		}
 
-		expectedIndices = append(expectedIndices, int64(i))
-		if assert.Len(t, indices, i+1) {
+		expectedIndices = append(expectedIndices, blockIndex)
+		if assert.Len(t, indices, len(expectedIndices)) {
 			assert.Equal(t, expectedIndices, indices)
 		}
 	}
@@ -405,9 +417,24 @@ func TestListNonDedupedBlockIndices(t *testing.T) {
 	// delete all odd blocks
 	ci := 1
 	for i := 1; i < blockCount; i += 2 {
-		err = storage.DeleteBlock(int64(i))
+		blockIndex := int64(i * i)
+
+		err = storage.DeleteBlock(blockIndex)
 		if err != nil {
-			t.Fatalf("couldn't delete block %d: %v", i, err)
+			t.Fatalf("couldn't delete block %d: %v", blockIndex, err)
+		}
+
+		err = storage.Flush()
+		if err != nil {
+			t.Fatalf("couldn't flush storage (step %d): %v", blockIndex, err)
+		}
+
+		fetchedData, err := storage.GetBlock(blockIndex)
+		if err != nil {
+			t.Fatalf("couldn't get nil block (%d): %v", blockIndex, err)
+		}
+		if !assert.Empty(t, fetchedData) {
+			t.Fatalf("block %d wasn't deleted yet", blockIndex)
 		}
 
 		expectedIndices = append(expectedIndices[:ci], expectedIndices[ci+1:]...)

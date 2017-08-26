@@ -257,7 +257,6 @@ func (ni *NbdInstance) Connect(t *testing.T) error {
 
 		// explicitly handshake so we get an error here if there is an issue
 		if err := tls.Handshake(); err != nil {
-			fmt.Println("oops", err)
 			return fmt.Errorf("TLS handshake failed: %s", err)
 		}
 	}

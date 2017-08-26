@@ -245,6 +245,7 @@ func DedupedVdiskExists(vdiskID string, cluster *config.StorageClusterConfig) (b
 
 // ListDedupedBlockIndices returns all indices stored for the given deduped storage.
 // This function will always either return an error OR indices.
+// If this function returns indices, they are guaranteed to be in order from smallest to biggest.
 func ListDedupedBlockIndices(vdiskID string, cluster *config.StorageClusterConfig) ([]int64, error) {
 	if cluster == nil {
 		return nil, errors.New("no cluster config given")
@@ -258,7 +259,13 @@ func ListDedupedBlockIndices(vdiskID string, cluster *config.StorageClusterConfi
 		return nil, fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
 	}
 	defer conn.Close()
-	return ardb.RedisInt64s(listDedupedBlockIndicesScript.Do(conn, lba.StorageKey(vdiskID)))
+	indices, err := ardb.RedisInt64s(listDedupedBlockIndicesScript.Do(conn, lba.StorageKey(vdiskID)))
+	if err != nil {
+		return nil, err
+	}
+
+	sortInt64s(indices)
+	return indices, nil
 }
 
 // CopyDeduped copies all metadata of a deduped storage

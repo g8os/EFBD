@@ -96,7 +96,7 @@ func (cfg *VdiskStaticConfig) Validate() error {
 
 	// validate properties in more detail
 
-	if x := cfg.BlockSize; x == 0 || (x&(x-1)) != 0 {
+	if !ValidateBlockSize(int64(cfg.BlockSize)) {
 		return fmt.Errorf(
 			"blockSize '%d' is not a power of 2, while that is required", cfg.BlockSize)
 	}

@@ -1,0 +1,120 @@
+digraph {
+    rankdir = "LR"
+
+    subgraph clusterPartB {
+    style = "invis"
+
+    blockFetcherOut [
+        label = "...Fetcher"
+        shape = "parallelogram"
+    ]
+    compressor1 [
+        label = "compressor\ni"
+    ]
+    compressor2 [
+        label = "compressor\ni+j"
+    ]
+    blockFetcherOut -> compressor1
+    blockFetcherOut -> compressor2 [
+        label = "compress\neach block\n(3.3)"
+    ]
+
+    encrypter1 [
+        label = "encrypter\ni"
+    ]
+    encrypter2 [
+        label = "encrypter\ni+j"
+    ]
+    compressor1 -> encrypter1 [
+        label = "encrypt\neach block\n(3.3)"
+    ]
+    compressor2 -> encrypter2 [
+        label = "encrypt\neach block\n(3.3)"
+    ]
+
+    indexHashLinker1 [
+        shape = "rectangle"
+        label = "link block index\nwith hash\n(3.4)"
+    ]
+    indexHashLinker2 [
+        shape = "rectangle"
+        label = "link block index\nwith hash\n(3.4)"
+    ]
+    encrypter1 -> indexHashLinker1
+    encrypter2 -> indexHashLinker2
+
+    dedupedMap [
+        label = "deduped map"
+        shape = "square"
+    ]
+    storageServer [
+        shape = "cylinder"
+        label = "Storage Server\n(FTP)"
+    ]
+    dedupedMap -> storageServer [
+        label = "store deduped map\n(4)"
+    ]
+    storageServer -> dedupedMap [
+        label = "load deduped map\nor create new map\n(2)"
+    ]
+
+    indexHashLinker1 -> dedupedMap [ dir = "none" ]
+    indexHashLinker2 -> dedupedMap [ dir = "none" ]
+
+    indexHashLinker1 -> storageServer [
+        label = "store new block\n(3.5)"
+        style = "dashed"
+    ]
+    indexHashLinker2-> storageServer [
+        label = "store new block\n(3.5)"
+        style = "dashed"
+    ]
+
+    }
+
+    subgraph clusterPartA {
+    style = "invis"
+
+    ardbCluster [
+        shape = "cylinder"
+        label = "ARDB\ncluster"
+    ]
+
+    blockIndices [
+        shape = "record"
+        label = "<t> (block indices) | <1> bi | <2> bi+1 | <3> ... | <4> bi+n"
+    ]
+    block1 [
+        label = "block\ni"
+        shape = "rectangle"
+    ]
+    block2 [
+        label = "block\ni+1"
+        shape = "rectangle"
+    ]
+
+    ardbCluster -> blockIndices:t [
+        label = "collect all\nblock indices\n(1)"
+    ]
+
+    ardbCluster -> block1 [
+        label = "read block\n(3.1)"
+    ]
+    ardbCluster -> block2 [
+        label = "read block\n(3.1)"
+    ]
+
+    blockIndices:1 -> block1 [ dir = "none" ]
+    blockIndices:2 -> block2 [ dir = "none" ]
+
+    blockFetcherIn [
+        label = "Block..."
+        shape = "parallelogram"
+    ]
+    block1 -> blockFetcherIn
+    block2 -> blockFetcherIn [
+        label = "order\nand resize\n(3.2)"
+    ]
+    
+    }
+}

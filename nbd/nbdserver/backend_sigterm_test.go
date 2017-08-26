@@ -45,7 +45,7 @@ func TestBackendSigtermHandler(t *testing.T) {
 
 	// test Tlog Storage
 	tlogStorage, cleanup := func() (storage.BlockStorage, func()) {
-		storage := newInMemoryStorage(vdiskID, blockSize)
+		storage := storage.NewInMemoryStorage(vdiskID, blockSize)
 		require.NotNil(t, storage)
 
 		tlogrpc, cleanup := newTlogTestServer(context.Background(), t, vdiskID)

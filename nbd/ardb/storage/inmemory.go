@@ -1,13 +1,11 @@
-package main
+package storage
 
 import (
 	"sync"
-
-	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 )
 
-// newInMemoryStorage returns an in-memory BlockStorage implementation
-func newInMemoryStorage(vdiskID string, blockSize int64) storage.BlockStorage {
+// NewInMemoryStorage returns an in-memory BlockStorage implementation
+func NewInMemoryStorage(vdiskID string, blockSize int64) BlockStorage {
 	return &inMemoryStorage{
 		blockSize: blockSize,
 		vdiskID:   vdiskID,
