@@ -65,7 +65,7 @@ type fromLog15Handler struct {
 }
 
 // Log implements Handler.Log
-func (handler *fromLog15Handler) Log(r *Record) error {
+func (handler *fromLog15Handler) Log(r Record) error {
 	return handler.internal.Log((*log.Record)(r))
 }
 
