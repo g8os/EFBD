@@ -87,7 +87,7 @@ func (ds *dedupedStorage) SetBlock(blockIndex int64, content []byte) (err error)
 
 	// reference the content to this vdisk,
 	// and set the content itself, if it didn't exist yet
-	_, err = ds.setContent(hash, content)
+	err = ds.setContent(hash, content)
 	if err != nil {
 		return
 	}
@@ -184,15 +184,16 @@ func (ds *dedupedStorage) getPrimaryOrTemplateContent(hash zerodisk.Hash) (conte
 	if content != nil {
 		// store template content in primary storage asynchronously
 		go func() {
-			success, err := ds.setContent(hash, content)
+			err := ds.setContent(hash, content)
 			if err != nil {
 				// we won't return error however, but just log it
-				log.Infof("couldn't store template content in primary storage: %s", err.Error())
-			} else if success {
-				log.Debugf(
-					"stored template content for %v in primary storage (asynchronously)",
-					hash)
+				log.Errorf("couldn't store template content in primary storage: %s", err.Error())
+				return
 			}
+
+			log.Debugf(
+				"stored template content for %v in primary storage (asynchronously)",
+				hash)
 		}()
 
 		log.Debugf(
@@ -206,20 +207,15 @@ func (ds *dedupedStorage) getPrimaryOrTemplateContent(hash zerodisk.Hash) (conte
 
 // setContent if it doesn't exist yet,
 // and increase the reference counter, by adding this vdiskID
-func (ds *dedupedStorage) setContent(hash zerodisk.Hash, content []byte) (success bool, err error) {
+func (ds *dedupedStorage) setContent(hash zerodisk.Hash, content []byte) error {
 	conn, err := ds.getDataConnection(hash)
 	if err != nil {
-		return
+		return err
 	}
 	defer conn.Close()
 
-	exists, err := redis.Bool(conn.Do("EXISTS", hash.Bytes()))
-	if err == nil && !exists {
-		_, err = conn.Do("SET", hash.Bytes(), content)
-		success = err == nil
-	}
-
-	return
+	_, err = conn.Do("SET", hash.Bytes(), content)
+	return err
 }
 
 // Close implements BlockStorage.Close
