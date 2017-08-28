@@ -129,20 +129,13 @@ func (p *Player) Replay(lmt decoder.Limiter) (uint64, error) {
 // It returns last sequence number it replayed.
 func (p *Player) ReplayWithCallback(lmt decoder.Limiter, onReplayCb OnReplayCb) (uint64, error) {
 	var lastSeq uint64
-	var err error
 
-	wrCh := p.storCli.Walk(lmt.FromEpoch(), lmt.ToEpoch())
-	for {
-		wr, more := <-wrCh
-		if !more {
-			break
-		}
-
+	for wr := range p.storCli.Walk(lmt.FromEpoch(), lmt.ToEpoch()) {
 		if wr.Err != nil {
 			return lastSeq, wr.Err
 		}
 
-		if lastSeq, err = p.ReplayAggregationWithCallback(wr.Agg, lmt, onReplayCb); err != nil {
+		if lastSeq, err := p.ReplayAggregationWithCallback(wr.Agg, lmt, onReplayCb); err != nil {
 			return lastSeq, err
 		}
 	}

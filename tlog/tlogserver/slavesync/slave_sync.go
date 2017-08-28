@@ -3,17 +3,15 @@ package slavesync
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 
-	"github.com/garyburd/redigo/redis"
 	"zombiezen.com/go/capnproto2"
 
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
-	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/tlog/schema"
+	"github.com/zero-os/0-Disk/tlog/stor"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/player"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/aggmq"
@@ -92,9 +90,8 @@ type slaveSyncer struct {
 	aggComm          *aggmq.AggComm // the communication channel
 	player           *player.Player // tlog replay player
 	mgr              *Manager
-	metaPool         *ardb.RedisPool             // ardb meta redis pool
-	metaConf         *config.StorageServerConfig // ardb meta redis config
-	lastSeqSyncedKey string                      // key of the last sequence synced
+	metaCli          *stor.MetaClient
+	lastSeqSyncedKey []byte // key of the last sequence synced
 	configSource     config.Source
 	apc              aggmq.AggProcessorConfig
 
@@ -116,7 +113,7 @@ func newSlaveSyncer(ctx context.Context, configSource config.Source, apc aggmq.A
 		mgr:              mgr,
 		configSource:     configSource,
 		apc:              apc,
-		lastSeqSyncedKey: "tlog:last_slave_sync_seq:" + apc.VdiskID,
+		lastSeqSyncedKey: []byte("tlog:last_slave_sync_seq:" + apc.VdiskID),
 	}
 	return ss, ss.init()
 }
@@ -127,19 +124,22 @@ func (ss *slaveSyncer) init() error {
 	if err != nil {
 		return err
 	}
-
 	ss.player = player
 
-	// create redis pool for the metadata
-	if err := ss.initMetaRedisPool(); err != nil {
+	// create meta client
+	storConf, err := stor.ConfigFromConfigSource(ss.configSource, ss.vdiskID, "", 0, 0)
+	if err != nil {
 		return err
 	}
 
-	if err := ss.start(); err != nil {
+	metaCli, err := stor.NewMetaClient(storConf.MetaShards)
+	if err != nil {
 		return err
 	}
 
-	return nil
+	ss.metaCli = metaCli
+
+	return ss.start()
 }
 
 func (ss *slaveSyncer) Close() {
@@ -168,7 +168,7 @@ func (ss *slaveSyncer) start() error {
 	// we can do it by simply replaying all sequence after last synced sequence
 	ss.lastSyncedSeq, err = ss.player.ReplayWithCallback(ss.decodeLimiter(ss.lastSyncedSeq),
 		ss.setLastSyncedSeq)
-	if err != nil && err != decoder.ErrNilLastHash {
+	if err != nil {
 		return err
 	}
 
@@ -284,47 +284,4 @@ func (ss *slaveSyncer) replay(rawAgg aggmq.AggMqMsg, lastSeqSynced uint64) (uint
 	}
 
 	return ss.player.ReplayAggregationWithCallback(&agg, ss.decodeLimiter(lastSeqSynced), ss.setLastSyncedSeq)
-}
-
-// set last synced sequence to slave metadata
-func (ss *slaveSyncer) setLastSyncedSeq(seq uint64) error {
-	rc := ss.metaPool.Get(ss.metaConf.Address, ss.metaConf.Database)
-	defer rc.Close()
-
-	_, err := rc.Do("SET", ss.lastSeqSyncedKey, seq)
-	return err
-}
-
-// get last synced sequence
-func (ss *slaveSyncer) getLastSyncedSeq() (uint64, error) {
-	rc := ss.metaPool.Get(ss.metaConf.Address, ss.metaConf.Database)
-	defer rc.Close()
-
-	seq, err := redis.Uint64(rc.Do("GET", ss.lastSeqSyncedKey))
-	if err == nil || err == redis.ErrNil {
-		return seq, nil
-	}
-	return seq, err
-}
-
-// initialize redis pool for metadata connection
-func (ss *slaveSyncer) initMetaRedisPool() error {
-	// get meta storage config
-	conf, err := config.ReadNBDStorageConfig(ss.configSource, ss.vdiskID, nil)
-	if err != nil {
-		return err
-	}
-
-	if conf.StorageCluster.MetadataStorage == nil {
-		return errors.New(
-			"no meta storage cluster configured for vdisk " + ss.vdiskID)
-	}
-
-	if err != nil {
-		return err
-	}
-
-	ss.metaConf = conf.StorageCluster.MetadataStorage
-	ss.metaPool = ardb.NewRedisPool(nil)
-	return nil
 }

@@ -308,6 +308,7 @@ func (c *Client) Recv() <-chan *Result {
 					case tlog.BlockStatusFlushOK:
 						c.blockBuffer.SetFlushed(tr.Sequences)
 					case tlog.BlockStatusWaitNbdSlaveSyncReceived:
+						log.Info("tlog client receive BlockStatusWaitNbdSlaveSyncReceived")
 						c.signalCond(c.waitSlaveSyncCond)
 					case tlog.BlockStatusFlushFailed:
 						if err := c.reconnectFromRead(ErrFlushFailed); err != nil {

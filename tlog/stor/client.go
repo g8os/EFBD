@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/coreos/etcd/clientv3"
 	storclient "github.com/zero-os/0-stor/client"
 	storclientconf "github.com/zero-os/0-stor/client/config"
 	"github.com/zero-os/0-stor/client/lib/compress"
@@ -47,7 +46,7 @@ type Client struct {
 	// capnp buffer
 	capnpBuf []byte
 
-	metaCli *clientv3.Client
+	metaCli *MetaClient
 	// first & last metadata key
 	firstMetaKey []byte
 	lastMetaKey  []byte
@@ -77,7 +76,7 @@ func NewClient(conf Config) (*Client, error) {
 		return nil, err
 	}
 
-	metaCli, err := newEtcdClient(conf.MetaShards)
+	metaCli, err := NewMetaClient(conf.MetaShards)
 	if err != nil {
 		return nil, err
 	}
