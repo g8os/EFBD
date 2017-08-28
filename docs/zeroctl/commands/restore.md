@@ -11,12 +11,12 @@ Usage:
 Flags:
       --config string              zeroctl config file (default "config.yml")
       --data-shards int            data shards (K) variable of erasure encoding (default 4)
-      --end-timestamp uint         end timestamp in nanosecond(default 0: until the end)
+      --end-timestamp uint         end UTC timestamp in nanosecond(default 0: until the end)
   -h, --help                       help for vdisk
       --nonce string               hex nonce used for encryption (default "37b8e8a308c354048d245f6d")
       --parity-shards int          parity shards (M) variable of erasure encoding (default 2)
       --priv-key string            private key (default "12345678901234567890123456789012")
-      --start-timestamp uint       start timestamp in nanosecond(default 0: since beginning)
+      --start-timestamp uint       start UTC timestamp in nanosecond(default 0: since beginning)
       --storage-addresses string   comma seperated list of redis compatible connectionstrings (format: '<ip>:<port>[@<db>]', eg: 'localhost:16379,localhost:6379@2'), if given, these are used for all vdisks, ignoring the given config
 
 Global Flags:
@@ -31,7 +31,7 @@ Global Flags:
 $ zeroctl restore vdisk a
 ```
 
-There are also optional timestamp (in nanosecond) options.
+There are also optional UTC timestamp (in nanosecond) options.
 
 [Restore][restore] [vdisk][vdisk] `a` from timestamp `x` to the end:
 

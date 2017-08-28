@@ -6,7 +6,6 @@ import (
 	"os"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -173,7 +172,7 @@ func TestEndToEnd(t *testing.T) {
 	require.Nil(t, err)
 
 	aggReceived := 0
-	for wr := range storCli.Walk(0, uint64(time.Now().UnixNano())) {
+	for wr := range storCli.Walk(0, tlog.TimeNowTimestamp()) {
 		require.Nil(t, wr.Err)
 		agg := wr.Agg
 
@@ -292,7 +291,7 @@ func TestUnordered(t *testing.T) {
 
 	var expectedSequence = uint64(firstSequence)
 
-	for wr := range storCli.Walk(0, uint64(time.Now().UnixNano())) {
+	for wr := range storCli.Walk(0, tlog.TimeNowTimestamp()) {
 		require.Nil(t, wr.Err)
 		agg := wr.Agg
 

@@ -162,7 +162,7 @@ func (tls *tlogStorage) set(blockIndex int64, content []byte) error {
 		Operation: op,
 		Sequence:  sequence,
 		Index:     blockIndex,
-		Timestamp: uint64(time.Now().UnixNano()),
+		Timestamp: tlog.TimeNowTimestamp(),
 		Content:   transactionContent,
 	}
 

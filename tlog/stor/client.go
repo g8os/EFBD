@@ -3,7 +3,6 @@ package stor
 import (
 	"fmt"
 	"sync"
-	"time"
 
 	storclient "github.com/zero-os/0-stor/client"
 	storclientconf "github.com/zero-os/0-stor/client/config"
@@ -13,6 +12,7 @@ import (
 	"github.com/zero-os/0-stor/client/lib/hash"
 	"github.com/zero-os/0-stor/client/meta"
 
+	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
 )
 
@@ -111,7 +111,7 @@ func (c *Client) ProcessStore(blocks []*schema.TlogBlock) ([]byte, error) {
 	c.mux.Lock()
 	defer c.mux.Unlock()
 
-	timestamp := uint64(time.Now().UnixNano())
+	timestamp := tlog.TimeNowTimestamp()
 	// encode capnp
 	data, err := c.encodeCapnp(blocks, timestamp)
 	if err != nil {

@@ -146,11 +146,11 @@ func init() {
 	VdiskCmd.Flags().Uint64Var(
 		&vdiskCmdCfg.StartTs,
 		"start-timestamp", 0,
-		"start timestamp in nanosecond(default 0: since beginning)")
+		"start UTC timestamp in nanosecond(default 0: since beginning)")
 	VdiskCmd.Flags().Uint64Var(
 		&vdiskCmdCfg.EndTs,
 		"end-timestamp", 0,
-		"end timestamp in nanosecond(default 0: until the end)")
+		"end UTC timestamp in nanosecond(default 0: until the end)")
 	VdiskCmd.Flags().BoolVarP(
 		&vdiskCmdCfg.Force,
 		"force", "f", false,
