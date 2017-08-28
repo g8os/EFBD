@@ -4,12 +4,12 @@ import (
 	"crypto/rand"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/zero-os/0-stor/client/meta/embedserver"
 	"zombiezen.com/go/capnproto2"
 
+	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
 	"github.com/zero-os/0-Disk/tlog/stor/embeddedserver"
 )
@@ -59,7 +59,7 @@ func TestRoundTrip(t *testing.T) {
 
 	// walk over it
 	var i int
-	for wr := range cli.Walk(0, uint64(time.Now().UnixNano())) {
+	for wr := range cli.Walk(0, tlog.TimeNowTimestamp()) {
 		require.Nil(t, wr.Err)
 		agg := wr.Agg
 		blocks, err := agg.Blocks()

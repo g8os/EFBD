@@ -3,12 +3,12 @@ package tlogclient
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/zero-os/0-stor/client/meta/embedserver"
 
 	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/stor"
 	"github.com/zero-os/0-Disk/tlog/stor/embeddedserver"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
@@ -226,7 +226,7 @@ func validateWithDecoder(t *testing.T, seqs map[uint64]struct{}, storConf stor.C
 	storCli, err := stor.NewClient(storConf)
 	require.Nil(t, err)
 
-	for wr := range storCli.Walk(0, uint64(time.Now().UnixNano())) {
+	for wr := range storCli.Walk(0, tlog.TimeNowTimestamp()) {
 		require.Nil(t, wr.Err)
 		agg := wr.Agg
 

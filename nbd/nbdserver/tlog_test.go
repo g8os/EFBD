@@ -8,7 +8,6 @@ import (
 	"os"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,6 +16,7 @@ import (
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/redisstub"
+	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/stor"
 	"github.com/zero-os/0-Disk/tlog/stor/embeddedserver"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
@@ -319,7 +319,7 @@ func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
 
 	zeroBlock := make([]byte, blockSize)
 
-	startTs := uint64(time.Now().UnixNano())
+	startTs := tlog.TimeNowTimestamp()
 	var lastBlockTs uint64 // timestamp before the last block
 
 	for i := 0; i < blocks; i++ {
@@ -330,7 +330,7 @@ func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
 			err = storage.Flush()
 			require.Nil(t, err)
 
-			lastBlockTs = uint64(time.Now().UnixNano())
+			lastBlockTs = tlog.TimeNowTimestamp()
 		}
 
 		offset := i * blockSize

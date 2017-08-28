@@ -1,8 +1,7 @@
 package decoder
 
 import (
-	"time"
-
+	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
 )
 
@@ -39,7 +38,7 @@ type LimitByTimestamp struct {
 // NewLimitByTimestamp creates new LimitByTimestamp limiter
 func NewLimitByTimestamp(startTs, endTs uint64) LimitByTimestamp {
 	if endTs == 0 {
-		endTs = uint64(time.Now().UnixNano())
+		endTs = tlog.TimeNowTimestamp()
 	}
 	return LimitByTimestamp{
 		startTs: startTs,
@@ -103,7 +102,7 @@ func NewLimitBySequence(startSeq, endSeq uint64) LimitBySequence {
 	return LimitBySequence{
 		startSeq: startSeq,
 		endSeq:   endSeq,
-		endTs:    uint64(time.Now().UnixNano()),
+		endTs:    tlog.TimeNowTimestamp(),
 	}
 }
 
