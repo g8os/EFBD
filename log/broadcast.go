@@ -38,6 +38,8 @@ func (s MessageSubject) String() string {
 		return subjectETCDStr
 	case SubjectTlog:
 		return subjectTlogStr
+	case SubjectZeroStor:
+		return subjectZeroStorStr
 	default:
 		return subjectNilStr
 	}
@@ -61,14 +63,17 @@ const (
 	SubjectETCD
 	// SubjectTlog identifies the messages has to do with tlog
 	SubjectTlog
+	// SubjectT0Stor identifies the messages has to do with 0-stor
+	SubjectZeroStor
 )
 
 // subjects
 const (
-	subjectStorageStr = "ardb"
-	subjectETCDStr    = "etcd"
-	subjectTlogStr    = "tlog"
-	subjectNilStr     = ""
+	subjectStorageStr  = "ardb"
+	subjectETCDStr     = "etcd"
+	subjectTlogStr     = "tlog"
+	subjectZeroStorStr = "0-stor"
+	subjectNilStr      = ""
 )
 
 // MessageStatus represents the status code
@@ -77,6 +82,7 @@ type MessageStatus uint
 
 // status codes
 const (
+	StatusUnknownError   MessageStatus = 400
 	StatusClusterTimeout MessageStatus = 401
 	StatusServerTimeout  MessageStatus = 402
 	StatusInvalidConfig  MessageStatus = 403
