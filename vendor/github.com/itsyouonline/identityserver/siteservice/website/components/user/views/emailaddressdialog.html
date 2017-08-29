@@ -2,7 +2,7 @@
     <form name="dataform">
         <md-toolbar>
             <div class="md-toolbar-tools">
-                <h2><span ng-if="::!originalLabel" translate='user.views.emaildialog.registeremail'>Register email address</span>
+                <h2 class="white text_align_center"><span ng-if="::!originalLabel" translate='user.views.emaildialog.registeremail'>Register email address</span>
                     <span ng-if="::originalLabel" translate="email_address">Email address</span></h2>
                 <span flex></span>
                 <md-button class="md-icon-button" ng-click="cancel()">
@@ -30,11 +30,16 @@
                 <span flex="5"></span>
                 <md-input-container flex="80">
                     <label translate='email_address'>Email address</label>
-                    <input ng-model="data.emailaddress" required type="email" name="emailaddress" md-maxlength="80">
+                    <input ng-model="data.emailaddress" required type="email" name="emailaddress" md-maxlength="80"
+                           ng-pattern="/[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?$/">
                     <div ng-messages="dataform.emailaddress.$error">
                         <div ng-message="email" translate="invalid_email_address">Invalid email address</div>
                         <div ng-message="md-maxlength" translate='emailmaxlength'>The email address cannot be longer than 80
                             characters
+                        </div>
+                        <div ng-message="pattern" translate='invalid_email_address'>Invalid email address</div>
+                        <div ng-messages="validationerrors" md-auto-hide="false">
+                            <div ng-message="illegalactionforcurrentstate" translate='email_is_validated'>A validated email address can not be changed, only deleted.</div>
                         </div>
                     </div>
                 </md-input-container>

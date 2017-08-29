@@ -25,17 +25,20 @@ type Config struct {
 	Number int `yaml:"number"`
 }
 
+// NumReplication returns number of replication that must be created
+func (c Config) NumReplication(numWriter int) int {
+	if c.Number <= 0 || c.Number > numWriter {
+		return numWriter
+	}
+	return c.Number
+}
+
 // NewWriter creates new writer.
 // The replication will be done in async way if async = true.
 func NewWriter(writers []block.Writer, conf Config) *Writer {
-	var maxFailed int
-	if conf.Number > 0 && conf.Number < len(writers) {
-		maxFailed = len(writers) - conf.Number
-	}
-
 	return &Writer{
 		async:     conf.Async,
-		maxFailed: maxFailed,
+		maxFailed: len(writers) - conf.NumReplication(len(writers)),
 		writers:   writers,
 	}
 }

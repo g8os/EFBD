@@ -827,6 +827,18 @@ func (service *Service) ValidateEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// try to load the username if it is a validated phone number
+	valMgr := validationdb.NewManager(r)
+	userFromPhone, err := valMgr.GetByPhoneNumber(body.Username)
+	if err != nil && !db.IsNotFound(err) {
+		log.Error("Error while retrieving username from phone number: ", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	if !db.IsNotFound(err) {
+		body.Username = userFromPhone.Username
+	}
+
 	userMgr := user.NewManager(r)
 	user, err := userMgr.GetByName(body.Username)
 	if err != nil {
@@ -841,11 +853,10 @@ func (service *Service) ValidateEmail(w http.ResponseWriter, r *http.Request) {
 
 	if len(user.EmailAddresses) < 1 {
 		log.Debug("User does not have any email addresses.")
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, http.StatusText(http.StatusPreconditionFailed), http.StatusPreconditionFailed)
 		return
 	}
 
-	valMgr := validationdb.NewManager(r)
 	// Don't send verification if at least 1 email address is already verified
 	ve, err := valMgr.GetByUsernameValidatedEmailAddress(body.Username)
 	if err != nil && !db.IsNotFound(err) {
@@ -856,7 +867,7 @@ func (service *Service) ValidateEmail(w http.ResponseWriter, r *http.Request) {
 	//User has verified email addresses
 	if err == nil && len(ve) > 0 {
 		log.Debug("User has verified email addresses, rejecting validate request")
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, http.StatusText(http.StatusConflict), http.StatusConflict)
 		return
 	}
 	// Don't send verification if one is already ongoing
@@ -868,40 +879,19 @@ func (service *Service) ValidateEmail(w http.ResponseWriter, r *http.Request) {
 	}
 	if err == nil && len(ov) > 0 {
 		log.Debug("User has ongoing email address verifications, rejecting validate request")
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, http.StatusText(http.StatusConflict), http.StatusConflict)
 		return
 	}
 
-	emailMap := make(map[string][]string)
-	for _, mailaddress := range user.EmailAddresses {
-		registeredUsers, err := userMgr.GetByEmailAddress(mailaddress.EmailAddress)
+	for _, email := range user.EmailAddresses {
+		_, err = service.emailaddressValidationService.RequestValidation(r, body.Username, email.EmailAddress, fmt.Sprintf("https://%s/emailvalidation", r.Host), body.LangKey)
 		if err != nil {
-			log.Error("Failed to find users who added email address: ", err)
+			log.Error("Failed to validate email address: ", err)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
-		emailMap[mailaddress.EmailAddress] = registeredUsers
 	}
 
-	count := 0
-	for email, users := range emailMap {
-		// if this mail address is only used by 1 user, send the verifcation mail
-		if len(users) == 1 {
-			_, err = service.emailaddressValidationService.RequestValidation(r, body.Username, email, fmt.Sprintf("https://%s/emailvalidation", r.Host), body.LangKey)
-			if err != nil {
-				log.Error("Failed to validate email address: ", err)
-				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-				return
-			}
-			count++
-		}
-	}
-	// If no unique email addresses are found
-	if count < 1 {
-		log.Debug("no unique email addresses are found for the user")
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -931,14 +921,15 @@ func (service *Service) ForgotPassword(w http.ResponseWriter, request *http.Requ
 		emails = []string{validatedemail.EmailAddress}
 	} else {
 		usr, err := userMgr.GetByName(values.Login)
-		if err != nil && err != mgo.ErrNotFound {
+		if err != nil && err != mgo.ErrNotFound || usr.Username == "" {
 			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 			return
 		}
+
 		username = usr.Username
 		validatedemails, err := valMgr.GetByUsernameValidatedEmailAddress(username)
 		if validatedemails == nil || len(validatedemails) == 0 {
-			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+			http.Error(w, http.StatusText(http.StatusPreconditionFailed), http.StatusPreconditionFailed)
 			return
 		}
 		if err != nil {

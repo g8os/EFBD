@@ -99,9 +99,6 @@ type Lessor interface {
 	// Lookup gives the lease at a given lease id, if any
 	Lookup(id LeaseID) *Lease
 
-	// Leases lists all leases.
-	Leases() []*Lease
-
 	// ExpiredLeasesC returns a chan that is used to receive expired leases.
 	ExpiredLeasesC() <-chan []*Lease
 
@@ -320,22 +317,6 @@ func (le *lessor) Lookup(id LeaseID) *Lease {
 	return le.leaseMap[id]
 }
 
-func (le *lessor) unsafeLeases() []*Lease {
-	leases := make([]*Lease, 0, len(le.leaseMap))
-	for _, l := range le.leaseMap {
-		leases = append(leases, l)
-	}
-	sort.Sort(leasesByExpiry(leases))
-	return leases
-}
-
-func (le *lessor) Leases() []*Lease {
-	le.mu.Lock()
-	ls := le.unsafeLeases()
-	le.mu.Unlock()
-	return ls
-}
-
 func (le *lessor) Promote(extend time.Duration) {
 	le.mu.Lock()
 	defer le.mu.Unlock()
@@ -353,7 +334,11 @@ func (le *lessor) Promote(extend time.Duration) {
 	}
 
 	// adjust expiries in case of overlap
-	leases := le.unsafeLeases()
+	leases := make([]*Lease, 0, len(le.leaseMap))
+	for _, l := range le.leaseMap {
+		leases = append(leases, l)
+	}
+	sort.Sort(leasesByExpiry(leases))
 
 	baseWindow := leases[0].Remaining()
 	nextWindow := baseWindow + time.Second
@@ -650,8 +635,6 @@ func (fl *FakeLessor) Demote() {}
 func (fl *FakeLessor) Renew(id LeaseID) (int64, error) { return 10, nil }
 
 func (le *FakeLessor) Lookup(id LeaseID) *Lease { return nil }
-
-func (le *FakeLessor) Leases() []*Lease { return nil }
 
 func (fl *FakeLessor) ExpiredLeasesC() <-chan []*Lease { return nil }
 

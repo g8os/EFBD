@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"path"
-	"strings"
 	"testing"
 
 	"github.com/zero-os/0-stor/client/lib/distribution"
@@ -229,9 +228,7 @@ func TestRoundTripGRPC(t *testing.T) {
 			require.NoError(t, err, "fail to read key from meta")
 
 			// meta keys are different then normal when using distribution
-			if !strings.Contains(tc.name, "distribution") {
-				assert.Equal(t, key, metaKey, "Key in metadata is not the same")
-			}
+			require.Equal(t, key, metaKey, "Key in metadata is not the same")
 
 			metaShards, err := meta.GetShardsSlice()
 			for _, shard := range metaShards {

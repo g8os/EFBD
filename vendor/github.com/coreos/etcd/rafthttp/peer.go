@@ -24,7 +24,6 @@ import (
 	"github.com/coreos/etcd/raft/raftpb"
 	"github.com/coreos/etcd/snap"
 	"golang.org/x/net/context"
-	"golang.org/x/time/rate"
 )
 
 const (
@@ -189,7 +188,6 @@ func startPeer(transport *Transport, urls types.URLs, peerID types.ID, fs *stats
 		status: status,
 		recvc:  p.recvc,
 		propc:  p.propc,
-		rl:     rate.NewLimiter(transport.DialRetryFrequency, 1),
 	}
 	p.msgAppReader = &streamReader{
 		peerID: peerID,
@@ -199,9 +197,7 @@ func startPeer(transport *Transport, urls types.URLs, peerID types.ID, fs *stats
 		status: status,
 		recvc:  p.recvc,
 		propc:  p.propc,
-		rl:     rate.NewLimiter(transport.DialRetryFrequency, 1),
 	}
-
 	p.msgAppV2Reader.start()
 	p.msgAppReader.start()
 

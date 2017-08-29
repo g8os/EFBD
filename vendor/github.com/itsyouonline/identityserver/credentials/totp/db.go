@@ -96,3 +96,8 @@ func (pwm *Manager) GetSecret(username string) (err error, secret userSecret) {
 	err = pwm.collection.Find(bson.M{"username": username}).One(&secret)
 	return err, secret
 }
+
+// IsErrNotFound checks if an error is a mgo.ErrNotFound
+func (pwm *Manager) IsErrNotFound(err error) bool {
+	return err == mgo.ErrNotFound
+}

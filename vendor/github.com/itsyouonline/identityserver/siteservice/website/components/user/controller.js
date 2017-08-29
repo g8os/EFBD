@@ -8,13 +8,13 @@
 
 
     UserHomeController.$inject = [
-        '$q', '$rootScope', '$routeParams', '$location', '$window', '$filter', '$mdMedia', '$mdDialog', '$translate',
+        '$q', '$rootScope', '$state', '$window', '$filter', '$mdMedia', '$mdDialog', '$translate',
         'NotificationService', 'OrganizationService', 'UserService', 'UserDialogService'];
 
-    function UserHomeController($q, $rootScope, $routeParams, $location, $window, $filter, $mdMedia, $mdDialog, $translate,
+    function UserHomeController($q, $rootScope, $state, $window, $filter, $mdMedia, $mdDialog, $translate,
                                 NotificationService, OrganizationService, UserService, UserDialogService) {
         var vm = this;
-        vm.username = $rootScope.user;
+        vm.username = UserService.getUsername();
         vm.notifications = {
             invitations: [],
             approvals: [],
@@ -25,7 +25,7 @@
         var authorizationArrayProperties = ['addresses', 'emailaddresses', 'phonenumbers', 'bankaccounts', 'digitalwallet', 'publicKeys'];
         var authorizationBoolProperties = ['facebook', 'github', 'name'];
 
-        var TAB_YOU = 'you';
+        var TAB_YOU = 'profile';
         var TAB_NOTIFICATIONS = 'notifications';
         var TAB_ORGANIZATIONS = 'organizations';
         var TAB_AUTHORIZATIONS = 'authorizations';
@@ -40,13 +40,14 @@
         vm.user = {};
 
         vm.loaded = {};
-        vm.selectedTabIndex = 0;
         vm.pendingCount = 0;
+
+        vm.userIdentifier = undefined;
 
         UserDialogService.init(vm);
 
         /*vm.tabSelected = tabSelected;*/
-        vm.pageSelected = pageSelected;
+        vm.goToPage = goToPage;
         vm.accept = accept;
         vm.reject = reject;
         vm.acceptorganizationinvite = acceptorganizationinvite;
@@ -78,28 +79,31 @@
         vm.showPublicKeyDetail = UserDialogService.publicKey;
         vm.createOrganization = UserDialogService.createOrganization;
         vm.showSetupAuthenticatorApplication = showSetupAuthenticatorApplication;
+        vm.showExistingAuthenticatorApplication = showExistingAuthenticatorApplication;
         vm.removeAuthenticatorApplication = removeAuthenticatorApplication;
         vm.resolveMissingScopeClicked = resolveMissingScopeClicked;
         init();
 
         function init() {
-            var index = TABS.indexOf($routeParams.tab);
-            vm.selectedTabIndex = index === -1 ? 0 : index;
             loadUser().then(function () {
                 loadVerifiedPhones();
-                loadVerifiedEmails().then(loadNotifications);
+                loadVerifiedEmails().then(
+                    function() {
+                        loadNotifications();
+                });
+            });
+
+            UserService.getUserIdentifier().then(function (userIdentifier) {
+                vm.userIdentifier = userIdentifier;
             });
         }
 
         //redirect notification to right page
-        function pageSelected(tabNum) {
-            if(!(tabNum in TABS)) {
+        function goToPage(stateName) {
+            if (TABS.indexOf(stateName) === -1) {
                 return;
             }
-            var path = '/' + TABS[tabNum];
-            if(path !== $window.location.hash.replace('#', '')){
-                $location.path(path);
-            }
+            $state.go(stateName);
         }
 
         function loadNotifications() {
@@ -118,7 +122,7 @@
                         if (!hasVerifiedEmail) {
                             $translate(['user.controller.verifiedemails']).then(function(translations){
                                 vm.notifications.security.push({
-                                    tabIndex: 0,
+                                    page: 'profile',
                                     subject: 'verified_emails',
                                     msg: translations['user.controller.verifiedemails'],
                                     status: 'pending'
@@ -210,11 +214,8 @@
 
         function loadUser() {
             return $q(function (resolve, reject) {
-                if (vm.loaded.user) {
-                    return;
-                }
                 UserService
-                    .get(vm.username)
+                    .get()
                     .then(
                         function (data) {
                             angular.forEach(authorizationArrayProperties, function (prop) {
@@ -231,11 +232,8 @@
         }
 
         function loadVerifiedPhones() {
-            if (vm.loaded.verifiedPhones) {
-                return;
-            }
             UserService
-                .getVerifiedPhones(vm.username)
+                .getVerifiedPhones()
                 .then(function (confirmedPhones) {
                     confirmedPhones.map(function (p) {
                         findByLabel('phonenumbers', p.label).verified = true;
@@ -250,7 +248,7 @@
                     return;
                 }
                 UserService
-                    .getVerifiedEmailAddresses(vm.username)
+                    .getVerifiedEmailAddresses()
                     .then(function (confirmedEmails) {
                         confirmedEmails.map(function (p) {
                             findByLabel('emailaddresses', p.label).verified = true;
@@ -287,15 +285,15 @@
         function getPendingCount(obj) {
             var count = 0;
             if (obj === 'all') {
-                count += vm.notifications.approvals.length;
-                count += vm.notifications.contractRequests.length;
-                count += vm.notifications.invitations.length;
-                count += vm.notifications.security.length;
+                count += vm.notifications.approvals ? vm.notifications.approvals.length : 0;
+                count += vm.notifications.contractRequests ? vm.notifications.contractRequests.length : 0;
+                count += vm.notifications.invitations ? vm.notifications.invitations.length : 0;
+                count += vm.notifications.security ? vm.notifications.security.length : 0;
                 vm.orgsWithInvitation = vm.notifications.invitations.map(function (invitation) {
                     return invitation.organization;
                 });
-                count += vm.notifications.missingscopes.filter(missingScopeFilter).length;
-                count += vm.notifications.organizationinvitations.length;
+                count += vm.notifications.missingscopes ? vm.notifications.missingscopes.filter(missingScopeFilter).length : 0;
+                count += vm.notifications.organizationinvitations ? vm.notifications.organizationinvitations.length : 0;
                 return count;
             } else {
                 return obj ? obj.length : 0;
@@ -685,6 +683,46 @@
             }
         }
 
+        function showExistingAuthenticatorApplication(event) {
+            $mdDialog.show({
+                controller: ['$scope', '$mdDialog', 'UserService', 'username', ExistingAuthenticatorController],
+                controllerAs: 'ctrl',
+                templateUrl: 'components/user/views/viewTOTPDialog.html',
+                targetEvent: event,
+                fullscreen: $mdMedia('sm') || $mdMedia('xs'),
+                parent: angular.element(document.body),
+                clickOutsideToClose: true,
+                locals: {
+                    username: vm.username
+                }
+            });
+
+            function ExistingAuthenticatorController($scope, $mdDialog, UserService, username) {
+                var ctrl = this;
+                ctrl.close = close;
+                ctrl.username = username;
+                ctrl.getQrCodeData = getQrCodeData;
+                init();
+
+                function init() {
+                    UserService.getAuthenticatorSecret(vm.username)
+                        .then(function (data) {
+                            ctrl.totpsecret = data.totpsecret;
+                            ctrl.totpissuer = encodeURIComponent(data.totpissuer);
+                        });
+                }
+
+
+                function getQrCodeData() {
+                    return 'otpauth://totp/' + ctrl.totpissuer + ':' + vm.username + '?secret=' + ctrl.totpsecret + '&issuer=' + ctrl.totpissuer;
+                }
+
+                function close() {
+                    $mdDialog.cancel();
+                }
+            }
+        }
+
         function removeAuthenticatorApplication(event) {
             var hasConfirmedPhones = vm.user.phonenumbers.filter(function (phone) {
                     return phone.verified;
@@ -761,7 +799,8 @@
                         'email': 'emailaddresses',
                         'phone': 'phonenumbers',
                         'bankaccount': 'bankaccounts',
-                        'publickey': 'publicKeys'
+                        'publickey': 'publicKeys',
+                        'avatar': 'avatars'
                     };
                     angular.forEach(missingScope.scopes, function (scope) {
                         var splitPermission = scope.split(':');
@@ -799,6 +838,24 @@
                         }
                         else if (scope === 'user:facebook') {
                             authorization.facebook = true;
+                        }
+                        else if (scope === 'user:keystore') {
+                            authorizations.keystore = true;
+                        }
+                        else if (scope === 'user:see') {
+                            authorization.see = true;
+                        }
+                        else if (scope.startsWith('user:validated:')){
+                            switch (splitPermission[2]) {
+                                case 'email':
+                                    auth.reallabel = vm.user['emailaddresses'].length ? vm.user['emailaddresses'][0].label : '';
+                                    $scope.authorizations['emailaddresses'].push(auth);
+                                  break;
+                                case 'phone':
+                                    auth.reallabel = vm.user['phonenumbers'].length ? vm.user['phonenumbers'][0].label : '';
+                                    $scope.authorizations['phonenumbers'].push(auth);
+                                  break;
+                            }
                         }
                     });
                     return showAuthorizationDetailDialog(authorization, event, isNew);

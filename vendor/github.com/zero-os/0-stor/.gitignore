@@ -45,6 +45,7 @@ _testmain.go
 .idea
 
 server/server
+client/cmd/zerostorcli/zerostorcli
 coverage.txt
 
 bin

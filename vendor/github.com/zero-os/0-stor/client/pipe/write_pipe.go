@@ -14,14 +14,16 @@ type WritePipe struct {
 }
 
 // create pipe of block writer
-func createBlockWriterPipe(conf *config.Config, finalWriter block.Writer, r io.Reader) (block.Writer, error) {
+func createBlockWriterPipe(conf *config.Config, iyoToken string, finalWriter block.Writer,
+	r io.Reader) (block.Writer, error) {
+
 	nextWriter := finalWriter
 
 	// we create the writer from the end of pipe
 	for i := len(conf.Pipes) - 1; i >= 0; i-- {
 		pipe := conf.Pipes[i]
 		w, err := pipe.CreateBlockWriter(nextWriter, conf.Shards, conf.MetaShards, conf.Protocol,
-			conf.Organization, conf.Namespace, conf.IYOAppID, conf.IYOSecret, r)
+			conf.Organization, conf.Namespace, iyoToken, r)
 		if err != nil {
 			return nil, err
 		}
@@ -32,8 +34,8 @@ func createBlockWriterPipe(conf *config.Config, finalWriter block.Writer, r io.R
 }
 
 // NewWritePipe create writer pipe
-func NewWritePipe(conf *config.Config, finalWriter block.Writer, r io.Reader) (*WritePipe, error) {
-	w, err := createBlockWriterPipe(conf, finalWriter, r)
+func NewWritePipe(conf *config.Config, iyoToken string, finalWriter block.Writer, r io.Reader) (*WritePipe, error) {
+	w, err := createBlockWriterPipe(conf, iyoToken, finalWriter, r)
 	if err != nil {
 		return nil, err
 	}

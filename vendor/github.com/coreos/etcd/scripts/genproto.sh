@@ -10,18 +10,18 @@ if ! [[ "$0" =~ "scripts/genproto.sh" ]]; then
 	exit 255
 fi
 
-if ! [[ $(protoc --version) =~ "3.3.0" ]]; then
-	echo "could not find protoc 3.3.0, is it installed + in PATH?"
+# for now, be conservative about what version of protoc we expect
+if ! [[ $(protoc --version) =~ "3.2.0" ]]; then
+	echo "could not find protoc 3.2.0, is it installed + in PATH?"
 	exit 255
 fi
 
 # directories containing protos to be built
 DIRS="./wal/walpb ./etcdserver/etcdserverpb ./snap/snappb ./raft/raftpb ./mvcc/mvccpb ./lease/leasepb ./auth/authpb ./etcdserver/api/v3lock/v3lockpb ./etcdserver/api/v3election/v3electionpb"
 
-# exact version of packages to build
-GOGO_PROTO_SHA="100ba4e885062801d56799d78530b73b178a78f3"
-GRPC_GATEWAY_SHA="18d159699f2e83fc5bb9ef2f79465ca3f3122676"
-SCHWAG_SHA="b7d0fc9aadaaae3d61aaadfc12e4a2f945514912"
+# exact version of protoc-gen-gogo to build
+GOGO_PROTO_SHA="8d70fb3182befc465c4a1eac8ad4d38ff49778e2"
+GRPC_GATEWAY_SHA="84398b94e188ee336f307779b57b3aa91af7063c"
 
 # set up self-contained GOPATH for building
 export GOPATH=${PWD}/gopath.proto
@@ -31,7 +31,6 @@ export PATH="${GOBIN}:${PATH}"
 COREOS_ROOT="${GOPATH}/src/github.com/coreos"
 ETCD_ROOT="${COREOS_ROOT}/etcd"
 GOGOPROTO_ROOT="${GOPATH}/src/github.com/gogo/protobuf"
-SCHWAG_ROOT="${GOPATH}/src/github.com/hexfusion/schwag"
 GOGOPROTO_PATH="${GOGOPROTO_ROOT}:${GOGOPROTO_ROOT}/protobuf"
 GRPC_GATEWAY_ROOT="${GOPATH}/src/github.com/grpc-ecosystem/grpc-gateway"
 
@@ -64,7 +63,6 @@ for dir in ${DIRS}; do
 		sed -i.bak -E 's/import _ \"gogoproto\"//g' *.pb.go
 		sed -i.bak -E 's/import fmt \"fmt\"//g' *.pb.go
 		sed -i.bak -E 's/import _ \"github\.com\/coreos\/google\/api\"//g' *.pb.go
-		sed -i.bak -E 's/import _ \"google\.golang\.org\/genproto\/googleapis\/api\/annotations\"//g' *.pb.go
 		rm -f *.bak
 		goimports -w *.pb.go
 	popd
@@ -102,14 +100,6 @@ for pb in etcdserverpb/rpc api/v3lock/v3lockpb/v3lock api/v3election/v3electionp
 		Documentation/dev-guide/apispec/swagger/${swaggerName}.swagger.json
 done
 rm -rf Documentation/dev-guide/apispec/swagger/etcdserver/
-
-# append security to swagger spec
-go get -u "github.com/hexfusion/schwag"
-pushd "${SCHWAG_ROOT}"
-	git reset --hard "${SCHWAG_SHA}"
-	go install .
-popd
-schwag -input=Documentation/dev-guide/apispec/swagger/rpc.swagger.json
 
 # install protodoc
 # go get -v -u github.com/coreos/protodoc

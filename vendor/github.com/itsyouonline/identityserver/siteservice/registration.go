@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	"gopkg.in/mgo.v2"
@@ -11,7 +14,6 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/sessions"
 	"github.com/itsyouonline/identityserver/credentials/password"
-	"github.com/itsyouonline/identityserver/credentials/totp"
 	"github.com/itsyouonline/identityserver/db"
 	"github.com/itsyouonline/identityserver/db/organization"
 	"github.com/itsyouonline/identityserver/db/user"
@@ -78,7 +80,7 @@ func (service *Service) CheckRegistrationSMSConfirmation(w http.ResponseWriter, 
 	response := map[string]bool{}
 
 	if registrationSession.IsNew {
-		// todo: registrationSession is new with SMS, something must be wrong
+		// TODO: registrationSession is new with SMS, something must be wrong
 		log.Warn("Registration is new")
 		response["confirmed"] = true //This way the form will be submitted, let the form handler deal with redirect to login
 	} else {
@@ -86,6 +88,41 @@ func (service *Service) CheckRegistrationSMSConfirmation(w http.ResponseWriter, 
 
 		confirmed, err := service.phonenumberValidationService.IsConfirmed(request, validationkey)
 		if err == validation.ErrInvalidOrExpiredKey {
+			confirmed = true //This way the form will be submitted, let the form handler deal with redirect to login
+			return
+		}
+		if err != nil {
+			log.Error(err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		response["confirmed"] = confirmed
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+//CheckRegistrationEmailConfirmation is called by the regisration form to check if the email is already confirmed
+func (service *Service) CheckRegistrationEmailConfirmation(w http.ResponseWriter, r *http.Request) {
+	registrationSession, err := service.GetSession(r, SessionForRegistration, "registrationdetails")
+	if err != nil {
+		log.Error(err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	response := map[string]bool{}
+
+	if registrationSession.IsNew {
+		// TODO: registrationSession is new, something must be wrong
+		log.Warn("Registration is new")
+		response["confirmed"] = true //This way the form will be submitted, let the form handler deal with redirect to login
+	} else {
+		validationkey, _ := registrationSession.Values["emailvalidationkey"].(string)
+
+		confirmed, err := service.emailaddressValidationService.IsConfirmed(r, validationkey)
+		if err == validation.ErrInvalidOrExpiredKey {
+			// TODO
 			confirmed = true //This way the form will be submitted, let the form handler deal with redirect to login
 			return
 		}
@@ -239,171 +276,142 @@ func (service *Service) ResendPhonenumberConfirmation(w http.ResponseWriter, req
 }
 
 //ProcessRegistrationForm processes the user registration form
-func (service *Service) ProcessRegistrationForm(w http.ResponseWriter, request *http.Request) {
+func (service *Service) ProcessRegistrationForm(w http.ResponseWriter, r *http.Request) {
 	response := struct {
 		Redirecturl string `json:"redirecturl"`
 		Error       string `json:"error"`
 	}{}
 	values := struct {
-		TwoFAMethod    string `json:"twofamethod"`
-		Login          string `json:"login"`
-		Email          string `json:"email"`
-		Phonenumber    string `json:"phonenumber"`
-		TotpCode       string `json:"totpcode"`
-		Password       string `json:"password"`
-		RedirectParams string `json:"redirectparams"`
-		LangKey        string `json:"langkey"`
+		Firstname       string `json:"firstname"`
+		Lastname        string `json:"lastname"`
+		Email           string `json:"email"`
+		EmailCode       string `json:"emailcode"`
+		Phonenumber     string `json:"phonenumber"`
+		PhonenumberCode string `json:"phonenumbercode"`
+		Password        string `json:"password"`
+		RedirectParams  string `json:"redirectparams"`
+		LangKey         string `json:"langkey"`
 	}{}
-	if err := json.NewDecoder(request.Body).Decode(&values); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&values); err != nil {
 		log.Debug("Error decoding the registration request:", err)
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 
-	twoFAMethod := values.TwoFAMethod
-	if twoFAMethod != "sms" && twoFAMethod != "totp" {
-		log.Info("Invalid 2fa method during registration: ", twoFAMethod)
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
-
-	totpsession, err := service.GetSession(request, SessionForRegistration, "totp")
+	registrationSession, err := service.GetSession(r, SessionForRegistration, "registrationdetails")
 	if err != nil {
-		log.Error("ERROR while getting the totp registration session", err)
+		log.Error("Failed to retrieve registration session: ", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	if totpsession.IsNew {
-		log.Debug("New registration session while processing the registration form")
+	if registrationSession.IsNew {
+		sessions.Save(r, w)
+		log.Debug("Registration session expired")
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
-	totpsecret, ok := totpsession.Values["secret"].(string)
-	if !ok {
-		log.Error("Unable to convert the stored session totp secret to a string")
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
 
-	valid := user.ValidateUsername(values.Login)
-	var phonenumber user.Phonenumber
-	if !valid {
-		response.Error = "invalid_username_format"
-		w.WriteHeader(http.StatusUnprocessableEntity)
-		json.NewEncoder(w).Encode(response)
-		return
-	}
-	newuser := &user.User{
-		Username:       values.Login,
-		EmailAddresses: []user.EmailAddress{{Label: "main", EmailAddress: values.Email}},
-	}
-	//validate the username is not taken yet
-	userMgr := user.NewManager(request)
-	orgMgr := organization.NewManager(request)
+	username, _ := registrationSession.Values["username"].(string)
 
-	count, err := userMgr.GetPendingRegistrationsCount()
-	if err != nil {
-		log.Error("Failed to get pending registerations count: ", err)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-	log.Debug("count", count)
-	if count >= MAX_PENDING_REGISTRATION_COUNT {
-		log.Warn("Maximum amount of pending registrations reached")
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
+	userMgr := user.NewManager(r)
 
-	//we now just depend on mongo unique index to avoid duplicates when concurrent requests are made
-	userExists, err := userMgr.Exists(newuser.Username)
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-	if userExists {
-		log.Debug("USER ", newuser.Username, " already registered")
-		w.WriteHeader(http.StatusUnprocessableEntity)
-		response.Error = "user_exists"
-		json.NewEncoder(w).Encode(&response)
-		return
-	} else if orgMgr.Exists(newuser.Username) {
-		log.Debugf("Cannot create user: organization with globalid %s already exists", newuser.Username)
-		w.WriteHeader(http.StatusUnprocessableEntity)
-		response.Error = "organization_exists"
-		json.NewEncoder(w).Encode(&response)
-		return
-	}
+	// check if phone number is validated or sms code is provided to validate phone
+	phonevalidationkey, _ := registrationSession.Values["phonenumbervalidationkey"].(string)
 
-	if twoFAMethod == "sms" {
-		phonenumber = user.Phonenumber{Label: "main", Phonenumber: values.Phonenumber}
-		if !phonenumber.Validate() {
-			log.Debug("Invalid phone number")
+	if isConfirmed, _ := service.phonenumberValidationService.IsConfirmed(r, phonevalidationkey); !isConfirmed {
+
+		smscode := values.PhonenumberCode
+		if smscode == "" {
+			log.Debug("no sms code provided and phone not confirmed yet")
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+
+		err = service.phonenumberValidationService.ConfirmValidation(r, phonevalidationkey, smscode)
+		if err == validation.ErrInvalidCode {
 			w.WriteHeader(http.StatusUnprocessableEntity)
-			response.Error = "invalid_phonenumber"
+			response.Error = "invalid_sms_code"
 			json.NewEncoder(w).Encode(&response)
 			return
 		}
-		newuser.Phonenumbers = []user.Phonenumber{phonenumber}
-		// Remove account after 3 days if it still doesn't have a verified phone by then
-		duration := time.Duration(time.Hour * 24 * 3)
-		expiresAt := time.Now()
-		expiresAt = expiresAt.Add(duration)
-		newuser.Expire = db.DateTime(expiresAt)
-	} else {
-		token := totp.TokenFromSecret(totpsecret)
-		if !token.Validate(values.TotpCode) {
-			log.Debug("Invalid totp code")
-			w.WriteHeader(http.StatusUnprocessableEntity)
-			response.Error = "invalid_totpcode"
+		if err == validation.ErrInvalidOrExpiredKey {
+			sessions.Save(r, w)
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 			json.NewEncoder(w).Encode(&response)
 			return
 		}
-	}
-
-	userMgr.Save(newuser)
-	passwdMgr := password.NewManager(request)
-	err = passwdMgr.Save(newuser.Username, values.Password)
-	if err != nil {
-		log.Error(err)
-		if err.Error() != "internal_error" {
-			w.WriteHeader(http.StatusUnprocessableEntity)
-			response.Error = "invalid_password"
-			json.NewEncoder(w).Encode(&response)
-		} else {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		}
-		return
-	}
-
-	// send an email to ask for email address validation now the user is saved
-	_, err = service.emailaddressValidationService.RequestValidation(request, newuser.Username, values.Email, fmt.Sprintf("https://%s/emailvalidation", request.Host), values.LangKey)
-	if err != nil {
-		// Failure to send the email is an error, but not critical so don't abort the flow
-		log.Error("Failed to send email verification in registration flow: ", err)
-	}
-
-	if twoFAMethod == "sms" {
-		validationkey, err := service.phonenumberValidationService.RequestValidation(request, newuser.Username, phonenumber, fmt.Sprintf("https://%s/phonevalidation", request.Host), values.LangKey)
 		if err != nil {
-			log.Error(err)
+			log.Error("Error while trying to validate phone number in regsitration flow: ", err)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
-		registrationSession, err := service.GetSession(request, SessionForRegistration, "registrationdetails")
-		registrationSession.Values["username"] = newuser.Username
-		registrationSession.Values["phonenumbervalidationkey"] = validationkey
-		registrationSession.Values["redirectparams"] = values.RedirectParams
+	}
+	// at this point the phone number is confirmed
+	userMgr.RemoveExpireDate(username)
+	// see if we can also verify the email, and if we can't, see if we can continue the registration
 
-		sessions.Save(request, w)
-		response.Redirecturl = fmt.Sprintf("https://%s/register?%s#/smsconfirmation", request.Host, values.RedirectParams)
-		json.NewEncoder(w).Encode(&response)
+	// require a validated email to register if:
+	//  - a validated email scope is required to log in to an external org
+	//  - the user is registering against IYO (not in an oauth flow)
+	//  - the `requirevalidatedemail` queryparameter is set.
+
+	requireValidatedEmail := false
+	queryParams, err := url.ParseQuery(values.RedirectParams)
+	if err != nil {
+		log.Debug("Failed to parse query params: ", err)
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
+	if strings.Contains(queryParams.Get("scope"), "user:validated:email") {
+		log.Debug("Require validated email because of user:validated:email scope")
+		requireValidatedEmail = true
+	}
+	if queryParams.Get("client_id") == "" {
+		log.Debug("Require validated email because there is no client id")
+		requireValidatedEmail = true
+	}
+	if queryParams.Get("requirevalidatedemail") != "" {
+		log.Debug("Require validated email because the requirevalidatedemail query parameter is set")
+		requireValidatedEmail = true
+	}
 
-	totpMgr := totp.NewManager(request)
-	totpMgr.Save(newuser.Username, totpsecret)
-	log.Debugf("Registered %s", newuser.Username)
-	service.loginUser(w, request, newuser.Username)
+	emailConfirmed := false
+	emailvalidationkey, _ := registrationSession.Values["emailvalidationkey"].(string)
+	if isConfirmed, _ := service.emailaddressValidationService.IsConfirmed(r, emailvalidationkey); isConfirmed {
+		emailConfirmed = true
+	}
+	if !emailConfirmed {
+		emailCode := values.EmailCode
+		if emailCode == "" && requireValidatedEmail {
+			log.Debug("no email code provided and email not confirmed yet")
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+
+		err = service.emailaddressValidationService.ConfirmValidation(r, emailvalidationkey, emailCode)
+		if err == validation.ErrInvalidCode {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			response.Error = "invalid_email_code"
+			json.NewEncoder(w).Encode(&response)
+			return
+		}
+		if err == validation.ErrInvalidOrExpiredKey {
+			sessions.Save(r, w)
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(&response)
+			return
+		}
+		if err != nil {
+			log.Error("Error while trying to validate email address in regsitration flow: ", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	registrationSession.Values["redirectparams"] = values.RedirectParams
+
+	sessions.Save(r, w)
+	service.loginUser(w, r, username)
 }
 
 //ValidateUsername checks if a username is already taken or not
@@ -445,4 +453,228 @@ func (service *Service) ValidateUsername(w http.ResponseWriter, request *http.Re
 	}
 	json.NewEncoder(w).Encode(&response)
 	return
+}
+
+// Starts validation for a temporary username
+func (service *Service) ValidateInfo(w http.ResponseWriter, r *http.Request) {
+	data := struct {
+		Firstname string `json:"firstname"`
+		Lastname  string `json:"lastname"`
+		Email     string `json:"email"`
+		Phone     string `json:"phone"`
+		Password  string `json:"password"`
+		LangKey   string `json:"langkey"`
+	}{}
+
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		log.Debug("Failed to decode validate info body: ", err)
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	counter := 0
+	username := strings.ToLower(data.Firstname) + "_" + strings.ToLower(data.Lastname) + "_"
+	userMgr := user.NewManager(r)
+
+	count, err := userMgr.GetPendingRegistrationsCount()
+	if err != nil {
+		log.Error("Failed to get pending registerations count: ", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	log.Debug("count", count)
+	if count >= MAX_PENDING_REGISTRATION_COUNT {
+		log.Warn("Maximum amount of pending registrations reached")
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	orgMgr := organization.NewManager(r)
+	exists := true
+	for exists {
+		counter += 1
+		var err error
+		exists, err = userMgr.Exists(username + strconv.Itoa(counter))
+		if err != nil {
+			log.Error("Failed to verify if username is taken: ", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		if !exists {
+			exists = orgMgr.Exists(username + strconv.Itoa(counter))
+		}
+	}
+	username = username + strconv.Itoa(counter)
+	if !user.ValidateUsername(username) {
+		log.Debug("Invalid generated username: ", username)
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	valid := user.ValidateEmailAddress(data.Email)
+	if !valid {
+		response := struct {
+			Error string `json:"error"`
+		}{
+			Error: "invalid_email_format",
+		}
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	valid = user.ValidatePhoneNumber(data.Phone)
+	if !valid {
+		response := struct {
+			Error string `json:"error"`
+		}{
+			Error: "invalid_phonenumber",
+		}
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	registrationSession, err := service.GetSession(r, SessionForRegistration, "registrationdetails")
+	if err != nil {
+		log.Error("Failed to retrieve registration session: ", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	validatingPhonenumber, _ := registrationSession.Values["phonenumber"].(string)
+	validatingEmail, _ := registrationSession.Values["email"].(string)
+	validatingUsername, _ := registrationSession.Values["username"].(string)
+	validatingPassword, _ := registrationSession.Values["password"].(string)
+
+	if validatingUsername != username || validatingEmail != data.Email || validatingPhonenumber != data.Phone {
+
+		newuser := &user.User{
+			Username:       username,
+			Firstname:      data.Firstname,
+			Lastname:       data.Lastname,
+			EmailAddresses: []user.EmailAddress{{Label: "main", EmailAddress: data.Email}},
+			Phonenumbers:   []user.Phonenumber{{Label: "main", Phonenumber: data.Phone}},
+		}
+
+		// give users a day to validate a phone number on their accounts
+		duration := time.Duration(time.Hour * 24)
+		expiresAt := time.Now()
+		expiresAt = expiresAt.Add(duration)
+		eat := db.DateTime(expiresAt)
+		newuser.Expire = &eat
+		userMgr.Save(newuser)
+		registrationSession.Values["username"] = username
+
+	}
+
+	if validatingPassword != data.Password || validatingUsername != username {
+		log.Debug("Saving user password")
+		passwdMgr := password.NewManager(r)
+		err = passwdMgr.Save(username, data.Password)
+		if err != nil {
+			log.Error("Error while saving the users password: ", err)
+			if err.Error() != "internal_error" {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				response := struct {
+					Error string `json:"error"`
+				}{
+					Error: "invalid_password",
+				}
+				json.NewEncoder(w).Encode(&response)
+			} else {
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			}
+			return
+		}
+		registrationSession.Values["password"] = data.Password
+	}
+
+	// phone number validation
+	if validatingPhonenumber != data.Phone {
+		phonenumber := user.Phonenumber{Phonenumber: data.Phone}
+		validationkey, err := service.phonenumberValidationService.RequestValidation(r, username, phonenumber, fmt.Sprintf("https://%s/phonevalidation", r.Host), data.LangKey)
+		if err != nil {
+			log.Error("Failed to send phonenumber verification in registration flow: ", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		registrationSession.Values["phonenumbervalidationkey"] = validationkey
+		registrationSession.Values["phonenumber"] = phonenumber.Phonenumber
+	}
+
+	if validatingEmail != data.Email {
+		mailvalidationkey, err := service.emailaddressValidationService.RequestValidation(r, username, data.Email, fmt.Sprintf("https://%s/emailvalidation", r.Host), data.LangKey)
+		if err != nil {
+			log.Error("Failed to send email verification in registration flow: ", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		registrationSession.Values["emailvalidationkey"] = mailvalidationkey
+		registrationSession.Values["email"] = data.Email
+	}
+
+	sessions.Save(r, w)
+	// validations created
+	w.WriteHeader(http.StatusCreated)
+}
+
+func (service *Service) ResendValidationInfo(w http.ResponseWriter, r *http.Request) {
+	data := struct {
+		Email   string `json:"email"`
+		Phone   string `json:"phone"`
+		LangKey string `json:"langkey"`
+	}{}
+
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		log.Debug("Failed to decode validate info body: ", err)
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	registrationSession, err := service.GetSession(r, SessionForRegistration, "registrationdetails")
+	if err != nil {
+		log.Error(err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	if registrationSession.IsNew {
+		sessions.Save(r, w)
+		log.Debug("Registration session expired")
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		return
+	}
+
+	username, _ := registrationSession.Values["username"].(string)
+
+	//Invalidate the previous phone validation request, ignore a possible error
+	validationkey, _ := registrationSession.Values["phonenumbervalidationkey"].(string)
+	_ = service.phonenumberValidationService.ExpireValidation(r, validationkey)
+
+	phonenumber, _ := registrationSession.Values["phonenumber"].(string)
+
+	validationkey, err = service.phonenumberValidationService.RequestValidation(r, username, user.Phonenumber{Phonenumber: phonenumber}, fmt.Sprintf("https://%s/phonevalidation", r.Host), data.LangKey)
+	if err != nil {
+		log.Error("ResendPhonenumberConfirmation: Could not get validationkey: ", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	registrationSession.Values["phonenumbervalidationkey"] = validationkey
+
+	//Invalidate the previous email validation request, ignore a possible error
+	emailvalidationkey, _ := registrationSession.Values["emailvalidationkey"].(string)
+	_ = service.emailaddressValidationService.ExpireValidation(r, emailvalidationkey)
+
+	email, _ := registrationSession.Values["email"].(string)
+
+	emailvalidationkey, err = service.emailaddressValidationService.RequestValidation(r, username, email, fmt.Sprintf("https://%s/emailvalidation", r.Host), data.LangKey)
+	if err != nil {
+		log.Error("ResendEmailConfirmation: Could not get validationkey: ", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	registrationSession.Values["emailvalidationkey"] = emailvalidationkey
+
+	sessions.Save(r, w)
+	w.WriteHeader(http.StatusOK)
 }

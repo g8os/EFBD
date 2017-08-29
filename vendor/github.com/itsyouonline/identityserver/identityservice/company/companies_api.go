@@ -108,7 +108,8 @@ func (api CompaniesAPI) globalIdinfoGet(w http.ResponseWriter, r *http.Request) 
 
 // globalIdvalidateGet It is handler for GET /companies/{globalid}/validate
 func (api CompaniesAPI) globalIdvalidateGet(w http.ResponseWriter, r *http.Request) {
-	log.Error("globalIdvalidateGet is not implemented")
+	log.Warn("globalIdvalidateGet is not implemented")
+	http.Error(w, http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
 }
 
 // globalIdcontracts is handler for GET /companies/{globalId}/contracts
@@ -129,7 +130,8 @@ func (api CompaniesAPI) RegisterNewContract(w http.ResponseWriter, r *http.Reque
 // GetCompanyList is the handler for GET /companies
 // Get companies. Authorization limits are applied to requesting user.
 func (api CompaniesAPI) GetCompanyList(w http.ResponseWriter, r *http.Request) {
-	log.Error("GetCompanyList is not implemented")
+	log.Warn("GetCompanyList is not implemented")
+	http.Error(w, http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
 }
 
 // globalIdGet is the handler for GET /companies/{globalId}

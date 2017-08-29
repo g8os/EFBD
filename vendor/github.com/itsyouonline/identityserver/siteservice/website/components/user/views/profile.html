@@ -1,6 +1,6 @@
 <div flex-gt-sm="80" flex="100" layout="column">
     <div class="breadcrumb-container">
-        <p ng-bind="::vm.username">You</p>
+        <p ng-bind="::vm.userIdentifier">You</p>
         <h1 translate='user.views.profile.profile'>Profile</h1>
     </div>
     <md-card>
@@ -12,7 +12,7 @@
                class="tab-you">
               <md-toolbar>
                 <div class="md-toolbar-tools" layout-align="space-between center">
-                    <span><i class="fa fa-photo"></i> <span>Avatar</span></span>
+                    <span><i class="fa fa-photo"></i> <span translate='avatar'>Avatar</span></span>
                     <md-button ng-click="vm.showAvatarDialog($event)">
                         <i class="fa fa-plus"></i> <span translate='add'>Add</span>
                     </md-button>
@@ -122,7 +122,7 @@
                       <img ng-src="{{vm.user.facebook.picture}}" class="md-avatar"
                            alt="{{vm.user.facebook.name}}" ng-if="vm.user.facebook.id"/>
                       <div class="md-list-item-text">
-                          <h3 ng-bind="vm.user.facebook.name"></h3>
+                          <h3 class="text_align_center" ng-bind="vm.user.facebook.name"></h3>
                       </div>
                   </md-list-item>
                   <p ng-if="!vm.user.facebook.id" translate='user.views.profile.nofacebook'>You haven't added your Facebook account yet.</p>
@@ -162,7 +162,7 @@
                                 ng-click="vm.showAddressDetailDialog($event, address)"
                                 aria-label="address {{ ::address.label }}">
                       <div class="md-list-item-text">
-                          <h3>
+                          <h3 class="text_align_center">
                               <span ng-bind="address.street"></span>
                               <span ng-bind="address.nr"></span>
                           </h3>
@@ -212,7 +212,7 @@
                                 ng-click="vm.showDigitalWalletAddressDetail($event, address)"
                                 aria-label="Digital wallet address {{ address.label }}">
                       <div class="md-list-item-text">
-                          <h3 ng-bind="address.address"></h3>
+                          <h3 class="text_align_center" ng-bind="address.address"></h3>
                           <h4>
                               <span ng-if='!address.noexpiration' translate='user.views.profile.expiringwallet'
                                   translate-value-expirydate="{{address.expire | date:'dd/MM/yyyy'}}"

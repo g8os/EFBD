@@ -20,6 +20,11 @@
                 },
                 function (response) {
                     switch (response.status) {
+                        case 412:
+                            $scope.form.login.$setValidity("no_email_addresses", false);
+                            break;
+                        case 409:
+                            $scope.form.login.$setValidity("has_validated_email", false);
                         case 404:
                             $scope.form.login.$setValidity("invalid", false);
                             break;
@@ -32,6 +37,8 @@
         }
 
         function clearValidation() {
+            $scope.form.login.$setValidity("no_email_addresses", true);
+            $scope.form.login.$setValidity("has_validated_email", true);
             $scope.form.login.$setValidity("invalid", true);
             $scope.form.login.$setValidity("generic", true);
         }

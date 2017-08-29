@@ -20,7 +20,7 @@
                 <md-input-container ng-show="vm.step === 'code'">
                     <label for="code" translate='login.views.twofactorauthentication.code'>Code</label>
                     <input type="text" md-maxlength="6" ng-minlength="6" required id="code"
-                           name="code" ng-model="vm.code" autocomplete="off" ng-change="vm.resetValidation()">
+                           name="code" ng-model="vm.code" autocomplete="off" ng-change="vm.resetValidation()" autofocus>
                     <div ng-messages="twoFaForm.code.$error" md-auto-hide="false">
                         <div ng-message="invalid_code" translate='login.views.twofactorauthentication.invalidcode'>Invalid code</div>
                         <div ng-message="md-maxlength" translate='login.views.twofactorauthentication.codelength'>The code must be 6 characters long</div>

@@ -1,28 +1,40 @@
 (function() {
     'use strict';
     angular
-        .module("itsyouonlineApp")
-        .controller("OrganizationDetailController", OrganizationDetailController)
-        .controller("InvitationDialogController", InvitationDialogController);
+        .module('itsyouonlineApp')
+        .controller('OrganizationDetailController', OrganizationDetailController)
+        .controller('InvitationDialogController', InvitationDialogController);
 
-    InvitationDialogController.$inject = ['$scope', '$mdDialog', '$translate', 'organization', 'OrganizationService', 'UserDialogService'];
-    OrganizationDetailController.$inject = ['$routeParams', '$window', '$translate', 'OrganizationService', '$mdDialog', '$mdMedia',
-        '$rootScope', 'UserDialogService', 'UserService', 'ScopeService'];
+    InvitationDialogController.$inject = ['$scope', '$mdDialog', 'organization', 'OrganizationService', 'UserDialogService'];
+    OrganizationDetailController.$inject = ['$state', '$stateParams', '$window', '$translate', 'OrganizationService', '$mdDialog', '$mdMedia',
+        'UserDialogService', 'UserService', 'ScopeService'];
 
-    function OrganizationDetailController($routeParams, $window, $translate, OrganizationService, $mdDialog, $mdMedia, $rootScope,
+    function OrganizationDetailController($state, $stateParams, $window, $translate, OrganizationService, $mdDialog, $mdMedia,
                                           UserDialogService, UserService, ScopeService) {
         var vm = this,
-            globalid = $routeParams.globalid;
+            globalid = $stateParams.globalid;
+        vm.username = UserService.getUsername();
         vm.invitations = [];
         vm.apikeylabels = [];
         vm.organization = {};
+        vm.children = [];
         vm.organizationRoot = {};
         vm.childOrganizationNames = [];
-        vm.logo = "";
+        vm.logo = '';
         vm.includemap = {};
         vm.loading = {
-            invitations: false
+            invitations: true,
+            users: true,
+            userIdentifiers: true
         };
+        var pages = {
+            'organization.people': 0,
+            'organization.structure': 1,
+            'organization.see': 2,
+            'organization.settings': 3
+        };
+        vm.selectedTab = pages[$state.current.name];
+        vm.userIdentifiers = undefined;
 
         vm.initSettings = initSettings;
         vm.showInvitationDialog = showInvitationDialog;
@@ -47,6 +59,8 @@
         vm.getScopeTranslation = getScopeTranslation;
         vm.removeInvitation = removeInvitation;
         vm.includeChanged = includeChanged;
+        vm.showMoveSuborganizationDialog = showMoveSuborganizationDialog;
+        vm.listOrganizatonTree = listOrganizatonTree;
 
         activate();
 
@@ -80,6 +94,7 @@
                     vm.treeGraphStyle = {
                         'width': pixelWidth + 'px'
                     };
+                    vm.listOrganizatonTree(vm.organizationRoot);
                 });
 
             OrganizationService.getLogo(globalid).then(
@@ -87,6 +102,10 @@
                     vm.logo = data.logo;
                 }
             );
+            UserService.GetAllUserIdentifiers().then(function (identifiers) {
+                vm.userIdentifiers = identifiers;
+                vm.loading.userIdentifiers = false;
+            });
         }
 
         function fillIncludeMap() {
@@ -97,23 +116,8 @@
             }
         }
 
-        function renderLogo() {
-            if (vm.logo !== "") {
-                var img = new Image();
-                img.src = vm.logo;
-
-                var c = document.getElementById("logoview");
-                if (!c) {
-                    return;
-                }
-                var ctx = c.getContext("2d");
-                ctx.clearRect(0, 0, c.width, c.height);
-                ctx.drawImage(img, 0, 0);
-            }
-        }
-
         function getBranchWidth(branch) {
-            var splitted = branch.globalid.split(".");
+            var splitted = branch.globalid.split('.');
             var length = splitted[splitted.length - 1].length * 6;
             var spacing = 0;
             if (branch.children.length > 1) {
@@ -157,7 +161,25 @@
 
         function initSettings() {
             fetchAPIKeyLabels();
-            renderLogo();
+        }
+
+        function listOrganizatonTree(org) {
+            angular.forEach(org.children, function(child) {
+                var isParent = false;
+                var parentid = '';
+                angular.forEach(vm.childOrganizationNames, function(parent) {
+                    parentid += parent.name;
+                    if (child.globalid === parentid) {
+                       isParent = true;
+                    }
+                    parentid += '.';
+                });
+                parentid = '';
+                if (!isParent) {
+                  vm.children.push(child.globalid);
+                }
+                listOrganizatonTree(child);
+            });
         }
 
         function showInvitationDialog(ev) {
@@ -236,7 +258,7 @@
                         OrganizationService: OrganizationService,
                         organization : vm.organization.globalid,
                         $window: $window,
-                        label: ""
+                        label: ''
                     }
             })
             .then(
@@ -311,7 +333,8 @@
         function showLogoDialog(ev) {
             var useFullScreen = ($mdMedia('sm') || $mdMedia('xs'));
             $mdDialog.show({
-                controller: ['$scope', '$mdDialog', 'organization', 'OrganizationService', logoDialogController],
+                controller: ['$scope', '$document', '$mdDialog', 'organization', 'OrganizationService', logoDialogController],
+                controllerAs: 'vm',
                 templateUrl: 'components/organization/views/logoDialog.html',
                 targetEvent: ev,
                 fullscreen: useFullScreen,
@@ -320,19 +343,11 @@
                     organization: vm.organization.globalid,
                     $window: $window
                 }
-            }).then(
-                function() {
-                    OrganizationService.getLogo(vm.organization.globalid).then(
-                        function(data) {
-                            vm.logo = data.logo;
-                        }
-                    ).then(
-                        function() {
-                            renderLogo();
-                        }
-                    );
-                }
-            );
+            }).then(function () {
+                OrganizationService.getLogo(vm.organization.globalid).then(function (data) {
+                    vm.logo = data.logo;
+                });
+            });
         }
 
         function showDescriptionDialog(ev) {
@@ -386,7 +401,7 @@
         }
 
         function canEditRole(member) {
-            return vm.hasEditPermission && member !== $rootScope.user;
+            return vm.hasEditPermission && !vm.userIdentifiers.includes(member.username);
         }
 
         function editMember(event, user) {
@@ -412,10 +427,11 @@
                         var u = vm.users.filter(function (user) {
                             return user.username === username;
                         })[0];
+
                         u.role = data.newRole;
                     } else if (data.action === 'remove') {
                         var people = vm.organization[data.data.role];
-                        people.splice(people.indexOf(data.data.username), 1);
+                        people.splice(people.indexOf(data.data), 1);
                         vm.users = vm.users.filter(function (user) {
                             return user.username !== username;
                         });
@@ -463,7 +479,7 @@
 
         function showLeaveOrganization(event) {
             $translate(['organization.controller.confirmleave', 'organization.controller.leaveorg', 'organization.controller.leaveorganization', 'organization.controller.yes',
-                'organization.controller.no', 'organization.controller.notfound'], {organization: globalid}).then(function(translations){
+                'organization.controller.no', 'organization.controller.notfound', 'last_owner', 'error'], {organization: globalid}).then(function(translations){
                     var text = translations['organization.controller.confirmleave'];
                     var confirm = $mdDialog.confirm()
                         .title(translations['organization.controller.leaveorg'])
@@ -476,12 +492,15 @@
                         .show(confirm)
                         .then(function () {
                             UserService
-                                .leaveOrganization($rootScope.user, globalid)
+                                .leaveOrganization(vm.username, globalid)
                                 .then(function () {
                                     $window.location.hash = '#/';
                                 }, function (response) {
                                     if (response.status === 404) {
-                                        UserDialogService.showSimpleDialog(translations['organization.controller.notfound'], 'Error', null, event);
+                                        UserDialogService.showSimpleDialog(translations['organization.controller.notfound'], translations['error'], null, event);
+                                    }
+                                    if (response.status === 409) {
+                                        UserDialogService.showSimpleDialog(translations['last_owner'], translations['error'], null, event);
                                     }
                                 });
                         });
@@ -489,7 +508,9 @@
         }
 
         function getUsers() {
+            vm.loading.users = true;
             OrganizationService.getUsers(globalid).then(function (response) {
+                vm.loading.users = false;
                 vm.users = response.users;
                 vm.hasEditPermission = response.haseditpermissions;
                 setUsers();
@@ -556,6 +577,30 @@
             });
         }
 
+        function showMoveSuborganizationDialog(event) {
+            var useFullScreen = ($mdMedia('sm') || $mdMedia('xs'));
+            $mdDialog.show({
+                controller: ['$scope', '$mdDialog', 'organization', 'organizationChildren', 'OrganizationService', moveSuborganizationDialogController],
+                templateUrl: 'components/organization/views/moveSuborganizationDialog.html',
+                targetEvent: event,
+                fullscreen: useFullScreen,
+                locals:
+                    {
+                        OrganizationService: OrganizationService,
+                        organization : vm.organization.globalid,
+                        $window: $window,
+                        organizationChildren: vm.children,
+                    }
+            }).then(
+                function(data) {
+                    if (data.status === 'success') {
+                        vm.children = [];
+                        activate();
+                    }
+                }
+            );
+        }
+
         function getScopeTranslation(scope) {
             return ScopeService.parseScope(scope);
         }
@@ -580,7 +625,7 @@
                 return;
             }
             OrganizationService.removeInclude(vm.organization.globalid, org);
-            return;
+
         }
     }
 
@@ -591,9 +636,9 @@
         }
     }
 
-    function InvitationDialogController($scope, $mdDialog, $translate, organization, OrganizationService, UserDialogService) {
+    function InvitationDialogController($scope, $mdDialog, organization, OrganizationService, UserDialogService) {
 
-        $scope.role = "members";
+        $scope.role = 'members';
 
         $scope.cancel = cancel;
         $scope.invite = invite;
@@ -629,7 +674,7 @@
 
     function AddOrganizationDialogController($scope, $mdDialog, organization, OrganizationService) {
 
-        $scope.role = "members";
+        $scope.role = 'members';
 
         $scope.organization = organization;
 
@@ -674,7 +719,7 @@
     function APIKeyDialogController($scope, $mdDialog, $translate, organization, OrganizationService, label) {
         //If there is a key, it is already saved, if not, this means that a new secret is being created.
 
-        $scope.apikey = {secret: ""};
+        $scope.apikey = {secret: ''};
 
         if (label) {
             $translate(['organization.controller.loadingkey']).then(function(translations){
@@ -746,7 +791,7 @@
             $scope.validationerrors = {};
             OrganizationService.deleteAPIKey(organization, label).then(
                 function () {
-                    $mdDialog.hide({originalLabel: label, newLabel: ""});
+                    $mdDialog.hide({originalLabel: label, newLabel: ''});
                 }
             );
         }
@@ -775,7 +820,7 @@
             $scope.validationerrors = {};
             OrganizationService.createDNS(organization, dnsName).then(
                 function (data) {
-                    $mdDialog.hide({originalDns: "", newDns: data.name});
+                    $mdDialog.hide({originalDns: '', newDns: data.name});
                 },
                 function (reason) {
                     if (reason.status === 409) {
@@ -807,7 +852,7 @@
             $scope.validationerrors = {};
             OrganizationService.deleteDNS(organization, dnsName)
                 .then(function () {
-                    $mdDialog.hide({originalDns: dnsName, newDns: ""});
+                    $mdDialog.hide({originalDns: dnsName, newDns: ''});
                 });
         }
     }
@@ -819,7 +864,7 @@
                 var parents = splitted.slice(0, i + 1);
                 children.push({
                     name: splitted[i],
-                    url: '#/organization/' + parents.join('.')
+                    url: '#/organization/' + parents.join('.') + '/people'
                 });
             }
         }
@@ -899,41 +944,32 @@
         }
     }
 
-    function logoDialogController($scope, $mdDialog, organization, OrganizationService) {
+    function logoDialogController($scope, $document, $mdDialog, organization, OrganizationService) {
+        var doc = $document[0];
         $scope.organization = organization;
         $scope.setFile = setFile;
         $scope.cancel = cancel;
         $scope.validationerrors = {};
         $scope.update = update;
         $scope.remove = remove;
-
+        $scope.logoChanged = false;
         OrganizationService.getLogo(organization).then(
             function(data) {
                 $scope.logo = data.logo;
+                $scope.logoChanged = !$scope.logo;
                 makeFileDrop();
-                var c;
-                if ($scope.logo) {
-                    var img = new Image();
-                    img.src = $scope.logo;
-
-                    c = document.getElementById("logo-upload-preview");
-                    var ctx = c.getContext("2d");
-                    ctx.clearRect(0, 0, c.width, c.height);
-                    ctx.drawImage(img, 0, 0);
-                } else {
-                    c = document.getElementById("logo-upload-preview");
-                    c.className += " dirty-background";
-                }
             }
         );
 
         function makeFileDrop() {
-            var target = document.getElementById("logo-upload-preview");
-            target.addEventListener("dragover", function(e){e.preventDefault();}, true);
-            target.addEventListener("drop", function(src){
+            var target = doc.getElementById('logo-upload-preview');
+            target.addEventListener('dragover', function (e) {
+                e.preventDefault();
+            }, true);
+            target.addEventListener('drop', function (src) {
 	              src.preventDefault();
                 //only allow image files, ignore others
-                if (!src.dataTransfer.files[0].type.match(/image.*/)) {
+                if (!src.dataTransfer.files[0] || !src.dataTransfer.files[0].type.match(/image.*/)) {
                     return;
                 }
                 var reader = new FileReader();
@@ -945,48 +981,34 @@
         }
 
         $scope.uploadFile = function(event){
-                var files = event.target.files;
-                var url = URL.createObjectURL(files[0]);
-                setFile(url);
-            };
-
+            var files = event.target.files;
+            var url = URL.createObjectURL(files[0]);
+            setFile(url);
+        };
 
         function setFile(url) {
-            var c = document.getElementById("logo-upload-preview");
-            var ctx = c.getContext("2d");
-            ctx.clearRect(0, 0, c.width, c.height);
             var img = new Image();
+            var WIDTH = 500;
+            var HEIGHT = 240;
             img.src = url;
+            $scope.logoChanged = true;
 
             img.onload = function() {
-                var wscale = 1;
-                if (img.width > c.width) {
-                    wscale = c.width / img.width;
-                }
-                var hscale = 1;
-                if (img.height > c.height) {
-                    hscale = c.height / img.height;
-                }
-                var canvasCopy = document.createElement("canvas");
-                var copyContext = canvasCopy.getContext("2d");
+                var hRatio = 1;
+                var wRatio = 1;
+                // take the smallest ratio
+                if (img.width > WIDTH)
+                    wRatio = WIDTH / img.width;
+                if (img.height > HEIGHT)
+                    hRatio = HEIGHT / img.height;
+                var ratio = wRatio > hRatio ? hRatio : wRatio;
+                var canvas = doc.createElement('canvas');
+                var copyContext = canvas.getContext('2d');
 
-                canvasCopy.width = img.width;
-                canvasCopy.height = img.height;
-                copyContext.drawImage(img, 0, 0);
-
-                var ratio = (wscale <= hscale ? wscale : hscale);
-
-                var widthOffset = (c.width - img.width * ratio) / 2;
-                var heightOffset = (c.height - img.height * ratio) / 2;
-                ctx.drawImage(canvasCopy, widthOffset, heightOffset, canvasCopy.width * ratio, canvasCopy.height * ratio);
-
-                //check if the dirty-background css class is applied to the canvas
-                if (c.className.match(/(?:^|\s)dirty-background(?!\S)/) ) {
-                    //remove the dirty-background css class from the canvas
-                    c.className = c.className.replace( /(?:^|\s)dirty-background(?!\S)/g , '' );
-                }
-
-                $scope.dataurl = c.toDataURL();
+                canvas.width = img.width * ratio;
+                canvas.height = img.height * ratio;
+                copyContext.drawImage(img, 0, 0, canvas.width, canvas.height);
+                $scope.logo = canvas.toDataURL();
                 // forces the update button after a file drop, might fix safari issues?
                 $scope.$digest();
             };
@@ -1019,14 +1041,14 @@
             $scope.validationerrors = {};
             OrganizationService.deleteLogo(organization)
                 .then(function () {
-                    $mdDialog.hide({logo: ""});
+                    $mdDialog.hide({logo: ''});
                 });
         }
     }
 
     function descriptionDialogController($scope, $mdDialog, organization, OrganizationService) {
         $scope.organization = organization;
-        $scope.selectedLangKey = "en";
+        $scope.selectedLangKey = 'en';
         $scope.descriptionExists = false;
         $scope.cancel = cancel;
         $scope.remove = remove;
@@ -1179,6 +1201,37 @@
                     $mdDialog.hide({action: 'delete'});
                 });
         }
+    }
+
+    function moveSuborganizationDialogController($scope, $mdDialog, globalid, children, OrganizationService) {
+        $scope.globalid = globalid;
+        $scope.children = children;
+        $scope.orgid = '';
+        $scope.newparent = '';
+
+        $scope.cancel = cancel;
+        $scope.validationerrors = {};
+        $scope.update = update;
+
+
+
+        function cancel(){
+            $mdDialog.cancel();
+        }
+
+        function update(orgid, newparent){
+            $scope.validationerrors = {};
+            OrganizationService.transferSuborganization(globalid, $scope.orgid, $scope.newparent).then(
+                function() {
+                    $mdDialog.hide({status: 'success'});
+                },
+                function(reason){
+                    $scope.validationerrors[reason.data.error] = true;
+                }
+            );
+        }
+
+
     }
 
 })();

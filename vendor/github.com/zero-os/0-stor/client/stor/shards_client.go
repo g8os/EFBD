@@ -12,14 +12,16 @@ type ShardsClient struct {
 	clients   map[string]Client
 	org       string
 	namespace string
+	iyoToken  string
 }
 
-func NewShardsClient(conf Config, shards []string, org, namespace string) (*ShardsClient, error) {
+func NewShardsClient(conf Config, shards []string, org, namespace, iyoToken string) (*ShardsClient, error) {
 	sc := ShardsClient{
 		conf:      conf,
 		org:       org,
 		namespace: namespace,
 		clients:   make(map[string]Client),
+		iyoToken:  iyoToken,
 	}
 	return &sc, sc.createClients(shards)
 }
@@ -40,7 +42,7 @@ func (sc *ShardsClient) createClients(shards []string) error {
 func (sc *ShardsClient) createClient(shard string) (Client, error) {
 	conf := sc.conf
 	conf.Shard = shard
-	cli, err := NewClient(&conf, sc.org, sc.namespace)
+	cli, err := NewClientWithToken(&conf, sc.org, sc.namespace, sc.iyoToken)
 	if err != nil {
 		return nil, err
 	}

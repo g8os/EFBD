@@ -83,8 +83,6 @@ const (
 
 	// maxPendingRevokes is the maximum number of outstanding expired lease revocations.
 	maxPendingRevokes = 16
-
-	recommendedMaxRequestBytes = 10 * 1024 * 1024
 )
 
 var (
@@ -170,10 +168,12 @@ type EtcdServer struct {
 	// consistIndex used to hold the offset of current executing entry
 	// It is initialized to 0 before executing any entry.
 	consistIndex consistentIndex // must use atomic operations to access; keep 64-bit aligned.
-	r            raftNode        // uses 64-bit atomics; keep 64-bit aligned.
+	Cfg          *ServerConfig
 
 	readych chan struct{}
-	Cfg     ServerConfig
+	r       raftNode
+
+	snapCount uint64
 
 	w wait.Wait
 
@@ -221,7 +221,7 @@ type EtcdServer struct {
 
 	SyncTicker *time.Ticker
 	// compactor is used to auto-compact the KV.
-	compactor compactor.Compactor
+	compactor *compactor.Periodic
 
 	// peerRt used to send requests (version, lease) to peers.
 	peerRt   http.RoundTripper
@@ -248,7 +248,7 @@ type EtcdServer struct {
 
 // NewServer creates a new EtcdServer from the supplied configuration. The
 // configuration is considered static for the lifetime of the EtcdServer.
-func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
+func NewServer(cfg *ServerConfig) (srv *EtcdServer, err error) {
 	st := store.New(StoreClusterPrefix, StoreKeysPrefix)
 
 	var (
@@ -258,10 +258,6 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 		id types.ID
 		cl *membership.RaftCluster
 	)
-
-	if cfg.MaxRequestBytes > recommendedMaxRequestBytes {
-		plog.Warningf("MaxRequestBytes %v exceeds maximum recommended size %v", cfg.MaxRequestBytes, recommendedMaxRequestBytes)
-	}
 
 	if terr := fileutil.TouchDirAll(cfg.DataDir); terr != nil {
 		return nil, fmt.Errorf("cannot access data directory: %v", terr)
@@ -406,6 +402,7 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 	srv = &EtcdServer{
 		readych:     make(chan struct{}),
 		Cfg:         cfg,
+		snapCount:   cfg.SnapCount,
 		errorc:      make(chan error, 1),
 		store:       st,
 		snapshotter: ss,
@@ -469,15 +466,12 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 		return nil, err
 	}
 	srv.authStore = auth.NewAuthStore(srv.be, tp)
-	if num := cfg.AutoCompactionRetention; num != 0 {
-		srv.compactor, err = compactor.New(cfg.AutoCompactionMode, num, srv.kv, srv)
-		if err != nil {
-			return nil, err
-		}
+	if h := cfg.AutoCompactionRetention; h != 0 {
+		srv.compactor = compactor.NewPeriodic(h, srv.kv, srv)
 		srv.compactor.Run()
 	}
 
-	srv.applyV3Base = srv.newApplierV3Backend()
+	srv.applyV3Base = &applierV3backend{srv}
 	if err = srv.restoreAlarms(); err != nil {
 		return nil, err
 	}
@@ -524,16 +518,15 @@ func (s *EtcdServer) Start() {
 	s.goAttach(func() { monitorFileDescriptor(s.stopping) })
 	s.goAttach(s.monitorVersions)
 	s.goAttach(s.linearizableReadLoop)
-	s.goAttach(s.monitorKVHash)
 }
 
 // start prepares and starts server in a new goroutine. It is no longer safe to
 // modify a server's fields after it has been sent to Start.
 // This function is just used for testing.
 func (s *EtcdServer) start() {
-	if s.Cfg.SnapCount == 0 {
+	if s.snapCount == 0 {
 		plog.Infof("set snapshot count to default %d", DefaultSnapCount)
-		s.Cfg.SnapCount = DefaultSnapCount
+		s.snapCount = DefaultSnapCount
 	}
 	s.w = wait.New()
 	s.applyWait = wait.NewTimeList()
@@ -554,21 +547,18 @@ func (s *EtcdServer) start() {
 }
 
 func (s *EtcdServer) purgeFile() {
-	var dberrc, serrc, werrc <-chan error
+	var serrc, werrc <-chan error
 	if s.Cfg.MaxSnapFiles > 0 {
-		dberrc = fileutil.PurgeFile(s.Cfg.SnapDir(), "snap.db", s.Cfg.MaxSnapFiles, purgeFileInterval, s.done)
 		serrc = fileutil.PurgeFile(s.Cfg.SnapDir(), "snap", s.Cfg.MaxSnapFiles, purgeFileInterval, s.done)
 	}
 	if s.Cfg.MaxWALFiles > 0 {
 		werrc = fileutil.PurgeFile(s.Cfg.WALDir(), "wal", s.Cfg.MaxWALFiles, purgeFileInterval, s.done)
 	}
 	select {
-	case e := <-dberrc:
-		plog.Fatalf("failed to purge snap db file %v", e)
-	case e := <-serrc:
-		plog.Fatalf("failed to purge snap file %v", e)
 	case e := <-werrc:
 		plog.Fatalf("failed to purge wal file %v", e)
+	case e := <-serrc:
+		plog.Fatalf("failed to purge snap file %v", e)
 	case <-s.stopping:
 		return
 	}
@@ -748,8 +738,7 @@ func (s *EtcdServer) run() {
 					}
 					lid := lease.ID
 					s.goAttach(func() {
-						ctx := s.authStore.WithRoot(s.ctx)
-						s.LeaseRevoke(ctx, &pb.LeaseRevokeRequest{ID: int64(lid)})
+						s.LeaseRevoke(s.ctx, &pb.LeaseRevokeRequest{ID: int64(lid)})
 						leaseExpired.Inc()
 						<-c
 					})
@@ -916,7 +905,7 @@ func (s *EtcdServer) applyEntries(ep *etcdProgress, apply *apply) {
 }
 
 func (s *EtcdServer) triggerSnapshot(ep *etcdProgress) {
-	if ep.appliedi-ep.snapi <= s.Cfg.SnapCount {
+	if ep.appliedi-ep.snapi <= s.snapCount {
 		return
 	}
 
@@ -933,8 +922,9 @@ func (s *EtcdServer) isLeader() bool {
 	return uint64(s.ID()) == s.Lead()
 }
 
-// MoveLeader transfers the leader to the given transferee.
-func (s *EtcdServer) MoveLeader(ctx context.Context, lead, transferee uint64) error {
+// transferLeadership transfers the leader to the given transferee.
+// TODO: maybe expose to client?
+func (s *EtcdServer) transferLeadership(ctx context.Context, lead, transferee uint64) error {
 	now := time.Now()
 	interval := time.Duration(s.Cfg.TickMs) * time.Millisecond
 
@@ -973,7 +963,7 @@ func (s *EtcdServer) TransferLeadership() error {
 
 	tm := s.Cfg.ReqTimeout()
 	ctx, cancel := context.WithTimeout(s.ctx, tm)
-	err := s.MoveLeader(ctx, s.Lead(), uint64(transferee))
+	err := s.transferLeadership(ctx, s.Lead(), uint64(transferee))
 	cancel()
 	return err
 }
@@ -1367,7 +1357,8 @@ func (s *EtcdServer) applyEntryNormal(e *raftpb.Entry) {
 			Action:   pb.AlarmRequest_ACTIVATE,
 			Alarm:    pb.AlarmType_NOSPACE,
 		}
-		s.raftRequest(s.ctx, pb.InternalRaftRequest{Alarm: a})
+		r := pb.InternalRaftRequest{Alarm: a}
+		s.processInternalRaftRequest(s.ctx, r)
 		s.w.Trigger(id, ar)
 	})
 }
@@ -1629,9 +1620,6 @@ func (s *EtcdServer) restoreAlarms() error {
 	if len(as.Get(pb.AlarmType_NOSPACE)) > 0 {
 		s.applyV3 = newApplierV3Capped(s.applyV3)
 	}
-	if len(as.Get(pb.AlarmType_CORRUPT)) > 0 {
-		s.applyV3 = newApplierV3Corrupt(s.applyV3)
-	}
 	return nil
 }
 
@@ -1669,8 +1657,4 @@ func (s *EtcdServer) goAttach(f func()) {
 		defer s.wg.Done()
 		f()
 	}()
-}
-
-func (s *EtcdServer) Alarms() []*pb.AlarmMember {
-	return s.alarmStore.Get(pb.AlarmType_NONE)
 }

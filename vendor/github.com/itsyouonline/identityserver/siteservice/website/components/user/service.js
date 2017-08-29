@@ -6,7 +6,7 @@
         .service("UserService", UserService)
         .service("NotificationService", NotificationService);
 
-    UserService.$inject = ['$http', '$q'];
+    UserService.$inject = ['$http', '$q', '$rootScope'];
     NotificationService.$inject = ['$http','$q'];
 
     function NotificationService($http, $q) {
@@ -101,9 +101,11 @@
             POST = $http.post,
             PUT = $http.put,
             DELETE = $http.delete;
+        var username = null;
 
         return {
             get: get,
+            getUserIdentifier: getUserIdentifier,
             registerNewEmailAddress: registerNewEmailAddress,
             updateEmailAddress: updateEmailAddress,
             deleteEmailAddress: deleteEmailAddress,
@@ -117,6 +119,8 @@
             getAuthorizations: getAuthorizations,
             saveAuthorization: saveAuthorization,
             deleteAuthorization: deleteAuthorization,
+            getSeeObjects: getSeeObjects,
+            getSeeObject: getSeeObject,
             registerNewBankAccount: registerNewBankAccount,
             updateBankAccount: updateBankAccount,
             deleteBankAccount: deleteBankAccount,
@@ -149,12 +153,15 @@
             createAvatarFromFile: createAvatarFromFile,
             updateAvatarLink: updateAvatarLink,
             updateAvatarFile: updateAvatarFile,
-            deleteAvatar: deleteAvatar
+            deleteAvatar: deleteAvatar,
+            getUsername: getUsername,
+            setUsername: setUsername,
+            GetAllUserIdentifiers: GetAllUserIdentifiers
         };
 
-        function genericHttpCall(httpFunction, url, data) {
+        function genericHttpCall(httpFunction, url, data, config) {
             if (data){
-                return httpFunction(url, data)
+                return httpFunction(url, data, config)
                     .then(
                         function(response) {
                             return response.data;
@@ -165,7 +172,7 @@
                     );
             }
             else {
-                return httpFunction(url)
+                return httpFunction(url, config)
                     .then(
                         function(response) {
                             return response.data;
@@ -177,9 +184,73 @@
             }
         }
 
-        function get(username) {
+        function get(refresh) {
             var url = apiURL + '/' + encodeURIComponent(username);
-            return genericHttpCall($http.get, url);
+            // cache: true prevents from doing the same request twice and just returns the value of the previous request to this url
+            return genericHttpCall(GET, url, null, {cache: !refresh});
+        }
+
+        /**
+         * Returns most user-friendly identifier for the user.
+         * Only to be used for displaying in html, don't use it in api calls.
+         */
+        function getUserIdentifier() {
+            var deferred = $q.defer();
+            this.get().then(function (user) {
+                if (user.firstname || user.lastname) {
+                    deferred.resolve(user.firstname + ' ' + user.lastname);
+                    return;
+                }
+                getVerifiedEmailAddresses().then(function (emailAddresses) {
+                    if (emailAddresses.length) {
+                        deferred.resolve(emailAddresses[0].emailaddress);
+                    } else {
+                        getVerifiedPhones().then(function (phones) {
+                            if (phones.length) {
+                                deferred.resolve(phones[0].phonenumber);
+                            } else {
+                                // SOL here, fallback to username.
+                                deferred.resolve(user.username);
+                            }
+                        });
+                    }
+                });
+
+            });
+            return deferred.promise;
+
+        }
+
+        function getUsername() {
+            return username;
+        }
+
+        function setUsername(name) {
+            username = name;
+        }
+
+        /**
+         * Returns all verified information from the user.
+         * This includes username, email addresses and phone numbers.
+         * @returns Promise{string[]}
+         */
+        function GetAllUserIdentifiers() {
+            var deferred = $q.defer();
+            var verifiedData = [username];
+            getVerifiedEmailAddresses(username).then(function (verifiedEmails) {
+                var emails = verifiedEmails.map(function (email) {
+                    return email.emailaddress;
+                });
+                verifiedData = verifiedData.concat(emails);
+                getVerifiedPhones(username).then(function (verifiedPhones) {
+                    var phones = verifiedPhones.map(function (phone) {
+                        return phone.phonenumber;
+                    });
+                    verifiedData = verifiedData.concat(phones);
+                    deferred.resolve(verifiedData);
+                });
+            });
+            return deferred.promise;
         }
 
         function registerNewEmailAddress(username, emailaddress) {
@@ -247,7 +318,7 @@
         }
 
         function getAuthorizations(username) {
-            var url = apiURL + '/' + encodeURIComponent(username) + '/authorizations/';
+            var url = apiURL + '/' + encodeURIComponent(username) + '/authorizations';
             return genericHttpCall($http.get, url);
         }
 
@@ -264,6 +335,19 @@
         function deleteAuthorization(authorization) {
             var url = apiURL + '/' + encodeURIComponent(authorization.username) + '/authorizations/' + encodeURIComponent(authorization.grantedTo);
             return genericHttpCall($http.delete, url);
+        }
+
+        function getSeeObjects(organization) {
+            var queryString = organization ? '?globalid=' + encodeURIComponent(organization) : '';
+            var url = apiURL + '/' + encodeURIComponent(username) + '/see' + queryString;
+            return genericHttpCall($http.get, url, null, {cache: true});
+        }
+
+        function getSeeObject(uniqueId, organization, all) {
+            var queryString = all ? '?version=0' : '';
+            var url = apiURL + '/' + encodeURIComponent(username) + '/see/' + encodeURIComponent(uniqueId) + '/'
+                + encodeURIComponent(organization) + queryString;
+            return genericHttpCall($http.get, url, null, {cache: true});
         }
 
         function deleteFacebookAccount(username) {
@@ -294,9 +378,13 @@
             return genericHttpCall($http.put, url, data);
         }
 
-        function getVerifiedPhones(username) {
+        function getVerifiedPhones(disableCache) {
             var url = apiURL + '/' + encodeURIComponent(username) + '/phonenumbers?validated=true';
-            return genericHttpCall($http.get, url);
+            var options = {};
+            if (!disableCache) {
+                options.cache = true;
+            }
+            return genericHttpCall($http.get, url, options);
         }
 
         function sendPhoneVerificationCode(username, label) {
@@ -314,9 +402,13 @@
             return genericHttpCall($http.put, url, data);
         }
 
-        function getVerifiedEmailAddresses(username) {
+        function getVerifiedEmailAddresses(disableCache) {
             var url = apiURL + '/' + encodeURIComponent(username) + '/emailaddresses?validated=true';
-            return genericHttpCall($http.get, url);
+            var options = {};
+            if (!disableCache) {
+                options.cache = true;
+            }
+            return genericHttpCall($http.get, url, options);
         }
 
         function sendEmailAddressVerification(username, label){

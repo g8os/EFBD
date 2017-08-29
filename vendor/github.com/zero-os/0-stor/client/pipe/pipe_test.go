@@ -64,7 +64,7 @@ func testRoundTrip(t *testing.T, compressType string) {
 	// write it
 	finalWriter := block.NewBytesBuffer()
 
-	pw, err := NewWritePipe(&conf, finalWriter, nil)
+	pw, err := NewWritePipe(&conf, "", finalWriter, nil)
 	require.Nil(t, err)
 
 	md, err := meta.New(key, 0, nil)
@@ -74,7 +74,7 @@ func testRoundTrip(t *testing.T, compressType string) {
 	require.Nil(t, err)
 
 	// read it
-	rp, err := NewReadPipe(&conf)
+	rp, err := NewReadPipe(&conf, "")
 	require.Nil(t, err)
 
 	readResult, err := rp.ReadBlock(finalWriter.Bytes())

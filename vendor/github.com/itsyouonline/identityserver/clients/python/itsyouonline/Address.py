@@ -1,0 +1,129 @@
+"""
+Auto-generated class for Address
+"""
+from .Label import Label
+
+from . import client_support
+
+
+class Address(object):
+    """
+    auto-generated. don't touch.
+    """
+
+    @staticmethod
+    def create(city, country, label, nr, postalcode, street, other=None):
+        """
+        :type city: str
+        :type country: str
+        :type label: Label
+        :type nr: str
+        :type other: str
+        :type postalcode: str
+        :type street: str
+        :rtype: Address
+        """
+
+        return Address(
+            city=city,
+            country=country,
+            label=label,
+            nr=nr,
+            other=other,
+            postalcode=postalcode,
+            street=street,
+        )
+
+    def __init__(self, json=None, **kwargs):
+        if json is None and not kwargs:
+            raise ValueError('No data or kwargs present')
+
+        class_name = 'Address'
+        create_error = '{cls}: unable to create {prop} from value: {val}: {err}'
+        required_error = '{cls}: missing required property {prop}'
+
+        data = json or kwargs
+
+        property_name = 'city'
+        val = data.get(property_name)
+        if val is not None:
+            datatypes = [str]
+            try:
+                self.city = client_support.val_factory(val, datatypes)
+            except ValueError as err:
+                raise ValueError(create_error.format(cls=class_name, prop=property_name, val=val, err=err))
+        else:
+            raise ValueError(required_error.format(cls=class_name, prop=property_name))
+
+        property_name = 'country'
+        val = data.get(property_name)
+        if val is not None:
+            datatypes = [str]
+            try:
+                self.country = client_support.val_factory(val, datatypes)
+            except ValueError as err:
+                raise ValueError(create_error.format(cls=class_name, prop=property_name, val=val, err=err))
+        else:
+            raise ValueError(required_error.format(cls=class_name, prop=property_name))
+
+        property_name = 'label'
+        val = data.get(property_name)
+        if val is not None:
+            datatypes = [Label]
+            try:
+                self.label = client_support.val_factory(val, datatypes)
+            except ValueError as err:
+                raise ValueError(create_error.format(cls=class_name, prop=property_name, val=val, err=err))
+        else:
+            raise ValueError(required_error.format(cls=class_name, prop=property_name))
+
+        property_name = 'nr'
+        val = data.get(property_name)
+        if val is not None:
+            datatypes = [str]
+            try:
+                self.nr = client_support.val_factory(val, datatypes)
+            except ValueError as err:
+                raise ValueError(create_error.format(cls=class_name, prop=property_name, val=val, err=err))
+        else:
+            raise ValueError(required_error.format(cls=class_name, prop=property_name))
+
+        property_name = 'other'
+        val = data.get(property_name)
+        if val is not None:
+            datatypes = [str]
+            try:
+                self.other = client_support.val_factory(val, datatypes)
+            except ValueError as err:
+                raise ValueError(create_error.format(cls=class_name, prop=property_name, val=val, err=err))
+
+        property_name = 'postalcode'
+        val = data.get(property_name)
+        if val is not None:
+            datatypes = [str]
+            try:
+                self.postalcode = client_support.val_factory(val, datatypes)
+            except ValueError as err:
+                raise ValueError(create_error.format(cls=class_name, prop=property_name, val=val, err=err))
+        else:
+            raise ValueError(required_error.format(cls=class_name, prop=property_name))
+
+        property_name = 'street'
+        val = data.get(property_name)
+        if val is not None:
+            datatypes = [str]
+            try:
+                self.street = client_support.val_factory(val, datatypes)
+            except ValueError as err:
+                raise ValueError(create_error.format(cls=class_name, prop=property_name, val=val, err=err))
+        else:
+            raise ValueError(required_error.format(cls=class_name, prop=property_name))
+
+    def __str__(self):
+        return self.as_json(indent=4)
+
+    def as_json(self, indent=0):
+        return client_support.to_json(self, indent=indent)
+
+    def as_dict(self):
+        return client_support.to_dict(self)

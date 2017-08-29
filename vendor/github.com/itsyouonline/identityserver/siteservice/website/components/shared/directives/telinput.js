@@ -7,7 +7,8 @@
                 restrict: 'E',
                 replace: true,
                 scope: {
-                  number: '=phonenumber'
+                  number: '=phonenumber',
+                  validationerrors: '=?error'
                 },
                 templateUrl: 'components/shared/directives/telinput.html',
                 link: function (scope, element, attr) {
@@ -15,7 +16,7 @@
                     scope.country = {};
                     scope.sms = "";
                     scope.prefCountry = "";
-                    scope.validationerrors = {};
+                    // scope.validationerrors = {};
 
                     scope.updateSMS = updateSMS;
                     scope.isNumeric = isNumeric;
@@ -23,6 +24,9 @@
                     init();
 
                     function init() {
+                        if (!scope.validationerrors) {
+                            scope.validationerrors = {};
+                        }
                         // check if a valid international number is prefilled
                         if (scope.number) {
                             for (var i = 0; i < countries.length; i++) {
@@ -56,7 +60,11 @@
 
                     function updateSMS() {
                       scope.validationerrors.pattern = false;
-                      scope.number = scope.country.dial_code + scope.sms;
+                      var phone = scope.sms;
+                      if (phone.startsWith("0")) {
+                          phone = phone.substring(1);
+                      }
+                      scope.number = scope.country.dial_code + phone;
                       if (!isNumeric(scope.number)) {
                           scope.validationerrors.pattern = true;
                       }

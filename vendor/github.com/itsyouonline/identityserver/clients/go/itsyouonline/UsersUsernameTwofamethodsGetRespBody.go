@@ -6,7 +6,7 @@ import (
 
 type UsersUsernameTwofamethodsGetRespBody struct {
 	Sms  []Phonenumber `json:"sms" validate:"nonzero"`
-	Totp bool          `json:"totp" validate:"nonzero"`
+	Totp bool          `json:"totp"`
 }
 
 func (s UsersUsernameTwofamethodsGetRespBody) Validate() error {

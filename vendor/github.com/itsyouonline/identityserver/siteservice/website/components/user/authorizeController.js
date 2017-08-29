@@ -7,10 +7,10 @@
         .controller("AuthorizeController", AuthorizeController);
 
 
-    AuthorizeController.$inject = ['$scope', '$rootScope', '$location', '$window', '$q', '$translate',
+    AuthorizeController.$inject = ['$scope', '$location', '$window', '$q', '$translate',
         'UserService', 'UserDialogService', 'NotificationService'];
 
-    function AuthorizeController($scope, $rootScope, $location, $window, $q, $translate,
+    function AuthorizeController($scope, $location, $window, $q, $translate,
                                  UserService, UserDialogService, NotificationService) {
         var vm = this;
 
@@ -18,7 +18,7 @@
         vm.requestingorganization = queryParams['client_id'];
         vm.requestedScopes = queryParams['scope'];
         vm.requestedorganizations = [];
-        vm.username = $rootScope.user;
+        vm.username = UserService.getUsername();
 
         vm.user = {};
         vm.pendingNotifications = [];
@@ -34,7 +34,7 @@
         vm.verifyEmail = verifyEmail;
         vm.submit = submit;
         vm.showDigitalWalletAddressDialog = digitalWalletAddress;
-        var properties = ['avatars', 'addresses', 'emailaddresses', 'phonenumbers', 'bankaccounts', 'digitalwallet', 'publicKeys'];
+        var properties = ['avatars', 'addresses', 'emailaddresses', 'phonenumbers', 'bankaccounts', 'digitalwallet', 'publicKeys', 'validatedemailaddresses', 'validatedphonenumbers'];
         $scope.requested = {
             organizations: {}
         };
@@ -135,7 +135,28 @@
                     }
                     else if (scope === 'user:facebook') {
                         $scope.authorizations.facebook = true;
-                    } else if (scope.startsWith('user:ownerof')) {
+                    }
+                    else if (scope === 'user:keystore') {
+                        $scope.authorizations.keystore = true;
+                    }
+                    else if (scope === 'user:see') {
+                        $scope.authorizations.see = true;
+                    }
+                    else if (scope.startsWith('user:validated:')){
+                        permissionLabel = splitPermission.length > 3 && splitPermission[3] ? splitPermission[3] : 'main';
+                        auth.requestedlabel = permissionLabel;
+                        switch (splitPermission[2]) {
+                            case 'email':
+                                auth.reallabel = vm.user['emailaddresses'].length ? vm.user['emailaddresses'][0].label : '';
+                                $scope.authorizations['validatedemailaddresses'].push(auth);
+                              break;
+                            case 'phone':
+                                auth.reallabel = vm.user['phonenumbers'].length ? vm.user['phonenumbers'][0].label : '';
+                                $scope.authorizations['validatedphonenumbers'].push(auth);
+                              break;
+                        }
+                    }
+                    else if (scope.startsWith('user:ownerof')) {
                         switch (splitPermission[2]) {
                             case 'email':
                                 var emailAddress = splitPermission[3];
@@ -153,40 +174,56 @@
             if (Object.keys($scope.authorizations.ownerof.emailaddresses).length) {
                 getVerifiedEmails();
             }
+            if (Object.keys($scope.authorizations.validatedemailaddresses).length) {
+                getValidatedEmails();
+            }
+            if (Object.keys($scope.authorizations.validatedphonenumbers).length) {
+                getValidatedPhones();
+            }
+
         }
 
-        function getVerifiedEmails() {
-            UserService.getVerifiedEmailAddresses(vm.username).then(function (confirmedEmails) {
-                vm.verifiedEmails = confirmedEmails.map(function (mail) {
-                    return mail.emailaddress;
+        function getValidatedEmails() {
+            UserService.getVerifiedEmailAddresses().then(setConfirmedEmails);
+        }
+
+        function setConfirmedEmails(confirmedEmails) {
+            // list of email objects (label, emailaddress)
+            vm.validatedEmails = confirmedEmails.map(function (mail) {
+                return mail;
+            });
+            // list of email addresses
+            vm.verifiedEmails = confirmedEmails.map(function (mail) {
+                return mail.emailaddress;
+            });
+        }
+
+        function getValidatedPhones() {
+            UserService.getVerifiedPhones(vm.username).then(function (confirmedPhones) {
+                vm.validatedPhones = confirmedPhones.map(function (phone) {
+                    return phone;
                 });
             });
         }
 
-        function hasAllRequiredEmails() {
-            for (var i = 0; i < $scope.authorizations.ownerof.emailaddresses.length; i++) {
-                var email = $scope.authorizations.ownerof.emailaddresses[i];
-                if (vm.verifiedEmails && !vm.verifiedEmails.includes(email)) {
-                    return email;
-                }
-            }
-            return true;
+        function getMissingRequiredEmails() {
+            return $scope.authorizations.ownerof.emailaddresses.filter(function (email) {
+                return vm.verifiedEmails && !vm.verifiedEmails.includes(email);
+            });
         }
 
         function checkOwner() {
             return $q(function (resolve, reject) {
-                if ($scope.authorizations.ownerof.emailaddresses.length === 0 || hasAllRequiredEmails() === true) {
+                if ($scope.authorizations.ownerof.emailaddresses.length === 0 || getMissingRequiredEmails().length === 0) {
                     resolve();
                 } else {
-                    UserService.getVerifiedEmailAddresses(vm.username).then(function (confirmedEmails) {
-                        vm.verifiedEmails = confirmedEmails.map(function (mail) {
-                            return mail.emailaddress;
-                        });
-                        var requiredEmail = hasAllRequiredEmails();
-                        if (requiredEmail === true) {
+                    UserService.getVerifiedEmailAddresses(true).then(function (confirmedEmails) {
+                        setConfirmedEmails(confirmedEmails);
+                        var missingRequiredEmails = getMissingRequiredEmails();
+                        if (missingRequiredEmails.length === 0) {
                             resolve();
                         } else {
-                            reject({key: 'please_verify_email_x', values: {email: requiredEmail}});
+                            reject({key: 'please_verify_email_x', values: {email: missingRequiredEmails[0]}});
                         }
                     });
                 }

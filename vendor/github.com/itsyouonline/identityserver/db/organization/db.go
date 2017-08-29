@@ -1,7 +1,6 @@
 package organization
 
 import (
-	"errors"
 	"net/http"
 	"strings"
 
@@ -661,14 +660,6 @@ func (m *LogoManager) Create(organization *Organization) error {
 	return err
 }
 
-// Save an organization.
-func (m *Manager) Save(organization *Organization) error {
-	// TODO: Validation!
-
-	// TODO: Save
-	return errors.New("Save is not implemented yet")
-}
-
 // SaveMember save or update member
 func (m *Manager) SaveMember(organization *Organization, username string) error {
 	return m.collection.Update(
@@ -972,6 +963,38 @@ func (m *Manager) ListByUserOrGlobalID(username string, globalIds []string) (err
 	}
 	err := m.collection.Find(qry).All(&organizations)
 	return err, organizations
+}
+
+// TransferSubOrg transfers the suborganization, and all of its suborganizations
+// to a new parent organization
+func (m *Manager) TransferSubOrg(globalId string, newParent string) error {
+	suborgseparator := strings.LastIndex(globalId, ".")
+	suborgs, err := m.GetSubOrganizations(globalId)
+	if err != nil {
+		return err
+	}
+
+	suborgids := make([]string, len(suborgs))
+	for i, subOrg := range suborgs {
+		suborgids[i] = subOrg.Globalid
+	}
+
+	for _, org := range append(suborgids, globalId) {
+		newGlobalid := newParent + org[suborgseparator:]
+		qry := bson.M{
+			"globalid": org,
+		}
+		update := bson.M{
+			"$set": bson.M{
+				"globalid": newGlobalid,
+			},
+		}
+		err = m.collection.Update(qry, update)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // SaveDescription saves a description for an organization

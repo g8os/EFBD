@@ -27,7 +27,7 @@ import (
 	"reflect"
 	"strings"
 
-	bolt "github.com/coreos/bbolt"
+	"github.com/boltdb/bolt"
 	"github.com/coreos/etcd/etcdserver"
 	"github.com/coreos/etcd/etcdserver/etcdserverpb"
 	"github.com/coreos/etcd/etcdserver/membership"

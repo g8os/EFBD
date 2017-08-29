@@ -11,8 +11,8 @@ type SingleShardWriter struct {
 	Shard string
 }
 
-func NewSingleShardWriter(conf Config, org, namespace string) (*SingleShardWriter, error) {
-	cli, err := NewClient(&conf, org, namespace)
+func NewSingleShardWriter(conf Config, org, namespace, iyoToken string) (*SingleShardWriter, error) {
+	cli, err := NewClientWithToken(&conf, org, namespace, iyoToken)
 	if err != nil {
 		return nil, err
 	}

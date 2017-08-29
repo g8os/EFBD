@@ -25,7 +25,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	bolt "github.com/coreos/bbolt"
+	"github.com/boltdb/bolt"
 	"github.com/coreos/pkg/capnslog"
 )
 
@@ -139,11 +139,8 @@ func newBackend(bcfg BackendConfig) *backend {
 		batchInterval: bcfg.BatchInterval,
 		batchLimit:    bcfg.BatchLimit,
 
-		readTx: &readTx{
-			buf: txReadBuffer{
-				txBuffer: txBuffer{make(map[string]*bucketBuffer)},
-			},
-			buckets: make(map[string]*bolt.Bucket),
+		readTx: &readTx{buf: txReadBuffer{
+			txBuffer: txBuffer{make(map[string]*bucketBuffer)}},
 		},
 
 		stopc: make(chan struct{}),
@@ -342,7 +339,7 @@ func (b *backend) defrag() error {
 		plog.Fatalf("cannot begin tx (%s)", err)
 	}
 
-	b.readTx.reset()
+	b.readTx.buf.reset()
 	b.readTx.tx = b.unsafeBegin(false)
 	atomic.StoreInt64(&b.size, b.readTx.tx.Size())
 

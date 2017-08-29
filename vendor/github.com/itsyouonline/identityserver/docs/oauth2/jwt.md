@@ -35,8 +35,8 @@ Itsyou.online supports several ways of obtaining JWTs:
 
 Suppose you have an OAuth token OAUTH-TOKEN with the following scopes:
 
-- user:memberOf:org1
-- user:memberOf:org2
+- user:memberof:org1
+- user:memberof:org2
 - user:address:billing
 
 and you want to call a third party service that only needs to know if the user is member of org1, there is no need to expose the billing address you are authorized to see.
@@ -106,7 +106,7 @@ In this case, this results in the following JWT data
     ```
     {
       "username": "bob",
-      "scope": "user:memberOf:org1",
+      "scope": "user:memberof:org1",
       "iss": "itsyouonline",
       "aud": [
             "CLIENTID",
@@ -162,3 +162,16 @@ Consumers should be careful not to pass jwt's with a refresh_token to third part
 Although the expiration time can not be set directly, a `validity` query parameter can be set when acquiring a jwt. The value of this parameter is interpreted as the duration you want the jwt to be valid and is expressed in seconds. This value can only be used to reduce the default duration of one day, i.e. you can use this parameter to ask for a jwt that is valid for 5 minutes, but a request for a jwt that is valid for a week will be ignored (a jwt will still be handed out if the remainder of the request is valid, but it will have the default 1 day expiration). Usage of this parameter is optional, if it is absent, the default expiration of one day will be used.
 
 The same `validity` parameter can also be set when refreshing the jwt (if the `offline_access` scope was requested initially). The same restrictions apply here as when the jwt is handed out initially. If a jwt was acquired with a custom validity period, but no validity period is specified when refreshing it, the refreshed jwt will have the default 1 day validity
+
+### Storing the actual values of scopes in JWT
+
+In order to reduce some roundtrips to ItsYou.Online, some of the actual information given by
+some scopes can also be stored in the JWT. This information is stored as a separate scope
+in the form of `[SCOPE]:ACTUAL_INFO`. To enable this behavior, the `store_info=true`
+query parameter must be provided when requesting a JWT. Currently the following info
+can be stored:
+  * `user:name`
+  * `user:email[:label]`
+  * `user:phone[:label]`
+  * `user:validated:email[:label]`
+  * `user:validated:phone[:label]`

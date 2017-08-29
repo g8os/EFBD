@@ -88,7 +88,7 @@ func (api UsersusernameorganizationsAPI) globalidrolesrolePost(w http.ResponseWr
 	case invitations.MethodEmail:
 		orgRequest, err = orgReqMgr.GetWithEmail(j.EmailAddress, organization, role, invitations.RequestPending)
 		if err != nil {
-			log.Error("error while trying to get invitation for email address")
+			log.Error("error while trying to get invitation for email address: ", err)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
@@ -106,7 +106,7 @@ func (api UsersusernameorganizationsAPI) globalidrolesrolePost(w http.ResponseWr
 	case invitations.MethodPhone:
 		orgRequest, err = orgReqMgr.GetWithPhonenumber(j.PhoneNumber, organization, role, invitations.RequestPending)
 		if err != nil {
-			log.Error("error while trying to get invitation for email address")
+			log.Error("error while trying to get invitation for phone number: ", err)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
@@ -124,7 +124,7 @@ func (api UsersusernameorganizationsAPI) globalidrolesrolePost(w http.ResponseWr
 	default:
 		orgRequest, err = orgReqMgr.Get(username, organization, role, invitations.RequestPending)
 		if err != nil {
-			log.Error("error while trying to get invitation for email address")
+			log.Error("error while trying to get invitation for username: ", err)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
@@ -144,14 +144,14 @@ func (api UsersusernameorganizationsAPI) globalidrolesrolePost(w http.ResponseWr
 		if invitations.RoleOwner == orgRequest.Role {
 			// Accepted Owner role
 			if err := orgMgr.SaveOwner(org, username); err != nil {
-				log.Error("Failed to save owner: ", username)
+				log.Error("Failed to save owner: ", err)
 				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 				return
 			}
 		} else {
 			// Accepted member role
 			if err := orgMgr.SaveMember(org, username); err != nil {
-				log.Error("Failed to save member: ", username)
+				log.Error("Failed to save member: ", err)
 				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 				return
 			}

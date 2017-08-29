@@ -1,6 +1,6 @@
 <div flex-gt-sm="80" flex="100" layout="column">
     <div class="breadcrumb-container">
-        <p ng-bind="::vm.username"></p>
+        <p ng-bind="::vm.userIdentifier"></p>
         <h1 translate='user.views.notifications.notifications'>Notifications</h1>
     </div>
     <md-card>
@@ -14,10 +14,11 @@
                 <div layout="row">
                     <div layout="column">
                         <br/>
-                        <h3 ng-bind="vm.notificationMessage"></h3>
+                        <h3 class="text_align_center" ng-bind="vm.notificationMessage"></h3>
                     </div>
                     <span flex></span>
                 </div>
+                <span ng-if="vm.getPendingCount('all') == 0" translate='no_notifcations'>You have no notifications.</span>
                 <div ng-if="vm.getPendingCount(vm.notifications.invitations) > 0">
                     <md-subheader class="md-no-sticky"><span translate='user.views.notifications.pendinginvites'>Pending organization invites</span></md-subheader>
                     <md-list>
@@ -70,7 +71,7 @@
                                 ng-repeat="notification in vm.notifications.security track by notification.subject"
                                 aria-label translate-attr="{ 'aria-label': 'user.views.notifications.securitynotice'}">
                             <p ng-bind="notification.msg"></p>
-                            <md-button class="md-secondary md-raised" ng-click="vm.pageSelected(notification.tabIndex)" translate='user.views.notifications.resolve'>
+                            <md-button class="md-secondary md-raised" ng-click="vm.goToPage(notification.page)" translate='user.views.notifications.resolve'>
                                 Resolve
                             </md-button>
                         </md-list-item>

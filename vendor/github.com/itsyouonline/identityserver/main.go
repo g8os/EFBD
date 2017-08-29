@@ -40,6 +40,8 @@ func main() {
 	var smtpserver, smtpuser, smtppassword string
 	var smtpport int
 
+	var smsAeroUser, smsAeroPassword, smsAeroSenderId string
+
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{
 			Name:        "debug, d",
@@ -111,6 +113,21 @@ func main() {
 			Destination: &smtpport,
 			Value:       587,
 		},
+		cli.StringFlag{
+			Name:        "SmsAeroUser",
+			Usage:       "User for SmsAero",
+			Destination: &smsAeroUser,
+		},
+		cli.StringFlag{
+			Name:        "SmsAeroPassword",
+			Usage:       "Password in md5 format or an apikey for SmsAero",
+			Destination: &smsAeroPassword,
+		},
+		cli.StringFlag{
+			Name:        "SmsAeroSenderId",
+			Usage:       "The sender Id for SmsAero, filled in in the from field",
+			Destination: &smsAeroSenderId,
+		},
 	}
 
 	app.Before = func(c *cli.Context) error {
@@ -131,11 +148,30 @@ func main() {
 		cookieSecret := identityservice.GetCookieSecret()
 		var smsService communication.SMSService
 		var emailService communication.EmailService
-		if twilioAccountSID != "" {
+		var mailService communication.MailService
+		if twilioAccountSID != "" && smsAeroPassword != "" {
+			smsService = &communication.SMSServiceProxySeparateRussia{
+				DefaultSMSService: &communication.TwilioSMSService{
+					AccountSID:          twilioAccountSID,
+					AuthToken:           twilioAuthToken,
+					MessagingServiceSID: twilioMessagingServiceSID,
+				},
+				RussianSMSService: &communication.SmsAeroSMSService{
+					Username: smsAeroUser,
+					Password: smsAeroPassword,
+					SenderId: smsAeroSenderId,
+				},
+			}
+		} else if twilioAccountSID != "" {
 			smsService = &communication.TwilioSMSService{
 				AccountSID:          twilioAccountSID,
 				AuthToken:           twilioAuthToken,
 				MessagingServiceSID: twilioMessagingServiceSID,
+			}
+		} else if smsAeroUser != "" {
+			smsService = &communication.SmsAeroSMSService{
+				Username: smsAeroUser,
+				Password: smsAeroPassword,
 			}
 		} else {
 			log.Warn("============================================================================")
@@ -154,7 +190,17 @@ func main() {
 			emailService = communication.NewSMTPEmailService(smtpserver, smtpport, smtpuser, smtppassword)
 		}
 
-		is := identityservice.NewService(smsService, emailService)
+		// TODO: implement actual snailmail provider
+		if true {
+			log.Warn("============================================================================")
+			log.Warn("No valid mail service provided, falling back to development implementation")
+			log.Warn("============================================================================")
+			mailService = &communication.DevMailService{}
+		} else {
+			//TODO implement actual snailmail provider
+		}
+
+		is := identityservice.NewService(smsService, emailService, mailService)
 		sc := siteservice.NewService(cookieSecret, smsService, emailService, is, version)
 
 		config := globalconfig.NewManager()
