@@ -24,12 +24,10 @@ import (
 type index interface {
 	Get(key []byte, atRev int64) (rev, created revision, ver int64, err error)
 	Range(key, end []byte, atRev int64) ([][]byte, []revision)
-	Revisions(key, end []byte, atRev int64) []revision
 	Put(key []byte, rev revision)
 	Tombstone(key []byte, rev revision) error
 	RangeSince(key, end []byte, rev int64) []revision
 	Compact(rev int64) map[revision]struct{}
-	Keep(rev int64) map[revision]struct{}
 	Equal(b index) bool
 
 	Insert(ki *keyIndex)
@@ -83,18 +81,6 @@ func (ti *treeIndex) keyIndex(keyi *keyIndex) *keyIndex {
 		return item.(*keyIndex)
 	}
 	return nil
-}
-
-func (ti *treeIndex) Revisions(key, end []byte, atRev int64) (revs []revision) {
-	if end == nil {
-		rev, _, _, err := ti.Get(key, atRev)
-		if err != nil {
-			return nil
-		}
-		return []revision{rev}
-	}
-	_, rev := ti.Range(key, end, atRev)
-	return rev
 }
 
 func (ti *treeIndex) Range(key, end []byte, atRev int64) (keys [][]byte, revs []revision) {
@@ -190,19 +176,6 @@ func (ti *treeIndex) Compact(rev int64) map[revision]struct{} {
 			plog.Panic("store.index: unexpected delete failure during compaction")
 		}
 	}
-	return available
-}
-
-// Keep finds all revisions to be kept for a Compaction at the given rev.
-func (ti *treeIndex) Keep(rev int64) map[revision]struct{} {
-	available := make(map[revision]struct{})
-	ti.RLock()
-	defer ti.RUnlock()
-	ti.tree.Ascend(func(i btree.Item) bool {
-		keyi := i.(*keyIndex)
-		keyi.keep(rev, available)
-		return true
-	})
 	return available
 }
 

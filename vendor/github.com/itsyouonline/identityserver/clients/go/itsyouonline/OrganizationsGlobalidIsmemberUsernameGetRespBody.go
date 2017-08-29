@@ -5,7 +5,7 @@ import (
 )
 
 type OrganizationsGlobalidIsmemberUsernameGetRespBody struct {
-	IsMember bool `json:"IsMember" validate:"nonzero"`
+	IsMember bool `json:"IsMember"`
 }
 
 func (s OrganizationsGlobalidIsmemberUsernameGetRespBody) Validate() error {

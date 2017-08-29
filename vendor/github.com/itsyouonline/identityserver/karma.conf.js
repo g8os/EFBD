@@ -24,6 +24,7 @@ module.exports = function(config) {
           'https://ajax.googleapis.com/ajax/libs/angularjs/1.5.9/angular-cookies.min.js',
           'https://ajax.googleapis.com/ajax/libs/angularjs/1.5.9/angular-sanitize.min.js',
           'https://ajax.googleapis.com/ajax/libs/angular_material/1.1.1/angular-material.min.js',
+          'https://ajax.googleapis.com/ajax/libs/angular-ui-router/0.4.2/angular-ui-router.min.js',
           '../../node_modules/angular-mocks/angular-mocks.js',
           'thirdpartyassets/angular-translate/angular-translate.min.js',
           'thirdpartyassets/angular-translate-loader-static-files/angular-translate-loader-static-files.min.js',
@@ -42,6 +43,8 @@ module.exports = function(config) {
           'components/common.js',
           'components/shared/country-info.js',
           'components/shared/directives/telinput.js',
+          'thirdpartyassets/showdown/compressed/Showdown.min.js',
+          'thirdpartyassets/angular-markdown-directive/markdown.js',
 
           // load main app and dependancies
           'components/app.js',
@@ -108,7 +111,7 @@ module.exports = function(config) {
 
         // level of logging
         // possible values: config.LOG_DISABLE || config.LOG_ERROR || config.LOG_WARN || config.LOG_INFO || config.LOG_DEBUG
-        logLevel: config.LOG_INFO,
+        logLevel: config.LOG_DEBUG,
 
 
         // enable / disable watching file and executing tests whenever any file changes
@@ -117,7 +120,7 @@ module.exports = function(config) {
 
         // start these browsers
         // available browser launchers: https://npmjs.org/browse/keyword/karma-launcher
-        browsers: ['Chrome', 'Firefox'],
+        browsers: ['ChromeHeadless', 'Firefox'],
 
 
         // Continuous Integration mode
@@ -128,17 +131,8 @@ module.exports = function(config) {
         // how many browser should be started simultaneous
         concurrency: Infinity,
 
-        customLaunchers: {
-            Chrome_travis_ci: {
-                base: 'Chrome',
-                flags: ['--no-sandbox']
-            }
-        },
     };
 
-    if (process.env.TRAVIS) {
-      configuration.browsers = ['Chrome_travis_ci', 'Firefox'];
-    }
 
     config.set(configuration);
 }

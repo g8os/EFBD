@@ -4,9 +4,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/zero-os/0-stor/client/itsyouonline"
+	"github.com/zero-os/0-stor/client/lib"
 	"github.com/zero-os/0-stor/client/lib/block"
-	"github.com/zero-os/0-stor/client/lib/hash"
 	"github.com/zero-os/0-stor/client/meta"
 	"github.com/zero-os/0-stor/client/stor"
 )
@@ -16,7 +15,6 @@ import (
 // It create one stor.Client for each shard
 type StorDistributor struct {
 	enc         *Encoder
-	hasher      *hash.Hasher
 	storClients []stor.Client
 	shards      []string
 	metaCli     *meta.Client
@@ -25,26 +23,20 @@ type StorDistributor struct {
 
 // NewStorDistributor creates new StorDistributor
 func NewStorDistributor(w block.Writer, conf Config, shards, metaShards []string, proto,
-	org, namespace, iyoAppID, iyoAppSecret string) (*StorDistributor, error) {
+	org, namespace, iyoToken string) (*StorDistributor, error) {
 
 	if len(shards) < conf.NumPieces() {
 		return nil, fmt.Errorf("invalid number of shards=%v, expected=%v", len(shards), conf.NumPieces())
 	}
 
 	// stor clients
-	storClients, err := createStorClients(conf, shards, proto, org, namespace, iyoAppID, iyoAppSecret)
+	storClients, err := createStorClients(conf, shards, proto, org, namespace, iyoToken)
 	if err != nil {
 		return nil, err
 	}
 
 	// encoder
 	enc, err := NewEncoder(conf.Data, conf.Parity)
-	if err != nil {
-		return nil, err
-	}
-
-	// hasher
-	hasher, err := hash.NewHasher(hash.Config{Type: hash.TypeBlake2})
 	if err != nil {
 		return nil, err
 	}
@@ -57,68 +49,48 @@ func NewStorDistributor(w block.Writer, conf Config, shards, metaShards []string
 	return &StorDistributor{
 		storClients: storClients,
 		enc:         enc,
-		hasher:      hasher,
 		shards:      shards,
 		metaCli:     metaCli,
 		w:           w,
 	}, nil
 }
 
-// Write implements io.Writer
-func (sd StorDistributor) Write(data []byte) (int, error) {
-	key := sd.hasher.Hash(data)
-	encoded, err := sd.enc.Encode(data)
-	if err != nil {
-		return 0, err
-	}
-
-	for i, piece := range encoded {
-		if _, err = sd.storClients[i].ObjectCreate(key, piece, nil); err != nil {
-			return 0, err
-		}
-	}
-	return len(data), nil
-}
-
 // WriteBlock implements block.Writer interface.
 // it also writes to the metadata server
 func (sd StorDistributor) WriteBlock(key, value []byte, md *meta.Meta) (*meta.Meta, error) {
-	hashedKey := sd.hasher.Hash(value)
 	encoded, err := sd.enc.Encode(value)
 	if err != nil {
 		return md, err
 	}
 
 	var (
-		errs []error
-		mux  sync.Mutex
-		wg   sync.WaitGroup
+		shardErr lib.ShardError
+		wg       sync.WaitGroup
 	)
 
 	wg.Add(len(encoded))
 	for i, piece := range encoded {
 		go func(idx int, data []byte) {
 			defer wg.Done()
-			if _, err := sd.storClients[idx].ObjectCreate(hashedKey, data, nil); err != nil {
-				mux.Lock()
-				errs = append(errs, err)
-				mux.Unlock()
+			if _, err := sd.storClients[idx].ObjectCreate(key, data, nil); err != nil {
+				shardErr.Add([]string{sd.shards[idx]}, lib.ShardType0Stor, err, 0)
 			}
 		}(i, piece)
 	}
 
 	wg.Wait()
 
-	if len(errs) > 0 {
-		return md, Error{errs: errs}
+	if !shardErr.Nil() {
+		return md, shardErr
 	}
 
-	if err := sd.updateMeta(md, hashedKey, len(value), sd.shards); err != nil {
+	if err := sd.updateMeta(md, len(value), sd.shards); err != nil {
 		return md, err
 	}
 
 	if err := sd.metaCli.Put(string(key), md); err != nil {
-		return nil, err
+		shardErr.Add(sd.metaCli.Endpoints(), lib.ShardTypeEtcd, err, 0)
+		return nil, shardErr
 	}
 
 	mdBytes, err := md.Bytes()
@@ -129,33 +101,27 @@ func (sd StorDistributor) WriteBlock(key, value []byte, md *meta.Meta) (*meta.Me
 	return sd.w.WriteBlock(key, mdBytes, md)
 }
 
-func (sd StorDistributor) updateMeta(md *meta.Meta, key []byte, size int, shards []string) error {
-	if err := md.SetKey(key); err != nil {
-		return err
-	}
+func (sd StorDistributor) updateMeta(md *meta.Meta, size int, shards []string) error {
 	md.SetSize(uint64(size))
-	md.SetEpochNow()
 	return md.SetShardSlice(shards)
 }
 
 // StorRestorer defines distributor that get the data
 // from 0-stor
 type StorRestorer struct {
-	conf         Config
-	proto        string
-	dec          *Decoder
-	storClients  map[string]stor.Client
-	jwtToken     string
-	org          string
-	namespace    string
-	iyoAppID     string
-	iyoAppSecret string
-	metaCli      *meta.Client
+	conf        Config
+	proto       string
+	dec         *Decoder
+	storClients map[string]stor.Client
+	jwtToken    string
+	org         string
+	namespace   string
+	metaCli     *meta.Client
 }
 
 // NewStorRestorer creates new StorRestorer
 func NewStorRestorer(conf Config, shards, metaShards []string, proto, org, namespace,
-	iyoAppID, iyoAppSecret string) (*StorRestorer, error) {
+	iyoToken string) (*StorRestorer, error) {
 
 	dec, err := NewDecoder(conf.Data, conf.Parity)
 	if err != nil {
@@ -168,15 +134,14 @@ func NewStorRestorer(conf Config, shards, metaShards []string, proto, org, names
 	}
 
 	sr := &StorRestorer{
-		conf:         conf,
-		proto:        proto,
-		storClients:  make(map[string]stor.Client),
-		dec:          dec,
-		org:          org,
-		namespace:    namespace,
-		iyoAppID:     iyoAppID,
-		iyoAppSecret: iyoAppSecret,
-		metaCli:      metaCli,
+		conf:        conf,
+		proto:       proto,
+		storClients: make(map[string]stor.Client),
+		dec:         dec,
+		org:         org,
+		namespace:   namespace,
+		metaCli:     metaCli,
+		jwtToken:    iyoToken,
 	}
 	return sr, sr.createStorClients(shards)
 }
@@ -198,12 +163,15 @@ func (sr StorRestorer) ReadBlock(metaKey []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	var errs []error
 	chunks := make([][]byte, sr.dec.k+sr.dec.m)
 
 	// read all chunks from stor.Clients concurrently
-	var mux sync.Mutex
-	var wg sync.WaitGroup
+	var (
+		mux      sync.Mutex
+		wg       sync.WaitGroup
+		shardErr lib.ShardError
+	)
+
 	wg.Add(len(shards))
 
 	for i, v := range shards {
@@ -212,17 +180,18 @@ func (sr StorRestorer) ReadBlock(metaKey []byte) ([]byte, error) {
 			defer wg.Done()
 
 			// get value from each shard
-			val, err := func() (val []byte, err error) {
+			val := func() (val []byte) {
 				// get the proper shard
-				sc, exists := sr.storClients[shard]
-				if !exists {
-					err = fmt.Errorf("stor client for %v is not exist. it should never happen", shard)
+				sc, err := sr.getStorClient(shard)
+				if err != nil {
+					shardErr.Add([]string{shard}, lib.ShardType0Stor, err, lib.StatusInvalidShardAddress)
 					return
 				}
 
 				// get the object
 				obj, err := sc.ObjectGet(key)
 				if err != nil {
+					shardErr.Add([]string{shard}, lib.ShardType0Stor, err, lib.StatusUnknownError)
 					return
 				}
 
@@ -234,37 +203,38 @@ func (sr StorRestorer) ReadBlock(metaKey []byte) ([]byte, error) {
 			mux.Lock()
 			defer mux.Unlock()
 
-			if err != nil {
-				errs = append(errs, err)
-			} else {
+			if len(val) != 0 {
 				chunks[idx] = val
 			}
 		}(i, v)
 	}
 	wg.Wait()
 
-	if len(errs) > sr.dec.m {
+	if shardErr.Num() > sr.dec.m {
 		// it failed for more than number of parity
-		return nil, Error{errs: errs}
+		return nil, shardErr
 	}
 
 	// decode
-	decoded, err := sr.dec.Decode(chunks, int(md.Size()))
-	return decoded, err
+	return sr.dec.Decode(chunks, int(md.Size()))
+}
+
+func (sr *StorRestorer) getStorClient(shard string) (stor.Client, error) {
+	cli, exists := sr.storClients[shard]
+	if exists {
+		return cli, nil
+	}
+
+	if err := sr.createStorClients([]string{shard}); err != nil {
+		return nil, err
+	}
+
+	return sr.storClients[shard], nil
 }
 
 // create stor clients for given shards
 // the created client is stored and used for future use
 func (sr *StorRestorer) createStorClients(shards []string) error {
-	// create jwt token if needed
-	if sr.jwtToken == "" {
-		token, err := createJWTToken(sr.conf, sr.org, sr.namespace, sr.iyoAppID, sr.iyoAppSecret)
-		if err != nil {
-			return err
-		}
-		sr.jwtToken = token
-	}
-
 	// create shards if needed
 	for _, shard := range shards {
 		if _, exists := sr.storClients[shard]; exists {
@@ -281,12 +251,8 @@ func (sr *StorRestorer) createStorClients(shards []string) error {
 	return nil
 }
 
-func createStorClients(conf Config, shards []string, proto, org, namespace, iyoAppID, iyoAppSecret string) ([]stor.Client, error) {
-	token, err := createJWTToken(conf, org, namespace, iyoAppID, iyoAppSecret)
-	if err != nil {
-		return nil, err
-	}
-	return createStorClientsWithToken(conf, shards, proto, org, namespace, token)
+func createStorClients(conf Config, shards []string, proto, org, namespace, iyoToken string) ([]stor.Client, error) {
+	return createStorClientsWithToken(conf, shards, proto, org, namespace, iyoToken)
 }
 
 func createStorClientsWithToken(conf Config, shards []string, proto, org, namespace, token string) ([]stor.Client, error) {
@@ -305,17 +271,4 @@ func createStorClientsWithToken(conf Config, shards []string, proto, org, namesp
 		scs = append(scs, storClient)
 	}
 	return scs, nil
-}
-
-func createJWTToken(conf Config, org, namespace, iyoAppID, iyoAppSecret string) (string, error) {
-	if !withIYoCredentials(iyoAppID, iyoAppSecret) {
-		return "", nil
-	}
-
-	iyoClient := itsyouonline.NewClient(org, iyoAppID, iyoAppSecret)
-	return iyoClient.CreateJWT(namespace, itsyouonline.Permission{
-		Read:   true,
-		Write:  true,
-		Delete: true,
-	})
 }

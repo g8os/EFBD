@@ -14,8 +14,6 @@ type Itsyouonline struct {
 	BaseURI    string
 	common     service // Reuse a single struct instead of allocating one for each service on the heap.
 
-	Companies     *CompaniesService
-	Contracts     *ContractsService
 	Organizations *OrganizationsService
 	Users         *UsersService
 }
@@ -31,8 +29,6 @@ func NewItsyouonline() *Itsyouonline {
 	}
 	c.common.client = c
 
-	c.Companies = (*CompaniesService)(&c.common)
-	c.Contracts = (*ContractsService)(&c.common)
 	c.Organizations = (*OrganizationsService)(&c.common)
 	c.Users = (*UsersService)(&c.common)
 

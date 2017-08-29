@@ -5,13 +5,13 @@ body {
     font-family: 'Arial', sans-serif;
 }
 
-h2 { font-weight: normal; font-size: 40px; text-align: center; padding: 0; color: #FFFFFF; }
+h2 { font-weight: normal; font-size: 40px; padding: 0; }
 
 .homepage h2 {
     margin: 0;
 }
 
-h3 { font-weight: normal; font-size: 16px; text-align: center; margin: 5px 0; padding: 0; }
+h3 { font-weight: normal; font-size: 16px; margin: 5px 0; padding: 0; }
 
 .homapage h3 {
     z-index: 1;
@@ -60,6 +60,15 @@ md-dialog md-dialog-actions {
 .green {
     color: #008000;
 }
+
+.white {
+    color: #FFFFFF;
+}
+
+.text_align_center {
+    text-align: center
+}
+
 /*= HEADER & NAVIGATION
 --------------------------------------------------------*/
 #header {
@@ -529,15 +538,17 @@ li > ul.organizationstree {
 }
 
 #logo-upload-preview {
-    border-style: dashed;
     border-radius: 25px;
-    border-width: 3px;
-    border-color: #939598;
+    border: 3px dashed #939598;
+    padding: 20px;
+    width: 510px;
+    height: 260px;
 }
 
-.logoviewer {
-    padding-top: 8px;
-    padding-bottom: 8px;
+.organization-logo-container {
+    width: 500px;
+    max-height: 240px;
+    margin: 8px 0;
 }
 
 .file-drop-info {
@@ -552,16 +563,6 @@ li > ul.organizationstree {
 .loginprompt {
     color: #939598;
     text-align: center;
-}
-
-#login-logo {
-    margin: auto;
-    display: block;
-}
-
-#register-logo {
-    margin: auto;
-    display: block;
 }
 
 .forgot-password {
@@ -683,4 +684,10 @@ p.verified {
 
 .countryoption > .md-text  {
     width: 100%;
+}
+
+.row-reverse {
+    flex-direction: row-reverse !important;
+    -ms-flex-direction: row-reverse !important;
+    -webkit-flex-direction: row-reverse !important;
 }

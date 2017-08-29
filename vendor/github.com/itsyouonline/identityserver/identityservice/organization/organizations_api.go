@@ -249,50 +249,13 @@ func (api OrganizationsAPI) GetOrganization(w http.ResponseWriter, r *http.Reque
 		}
 		return
 	}
-	json.NewEncoder(w).Encode(org)
-}
 
-// UpdateOrganization Updates organization info
-// It is handler for PUT /organizations/{globalid}
-func (api OrganizationsAPI) UpdateOrganization(w http.ResponseWriter, r *http.Request) {
-	globalid := mux.Vars(r)["globalid"]
-
-	var org organization.Organization
-
-	if err := json.NewDecoder(r.Body).Decode(&org); err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+	// replace owners and members usernames
+	orgView, err := org.ConvertToView(user.NewManager(r), validationdb.NewManager(r))
+	if handleServerError(w, "converting organization to organization view", err) {
 		return
 	}
-
-	orgMgr := organization.NewManager(r)
-
-	oldOrg, err := orgMgr.GetByName(globalid)
-	if err != nil {
-		if err == mgo.ErrNotFound {
-			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-		} else {
-			handleServerError(w, "getting organization", err)
-		}
-		return
-	}
-
-	if org.Globalid != globalid {
-		http.Error(w, "Changing globalid or id is Forbidden!", http.StatusForbidden)
-		return
-	}
-
-	// Update only certain fields
-	oldOrg.PublicKeys = org.PublicKeys
-	oldOrg.DNS = org.DNS
-
-	if err := orgMgr.Save(oldOrg); err != nil {
-		log.Error("Error while saving organization: ", err.Error())
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(oldOrg)
+	json.NewEncoder(w).Encode(orgView)
 }
 
 func (api OrganizationsAPI) inviteUser(w http.ResponseWriter, r *http.Request, role string) {
@@ -404,9 +367,16 @@ func (api OrganizationsAPI) inviteUser(w http.ResponseWriter, r *http.Request, r
 		}
 	}
 
+	usrMgr := user.NewManager(r)
+	valMgr := validationdb.NewManager(r)
+	reqView, err := orgReq.ConvertToView(usrMgr, valMgr)
+	if handleServerError(w, "converting invite to inviteview", err) {
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(orgReq)
+	json.NewEncoder(w).Encode(reqView)
 }
 
 // AddOrganizationMember Assign a member to organization
@@ -433,17 +403,36 @@ func (api OrganizationsAPI) UpdateOrganizationMemberShip(w http.ResponseWriter, 
 		return
 	}
 	var oldRole string
-	for _, v := range org.Members {
-		if v == membership.Username {
+	var username string
+	valMgr := validationdb.NewManager(r)
+	members, err := organization.MapUsernamesToIdentifiers(org.Members, valMgr)
+	if handleServerError(w, "Converting usernames to identifiers", err) {
+		return
+	}
+	for identifier, uname := range members {
+		if identifier == membership.Username {
 			oldRole = "members"
+			username = uname
+			break
 		}
 	}
-	for _, v := range org.Owners {
-		if v == membership.Username {
+	owners, err := organization.MapUsernamesToIdentifiers(org.Owners, valMgr)
+	if handleServerError(w, "Converting usernames to identifiers", err) {
+		return
+	}
+	for identifier, uname := range owners {
+		if identifier == membership.Username {
 			oldRole = "owners"
+			username = uname
+			break
 		}
 	}
-	err = orgMgr.UpdateMembership(globalid, membership.Username, oldRole, membership.Role)
+	// if oldRole is still not set then the given user is not part of this organization
+	if oldRole == "" {
+		writeErrorResponse(w, http.StatusNotFound, "user_not_member_of_organization")
+		return
+	}
+	err = orgMgr.UpdateMembership(globalid, username, oldRole, membership.Role)
 	if err != nil {
 		handleServerError(w, "updating organization membership", err)
 		return
@@ -452,7 +441,12 @@ func (api OrganizationsAPI) UpdateOrganizationMemberShip(w http.ResponseWriter, 
 	if err != nil {
 		handleServerError(w, "getting organization", err)
 	}
-	json.NewEncoder(w).Encode(org)
+	usrMgr := user.NewManager(r)
+	orgView, err := org.ConvertToView(usrMgr, valMgr)
+	if handleServerError(w, "converting organization to view", err) {
+		return
+	}
+	json.NewEncoder(w).Encode(orgView)
 
 }
 
@@ -482,20 +476,6 @@ func (api OrganizationsAPI) UpdateOrganizationOrgMemberShip(w http.ResponseWrite
 
 	if !orgMgr.Exists(body.Org) {
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-		return
-	}
-
-	// check if the authenticated user is an owner of the Org
-	// the user is known to be an owner of the first organization since we've required the organization:owner scope
-	authenticateduser := context.Get(r, "authenticateduser").(string)
-	isOwner, err := orgMgr.IsOwner(body.Org, authenticateduser)
-	if err != nil {
-		log.Error("Error while checking if user is owner of an organization: ", err.Error())
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-	if !isOwner {
-		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		return
 	}
 
@@ -530,12 +510,20 @@ func (api OrganizationsAPI) UpdateOrganizationOrgMemberShip(w http.ResponseWrite
 // RemoveOrganizationMember Remove a member from organization
 // It is handler for DELETE /organizations/{globalid}/members/{username}
 func (api OrganizationsAPI) RemoveOrganizationMember(w http.ResponseWriter, r *http.Request) {
+	removeOrganizationMember(w, r, "member")
+}
+
+func removeOrganizationMember(w http.ResponseWriter, r *http.Request, role string) {
 	globalID := mux.Vars(r)["globalid"]
-	username := mux.Vars(r)["username"]
+	userIdentifier := mux.Vars(r)["username"]
 
 	orgMgr := organization.NewManager(r)
 	userMgr := user.NewManager(r)
-
+	valMgr := validationdb.NewManager(r)
+	username, err := organization.ConvertIdentifierToUsername(userIdentifier, valMgr)
+	if handleServerError(w, "Converting username to identifier", err) {
+		return
+	}
 	org, err := orgMgr.GetByName(globalID)
 	if err != nil {
 		if err == mgo.ErrNotFound {
@@ -545,10 +533,17 @@ func (api OrganizationsAPI) RemoveOrganizationMember(w http.ResponseWriter, r *h
 		}
 		return
 	}
-	if err = orgMgr.RemoveMember(org, username); err != nil {
-		log.Error("Error adding member: ", err.Error())
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
+	if role == "member" {
+		if handleServerError(w, "Removing organization member", orgMgr.RemoveMember(org, username)) {
+			return
+		}
+	} else if role == "owner" {
+		if handleServerError(w, "Removing organization owner", orgMgr.RemoveOwner(org, username)) {
+			return
+		}
+	} else {
+		log.Errorf("Invalid role given to removeOrganizationMember: %s", role)
+		writeErrorResponse(w, http.StatusInternalServerError, "invalid_role")
 	}
 
 	err = userMgr.DeleteAuthorization(username, globalID)
@@ -556,8 +551,20 @@ func (api OrganizationsAPI) RemoveOrganizationMember(w http.ResponseWriter, r *h
 		return
 	}
 
+	invitationMgr := invitations.NewInvitationManager(r)
+	err = invitationMgr.Remove(globalID, username)
+	if db.IsNotFound(err) {
+		// most of the time the users will have no invitation if they are already part
+		// of the organization so just silently ignore this
+		err = nil
+	}
+	if handleServerError(w, "removing invitation", err) {
+		return
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
+
 
 // AddOrganizationOwner It is handler for POST /organizations/{globalid}/owners
 func (api OrganizationsAPI) AddOrganizationOwner(w http.ResponseWriter, r *http.Request) {
@@ -579,34 +586,7 @@ func (api OrganizationsAPI) sendInvite(r *http.Request, organizationRequest *inv
 // RemoveOrganizationOwner Remove a member from organization
 // It is handler for DELETE /organizations/{globalid}/owners/{username}
 func (api OrganizationsAPI) RemoveOrganizationOwner(w http.ResponseWriter, r *http.Request) {
-	globalID := mux.Vars(r)["globalid"]
-	username := mux.Vars(r)["username"]
-
-	orgMgr := organization.NewManager(r)
-	userMgr := user.NewManager(r)
-
-	org, err := orgMgr.GetByName(globalID)
-	if err != nil {
-		if err == mgo.ErrNotFound {
-			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-		} else {
-			handleServerError(w, "getting organization", err)
-		}
-		return
-	}
-
-	if err = orgMgr.RemoveOwner(org, username); err != nil {
-		log.Error("Error removing owner: ", err.Error())
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-
-	err = userMgr.DeleteAuthorization(username, globalID)
-	if handleServerError(w, "removing authorization", err) {
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
+	removeOrganizationMember(w, r, "owner")
 }
 
 // GetInvitations is the handler for GET /organizations/{globalid}/invitations
@@ -621,8 +601,21 @@ func (api OrganizationsAPI) GetInvitations(w http.ResponseWriter, r *http.Reques
 	if handleServerError(w, "filtering invitations by organization", err) {
 		return
 	}
+
+	usrMgr := user.NewManager(r)
+	valMgr := validationdb.NewManager(r)
+	views := make([]*invitations.JoinOrganizationInvitationView, len(invites))
+	for i, invite := range invites {
+		// todo: query in loop -> will be slow for lots of invites
+		view, err := invite.ConvertToView(usrMgr, valMgr)
+		if handleServerError(w, "converting invite to view", err) {
+			return
+		}
+		views[i] = view
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(invites)
+	json.NewEncoder(w).Encode(views)
 }
 
 // RemovePendingInvitation is the handler for DELETE /organizations/{globalid}/invitations/{username}
@@ -653,7 +646,7 @@ func (api OrganizationsAPI) GetContracts(w http.ResponseWriter, r *http.Request)
 	contract.FindContracts(w, r, includedparty)
 }
 
-// RegisterNewContract is handler for GET /organizations/{globalId}/contracts
+// RegisterNewContract is handler for POST /organizations/{globalId}/contracts
 func (api OrganizationsAPI) RegisterNewContract(w http.ResponseWriter, r *http.Request) {
 	globalID := mux.Vars(r)["glabalId"]
 	includedparty := contractdb.Party{Type: "org", Name: globalID}
@@ -760,6 +753,9 @@ func (api OrganizationsAPI) UpdateAPIKey(w http.ResponseWriter, r *http.Request)
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
+	// set a fake secret or override the existing secret for the validator. The secret
+	// is ignored anyway when updating the apikey
+	apiKey.Secret = "dummysecret"
 	if !apiKey.Validate() {
 		log.Debug("Invalid api key: ", apiKey)
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
@@ -767,7 +763,15 @@ func (api OrganizationsAPI) UpdateAPIKey(w http.ResponseWriter, r *http.Request)
 	}
 
 	mgr := oauthservice.NewManager(r)
-	err := mgr.UpdateClient(globalID, oldLabel, apiKey.Label, apiKey.CallbackURL, apiKey.ClientCredentialsGrantType)
+	c, err := mgr.GetClient(globalID, oldLabel)
+	if handleServerError(w, "getting old api key", err) {
+		return
+	}
+	if c == nil {
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+	err = mgr.UpdateClient(globalID, oldLabel, apiKey.Label, apiKey.CallbackURL, apiKey.ClientCredentialsGrantType)
 
 	if err != nil && db.IsDup(err) {
 		log.Debug("Duplicate label")
@@ -781,7 +785,7 @@ func (api OrganizationsAPI) UpdateAPIKey(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
+	w.WriteHeader(http.StatusOK)
 }
 
 // DeleteAPIKey is the handler for DELETE /organizations/{globalid}/apikeys/{label}
@@ -1401,7 +1405,6 @@ func (api OrganizationsAPI) SetOrgOwner(w http.ResponseWriter, r *http.Request) 
 	}
 	if !isOwner {
 		api.inviteOrganization(w, r, invitations.RoleOrgOwner, body.OrgOwner)
-		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		return
 	}
 
@@ -1572,16 +1575,22 @@ func (api OrganizationsAPI) GetOrganizationUsers(w http.ResponseWriter, r *http.
 		return
 	}
 	roleMap := make(map[string]string)
-	for _, member := range org.Members {
-		roleMap[member] = "members"
+	valMgr := validationdb.NewManager(r)
+	allUsernames := append(org.Members, org.Owners...)
+	userIdentifierMap, err := organization.MapUsernamesToIdentifiers(allUsernames, valMgr)
+	if handleServerError(w, "mapping usernames to identifiers", err) {
+		return
 	}
-	for _, member := range org.Owners {
-		roleMap[member] = "owners"
+	for _, username := range org.Members {
+		roleMap[username] = "members"
+	}
+	for _, username := range org.Owners {
+		roleMap[username] = "owners"
 	}
 	authorizationsMap := make(map[string]user.Authorization)
 	// Only owners can see if there are missing permissions
+	userMgr := user.NewManager(r)
 	if isOwner {
-		userMgr := user.NewManager(r)
 		authorizations, err := userMgr.GetOrganizationAuthorizations(globalID)
 		if handleServerError(w, "getting organizaton authorizations", err) {
 			return
@@ -1593,7 +1602,7 @@ func (api OrganizationsAPI) GetOrganizationUsers(w http.ResponseWriter, r *http.
 	users := []organization.OrganizationUser{}
 	for username, role := range roleMap {
 		orgUser := organization.OrganizationUser{
-			Username:      username,
+			Username:      getUserIdentifier(username, userIdentifierMap),
 			Role:          role,
 			MissingScopes: []string{},
 		}
@@ -1615,6 +1624,40 @@ func (api OrganizationsAPI) GetOrganizationUsers(w http.ResponseWriter, r *http.
 	response.HasEditPermissions = isOwner
 	response.Users = users
 	json.NewEncoder(w).Encode(response)
+}
+
+type sortEmailFirst []string
+
+func (s sortEmailFirst) Len() int {
+	return len(s)
+}
+func (s sortEmailFirst) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+func (s sortEmailFirst) Less(i, j int) bool {
+	if strings.Contains(s[i], "@") {
+		if !strings.Contains(s[j], "@") {
+			return true
+		} else {
+			return sort.StringsAreSorted([]string{s[i], s[j]})
+		}
+	}
+	return false
+}
+
+func getUserIdentifier(username string, userIdentifierMap map[string]string) string {
+	identifiers := []string{}
+	for identifier, uname := range userIdentifierMap {
+		if username == uname {
+			identifiers = append(identifiers, identifier)
+		}
+	}
+	if len(identifiers) > 0 {
+		sort.Sort(sortEmailFirst(identifiers))
+		return identifiers[0]
+	}
+	// fallback to username
+	return username
 }
 
 // GetDescription is the handler for GET /organizations/{globalid}/description/{langkey}
@@ -2073,6 +2116,101 @@ func (api OrganizationsAPI) UserIsMember(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(&response)
+}
+
+// TransferSubOrganization is the handler for POST /organization/{globalid}/transfersuborganization
+// Transfer a suborganization from one parent to another
+func (api OrganizationsAPI) TransferSubOrganization(w http.ResponseWriter, r *http.Request) {
+	parent := mux.Vars(r)["globalid"]
+
+	username := context.Get(r, "authenticateduser").(string)
+
+	transfer := struct {
+		GlobalID  string `json:"globalid"`
+		NewParent string `json:"newparent"`
+	}{}
+
+	if err := json.NewDecoder(r.Body).Decode(&transfer); err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	orgMgr := organization.NewManager(r)
+
+	if !orgMgr.Exists(transfer.GlobalID) {
+		log.Debug("Trying to move an unexisting organization")
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	// By requiring a user to be an owner of a parent org of the moved organization,
+	// we don't need to check if the user is an owner of the moved org as this is then
+	// implicit.
+	if !strings.HasPrefix(transfer.GlobalID, parent+".") {
+		log.Debugf("Trying to move organization %v which is not a suborg of %v", transfer.GlobalID, parent)
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	// Only allow organization transfers within the same root organization
+	// The `.` must be part of the comparison, if not you could move a suborg from
+	// abc to abdef
+	rootSeparator := strings.Index(parent, ".")
+	var root string
+	if rootSeparator < 0 {
+		root = parent + "."
+	} else {
+		root = parent[:rootSeparator+1]
+	}
+	if !strings.HasPrefix(transfer.NewParent, root) {
+		log.Debugf("trying to move organization to org tree with different root org")
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	// You can be an owner of an unexisting organization if you are an owner of one of
+	// its supposed parents so we need an explicit check to see if it exists
+	if !orgMgr.Exists(transfer.NewParent) {
+		writeErrorResponse(w, http.StatusNotFound, "new_parent_doesn't_exist")
+		return
+	}
+
+	// if the organization globalid from the url is a parent of `newparent`, we already have
+	// ownership. In this way organizations with client credentials are also allowed to move
+	// suborgs to all possible locations
+	var err error
+	isOwner := strings.HasPrefix(transfer.NewParent, parent+".") || parent == transfer.NewParent
+	if !isOwner {
+		isOwner, err = orgMgr.IsOwner(transfer.NewParent, username)
+		if handleServerError(w, "checking if user is owner of the new parent org", err) {
+			return
+		}
+	}
+	if !isOwner {
+		log.Debug("user isn't an owner of the new parent org")
+		writeErrorResponse(w, http.StatusConflict, "err_new_parent_ownership")
+		return
+	}
+
+	// Check if the new org name doesn't cause a collision
+	newGlobalid := transfer.NewParent + transfer.GlobalID[strings.LastIndex(transfer.GlobalID, "."):]
+	if orgMgr.Exists(newGlobalid) {
+		writeErrorResponse(w, http.StatusConflict, "err_new_name_collision")
+		return
+	}
+
+	// if new parent is a suborg of the organization we move, the org chain will be broken
+	if strings.HasPrefix(transfer.NewParent, transfer.GlobalID) {
+		log.Debug("Trying to move an org to become a sub of itself")
+		writeErrorResponse(w, http.StatusConflict, "err_move_to_child")
+		return
+	}
+
+	err = orgMgr.TransferSubOrg(transfer.GlobalID, transfer.NewParent)
+	if handleServerError(w, "transfering suborganizations", err) {
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 func writeErrorResponse(responseWriter http.ResponseWriter, httpStatusCode int, message string) {

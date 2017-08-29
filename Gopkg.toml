@@ -5,10 +5,6 @@
 
 [[constraint]]
   branch = "master"
-  name = "github.com/coreos/etcd"
-
-[[constraint]]
-  branch = "master"
   name = "github.com/emirpasic/gods"
 
 [[constraint]]
@@ -77,3 +73,7 @@
 [[constraint]]
   branch = "master"
   name = "github.com/zeebo/bencode"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/zero-os/0-stor"

@@ -60,18 +60,6 @@ type LeaseTimeToLiveResponse struct {
 	Keys [][]byte `json:"keys"`
 }
 
-// LeaseStatus represents a lease status.
-type LeaseStatus struct {
-	ID LeaseID `json:"id"`
-	// TODO: TTL int64
-}
-
-// LeaseLeasesResponse is used to convert the protobuf lease list response.
-type LeaseLeasesResponse struct {
-	*pb.ResponseHeader
-	Leases []LeaseStatus `json:"leases"`
-}
-
 const (
 	// defaultTTL is the assumed lease TTL used for the first keepalive
 	// deadline before the actual TTL is known to the client.
@@ -109,9 +97,6 @@ type Lease interface {
 
 	// TimeToLive retrieves the lease information of the given lease ID.
 	TimeToLive(ctx context.Context, id LeaseID, opts ...LeaseOption) (*LeaseTimeToLiveResponse, error)
-
-	// Leases retrieves all leases.
-	Leases(ctx context.Context) (*LeaseLeasesResponse, error)
 
 	// KeepAlive keeps the given lease alive forever.
 	KeepAlive(ctx context.Context, id LeaseID) (<-chan *LeaseKeepAliveResponse, error)
@@ -234,22 +219,6 @@ func (l *lessor) TimeToLive(ctx context.Context, id LeaseID, opts ...LeaseOption
 	}
 }
 
-func (l *lessor) Leases(ctx context.Context) (*LeaseLeasesResponse, error) {
-	for {
-		resp, err := l.remote.LeaseLeases(ctx, &pb.LeaseLeasesRequest{}, grpc.FailFast(false))
-		if err == nil {
-			leases := make([]LeaseStatus, len(resp.Leases))
-			for i := range resp.Leases {
-				leases[i] = LeaseStatus{ID: LeaseID(resp.Leases[i].ID)}
-			}
-			return &LeaseLeasesResponse{ResponseHeader: resp.GetHeader(), Leases: leases}, nil
-		}
-		if isHaltErr(ctx, err) {
-			return nil, toErr(ctx, err)
-		}
-	}
-}
-
 func (l *lessor) KeepAlive(ctx context.Context, id LeaseID) (<-chan *LeaseKeepAliveResponse, error) {
 	ch := make(chan *LeaseKeepAliveResponse, leaseResponseChSize)
 
@@ -354,7 +323,7 @@ func (l *lessor) closeRequireLeader() {
 		reqIdxs := 0
 		// find all required leader channels, close, mark as nil
 		for i, ctx := range ka.ctxs {
-			md, ok := metadata.FromOutgoingContext(ctx)
+			md, ok := metadata.FromContext(ctx)
 			if !ok {
 				continue
 			}
@@ -417,7 +386,7 @@ func (l *lessor) recvKeepAliveLoop() (gerr error) {
 		close(l.donec)
 		l.loopErr = gerr
 		for _, ka := range l.keepAlives {
-			ka.close()
+			ka.Close()
 		}
 		l.keepAlives = make(map[LeaseID]*keepAlive)
 		l.mu.Unlock()
@@ -498,7 +467,7 @@ func (l *lessor) recvKeepAlive(resp *pb.LeaseKeepAliveResponse) {
 	if karesp.TTL <= 0 {
 		// lease expired; close all keep alive channels
 		delete(l.keepAlives, karesp.ID)
-		ka.close()
+		ka.Close()
 		return
 	}
 
@@ -528,7 +497,7 @@ func (l *lessor) deadlineLoop() {
 		for id, ka := range l.keepAlives {
 			if ka.deadline.Before(now) {
 				// waited too long for response; lease may be expired
-				ka.close()
+				ka.Close()
 				delete(l.keepAlives, id)
 			}
 		}
@@ -570,7 +539,7 @@ func (l *lessor) sendKeepAliveLoop(stream pb.Lease_LeaseKeepAliveClient) {
 	}
 }
 
-func (ka *keepAlive) close() {
+func (ka *keepAlive) Close() {
 	close(ka.donec)
 	for _, ch := range ka.chs {
 		close(ch)

@@ -84,7 +84,7 @@ func testWalk(t *testing.T, forward bool) {
 		vals = append(vals, val)
 	}
 
-	startEpoch := time.Now().UnixNano()
+	startEpoch := time.Now().UTC().UnixNano()
 	// do the write
 	var prevMd *meta.Meta
 	var prevKey []byte
@@ -98,7 +98,7 @@ func testWalk(t *testing.T, forward bool) {
 		}
 	}
 
-	endEpoch := time.Now().UnixNano()
+	endEpoch := time.Now().UTC().UnixNano()
 
 	// walk over it
 	var wrCh <-chan *WalkResult

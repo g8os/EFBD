@@ -15,8 +15,8 @@ type Writer struct {
 }
 
 // NewWriter creates new writer
-func NewWriter(w block.Writer, conf Config, shards, metaShards []string, org, namespace string) (*Writer, error) {
-	sc, err := NewShardsClient(conf, shards, org, namespace)
+func NewWriter(w block.Writer, conf Config, shards, metaShards []string, org, namespace, iyoToken string) (*Writer, error) {
+	sc, err := NewShardsClient(conf, shards, org, namespace, iyoToken)
 	if err != nil {
 		return nil, err
 	}
@@ -63,8 +63,8 @@ type Reader struct {
 }
 
 // NewReader creates new Reader
-func NewReader(conf Config, shards, metaShards []string, org, namespace string) (*Reader, error) {
-	sc, err := NewShardsClient(conf, shards, org, namespace)
+func NewReader(conf Config, shards, metaShards []string, org, namespace, iyoToken string) (*Reader, error) {
+	sc, err := NewShardsClient(conf, shards, org, namespace, iyoToken)
 	if err != nil {
 		return nil, err
 	}

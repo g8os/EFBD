@@ -60,8 +60,6 @@ func Compare(cmp Cmp, result string, v interface{}) Cmp {
 		cmp.TargetUnion = &pb.Compare_CreateRevision{CreateRevision: mustInt64(v)}
 	case pb.Compare_MOD:
 		cmp.TargetUnion = &pb.Compare_ModRevision{ModRevision: mustInt64(v)}
-	case pb.Compare_LEASE:
-		cmp.TargetUnion = &pb.Compare_Lease{Lease: mustInt64(v)}
 	default:
 		panic("Unknown compare type")
 	}
@@ -100,18 +98,6 @@ func (cmp *Cmp) ValueBytes() []byte {
 
 // WithValueBytes sets the byte slice for the comparison's value.
 func (cmp *Cmp) WithValueBytes(v []byte) { cmp.TargetUnion.(*pb.Compare_Value).Value = v }
-
-// WithRange sets the comparison to scan the range [key, end).
-func (cmp Cmp) WithRange(end string) Cmp {
-	cmp.RangeEnd = []byte(end)
-	return cmp
-}
-
-// WithPrefix sets the comparison to scan all keys prefixed by the key.
-func (cmp Cmp) WithPrefix() Cmp {
-	cmp.RangeEnd = getPrefix(cmp.Key)
-	return cmp
-}
 
 func mustInt64(val interface{}) int64 {
 	if v, ok := val.(int64); ok {

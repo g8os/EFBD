@@ -21,9 +21,6 @@ type OrganizationsInterface interface { // CreateNewOrganization is the handler 
 	// CreateNewSubOrganization is the handler for POST /organizations/{globalid}
 	// Create a new suborganization.
 	CreateNewSubOrganization(http.ResponseWriter, *http.Request)
-	// UpdateOrganization is the handler for PUT /organizations/{globalid}
-	// Update organization info
-	UpdateOrganization(http.ResponseWriter, *http.Request)
 	// DeleteOrganization is the handler for DELETE /organizations/{globalid}
 	// Removes an organization and all associated data.
 	DeleteOrganization(http.ResponseWriter, *http.Request)
@@ -63,6 +60,8 @@ type OrganizationsInterface interface { // CreateNewOrganization is the handler 
 	// GetInvitations is the handler for GET /organizations/{globalid}/invitations
 	// Get the list of invitations for users to join this organization.
 	GetInvitations(http.ResponseWriter, *http.Request)
+	// RegisterNewContract is handler for POST /organizations/{globalId}/contracts
+	RegisterNewContract(http.ResponseWriter, *http.Request)
 	// RemovePendingInvitation is the handler for DELETE /organizations/{globalid}/invitations/{username}
 	// Cancel a pending invitation.
 	RemovePendingInvitation(http.ResponseWriter, *http.Request)
@@ -159,6 +158,9 @@ type OrganizationsInterface interface { // CreateNewOrganization is the handler 
 	// UserIsMember is the handler for GET /organization/{globalid}/users/ismember/{username}
 	// Checks if the user has membership rights on the organization
 	UserIsMember(w http.ResponseWriter, r *http.Request)
+	// TransferSubOrganization is the handler for POST /organization/{globalid}/transfersuborganization
+	// Transfer a suborganization from one parent to another
+	TransferSubOrganization(w http.ResponseWriter, r *http.Request)
 }
 
 // OrganizationsInterfaceRoutes is routing for /organizations root endpoint
@@ -166,7 +168,6 @@ func OrganizationsInterfaceRoutes(r *mux.Router, i OrganizationsInterface) {
 	r.Handle("/organizations", alice.New(newOauth2oauth_2_0Middleware([]string{}).Handler).Then(http.HandlerFunc(i.CreateNewOrganization))).Methods("POST")
 	r.Handle("/organizations/{globalid}", alice.New(newOauth2oauth_2_0Middleware([]string{"organization:member", "organization:owner"}).Handler).Then(http.HandlerFunc(i.GetOrganization))).Methods("GET")
 	r.Handle("/organizations/{globalid}", alice.New(newOauth2oauth_2_0Middleware([]string{"organization:owner"}).Handler).Then(http.HandlerFunc(i.CreateNewSubOrganization))).Methods("POST")
-	r.Handle("/organizations/{globalid}", alice.New(newOauth2oauth_2_0Middleware([]string{"organization:owner"}).Handler).Then(http.HandlerFunc(i.UpdateOrganization))).Methods("PUT")
 	r.Handle("/organizations/{globalid}", alice.New(newOauth2oauth_2_0Middleware([]string{"organization:owner"}).Handler).Then(http.HandlerFunc(i.DeleteOrganization))).Methods("DELETE")
 	r.Handle("/organizations/{globalid}/apikeys", alice.New(newOauth2oauth_2_0Middleware([]string{"organization:owner"}).Handler).Then(http.HandlerFunc(i.GetAPIKeyLabels))).Methods("GET")
 	r.Handle("/organizations/{globalid}/apikeys", alice.New(newOauth2oauth_2_0Middleware([]string{"organization:owner"}).Handler).Then(http.HandlerFunc(i.CreateNewAPIKey))).Methods("POST")
@@ -180,6 +181,7 @@ func OrganizationsInterfaceRoutes(r *mux.Router, i OrganizationsInterface) {
 	r.Handle("/organizations/{globalid}/owners", alice.New(newOauth2oauth_2_0Middleware([]string{"organization:owner"}).Handler).Then(http.HandlerFunc(i.AddOrganizationOwner))).Methods("POST")
 	r.Handle("/organizations/{globalid}/owners/{username}", alice.New(newOauth2oauth_2_0Middleware([]string{"organization:owner"}).Handler).Then(http.HandlerFunc(i.RemoveOrganizationOwner))).Methods("DELETE")
 	r.Handle("/organizations/{globalid}/contracts", alice.New(newOauth2oauth_2_0Middleware([]string{"organization:owner", "organization:contracts:read"}).Handler).Then(http.HandlerFunc(i.GetContracts))).Methods("GET")
+	r.Handle("/organizations/{globalid}/contracts", alice.New(newOauth2oauth_2_0Middleware([]string{"organization:owner", "organization:contracts:read"}).Handler).Then(http.HandlerFunc(i.RegisterNewContract))).Methods("POST")
 	r.Handle("/organizations/{globalid}/invitations", alice.New(newOauth2oauth_2_0Middleware([]string{"organization:owner"}).Handler).Then(http.HandlerFunc(i.GetInvitations))).Methods("GET")
 	r.Handle("/organizations/{globalid}/invitations/{searchstring}", alice.New(newOauth2oauth_2_0Middleware([]string{"organization:owner"}).Handler).Then(http.HandlerFunc(i.RemovePendingInvitation))).Methods("DELETE")
 	r.Handle("/organizations/{globalid}/suborganizations", alice.New(newOauth2oauth_2_0Middleware([]string{"organization:owner"}).Handler).Then(http.HandlerFunc(i.CreateNewSubOrganization))).Methods("POST")
@@ -215,4 +217,5 @@ func OrganizationsInterfaceRoutes(r *mux.Router, i OrganizationsInterface) {
 	r.Handle("/organizations/{globalid}/orgmembers/includesuborgs", alice.New(newOauth2oauth_2_0Middleware([]string{"organization:owner"}).Handler).Then(http.HandlerFunc(i.AddIncludeSubOrgsOf))).Methods("POST")
 	r.Handle("/organizations/{globalid}/orgmembers/includesuborgs/{orgmember}", alice.New(newOauth2oauth_2_0Middleware([]string{"organization:owner"}).Handler).Then(http.HandlerFunc(i.RemoveIncludeSubOrgsOf))).Methods("DELETE")
 	r.Handle("/organizations/{globalid}/users/ismember/{username}", alice.New(newOauth2oauth_2_0Middleware([]string{"organization:owner"}).Handler).Then(http.HandlerFunc(i.UserIsMember))).Methods("GET")
+	r.Handle("/organizations/{globalid}/transfersuborganization", alice.New(newOauth2oauth_2_0Middleware([]string{"organization:owner"}).Handler).Then(http.HandlerFunc(i.TransferSubOrganization))).Methods("POST")
 }

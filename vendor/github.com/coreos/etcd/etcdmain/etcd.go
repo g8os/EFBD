@@ -30,7 +30,6 @@ import (
 	"github.com/coreos/etcd/discovery"
 	"github.com/coreos/etcd/embed"
 	"github.com/coreos/etcd/etcdserver"
-	"github.com/coreos/etcd/etcdserver/api/etcdhttp"
 	"github.com/coreos/etcd/pkg/cors"
 	"github.com/coreos/etcd/pkg/fileutil"
 	pkgioutil "github.com/coreos/etcd/pkg/ioutil"
@@ -41,6 +40,7 @@ import (
 	"github.com/coreos/etcd/version"
 	"github.com/coreos/pkg/capnslog"
 	"github.com/grpc-ecosystem/go-grpc-prometheus"
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 )
 
@@ -199,24 +199,12 @@ func startEtcd(cfg *embed.Config) (<-chan struct{}, <-chan error, error) {
 func startProxy(cfg *config) error {
 	plog.Notice("proxy: this proxy supports v2 API only!")
 
-	clientTLSInfo := cfg.ClientTLSInfo
-	if clientTLSInfo.Empty() {
-		// Support old proxy behavior of defaulting to PeerTLSInfo
-		// for both client and peer connections.
-		clientTLSInfo = cfg.PeerTLSInfo
-	}
-	clientTLSInfo.InsecureSkipVerify = cfg.ClientAutoTLS
-	cfg.PeerTLSInfo.InsecureSkipVerify = cfg.PeerAutoTLS
-
-	pt, err := transport.NewTimeoutTransport(clientTLSInfo, time.Duration(cfg.ProxyDialTimeoutMs)*time.Millisecond, time.Duration(cfg.ProxyReadTimeoutMs)*time.Millisecond, time.Duration(cfg.ProxyWriteTimeoutMs)*time.Millisecond)
+	pt, err := transport.NewTimeoutTransport(cfg.PeerTLSInfo, time.Duration(cfg.ProxyDialTimeoutMs)*time.Millisecond, time.Duration(cfg.ProxyReadTimeoutMs)*time.Millisecond, time.Duration(cfg.ProxyWriteTimeoutMs)*time.Millisecond)
 	if err != nil {
 		return err
 	}
 	pt.MaxIdleConnsPerHost = httpproxy.DefaultMaxIdleConnsPerHost
 
-	if err = cfg.PeerSelfCert(); err != nil {
-		plog.Fatalf("could not get certs (%v)", err)
-	}
 	tr, err := transport.NewTimeoutTransport(cfg.PeerTLSInfo, time.Duration(cfg.ProxyDialTimeoutMs)*time.Millisecond, time.Duration(cfg.ProxyReadTimeoutMs)*time.Millisecond, time.Duration(cfg.ProxyWriteTimeoutMs)*time.Millisecond)
 	if err != nil {
 		return err
@@ -314,28 +302,9 @@ func startProxy(cfg *config) error {
 	if cfg.isReadonlyProxy() {
 		ph = httpproxy.NewReadonlyHandler(ph)
 	}
-
-	// setup self signed certs when serving https
-	cHosts, cTLS := []string{}, false
-	for _, u := range cfg.LCUrls {
-		cHosts = append(cHosts, u.Host)
-		cTLS = cTLS || u.Scheme == "https"
-	}
-	for _, u := range cfg.ACUrls {
-		cHosts = append(cHosts, u.Host)
-		cTLS = cTLS || u.Scheme == "https"
-	}
-	listenerTLS := cfg.ClientTLSInfo
-	if cfg.ClientAutoTLS && cTLS {
-		listenerTLS, err = transport.SelfCert(filepath.Join(cfg.Dir, "clientCerts"), cHosts)
-		if err != nil {
-			plog.Fatalf("proxy: could not initialize self-signed client certs (%v)", err)
-		}
-	}
-
 	// Start a proxy server goroutine for each listen address
 	for _, u := range cfg.LCUrls {
-		l, err := transport.NewListener(u.Host, u.Scheme, &listenerTLS)
+		l, err := transport.NewListener(u.Host, u.Scheme, &cfg.ClientTLSInfo)
 		if err != nil {
 			return err
 		}
@@ -344,7 +313,7 @@ func startProxy(cfg *config) error {
 		go func() {
 			plog.Info("proxy: listening for client requests on ", host)
 			mux := http.NewServeMux()
-			etcdhttp.HandlePrometheus(mux) // v2 proxy just uses the same port
+			mux.Handle("/metrics", prometheus.Handler())
 			mux.Handle("/", ph)
 			plog.Fatal(http.Serve(l, mux))
 		}()

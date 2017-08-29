@@ -22,6 +22,7 @@ var _ (itsyouonline.NamespaceManager) = (*Client)(nil) // build time check that 
 // Client defines 0-stor client
 type Client struct {
 	conf                          *config.Config
+	iyoToken                      string
 	metaCli                       *meta.Client
 	itsyouonline.NamespaceManager //implement the NamespaceManager interface
 
@@ -38,22 +39,33 @@ func New(conf *config.Config) (*Client, error) {
 }
 
 func newClient(conf *config.Config) (*Client, error) {
+	nsMgr := itsyouonline.NewClient(conf.Organization, conf.IYOAppID, conf.IYOSecret)
+	iyoToken, err := nsMgr.CreateJWT(conf.Namespace, itsyouonline.Permission{
+		Write: true,
+		Read:  true,
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	// stor writer
-	storWriter, err := pipe.NewWritePipe(conf, block.NewNilWriter(), nil)
+	storWriter, err := pipe.NewWritePipe(conf, iyoToken, block.NewNilWriter(), nil)
 	if err != nil {
 		return nil, err
 	}
 
 	// stor reader
-	storReader, err := pipe.NewReadPipe(conf)
+	storReader, err := pipe.NewReadPipe(conf, iyoToken)
 	if err != nil {
 		return nil, err
 	}
 
 	client := Client{
-		conf:       conf,
-		storWriter: storWriter,
-		storReader: storReader,
+		conf:             conf,
+		iyoToken:         iyoToken,
+		storWriter:       storWriter,
+		storReader:       storReader,
+		NamespaceManager: nsMgr,
 	}
 
 	if len(conf.MetaShards) > 0 {
@@ -64,8 +76,6 @@ func newClient(conf *config.Config) (*Client, error) {
 		}
 		client.metaCli = metaCli
 	}
-
-	client.NamespaceManager = itsyouonline.NewClient(conf.Organization, conf.IYOAppID, conf.IYOSecret)
 
 	return &client, nil
 }
@@ -90,7 +100,7 @@ func (c *Client) WriteF(key []byte, r io.Reader, prevKey []byte, prevMeta, initi
 		return nil, errWriteFChunkerOnly
 	}
 
-	wp, err := pipe.NewWritePipe(c.conf, block.NewNilWriter(), r)
+	wp, err := pipe.NewWritePipe(c.conf, c.iyoToken, block.NewNilWriter(), r)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +159,7 @@ func (c *Client) ReadF(key []byte, w io.Writer) ([]byte, error) {
 		return nil, errReadFChunkerOnly
 	}
 
-	readPipe, err := pipe.NewReadPipe(c.conf)
+	readPipe, err := pipe.NewReadPipe(c.conf, c.iyoToken)
 	if err != nil {
 		return nil, err
 	}

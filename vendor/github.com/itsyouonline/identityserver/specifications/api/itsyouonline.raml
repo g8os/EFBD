@@ -58,21 +58,17 @@ types:
           description: The organization that is granted read access to some of the user's information
         addresses?:
           description: Mapping of the labels of the granted ones to the labels the organization requested.
-          properties:
-             type: AuthorizationMap[]
+          type: AuthorizationMap[]
         publicKeys?: AuthorizationMap[]
         emailaddresses?:
           description: Mapping of the labels of the granted ones to the labels the organization requested.
-          properties:
-             type: AuthorizationMap[]
+          type: AuthorizationMap[]
         phonenumbers?:
           description: Mapping of the labels of the granted ones to the labels the organization requested.
-          properties:
-             type: AuthorizationMap[]
+          type: AuthorizationMap[]
         bankaccounts?:
           description: Mapping of the labels of the granted ones to the labels the organization requested.
-          properties:
-             type: AuthorizationMap[]
+          type: AuthorizationMap[]
         facebook?: boolean
         github?: boolean
         organizations:
@@ -344,9 +340,7 @@ types:
 
   OrganizationUser:
     properties:
-      username:
-        type: string
-        description: username of the user
+      username: string
       role:
         type: string
         description: role of the user in this organization, either organization:member or organization:owner
@@ -395,6 +389,20 @@ types:
           minLength: 4
           maxLength: 250
           pattern: ^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9](?:\.[a-zA-Z]{2,})+$
+
+  KeyStoreKey:
+    properties:
+      label: Label
+      username?: string
+      globalid?: string
+      key: string
+      keydata: KeyData
+
+  KeyData:
+    properties:
+      timestamp?: datetime
+      comment?: string
+      algorithm: string
 
   Company:
     properties:
@@ -513,6 +521,48 @@ types:
     properties:
       organization: string
       scopes: string[]
+
+  SeeVersion:
+    description: See version object
+    properties:
+       version: integer
+       category: string
+       link: string
+       content_type: string
+       markdown_short_description: string
+       markdown_full_description: string
+       creation_date: string
+       start_date: string
+       end_date: string
+       keystore_label: string
+       signature: string
+
+  See:
+    description: See object
+    properties:
+       username: string
+       globalid: string
+       uniqueid: string
+       versions: SeeVersion[]
+
+  SeeView:
+     description: See view object
+     properties:
+        username: string
+        globalid: string
+        uniqueid: string
+        version: integer
+        category: string
+        link: string
+        content_type: string
+        markdown_short_description: string
+        markdown_full_description: string
+        creation_date: string
+        start_date: string
+        end_date: string
+        keystore_label: string
+        signature: string
+
 securedBy: [ oauth_2_0 ]
 /users:
   post:
@@ -626,6 +676,8 @@ securedBy: [ oauth_2_0 ]
               description: Updated
             409:
               description: The new label is already used
+            412:
+              description: Email address is validated and can not be changed, only deleted
         delete:
           displayName: DeleteEmailAddress
           description: Removes an email address
@@ -1223,6 +1275,11 @@ securedBy: [ oauth_2_0 ]
           description: Max page size, useful for paging. Default is `50`.
           required: false
           maximum: 250
+      responses:
+        200:
+          body:
+            application/json:
+              type: Contract[]
 
     post:
       displayName: CreateUserContract
@@ -1313,6 +1370,7 @@ securedBy: [ oauth_2_0 ]
                 application/json:
                   type: JoinOrganizationInvitation
         delete:
+          displayName: RejectMembership
           description: Reject membership invitation in an organization.
           responses:
             204:
@@ -1385,6 +1443,116 @@ securedBy: [ oauth_2_0 ]
           404:
             description: Not found
 
+  /{username}/keystore:
+    securedBy: [oauth_2_0: { scopes: [ "user:keystore" ] } ]
+    get:
+      displayName: GetKeyStore
+      description: Lists all keys written to this users keystore by the accessing organization
+      responses:
+        200:
+          body:
+            application/json:
+              type: KeyStoreKey[]
+
+    post:
+      displayName: SaveKeyStoreKey
+      description: Saves a new key to this users keystore. The username, globalid and timestamp will be overwritten
+      body:
+        application/json:
+          type: KeyStoreKey
+      responses:
+        201:
+          body:
+            application/json:
+              type: KeyStoreKey
+        409:
+          description: A key with this label for this organization in this user's keystore already exists
+
+    /{label}:
+      get:
+        displayName: GetKeyStoreKey
+        description: Gets the key written to this users keystore for the given label by the accessing organization
+        responses:
+          200:
+            body:
+              application/json:
+                type: KeyStoreKey
+          404:
+            description: No key found for this label
+
+  /{username}/see:
+    get:
+      displayName: GetSeeObjects
+      securedBy: [oauth_2_0: { scopes: [ "user:admin", "user:see" ] } ]
+      description: Get a list of all see objects.
+      responses:
+        200:
+          body:
+            application/json:
+              type: SeeView[]
+    post:
+      displayName: CreateSeeObject
+      securedBy: [oauth_2_0: { scopes: [ "user:see" ] } ]
+      description: Create new see object
+      body:
+        application/json:
+          type: SeeView
+      responses:
+        201:
+          body:
+            application/json:
+              type: SeeView
+        412:
+          description: No keystore with the specified label was found for the user
+        404:
+          description: Not found
+    /{uniqueid}/{globalid}:
+      securedBy: [oauth_2_0: { scopes: [ "user:see" ] } ]
+      get:
+        displayName: GetSeeObject
+        securedBy: [oauth_2_0: { scopes: [ "user:admin", "user:see" ] } ]
+        description: Get a see object
+        queryParameters:
+          version:
+            type: integer
+            description: What version to filter. -1 latest version, 0 all versions if the version is not found default value will be used.
+            default: -1
+            required: false
+        responses:
+          200:
+            body:
+              application/json:
+                type: See
+          404:
+            description: Not found
+      put:
+        displayName: UpdateSeeObject
+        description: Updates a see object
+        body:
+          application/json:
+            type: SeeView
+        responses:
+          201:
+            body:
+              application/json:
+                type: SeeView
+          404:
+            description: Not found
+      /sign/{version}:
+        put:
+          displayName: SignSeeObject
+          description: Sign a see object
+          body:
+            application/json:
+              type: SeeView
+          responses:
+            201:
+              body:
+                application/json:
+                  type: SeeView
+            404:
+              description: Not found
+
 /organizations:
   post:
     displayName: CreateNewOrganization
@@ -1409,20 +1577,6 @@ securedBy: [ oauth_2_0 ]
           body:
             application/json:
               type: Organization
-    put:
-      displayName: UpdateOrganization
-      securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
-      description: Update organization info
-      body:
-        application/json:
-          type: Organization
-      responses:
-        200:
-          body:
-            application/json:
-              type: Organization
-        404:
-          description: Not found
     post:
       securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
       displayName: CreateNewSubOrganization
@@ -1450,13 +1604,6 @@ securedBy: [ oauth_2_0 ]
       displayName: DeleteOrganization
       description: Deletes an organization and all data linked to it (join-organization-invitations, oauth_access_tokens, oauth_clients, logo)
       responses:
-        401:
-          description: Unauthorized
-        404:
-          description: Organization not found
-          body:
-            application/json:
-              type: Error
         204:
           description: Organization and all child organizations deleted
 
@@ -1566,7 +1713,7 @@ securedBy: [ oauth_2_0 ]
                   type: integer
             404:
               description: Organization not found
-        post:
+        put:
           displayName: Set2faValidityTime
           securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
           description: Update the 2FA validity time for the organization
@@ -1576,12 +1723,6 @@ securedBy: [ oauth_2_0 ]
           responses:
             200:
               description: Updated successfully
-            401:
-              description: Unauthorized
-            403:
-              description: No permission for this action
-            404:
-              description: Organization not found
 
     /orgmembers:
       securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
@@ -1753,7 +1894,7 @@ securedBy: [ oauth_2_0 ]
                 description: The updated organization
                 type: Organization
           404:
-            description: Organization not found
+            description: Member not found
           422:
             description: Maximum amount of invites reached
             body:
@@ -1776,7 +1917,7 @@ securedBy: [ oauth_2_0 ]
             description: Member assigned successfully
             body:
               application/json:
-                type: Member
+                type: JoinOrganizationInvitation
           404:
             description: Not found
 
@@ -1807,7 +1948,7 @@ securedBy: [ oauth_2_0 ]
             description: Invite created successfully
             body:
               application/json:
-                type: Member
+                type: JoinOrganizationInvitation
           404:
             description: The user or the organization does not exist.
           409:
@@ -1928,8 +2069,10 @@ securedBy: [ oauth_2_0 ]
               properties:
                 type: OrganizationAPIKey
           responses:
-            201:
+            200:
                 description: Updated
+            404:
+                description: Apikey not found
             409:
                 description: New label is already used
         delete:
@@ -2034,6 +2177,31 @@ securedBy: [ oauth_2_0 ]
               application/json:
                 type: OrganizationTreeItem[]
 
+    /transfersuborganization:
+      securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
+      post:
+        displayName: TransferSubOrganization
+        description: Transfer a suborganization from one parent to another
+        body:
+          application/json:
+            properties:
+              globalid:
+                type: string
+                description: the full globalid of the organization to move
+              newparent:
+                type: string
+                description: the full globalid of the new parent organization
+        responses:
+          200:
+            description: move successfull
+          404:
+            description: newparent does not exist
+          409:
+            description: Failed to move, see error message for details
+            body:
+              application/json:
+                type: Error
+
     /requiredscopes:
       securedBy: [oauth_2_0: { scopes: [ "organization:owner" ] } ]
       post:
@@ -2067,113 +2235,112 @@ securedBy: [ oauth_2_0 ]
             404:
               description: The required scope was not found.
 
-/companies:
-  post:
-    displayName: CreateCompany
-    description: Register a new company
-    body:
-      application/json:
-        type: Company
-  get:
-    displayName: GetCompanyList
-    description: Get companies. Authorization limits are applied to requesting user.
-    responses:
-      200:
-        body:
-          application/json:
-            type: Company[]
-  /{globalId}:
-    get:
-      displayName: GetCompany
-      securedBy: [oauth_2_0: { scopes: [ "company:read", "company:admin" ] } ]
-      description: Get organization info
-      responses:
-        200:
-          body:
-            application/json:
-              type: Company
-        401:
-          description: Unauthorized
-        404:
-          description: Not found
-    put:
-      displayName: UpdateCompany
-      securedBy: [oauth_2_0: { scopes: [ "company:admin" ] } ]
-      description: Update existing company. Updating ``globalId`` is not allowed.
-      responses:
-        200:
-          body:
-            application/json:
-              type: Company
-        403:
-          description: Updating globalId is Forbidden!
-    /info:
-      securedBy: [oauth_2_0: { scopes: [ "company:info" ] } ]
-      get:
-        displayName: GetCompanyInfo
-        responses:
-          200:
-            body:
-              application/json:
-                type: companyview
-    /validate:
-      get:
-        queryParameters:
-          token:
-            type: string
+# /companies:
+#   post:
+#     displayName: CreateCompany
+#     description: Register a new company
+#     body:
+#       application/json:
+#         type: Company
+#   get:
+#     displayName: GetCompanyList
+#     description: Get companies. Authorization limits are applied to requesting user.
+#     responses:
+#       200:
+#         body:
+#           application/json:
+#             type: Company[]
+#   /{globalId}:
+#     get:
+#       displayName: GetCompany
+#       securedBy: [oauth_2_0: { scopes: [ "company:read", "company:admin" ] } ]
+#       description: Get organization info
+#       responses:
+#         200:
+#           body:
+#             application/json:
+#               type: Company
+#         401:
+#           description: Unauthorized
+#         404:
+#           description: Not found
+#     put:
+#       displayName: UpdateCompany
+#       securedBy: [oauth_2_0: { scopes: [ "company:admin" ] } ]
+#       description: Update existing company. Updating ``globalId`` is not allowed.
+#       responses:
+#         200:
+#           body:
+#             application/json:
+#               type: Company
+#         403:
+#           description: Updating globalId is Forbidden!
+#     /info:
+#       securedBy: [oauth_2_0: { scopes: [ "company:info" ] } ]
+#       get:
+#         displayName: GetCompanyInfo
+#         responses:
+#           200:
+#             body:
+#               application/json:
+#                 type: companyview
+#     /validate:
+#       get:
+#         queryParameters:
+#           token:
+#             type: string
+#
+#     /contracts:
+#       get:
+#         displayName: GetCompanyContracts
+#         securedBy: [oauth_2_0: { scopes: [ "company:admin", "company:contracts:read" ] } ]
+#         description: Get the contracts where the organization is 1 of the parties. Order descending by date.
+#         queryParameters:
+#           includeExpired:
+#             type: boolean
+#             description: Include the expired contracts, by default only the active contracts are returned.
+#             required: false
+#           start:
+#             type: integer
+#             description: Start offset, useful for paging. Default is `0`.
+#             required: false
+#           max:
+#             type: integer
+#             description: Max page size, useful for paging. Default is `50`.
+#             required: false
+#             maximum: 250
+#       post:
+#           displayName: CreateCompanyContract
+#           securedBy: [oauth_2_0: { scopes: [ "company:admin" ] } ]
+#           description: Create a new contract.
+#           body:
+#             application/json:
+#               type: Contract
+#           responses:
+#             201:
+#               body:
+#                 application/json:
+#                   type: Contract
+#             401:
+#               description: Unauthorized
 
-    /contracts:
-      get:
-        displayName: GetCompanyContracts
-        securedBy: [oauth_2_0: { scopes: [ "company:admin", "company:contracts:read" ] } ]
-        description: Get the contracts where the organization is 1 of the parties. Order descending by date.
-        queryParameters:
-          includeExpired:
-            type: boolean
-            description: Include the expired contracts, by default only the active contracts are returned.
-            required: false
-          start:
-            type: integer
-            description: Start offset, useful for paging. Default is `0`.
-            required: false
-          max:
-            type: integer
-            description: Max page size, useful for paging. Default is `50`.
-            required: false
-            maximum: 250
-      post:
-          displayName: CreateCompanyContract
-          securedBy: [oauth_2_0: { scopes: [ "company:admin" ] } ]
-          description: Create a new contract.
-          body:
-            application/json:
-              type: Contract
-          responses:
-            201:
-              body:
-                application/json:
-                  type: Contract
-            401:
-              description: Unauthorized
-
-/contracts:
-  /{contractId}:
-    get:
-      displayName: GetContract
-      securedBy: [oauth_2_0: { scopes: [ "contract:read" ] } ]
-      description: Get a contract
-      responses:
-        200:
-          body:
-            application/json:
-              type: Contract
-        404:
-          description: Not found
-    /signatures:
-      post:
-        displayName: SignContract
-        securedBy: [oauth_2_0: { scopes: [ "contract:participant" ] } ]
-        description: Sign a contract
-        body:
-          application/json:
-            type: Signature
+# /contracts:
+#   /{contractId}:
+#     get:
+#       displayName: GetContract
+#       securedBy: [oauth_2_0: { scopes: [ "contract:read" ] } ]
+#       description: Get a contract
+#       responses:
+#         200:
+#           body:
+#             application/json:
+#               type: Contract
+#
+#     /signatures:
+#       post:
+#         displayName: SignContract
+#         securedBy: [oauth_2_0: { scopes: [ "contract:participant" ] } ]
+#         description: Sign a contract
+#         body:
+#           application/json:
+#             type: Signature

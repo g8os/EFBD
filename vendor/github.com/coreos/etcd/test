@@ -59,10 +59,9 @@ else
 	FMT="$TEST"
 fi
 
-# prepend REPO_PATH to each local package
-split=$TEST
-TEST=""
-for a in $split; do TEST="$TEST ${REPO_PATH}/${a}"; done
+# split TEST into an array and prepend REPO_PATH to each local package
+split=(${TEST// / })
+TEST=${split/#/${REPO_PATH}/}
 
 # TODO: 'client' pkg fails with gosimple from generated files
 # TODO: 'rafttest' is failing with unused
@@ -170,21 +169,9 @@ function cov_pass {
 	# use 30m timeout because e2e coverage takes longer
 	# due to many tests cause etcd process to wait
 	# on leadership transfer timeout during gracefully shutdown
-	echo Testing e2e without proxy...
 	go test -tags cov -timeout 30m -v ${REPO_PATH}"/e2e" || failed="$failed e2e"
-	echo Testing e2e with proxy...
-	go test -tags "cov cluster_proxy" -timeout 30m -v ${REPO_PATH}"/e2e" || failed="$failed e2e-proxy"
 
-	# incrementally merge to get coverage data even if some coverage files are corrupted
-	# optimistically assume etcdserver package's coverage file is OK since gocovmerge
-	# expects to start with a non-empty file
-	cp "$COVERDIR"/etcdserver.coverprofile "$COVERDIR"/cover.out
-	for f in "$COVERDIR"/*.coverprofile; do
-		gocovmerge $f "$COVERDIR"/cover.out  >"$COVERDIR"/cover.tmp || failed="$failed $f"
-		if [ -s "$COVERDIR"/cover.tmp ]; then
-			mv "$COVERDIR"/cover.tmp "$COVERDIR"/cover.out
-		fi
-	done
+	gocovmerge "$COVERDIR"/*.coverprofile >"$COVERDIR"/cover.out
 	# strip out generated files (using GNU-style sed)
 	sed --in-place '/generated.go/d' "$COVERDIR"/cover.out || true
 
@@ -212,15 +199,14 @@ function integration_e2e_pass {
 	wait $e2epid
 	wait $intpid
 	go test -timeout 1m -v ${RACE} -cpu 1,2,4 $@ ${REPO_PATH}/client/integration
-	go test -timeout 20m -v ${RACE} -cpu 1,2,4 $@ ${REPO_PATH}/clientv3/integration
+	go test -timeout 10m -v ${RACE} -cpu 1,2,4 $@ ${REPO_PATH}/clientv3/integration
 	go test -timeout 1m -v -cpu 1,2,4 $@ ${REPO_PATH}/contrib/raftexample
 	go test -timeout 1m -v ${RACE} -cpu 1,2,4 -run=Example $@ ${TEST}
 }
 
 function grpcproxy_pass {
-	go test -timeout 20m -v ${RACE} -tags cluster_proxy -cpu 1,2,4 $@ ${REPO_PATH}/integration
-	go test -timeout 20m -v ${RACE} -tags cluster_proxy -cpu 1,2,4 $@ ${REPO_PATH}/clientv3/integration
-	go test -timeout 15m -v -tags cluster_proxy $@ ${REPO_PATH}/e2e
+	go test -timeout 15m -v ${RACE} -tags cluster_proxy -cpu 1,2,4 $@ ${REPO_PATH}/integration
+	go test -timeout 15m -v ${RACE} -tags cluster_proxy -cpu 1,2,4 $@ ${REPO_PATH}/clientv3/integration
 }
 
 function release_pass {
@@ -273,7 +259,7 @@ function fmt_pass {
 	fi
 
 	echo "Checking 'go tool vet -all -shadow'..."
-	fmtpkgs=$(for a in $FMT; do dirname "$a"; done | sort | uniq | grep -v "\\.")
+	fmtpkgs=$(echo $FMT | xargs dirname | sort | uniq | sed '/\./d')
 	vetRes=$(go tool vet -all -shadow ${fmtpkgs} 2>&1 | grep -v '/gw/' || true)
 	if [ -n "${vetRes}" ]; then
 		echo -e "govet -all -shadow checking failed:\n${vetRes}"
@@ -462,9 +448,7 @@ function build_pass {
 }
 
 for pass in $PASSES; do
-	echo "Starting '$pass' pass at $(date)"
 	${pass}_pass $@
-	echo "Finished '$pass' pass at $(date)"
 done
 
 echo "Success"

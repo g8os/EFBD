@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
+	"time"
 
 	"fmt"
 	"strings"
@@ -15,9 +17,12 @@ import (
 	"github.com/itsyouonline/identityserver/credentials/oauth2"
 	"github.com/itsyouonline/identityserver/credentials/password"
 	"github.com/itsyouonline/identityserver/credentials/totp"
+	"github.com/itsyouonline/identityserver/db"
 	contractdb "github.com/itsyouonline/identityserver/db/contract"
+	"github.com/itsyouonline/identityserver/db/keystore"
 	organizationDb "github.com/itsyouonline/identityserver/db/organization"
 	"github.com/itsyouonline/identityserver/db/registry"
+	seeDb "github.com/itsyouonline/identityserver/db/see"
 	"github.com/itsyouonline/identityserver/db/user"
 	"github.com/itsyouonline/identityserver/db/user/apikey"
 	validationdb "github.com/itsyouonline/identityserver/db/validation"
@@ -28,6 +33,7 @@ import (
 	"github.com/itsyouonline/identityserver/tools"
 	"github.com/itsyouonline/identityserver/validation"
 	"gopkg.in/mgo.v2"
+	"gopkg.in/validator.v2"
 )
 
 // label constants containing the reserved labels for avatars
@@ -141,6 +147,11 @@ func (api UsersAPI) RegisterNewEmailAddress(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	if !body.Validate() {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
 	userMgr := user.NewManager(r)
 	u, err := userMgr.GetByName(username)
 	if handleServerError(w, "getting user by name", err) {
@@ -192,34 +203,53 @@ func (api UsersAPI) UpdateEmailAddress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userMgr := user.NewManager(r)
+	u, err := userMgr.GetByName(username)
+	if err != nil {
+		log.Error("failed to get user by username: ", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	oldEmail, err := u.GetEmailAddressByLabel(oldlabel)
+	if err != nil {
+		log.Debug("Changing email address with non existing label")
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	valMgr := validationdb.NewManager(r)
+	oldEmailValidated, err := valMgr.IsEmailAddressValidated(username, oldEmail.EmailAddress)
+	if err != nil {
+		log.Error("Failed to check if email address is verified for user: ", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	if oldEmail.EmailAddress != body.EmailAddress && oldEmailValidated {
+		log.Debug("Trying to change validated email address")
+		http.Error(w, http.StatusText(http.StatusPreconditionFailed), http.StatusPreconditionFailed)
+		return
+	}
 
 	if oldlabel != body.Label {
-		u, err := userMgr.GetByName(username)
-		if err != nil {
-			log.Error(err)
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
-		if _, err := u.GetEmailAddressByLabel(body.Label); err == nil {
+		if _, err = u.GetEmailAddressByLabel(body.Label); err == nil {
 			http.Error(w, http.StatusText(http.StatusConflict), http.StatusConflict)
 			return
 		}
 	}
 
-	if err := userMgr.SaveEmail(username, body); err != nil {
+	if err = userMgr.SaveEmail(username, body); err != nil {
 		log.Error(err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
 	if oldlabel != body.Label {
-		if err := userMgr.RemoveEmail(username, oldlabel); err != nil {
+		if err = userMgr.RemoveEmail(username, oldlabel); err != nil {
 			log.Error(err)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
 	}
-	valMgr := validationdb.NewManager(r)
 	validated, err := valMgr.IsEmailAddressValidated(username, body.EmailAddress)
 	if err != nil {
 		log.Error(err)
@@ -437,16 +467,18 @@ func (api UsersAPI) GetUserInformation(w http.ResponseWriter, r *http.Request) {
 	//Create an administrator authorization
 	if authorization == nil && isAdmin {
 		authorization = &user.Authorization{
-			Name:           true,
-			Github:         true,
-			Facebook:       true,
-			Addresses:      []user.AuthorizationMap{},
-			BankAccounts:   []user.AuthorizationMap{},
-			DigitalWallet:  []user.DigitalWalletAuthorization{},
-			EmailAddresses: []user.AuthorizationMap{},
-			Phonenumbers:   []user.AuthorizationMap{},
-			PublicKeys:     []user.AuthorizationMap{},
-			Avatars:        []user.AuthorizationMap{},
+			Name:                    true,
+			Github:                  true,
+			Facebook:                true,
+			Addresses:               []user.AuthorizationMap{},
+			BankAccounts:            []user.AuthorizationMap{},
+			DigitalWallet:           []user.DigitalWalletAuthorization{},
+			EmailAddresses:          []user.AuthorizationMap{},
+			ValidatedEmailAddresses: []user.AuthorizationMap{},
+			Phonenumbers:            []user.AuthorizationMap{},
+			ValidatedPhonenumbers:   []user.AuthorizationMap{},
+			PublicKeys:              []user.AuthorizationMap{},
+			Avatars:                 []user.AuthorizationMap{},
 		}
 		for _, address := range userobj.Addresses {
 			authorization.Addresses = append(authorization.Addresses, user.AuthorizationMap{RequestedLabel: address.Label, RealLabel: address.Label})
@@ -460,8 +492,15 @@ func (api UsersAPI) GetUserInformation(w http.ResponseWriter, r *http.Request) {
 		for _, a := range userobj.EmailAddresses {
 			authorization.EmailAddresses = append(authorization.EmailAddresses, user.AuthorizationMap{RequestedLabel: a.Label, RealLabel: a.Label})
 		}
+		for _, a := range userobj.EmailAddresses {
+			authorization.ValidatedEmailAddresses = append(authorization.ValidatedEmailAddresses, user.AuthorizationMap{RequestedLabel: a.Label, RealLabel: a.Label})
+		}
 		for _, a := range userobj.Phonenumbers {
 			authorization.Phonenumbers = append(authorization.Phonenumbers, user.AuthorizationMap{RequestedLabel: a.Label, RealLabel: a.Label})
+		}
+		for _, a := range userobj.Phonenumbers {
+
+			authorization.ValidatedPhonenumbers = append(authorization.ValidatedPhonenumbers, user.AuthorizationMap{RequestedLabel: a.Label, RealLabel: a.Label})
 		}
 		for _, a := range userobj.PublicKeys {
 			authorization.PublicKeys = append(authorization.PublicKeys, user.AuthorizationMap{RequestedLabel: a.Label, RealLabel: a.Label})
@@ -477,14 +516,16 @@ func (api UsersAPI) GetUserInformation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respBody := &Userview{
-		Username:       userobj.Username,
-		Github:         user.GithubAccount{},
-		Facebook:       user.FacebookAccount{},
-		Addresses:      []user.Address{},
-		EmailAddresses: []user.EmailAddress{},
-		Phonenumbers:   []user.Phonenumber{},
-		BankAccounts:   []user.BankAccount{},
-		DigitalWallet:  []user.DigitalAssetAddress{},
+		Username:                userobj.Username,
+		Github:                  user.GithubAccount{},
+		Facebook:                user.FacebookAccount{},
+		Addresses:               []user.Address{},
+		EmailAddresses:          []user.EmailAddress{},
+		ValidatedEmailAddresses: []user.EmailAddress{},
+		Phonenumbers:            []user.Phonenumber{},
+		ValidatedPhonenumbers:   []user.Phonenumber{},
+		BankAccounts:            []user.BankAccount{},
+		DigitalWallet:           []user.DigitalAssetAddress{},
 		OwnerOf: user.OwnerOf{
 			EmailAddresses: []string{},
 		},
@@ -604,6 +645,47 @@ func (api UsersAPI) GetUserInformation(w http.ResponseWriter, r *http.Request) {
 				respBody.Avatars = append(respBody.Avatars, avatar)
 			} else {
 				log.Debug(err)
+			}
+		}
+	}
+
+	valMgr := validationdb.NewManager(r)
+	if authorization.ValidatedEmailAddresses != nil {
+		for _, validatedEmailMap := range authorization.ValidatedEmailAddresses {
+			email, err := userobj.GetEmailAddressByLabel(validatedEmailMap.RealLabel)
+			if err == nil {
+				validated, err := valMgr.IsEmailAddressValidated(authorization.Username, email.EmailAddress)
+				if err != nil {
+					log.Error("Failed to verify if email address is validated for this user: ", err)
+					continue
+				}
+				if !validated {
+					continue
+				}
+				email.Label = validatedEmailMap.RequestedLabel
+				respBody.ValidatedEmailAddresses = append(respBody.ValidatedEmailAddresses, email)
+			} else {
+				log.Debug(err)
+			}
+		}
+
+		if authorization.ValidatedPhonenumbers != nil {
+			for _, validatedPhoneMap := range authorization.ValidatedPhonenumbers {
+				phone, err := userobj.GetPhonenumberByLabel(validatedPhoneMap.RealLabel)
+				if err == nil {
+					validated, err := valMgr.IsPhonenumberValidated(authorization.Username, phone.Phonenumber)
+					if err != nil {
+						log.Error("Failed to verify if phone number is validated for this user: ", err)
+						continue
+					}
+					if !validated {
+						continue
+					}
+					phone.Label = validatedPhoneMap.RequestedLabel
+					respBody.ValidatedPhonenumbers = append(respBody.ValidatedPhonenumbers, phone)
+				} else {
+					log.Debug(err)
+				}
 			}
 		}
 	}
@@ -792,6 +874,7 @@ func (api UsersAPI) VerifyPhoneNumber(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	userMgr.RemoveExpireDate(username)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1559,11 +1642,331 @@ func (api UsersAPI) DeleteAuthorization(w http.ResponseWriter, r *http.Request) 
 	userMgr := user.NewManager(r)
 
 	err := userMgr.DeleteAuthorization(username, grantedTo)
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+	if handleServerError(w, "Delete authorization", err) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (api UsersAPI) GetSeeObjects(w http.ResponseWriter, r *http.Request) {
+	username := mux.Vars(r)["username"]
+	globalid := r.FormValue("globalid")
+
+	seeMgr := seeDb.NewManager(r)
+
+	requestingClient, ok := getRequestingClientFromRequest(r, w, globalid, true)
+	if !ok {
+		return
+	}
+
+	var seeObjects []seeDb.See
+	var err error
+	if requestingClient == "" {
+		// Only used for itsyou.online web client
+		seeObjects, err = seeMgr.GetSeeObjects(username)
+	} else {
+		seeObjects, err = seeMgr.GetSeeObjectsByOrganization(username, requestingClient)
+	}
+	if handleServerError(w, "Get see objects", err) {
+		return
+	}
+
+	list := make([]*seeDb.SeeView, len(seeObjects))
+	for i, seeObject := range seeObjects {
+		list[i] = seeObject.ConvertToSeeView(len(seeObject.Versions))
+	}
+	w.Header().Set("Content-type", "application/json")
+	json.NewEncoder(w).Encode(list)
+}
+
+func (api UsersAPI) GetSeeObject(w http.ResponseWriter, r *http.Request) {
+	username := mux.Vars(r)["username"]
+	uniqueID := mux.Vars(r)["uniqueid"]
+	globalid := mux.Vars(r)["globalid"]
+	versionStr := r.URL.Query().Get("version")
+	version := "latest"
+	versionInt := 0
+	if versionStr != "" {
+		var err error
+		versionInt, err = strconv.Atoi(versionStr)
+		if err == nil {
+			if versionInt == -1 {
+				version = "latest"
+			} else if versionInt == 0 {
+				version = "all"
+			} else {
+				version = "index"
+			}
+		}
+	}
+
+	requestingClient, ok := getRequestingClientFromRequest(r, w, globalid, true)
+	if !ok {
+		return
+	}
+	seeMgr := seeDb.NewManager(r)
+	seeObject, err := seeMgr.GetSeeObject(username, requestingClient, uniqueID)
+	if db.IsNotFound(err) {
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Error("Failed to get see object", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	for i := range seeObject.Versions {
+		seeObject.Versions[i].Version = i + 1
+	}
+
+	if version == "latest" {
+		version = "index"
+		versionInt = len(seeObject.Versions)
+	}
+	if version == "index" {
+		if versionInt < 1 || versionInt > len(seeObject.Versions) {
+			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+			return
+		}
+		seeVersion := seeObject.Versions[versionInt-1]
+		seeObject.Versions = []seeDb.SeeVersion{seeVersion}
+	}
+
+	w.Header().Set("Content-type", "application/json")
+	json.NewEncoder(w).Encode(seeObject)
+}
+
+func (api UsersAPI) CreateSeeObject(w http.ResponseWriter, r *http.Request) {
+	username := mux.Vars(r)["username"]
+
+	requestingClient, validClient := context.Get(r, "client_id").(string)
+	log.Debug("globalId: " + requestingClient)
+	if !validClient {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	if requestingClient == "itsyouonline" {
+		// This should never happen as the oauth 2  middleware should give a 403
+		writeErrorResponse(w, http.StatusBadRequest, "This api call is not available when logged in via the website")
+		return
+	}
+
+	seeView := seeDb.SeeView{}
+	if err := json.NewDecoder(r.Body).Decode(&seeView); err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	seeView.Username = username
+	seeView.Globalid = requestingClient
+
+	if errs := validator.Validate(seeView); errs != nil {
+		writeValidationError(w, http.StatusBadRequest, errs)
+		return
+	}
+
+	if seeView.Signature != "" {
+		keyMgr := keystore.NewManager(r)
+		_, err := keyMgr.GetKeyStoreKey(username, requestingClient, seeView.KeyStoreLabel)
+		if db.IsNotFound(err) {
+			writeErrorResponse(w, http.StatusPreconditionFailed, "keystore_not_found")
+			return
+		}
+	}
+
+	seeVersion := seeView.ConvertToSeeVersion()
+	see := seeDb.See{}
+	see.Username = seeView.Username
+	see.Globalid = seeView.Globalid
+	see.Uniqueid = seeView.Uniqueid
+	see.Versions = []seeDb.SeeVersion{*seeVersion}
+
+	seeMgr := seeDb.NewManager(r)
+	err := seeMgr.Create(&see)
+	if db.IsDup(err) {
+		writeErrorResponse(w, http.StatusConflict, "id_already_in_use")
+		return
+	}
+	if handleServerError(w, "Create see object", err) {
+		return
+	}
+
+	seeObject, err := seeMgr.GetSeeObject(username, requestingClient, seeView.Uniqueid)
+	if db.IsNotFound(err) {
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+	if handleServerError(w, "Get see object", err) {
+		return
+	}
+
+	w.Header().Set("Content-type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(seeObject.ConvertToSeeView(len(seeObject.Versions)))
+}
+
+func (api UsersAPI) UpdateSeeObject(w http.ResponseWriter, r *http.Request) {
+	username := mux.Vars(r)["username"]
+	uniqueID := mux.Vars(r)["uniqueid"]
+	globalid := mux.Vars(r)["globalid"]
+
+	requestingClient, ok := getRequestingClientFromRequest(r, w, globalid, false)
+	if !ok {
+		return
+	}
+	seeView := seeDb.SeeView{}
+	if err := json.NewDecoder(r.Body).Decode(&seeView); err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	seeView.Username = username
+	seeView.Globalid = requestingClient
+	seeView.Uniqueid = uniqueID
+
+	if errs := validator.Validate(seeView); errs != nil {
+		writeValidationError(w, http.StatusBadRequest, errs)
+		return
+	}
+	if seeView.Signature != "" {
+		keyMgr := keystore.NewManager(r)
+		_, err := keyMgr.GetKeyStoreKey(username, requestingClient, seeView.KeyStoreLabel)
+		if db.IsNotFound(err) {
+			writeErrorResponse(w, http.StatusPreconditionFailed, "keystore_not_found")
+			return
+		}
+	}
+
+	seeVersion := seeView.ConvertToSeeVersion()
+
+	seeMgr := seeDb.NewManager(r)
+	err := seeMgr.AddVersion(seeView.Username, seeView.Globalid, seeView.Uniqueid, seeVersion)
+	if db.IsNotFound(err) {
+		writeErrorResponse(w, http.StatusPreconditionFailed, "document_not_found")
+		return
+	}
+	if handleServerError(w, "Update see object", err) {
+		return
+	}
+
+	seeObject, err := seeMgr.GetSeeObject(username, requestingClient, uniqueID)
+	if err != nil {
+		log.Error("Failed to get see object", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-type", "application/json")
+	json.NewEncoder(w).Encode(seeObject.ConvertToSeeView(len(seeObject.Versions)))
+}
+
+func (api UsersAPI) SignSeeObject(w http.ResponseWriter, r *http.Request) {
+	username := mux.Vars(r)["username"]
+	uniqueID := mux.Vars(r)["uniqueid"]
+	versionStr := mux.Vars(r)["version"]
+	globalid := mux.Vars(r)["globalid"]
+	version, err := strconv.Atoi(versionStr)
+	if err != nil {
+		log.Error("ERROR while parsing version :\n", err)
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	requestingClient, ok := getRequestingClientFromRequest(r, w, globalid, false)
+	if !ok {
+		return
+	}
+
+	seeView := seeDb.SeeView{}
+	if err := json.NewDecoder(r.Body).Decode(&seeView); err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	seeMgr := seeDb.NewManager(r)
+	seeObject, err := seeMgr.GetSeeObject(username, requestingClient, uniqueID)
+	if db.IsNotFound(err) {
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+	if handleServerError(w, "Get see object", err) {
+		return
+	}
+
+	if version < 1 || version > len(seeObject.Versions) {
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+	previousVersion := seeObject.Versions[version-1]
+	if previousVersion.Category != seeView.Category ||
+		previousVersion.Link != seeView.Link ||
+		previousVersion.ContentType != seeView.ContentType ||
+		previousVersion.MarkdownShortDescription != seeView.MarkdownShortDescription ||
+		previousVersion.MarkdownFullDescription != seeView.MarkdownFullDescription ||
+		previousVersion.Signature != "" {
+		http.Error(w, http.StatusText(http.StatusConflict), http.StatusConflict)
+		return
+	}
+	if previousVersion.StartDate != nil || seeView.StartDate != nil {
+		if previousVersion.StartDate == nil || seeView.StartDate == nil ||
+			previousVersion.StartDate.String() != seeView.StartDate.String() {
+			http.Error(w, http.StatusText(http.StatusConflict), http.StatusConflict)
+			return
+		}
+	}
+	if previousVersion.EndDate != nil || seeView.EndDate != nil {
+		if previousVersion.EndDate == nil || seeView.EndDate == nil ||
+			previousVersion.EndDate.String() != seeView.EndDate.String() {
+			http.Error(w, http.StatusText(http.StatusConflict), http.StatusConflict)
+			return
+		}
+	}
+
+	keyMgr := keystore.NewManager(r)
+	_, err = keyMgr.GetKeyStoreKey(username, requestingClient, seeView.KeyStoreLabel)
+	if db.IsNotFound(err) {
+		http.Error(w, http.StatusText(http.StatusPreconditionFailed), http.StatusPreconditionFailed)
+		return
+	}
+
+	previousVersion.KeyStoreLabel = seeView.KeyStoreLabel
+	previousVersion.Signature = seeView.Signature
+
+	err = seeMgr.Update(seeObject)
+	if db.IsNotFound(err) {
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+	if handleServerError(w, "Sign see object", err) {
+		return
+	}
+
+	w.Header().Set("Content-type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(seeObject.ConvertToSeeView(version))
+}
+
+// getRequestingClientFromRequest validates if a see api call is valid for an organization
+func getRequestingClientFromRequest(r *http.Request, w http.ResponseWriter, organizationGlobalID string, allowOnWebsite bool) (string, bool) {
+	requestingClient, validClient := context.Get(r, "client_id").(string)
+	if !validClient {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return requestingClient, false
+	}
+	if requestingClient == "itsyouonline" {
+		if allowOnWebsite {
+			requestingClient = organizationGlobalID
+		} else {
+			// This should never happen as the oauth 2  middleware should give a 403
+			writeErrorResponse(w, http.StatusBadRequest, "This api call is not available when logged in via the website")
+			return requestingClient, false
+		}
+	} else if requestingClient != organizationGlobalID {
+		writeErrorResponse(w, http.StatusForbidden, "unauthorized_organization")
+		return requestingClient, false
+	}
+	return requestingClient, true
 }
 
 func (api UsersAPI) AddAPIKey(w http.ResponseWriter, r *http.Request) {
@@ -1639,7 +2042,6 @@ func (api UsersAPI) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if dupKey.Label != "" {
-		log.Warn(dupKey)
 		http.Error(w, http.StatusText(http.StatusConflict), http.StatusConflict)
 		return
 	}
@@ -1855,6 +2257,97 @@ func (api UsersAPI) ListPublicKeys(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(publicKeys)
 }
 
+// GetKeyStore returns all the publickeys written to the user by an organizaton
+func (api UsersAPI) GetKeyStore(w http.ResponseWriter, r *http.Request) {
+	username := mux.Vars(r)["username"]
+	globalid := context.Get(r, "client_id").(string)
+
+	mgr := keystore.NewManager(r)
+	keys, err := mgr.ListKeyStoreKeys(username, globalid)
+	if err != nil && !db.IsNotFound(err) {
+		log.Error("Failed to get keystore keys: ", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(keys)
+}
+
+// GetKeyStoreKey returns all specific publickey written to the user by an organizaton
+func (api UsersAPI) GetKeyStoreKey(w http.ResponseWriter, r *http.Request) {
+	username := mux.Vars(r)["username"]
+	globalid := context.Get(r, "client_id").(string)
+	label := mux.Vars(r)["label"]
+
+	mgr := keystore.NewManager(r)
+
+	key, err := mgr.GetKeyStoreKey(username, globalid, label)
+	if db.IsNotFound(err) {
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Error("Failed to get keystore key: ", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(key)
+}
+
+// SaveKeyStoreKey returns all the publickeys written to the user by an organizaton
+func (api UsersAPI) SaveKeyStoreKey(w http.ResponseWriter, r *http.Request) {
+	username := mux.Vars(r)["username"]
+	globalid := context.Get(r, "client_id").(string)
+
+	body := keystore.KeyStoreKey{}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		log.Debug("Keystore key decoding failed: ", err)
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	// set/update the username and globalid values to those from the authentication
+	body.Username = username
+	body.Globalid = globalid
+	// set the keys timestamp
+	body.KeyData.TimeStamp = db.DateTime(time.Now())
+
+	if !body.Validate() {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	mgr := keystore.NewManager(r)
+
+	// check if this user/organization already has a key under this label
+	if _, err := mgr.GetKeyStoreKey(username, globalid, body.Label); err == nil {
+		http.Error(w, http.StatusText(http.StatusConflict), http.StatusConflict)
+		return
+	}
+
+	err := mgr.Create(&body)
+	if err != nil {
+		log.Error("error while saving keystore key: ", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	key, err := mgr.GetKeyStoreKey(username, globalid, body.Label)
+	if err != nil {
+		log.Error("error while retrieving keystore key: ", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(key)
+}
+
 // UpdateName is the handler for PUT /users/{username}/name
 func (api UsersAPI) UpdateName(w http.ResponseWriter, r *http.Request) {
 	username := mux.Vars(r)["username"]
@@ -1923,23 +2416,38 @@ func (api UsersAPI) GetTwoFAMethods(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetTOTPSecret is the handler for GET /users/{username}/totp/
-// Gets a new TOTP secret
+// Gets the users TOTP secret, or a new one if it doesn't exist yet
 func (api UsersAPI) GetTOTPSecret(w http.ResponseWriter, r *http.Request) {
-	token, err := totp.NewToken()
-	if err != nil {
-		log.Error(err)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-	response := struct {
+	username := mux.Vars(r)["username"]
+
+	var response struct {
 		Totpsecret string `json:"totpsecret"`
 		TotpIssuer string `json:"totpissuer"`
-	}{
-		Totpsecret: token.Secret,
-		TotpIssuer: totp.GetIssuer(r),
 	}
-	json.NewEncoder(w).Encode(response)
+
+	totpManager := totp.NewManager(r)
+	err, secret := totpManager.GetSecret(username)
+	// if no existing secret is found generate a new one
+	if totpManager.IsErrNotFound(err) {
+		var token *totp.Token
+		token, err = totp.NewToken()
+		if handleServerError(w, "generating a new totp secret", err) {
+			return
+		}
+
+		response.Totpsecret = token.Secret
+		response.TotpIssuer = totp.GetIssuer(r)
+		// an error might be an `actual` error and not just a not found
+	} else if handleServerError(w, "get saved totp secret", err) {
+		return
+		// if there was no error then we successfully loaded an existing secret
+	} else {
+		response.TotpIssuer = totp.GetIssuer(r)
+		response.Totpsecret = secret.Secret
+	}
+
 	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
 }
 
 // SetupTOTP is the handler for POST /users/{username}/totp/
@@ -1977,6 +2485,8 @@ func (api UsersAPI) SetupTOTP(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(422)
 	} else {
+		userMgr := user.NewManager(r)
+		userMgr.RemoveExpireDate(username)
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
@@ -1999,11 +2509,12 @@ func (api UsersAPI) RemoveTOTP(w http.ResponseWriter, r *http.Request) {
 	}
 	totpMgr := totp.NewManager(r)
 	err = totpMgr.Remove(username)
-	if err != nil {
+	if err != nil && !totpMgr.IsErrNotFound(err) {
 		log.Error(err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
+	// if the err is an error not found, there was nothing in the first place
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -2015,6 +2526,25 @@ func (api UsersAPI) LeaveOrganization(w http.ResponseWriter, r *http.Request) {
 	orgMgr := organizationDb.NewManager(r)
 	userMgr := user.NewManager(r)
 	oauthMgr := oauthservice.NewManager(r)
+	// make sure the last owner can't leave an organization. only valid if this is
+	// a top level organization since suborg owners are implicitly extended by the owner
+	// of the parent orgs.
+	if !strings.Contains(organizationGlobalId, ".") {
+		org, err := orgMgr.GetByName(organizationGlobalId)
+		// load the org
+		if db.IsNotFound(err) {
+			writeErrorResponse(w, http.StatusNotFound, "user_not_found")
+			return
+		}
+		if handleServerError(w, "loading organization", err) {
+			return
+		}
+		// if only one owner remains and its the user then don't let them leave
+		if len(org.Owners) == 1 && org.Owners[0] == username {
+			writeErrorResponse(w, http.StatusConflict, "last_owner_can't_leave")
+			return
+		}
+	}
 	err := orgMgr.RemoveUser(organizationGlobalId, username)
 	if err == mgo.ErrNotFound {
 		writeErrorResponse(w, http.StatusNotFound, "user_not_found")
@@ -2531,6 +3061,19 @@ func writeErrorResponse(responseWrite http.ResponseWriter, httpStatusCode int, m
 		Error string `json:"error"`
 	}{
 		Error: message,
+	}
+	responseWrite.WriteHeader(httpStatusCode)
+	json.NewEncoder(responseWrite).Encode(&errorResponse)
+}
+
+func writeValidationError(responseWrite http.ResponseWriter, httpStatusCode int, err error) {
+	log.Debug(httpStatusCode, " ", err)
+	errorResponse := struct {
+		Error   string `json:"error"`
+		Message string
+	}{
+		Error:   "validation_error",
+		Message: fmt.Sprintf("%v", err.Error()),
 	}
 	responseWrite.WriteHeader(httpStatusCode)
 	json.NewEncoder(responseWrite).Encode(&errorResponse)

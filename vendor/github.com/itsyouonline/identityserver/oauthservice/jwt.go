@@ -13,6 +13,8 @@ import (
 	"github.com/itsyouonline/identityserver/credentials/oauth2"
 	"github.com/itsyouonline/identityserver/db"
 	"github.com/itsyouonline/identityserver/db/organization"
+	"github.com/itsyouonline/identityserver/db/user"
+	"github.com/itsyouonline/identityserver/db/validation"
 )
 
 var errUnauthorized = errors.New("Unauthorized")
@@ -66,17 +68,7 @@ func (service *Service) JWTHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		validityString := r.FormValue("validity")
-		var validity int64
-		if validityString == "" {
-			validity = -1
-		} else {
-			validity, err = strconv.ParseInt(validityString, 10, 64)
-			if err != nil {
-				log.Debugf("Failed to parse validty argument (%v) as int64", validityString)
-				validity = -1
-			}
-		}
+		validity := parseValidity(r)
 
 		tokenString, err = service.convertAccessTokenToJWT(r, at, requestedScopeParameter, audiences, validity)
 	}
@@ -158,17 +150,7 @@ func (service *Service) RefreshJWTHandler(w http.ResponseWriter, r *http.Request
 	originalToken.Claims["scope"] = strings.Split(scope, ",")
 
 	// Set a new expiration time
-	validityString := r.FormValue("validity")
-	var validity int64
-	if validityString == "" {
-		validity = -1
-	} else {
-		validity, err = strconv.ParseInt(validityString, 10, 64)
-		if err != nil {
-			log.Debugf("Failed to parse validity argument (%v) as int64", validityString)
-			validity = -1
-		}
-	}
+	validity := parseValidity(r)
 
 	expiration := time.Now().Add(AccessTokenExpiration).Unix()
 
@@ -242,6 +224,10 @@ func (service *Service) convertAccessTokenToJWT(r *http.Request, at *AccessToken
 	if at.GlobalID != "" {
 		token.Claims["globalid"] = at.GlobalID
 		grantedScopes = requestedScopes
+	}
+	// now that we have the granted scopes, check if the actual data is requested
+	if r.FormValue("store_info") == "true" && at.Username != "" {
+		grantedScopes = storeActualValue(r, grantedScopes, at.Username, at.ClientID)
 	}
 	token.Claims["scope"] = grantedScopes
 
@@ -346,6 +332,9 @@ func (service *Service) createNewJWTFromParent(r *http.Request, parentToken *jwt
 		token.Claims["globalid"] = globalID
 		grantedScopes = requestedScopes
 	}
+	if r.FormValue("store_info") == "true" && username != "" {
+		grantedScopes = storeActualValue(r, grantedScopes, username, parentToken.Claims["azp"].(string))
+	}
 	token.Claims["scope"] = grantedScopes
 
 	// process the audience string and make sure we don't set an empty slice if no
@@ -413,4 +402,181 @@ func checkIfScopeInList(grantedScopes []string, scope string) (valid bool) {
 		}
 	}
 	return
+}
+
+// parseValidity parses the validity parameter from the request
+func parseValidity(r *http.Request) int64 {
+	validityString := r.FormValue("validity")
+	var validity int64
+	if validityString == "" {
+		validity = -1
+	} else {
+		var err error
+		validity, err = strconv.ParseInt(validityString, 10, 64)
+		if err != nil {
+			log.Debugf("Failed to parse validity argument (%v) as int64", validityString)
+			validity = -1
+		}
+	}
+	return validity
+}
+
+func storeActualValue(r *http.Request, grantedScopes []string, username string, clientID string) []string {
+	if username == "" {
+		return grantedScopes
+	}
+
+	fullScopes := []string{}
+	for _, scope := range grantedScopes {
+		fullScopes = append(fullScopes, scope)
+		if strings.HasPrefix(scope, "user:phone") {
+		}
+	}
+	clientCredentialsJWT := false
+	orgMgr := organization.NewManager(r)
+	if _, err := orgMgr.GetByName(clientID); db.IsNotFound(err) {
+		clientCredentialsJWT = true
+	}
+	var authorization *user.Authorization
+	// jwt aquired through code grant flow - there must be an authorization to represent
+	// the scope mappings
+	if !clientCredentialsJWT {
+		userMgr := user.NewManager(r)
+		var err error
+		authorization, err = userMgr.GetAuthorization(username, clientID)
+		if err != nil {
+			log.Error("Failed to get authorization: ", err)
+			return grantedScopes
+		}
+	}
+	fullScopes = append(fullScopes, getActualValues(r, grantedScopes, username, authorization)...)
+	return fullScopes
+}
+
+// getActualValues stores some acutal values for specified scopes in the jwt
+// if possible. The label is parsed from the jwt, then a lookup is performed in the authorization
+// backing this jwt. This is required because the jwt might have less scopes than the authorization,
+// and we only include values that where in the jwt already
+func getActualValues(r *http.Request, grantedScopes []string, username string, authorization *user.Authorization) []string {
+	vals := []string{}
+	userMgr := user.NewManager(r)
+	userObj, err := userMgr.GetByName(username)
+	if err != nil {
+		log.Error("Failed to get user: ", err)
+		return vals
+	}
+	// Similar to the user info API call
+	valMgr := validation.NewManager(r)
+	for _, scope := range grantedScopes {
+		if scope == "user:name" {
+			vals = append(vals, fmt.Sprintf("[%v]:%v %v", scope, userObj.Firstname, userObj.Lastname))
+		}
+		if strings.HasPrefix(scope, "user:email") {
+			requestedLabel := strings.TrimPrefix(scope, "user:email:")
+			if requestedLabel == "" || requestedLabel == "user:email" {
+				requestedLabel = "main"
+			}
+			realLabel := getRealLabel(requestedLabel, "email", authorization)
+			email, err := userObj.GetEmailAddressByLabel(realLabel)
+			if err == nil {
+				vals = append(vals, fmt.Sprintf("[%v]:%v", scope, email.EmailAddress))
+			} else {
+				log.Debug(err)
+			}
+		}
+		if strings.HasPrefix(scope, "user:phone") {
+			requestedLabel := strings.TrimPrefix(scope, "user:phone:")
+			if requestedLabel == "" || requestedLabel == "user:phone" {
+				requestedLabel = "main"
+			}
+			realLabel := getRealLabel(requestedLabel, "phone", authorization)
+			phonenumber, err := userObj.GetPhonenumberByLabel(realLabel)
+			if err == nil {
+				vals = append(vals, fmt.Sprintf("[%v]:%v", scope, phonenumber.Phonenumber))
+			} else {
+				log.Debug(err)
+			}
+		}
+		if strings.HasPrefix(scope, "user:validated:phone") {
+			requestedLabel := strings.TrimPrefix(scope, "user:validated:phone:")
+			if requestedLabel == "" || requestedLabel == "user:validated:phone" {
+				requestedLabel = "main"
+			}
+			realLabel := getRealLabel(requestedLabel, "validatedphone", authorization)
+			phone, err := userObj.GetPhonenumberByLabel(realLabel)
+			if err == nil {
+				validated, err := valMgr.IsPhonenumberValidated(authorization.Username, phone.Phonenumber)
+				if err != nil {
+					log.Error("Failed to verify if phone number is validated for this user: ", err)
+					continue
+				}
+				if !validated {
+					continue
+				}
+				vals = append(vals, fmt.Sprintf("[%v]:%v", scope, phone.Phonenumber))
+			} else {
+				log.Debug(err)
+			}
+		}
+		if strings.HasPrefix(scope, "user:validated:email") {
+			requestedLabel := strings.TrimPrefix(scope, "user:validated:email:")
+			if requestedLabel == "" || requestedLabel == "user:validated:email" {
+				requestedLabel = "main"
+			}
+			realLabel := getRealLabel(requestedLabel, "validatedemail", authorization)
+			email, err := userObj.GetEmailAddressByLabel(realLabel)
+			if err == nil {
+				validated, err := valMgr.IsEmailAddressValidated(authorization.Username, email.EmailAddress)
+				if err != nil {
+					log.Error("Failed to verify if email address is validated for this user: ", err)
+					continue
+				}
+				if !validated {
+					continue
+				}
+				vals = append(vals, fmt.Sprintf("[%v]:%v", scope, email.EmailAddress))
+			} else {
+				log.Debug(err)
+			}
+		}
+	}
+	return vals
+}
+
+// getRealLabel loads the real label from an authorization
+func getRealLabel(requestedLabel string, t string, authorization *user.Authorization) string {
+	if authorization == nil {
+		return requestedLabel
+	}
+	switch t {
+	case "email":
+		for _, m := range authorization.EmailAddresses {
+			if requestedLabel == m.RequestedLabel {
+				return m.RealLabel
+			}
+		}
+		break
+	case "phone":
+		for _, m := range authorization.Phonenumbers {
+			if requestedLabel == m.RequestedLabel {
+				return m.RealLabel
+			}
+		}
+		break
+	case "validatedemail":
+		for _, m := range authorization.ValidatedEmailAddresses {
+			if requestedLabel == m.RequestedLabel {
+				return m.RealLabel
+			}
+		}
+		break
+	case "validatedphone":
+		for _, m := range authorization.ValidatedEmailAddresses {
+			if requestedLabel == m.RequestedLabel {
+				return m.RealLabel
+			}
+		}
+		break
+	}
+	return ""
 }

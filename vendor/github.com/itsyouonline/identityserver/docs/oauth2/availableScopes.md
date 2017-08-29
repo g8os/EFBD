@@ -41,6 +41,10 @@ If the user is no member of the <globalid> organization, the oauth flow continue
 
 The `:write` extension gives an application full access(read, update, delete) to a phone number
 
+## `user:validated:phone[:<label>]`
+
+## `user:validated:email[:<label>]`
+
 ## `user:github`
 
 ## `user:facebook`
@@ -50,6 +54,20 @@ The `:write` extension gives an application full access(read, update, delete) to
 ## `user:digitalwalletaddress:[<label>]:[<currency>]`
 
 ## `user:publickey[:<label>]`
+
+## `user:avatar[:<label>]`
+
+## `user:keystore`
+
+The `user:keystore` scope gives an organization access to a hidden store where public
+keys and additional data for these keys can be stored. They are not exposed to the user.
+The keystore access is restricted to those keys written by the organization, all others are
+hidden. Once a key is written, it can only be retrieved, not modified or deleted.
+
+## `user:see`
+
+The `user:see` scope gives an organization access to the see documents written by the organization.
+See documents can't be modified or deleted after being uploaded, only a new version can be uploaded.
 
 ## `user:owneroff:email:<emailaddress>`
 

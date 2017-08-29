@@ -27,10 +27,19 @@
 		]
 	},
 	{
-		"project": "github.com/coreos/bbolt",
+		"project": "github.com/boltdb/bolt",
 		"licenses": [
 			{
 				"type": "MIT License",
+				"confidence": 1
+			}
+		]
+	},
+	{
+		"project": "github.com/cockroachdb/cmux",
+		"licenses": [
+			{
+				"type": "Apache License 2.0",
 				"confidence": 1
 			}
 		]
@@ -256,15 +265,6 @@
 		]
 	},
 	{
-		"project": "github.com/soheilhy/cmux",
-		"licenses": [
-			{
-				"type": "Apache License 2.0",
-				"confidence": 1
-			}
-		]
-	},
-	{
 		"project": "github.com/spf13/cobra",
 		"licenses": [
 			{
@@ -346,20 +346,11 @@
 		]
 	},
 	{
-		"project": "google.golang.org/genproto/googleapis/rpc/status",
-		"licenses": [
-			{
-				"type": "Apache License 2.0",
-				"confidence": 1
-			}
-		]
-	},
-	{
 		"project": "google.golang.org/grpc",
 		"licenses": [
 			{
-				"type": "Apache License 2.0",
-				"confidence": 1
+				"type": "BSD 3-clause \"New\" or \"Revised\" License",
+				"confidence": 0.979253112033195
 			}
 		]
 	},

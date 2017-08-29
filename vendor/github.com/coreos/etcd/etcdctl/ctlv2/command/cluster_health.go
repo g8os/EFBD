@@ -70,7 +70,7 @@ func handleClusterHealth(c *cli.Context) error {
 	}
 
 	for {
-		healthyMembers := 0
+		health := false
 		for _, m := range ms {
 			if len(m.ClientURLs) == 0 {
 				fmt.Printf("member %s is unreachable: no available published client urls\n", m.ID)
@@ -105,8 +105,8 @@ func handleClusterHealth(c *cli.Context) error {
 
 				checked = true
 				if result.Health == "true" || nresult.Health {
+					health = true
 					fmt.Printf("member %s is healthy: got healthy result from %s\n", m.ID, url)
-					healthyMembers++
 				} else {
 					fmt.Printf("member %s is unhealthy: got unhealthy result from %s\n", m.ID, url)
 				}
@@ -116,20 +116,19 @@ func handleClusterHealth(c *cli.Context) error {
 				fmt.Printf("member %s is unreachable: %v are all unreachable\n", m.ID, m.ClientURLs)
 			}
 		}
-		switch healthyMembers {
-		case len(ms):
+		if health {
 			fmt.Println("cluster is healthy")
-		case 0:
-			fmt.Println("cluster is unavailable")
-		default:
-			fmt.Println("cluster is degraded")
+		} else {
+			fmt.Println("cluster is unhealthy")
 		}
 
 		if !forever {
-			if healthyMembers == len(ms) {
+			if health {
 				os.Exit(ExitSuccess)
+				return nil
 			}
 			os.Exit(ExitClusterNotHealthy)
+			return nil
 		}
 
 		fmt.Printf("\nnext check after 10 second...\n\n")

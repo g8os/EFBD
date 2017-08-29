@@ -1,6 +1,6 @@
 <div flex-gt-sm="80" flex="100" layout="column" ng-init="vm.loadSettings()">
     <div class="breadcrumb-container">
-        <p ng-bind="::vm.username">You</p>
+        <p ng-bind="::vm.userIdentifier">You</p>
         <h1 translate='user.views.settings.settings'>Settings</h1>
     </div>
     <md-card>
@@ -26,36 +26,47 @@
                             <h4>{{APIKey.label}}</h4>
                         </div>
                     </md-list-item>
-                    <md-toolbar>
-                        <div class="md-toolbar-tools" layout-align="space-between center">
-                            <span><i class="fa fa-lock"></i> <span translate='user.views.settings.security'>Security</span></span>
-                        </div>
-                    </md-toolbar>
                 </md-list>
-                <md-list-item>
-                    <div class="md-list-item-text">
-                        <p translate='user.views.settings.password'>Password</p>
-                    </div>
-                    <md-button class="md-primary md-secondary"
-                               ng-click="vm.showChangePasswordDialog($event)" translate='user.views.settings.change'>
-                        Change
-                    </md-button>
-                </md-list-item>
-                <md-list-item>
-                    <div class="md-list-item-text">
-                        <p translate='user.views.settings.authenticatorapp'>Authenticator application</p>
-                    </div>
-                    <md-button class="md-primary md-secondary"
-                               ng-click="vm.showSetupAuthenticatorApplication($event)"
-                               ng-if="!vm.twoFAMethods.totp" translate='user.views.settings.setup'>
-                        Setup
-                    </md-button>
-                    <md-button class="md-warn md-secondary"
-                               ng-click="vm.removeAuthenticatorApplication($event)"
-                               ng-if="vm.twoFAMethods.totp" translate='user.views.settings.remove'>
-                        Remove
-                    </md-button>
-                </md-list-item>
+                <md-toolbar>
+                  <div class="md-toolbar-tools" layout-align="space-between center">
+                    <span><i class="fa fa-lock"></i> <span translate='user.views.settings.security'>Security</span></span>
+                  </div>
+                </md-toolbar>
+                <md-list>
+                    <md-list-item>
+                        <div class="md-list-item-text">
+                            <p translate='user.views.settings.password'>Password</p>
+                        </div>
+                        <md-button class="md-primary md-secondary"
+                                   ng-click="vm.showChangePasswordDialog($event)" translate='user.views.settings.change'>
+                            Change
+                        </md-button>
+                    </md-list-item>
+                    <md-list-item>
+                        <div class="md-list-item-text">
+                            <p translate='user.views.settings.authenticatorapp'>Authenticator application</p>
+                        </div>
+                        <md-button class="md-primary md-secondary"
+                                   ng-click="vm.showSetupAuthenticatorApplication($event)"
+                                   ng-if="!vm.twoFAMethods.totp" translate='user.views.settings.setup'>
+                            Setup
+                        </md-button>
+                        <md-button class="md-warn md-secondary"
+                                   ng-click="vm.removeAuthenticatorApplication($event)"
+                                   ng-if="vm.twoFAMethods.totp" translate='user.views.settings.remove'>
+                            Remove
+                        </md-button>
+                    </md-list-item>
+                    <md-list-item ng-if="vm.twoFAMethods.totp">
+                        <div class="md-list-item-text">
+                            <p translate='qrcode'>QR code</p>
+                        </div>
+                        <md-button class="md-primary md-secondary"
+                                   ng-click="vm.showExistingAuthenticatorApplication($event)"
+                                   translate='qrcode_view'>
+                            View existing QR code
+                        </md-button>
+                    </md-list-item>
                 </md-list>
             </div>
         </md-card-content>

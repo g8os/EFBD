@@ -107,17 +107,14 @@ func newRaftNode(id int, peers []string, join bool, getSnapshot func() ([]byte, 
 }
 
 func (rc *raftNode) saveSnap(snap raftpb.Snapshot) error {
-	// must save the snapshot index to the WAL before saving the
-	// snapshot to maintain the invariant that we only Open the
-	// wal at previously-saved snapshot indexes.
+	if err := rc.snapshotter.SaveSnap(snap); err != nil {
+		return err
+	}
 	walSnap := walpb.Snapshot{
 		Index: snap.Metadata.Index,
 		Term:  snap.Metadata.Term,
 	}
 	if err := rc.wal.SaveSnapshot(walSnap); err != nil {
-		return err
-	}
-	if err := rc.snapshotter.SaveSnap(snap); err != nil {
 		return err
 	}
 	return rc.wal.ReleaseLockTo(snap.Metadata.Index)

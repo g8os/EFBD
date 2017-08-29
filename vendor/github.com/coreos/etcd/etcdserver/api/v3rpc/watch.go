@@ -321,13 +321,11 @@ func (sws *serverWatchStream) sendLoop() {
 				}
 			}
 
-			canceled := wresp.CompactRevision != 0
 			wr := &pb.WatchResponse{
 				Header:          sws.newResponseHeader(wresp.Revision),
 				WatchId:         int64(wresp.WatchID),
 				Events:          events,
 				CompactRevision: wresp.CompactRevision,
-				Canceled:        canceled,
 			}
 
 			if _, hasId := ids[wresp.WatchID]; !hasId {

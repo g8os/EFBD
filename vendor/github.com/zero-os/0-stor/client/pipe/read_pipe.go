@@ -10,11 +10,11 @@ type ReadPipe struct {
 	Readers []block.Reader
 }
 
-func createAllBlockReaders(conf *config.Config) ([]block.Reader, error) {
+func createAllBlockReaders(conf *config.Config, iyoToken string) ([]block.Reader, error) {
 	var readers []block.Reader
 	for _, pipe := range conf.Pipes {
 		ar, err := pipe.CreateBlockReader(conf.Shards, conf.MetaShards, conf.Protocol, conf.Organization,
-			conf.Namespace, conf.IYOAppID, conf.IYOSecret)
+			conf.Namespace, iyoToken)
 		if err != nil {
 			return nil, err
 		}
@@ -24,8 +24,8 @@ func createAllBlockReaders(conf *config.Config) ([]block.Reader, error) {
 }
 
 // NewReadPipe create ReadPipe from config
-func NewReadPipe(conf *config.Config) (*ReadPipe, error) {
-	ars, err := createAllBlockReaders(conf)
+func NewReadPipe(conf *config.Config, iyoToken string) (*ReadPipe, error) {
+	ars, err := createAllBlockReaders(conf, iyoToken)
 	if err != nil {
 		return nil, err
 	}

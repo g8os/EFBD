@@ -286,12 +286,8 @@ func TestLeaseGrantErrConnClosed(t *testing.T) {
 	go func() {
 		defer close(donec)
 		_, err := cli.Grant(context.TODO(), 5)
-		if err != nil && err != grpc.ErrClientConnClosing && err != context.Canceled {
-			// grpc.ErrClientConnClosing if grpc-go balancer calls 'Get' after client.Close.
-			// context.Canceled if grpc-go balancer calls 'Get' with inflight client.Close,
-			// soon transportMonitor selects on ClientTransport.Error() and resetTransport(false)
-			// that cancels the context and closes the transport.
-			t.Fatalf("expected %v or %v, got %v", grpc.ErrClientConnClosing, context.Canceled, err)
+		if err != nil && err != grpc.ErrClientConnClosing {
+			t.Fatalf("expected %v, got %v", grpc.ErrClientConnClosing, err)
 		}
 	}()
 
@@ -486,8 +482,7 @@ func TestLeaseTimeToLive(t *testing.T) {
 	clus := integration.NewClusterV3(t, &integration.ClusterConfig{Size: 3})
 	defer clus.Terminate(t)
 
-	c := clus.RandClient()
-	lapi := c
+	lapi := clus.RandClient()
 
 	resp, err := lapi.Grant(context.Background(), 10)
 	if err != nil {
@@ -500,11 +495,6 @@ func TestLeaseTimeToLive(t *testing.T) {
 		if _, err = kv.Put(context.TODO(), keys[i], "bar", clientv3.WithLease(resp.ID)); err != nil {
 			t.Fatal(err)
 		}
-	}
-
-	// linearized read to ensure Puts propagated to server backing lapi
-	if _, err := c.Get(context.TODO(), "abc"); err != nil {
-		t.Fatal(err)
 	}
 
 	lresp, lerr := lapi.TimeToLive(context.Background(), resp.ID, clientv3.WithAttachedKeys())
@@ -571,37 +561,6 @@ func TestLeaseTimeToLiveLeaseNotFound(t *testing.T) {
 	}
 	if lresp.TTL != -1 {
 		t.Fatalf("expected TTL %v, but got %v", lresp.TTL, lresp.TTL)
-	}
-}
-
-func TestLeaseLeases(t *testing.T) {
-	defer testutil.AfterTest(t)
-
-	clus := integration.NewClusterV3(t, &integration.ClusterConfig{Size: 1})
-	defer clus.Terminate(t)
-
-	cli := clus.RandClient()
-
-	ids := []clientv3.LeaseID{}
-	for i := 0; i < 5; i++ {
-		resp, err := cli.Grant(context.Background(), 10)
-		if err != nil {
-			t.Errorf("failed to create lease %v", err)
-		}
-		ids = append(ids, resp.ID)
-	}
-
-	resp, err := cli.Leases(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(resp.Leases) != 5 {
-		t.Fatalf("len(resp.Leases) expected 5, got %d", len(resp.Leases))
-	}
-	for i := range resp.Leases {
-		if ids[i] != resp.Leases[i].ID {
-			t.Fatalf("#%d: lease ID expected %d, got %d", i, ids[i], resp.Leases[i].ID)
-		}
 	}
 }
 

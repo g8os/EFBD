@@ -59,7 +59,7 @@ func (m Meta) Bytes() ([]byte, error) {
 
 // SetEpochNow set epoch to current unix time in nanosecond
 func (m *Meta) SetEpochNow() {
-	m.SetEpoch(uint64(time.Now().UnixNano()))
+	m.SetEpoch(uint64(time.Now().UTC().UnixNano()))
 }
 
 // SetShardSlice set shards with Go slice

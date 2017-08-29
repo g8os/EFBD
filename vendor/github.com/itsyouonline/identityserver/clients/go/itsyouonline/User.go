@@ -1,6 +1,7 @@
 package itsyouonline
 
 import (
+	"github.com/itsyouonline/identityserver/clients/go/itsyouonline/goraml"
 	"gopkg.in/validator.v2"
 )
 
@@ -9,7 +10,7 @@ type User struct {
 	Bankaccounts   []BankAccount         `json:"bankaccounts" validate:"nonzero"`
 	Digitalwallet  []DigitalAssetAddress `json:"digitalwallet" validate:"nonzero"`
 	Emailaddresses []EmailAddress        `json:"emailaddresses" validate:"nonzero"`
-	Expire         DateTime              `json:"expire,omitempty"`
+	Expire         goraml.DateTime       `json:"expire,omitempty"`
 	Facebook       FacebookAccount       `json:"facebook,omitempty"`
 	Firstname      string                `json:"firstname" validate:"nonzero"`
 	Github         GithubAccount         `json:"github,omitempty"`

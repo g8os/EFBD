@@ -8,8 +8,8 @@ PACKAGE = github.com/zero-os/0-stor
 COMMIT_HASH = $(shell git rev-parse --short HEAD 2>/dev/null)
 BUILD_DATE = $(shell date +%FT%T%z)
 
-SERVER_PACKAGES = $(shell go list ./server/...)
-CLIENT_PACKAGES = $(shell go list ./client/...)
+SERVER_PACKAGES = $(shell go list ./server/... | grep -v vendor)
+CLIENT_PACKAGES = $(shell go list ./client/... | grep -v vendor)
 
 ldflags = -extldflags "-static" -s -w
 
@@ -18,10 +18,10 @@ all: server cli
 cli: $(OUTPUT)
 ifeq ($(GOOS), darwin)
 	GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -ldflags '$(ldflags)' -o $(OUTPUT)/zerostorcli ./client/cmd/cli
+		go build -ldflags '$(ldflags)' -o $(OUTPUT)/zerostorcli ./client/cmd/zerostorcli
 else
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -ldflags '$(ldflags)' -o $(OUTPUT)/zerostorcli ./client/cmd/cli
+		go build -ldflags '$(ldflags)' -o $(OUTPUT)/zerostorcli ./client/cmd/zerostorcli
 endif
 
 server: $(OUTPUT)
@@ -52,4 +52,4 @@ testclientrace:
 $(OUTPUT):
 	mkdir -p $(OUTPUT)
 
-.PHONY: $(OUTPUT) zerostorcli 0storserver test testserver testclient
+.PHONY: $(OUTPUT) zerostorcli 0storserver test testserver testclient testserverrace testclientrace

@@ -36,21 +36,19 @@ var mvccPutCmd = &cobra.Command{
 }
 
 var (
-	mvccTotalRequests int
-	storageKeySize    int
-	valueSize         int
-	txn               bool
-	nrTxnOps          int
+	totalNrKeys    int
+	storageKeySize int
+	valueSize      int
+	txn            bool
 )
 
 func init() {
 	mvccCmd.AddCommand(mvccPutCmd)
 
-	mvccPutCmd.Flags().IntVar(&mvccTotalRequests, "total", 100, "a total number of keys to put")
+	mvccPutCmd.Flags().IntVar(&totalNrKeys, "total", 100, "a total number of keys to put")
 	mvccPutCmd.Flags().IntVar(&storageKeySize, "key-size", 64, "a size of key (Byte)")
 	mvccPutCmd.Flags().IntVar(&valueSize, "value-size", 64, "a size of value (Byte)")
 	mvccPutCmd.Flags().BoolVar(&txn, "txn", false, "put a key in transaction or not")
-	mvccPutCmd.Flags().IntVar(&nrTxnOps, "txn-ops", 1, "a number of keys to put per transaction")
 
 	// TODO: after the PR https://github.com/spf13/cobra/pull/220 is merged, the below pprof related flags should be moved to RootCmd
 	mvccPutCmd.Flags().StringVar(&cpuProfPath, "cpuprofile", "", "the path of file for storing cpu profile result")
@@ -101,33 +99,23 @@ func mvccPutFunc(cmd *cobra.Command, args []string) {
 		}()
 	}
 
-	keys := createBytesSlice(storageKeySize, mvccTotalRequests*nrTxnOps)
-	vals := createBytesSlice(valueSize, mvccTotalRequests*nrTxnOps)
+	keys := createBytesSlice(storageKeySize, totalNrKeys)
+	vals := createBytesSlice(valueSize, totalNrKeys)
 
-	weight := float64(nrTxnOps)
-	r := newWeightedReport()
+	r := newReport()
 	rrc := r.Results()
 
 	rc := r.Run()
-
-	if txn {
-		for i := 0; i < mvccTotalRequests; i++ {
-			st := time.Now()
-
+	for i := 0; i < totalNrKeys; i++ {
+		st := time.Now()
+		if txn {
 			tw := s.Write()
-			for j := i; j < i+nrTxnOps; j++ {
-				tw.Put(keys[j], vals[j], lease.NoLease)
-			}
+			tw.Put(keys[i], vals[i], lease.NoLease)
 			tw.End()
-
-			rrc <- report.Result{Start: st, End: time.Now(), Weight: weight}
-		}
-	} else {
-		for i := 0; i < mvccTotalRequests; i++ {
-			st := time.Now()
+		} else {
 			s.Put(keys[i], vals[i], lease.NoLease)
-			rrc <- report.Result{Start: st, End: time.Now()}
 		}
+		rrc <- report.Result{Start: st, End: time.Now()}
 	}
 
 	close(r.Results())

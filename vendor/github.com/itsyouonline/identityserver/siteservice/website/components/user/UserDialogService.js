@@ -234,7 +234,7 @@
 
                 function checkconfirmation() {
                     UserService
-                        .getVerifiedPhones(vm.username)
+                        .getVerifiedPhones(true)
                         .then(function success(confirmedPhones) {
                             var confirmed = confirmedPhones.filter(function (p) {
                                     return p.label === ctrl.label;
@@ -489,7 +489,7 @@
 
         function createOrganization(ev, parentOrganization) {
             $mdDialog.show({
-                controller: ['$scope', '$rootScope', '$window', '$mdDialog', 'OrganizationService', 'parentOrganization', CreateOrganizationController],
+                controller: ['$scope', '$window', '$mdDialog', 'OrganizationService', 'UserService', 'parentOrganization', CreateOrganizationController],
                 controllerAs: 'ctrl',
                 templateUrl: 'components/organization/views/createOrganizationDialog.html',
                 targetEvent: ev,
@@ -529,7 +529,7 @@
                             vm.user.digitalwallet.splice(vm.user.digitalwallet.indexOf(walletAddress), 1);
                         }
                         else if (data.fx === 'create') {
-                            vm.user.digitalwallet = data.data
+                            vm.user.digitalwallet.push(data.data);
                         }
                         resolve(data);
                     }, function (response) {
@@ -789,6 +789,9 @@
                         else if (response.status === 409) {
                             $scope.validationerrors.duplicate = true;
                         }
+                        else if (response.status === 412) {
+                            $scope.validationerrors.illegalactionforcurrentstate = true;
+                        }
                     }
                 );
             }
@@ -803,7 +806,7 @@
 
         }
 
-        function CreateOrganizationController($scope, $rootScope, $window, $mdDialog, OrganizationService, parentOrganization) {
+        function CreateOrganizationController($scope, $window, $mdDialog, OrganizationService, UserService, parentOrganization) {
             var ctrl = this;
             ctrl.submit = submit;
             ctrl.cancel = cancel;
@@ -817,11 +820,11 @@
                     return;
                 }
                 OrganizationService
-                    .create(ctrl.name, [], $rootScope.user, parentOrganization)
+                    .create(ctrl.name, [], UserService.getUsername(), parentOrganization)
                     .then(
                         function (data) {
                             cancel();
-                            $window.location.hash = '#/organization/' + encodeURIComponent(data.globalid);
+                            $window.location.hash = '#/organization/' + encodeURIComponent(data.globalid) + '/people';
                         },
                         function (reason) {
                             if (reason.status === 409) {

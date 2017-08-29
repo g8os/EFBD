@@ -1,13 +1,14 @@
 package itsyouonline
 
 import (
+	"github.com/itsyouonline/identityserver/clients/go/itsyouonline/goraml"
 	"gopkg.in/validator.v2"
 )
 
 type JoinOrganizationInvitation struct {
-	Created        DateTime                             `json:"created,omitempty"`
+	Created        goraml.DateTime                      `json:"created,omitempty"`
 	Emailaddress   string                               `json:"emailaddress" validate:"nonzero"`
-	Isorganization bool                                 `json:"isorganization" validate:"nonzero"`
+	Isorganization bool                                 `json:"isorganization"`
 	Method         EnumJoinOrganizationInvitationMethod `json:"method" validate:"nonzero"`
 	Organization   string                               `json:"organization" validate:"nonzero"`
 	Phonenumber    string                               `json:"phonenumber" validate:"nonzero"`

@@ -24,10 +24,6 @@ func (c Config) NumPieces() int {
 	return c.Data + c.Parity
 }
 
-func withIYoCredentials(iyoClientID, iyoSecret string) bool {
-	return iyoClientID != "" && iyoSecret != ""
-}
-
 // NewDistributor creates new distribution
 func NewDistributor(writers []io.Writer, conf Config) (*Distributor, error) {
 	if len(writers) != conf.Data+conf.Parity {

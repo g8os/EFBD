@@ -2,21 +2,31 @@ language: go
 sudo: true
 dist: trusty
 
-go:
-  - 1.8
+jobs:
+  include:
+    - stage: tests
+      go: 1.9
+      install: skip
+      script: cd client; bash codecov.sh
+    - stage: tests
+      go: 1.9
+      install: skip
+      script: cd server; bash codecov.sh
+    - stage: tests
+      go: 1.9
+      install:
+        - go get -u github.com/Jumpscale/go-raml
+      script:
+          - go-raml server -l go --api-file-per-method --dir servertmp --ramlfile specs/raml/sdstor.raml --lib-root-urls https://raw.githubusercontent.com/Jumpscale-Cockpit/raml-definitions/master/ #validate raml server generation
+          - go-raml client -l python --ramlfile specs/raml/sdstor.raml --dir clienttmp # validate client generation
 
-before_install:
-  - sudo apt-get -qq update
-  - sudo apt-get install -y npm
-  - sudo npm install -g raml2html
-
-install:
-  - go get github.com/Jumpscale/go-raml
-  - go get -v github.com/stretchr/testify/...
-  - go get github.com/itsyouonline/identityserver/clients/go/itsyouonline
-
-script:
-  - bash test.sh
+    - stage: tests
+      before_install:
+          - sudo apt-get -qq update
+          - sudo apt-get install -y npm
+          - sudo npm install -g raml2html
+      script:
+          - cd specs/raml raml2html -p sdstor.raml > sdstor.html
 
 after_success:
   - bash <(curl -s https://codecov.io/bash)

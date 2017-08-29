@@ -5,7 +5,7 @@ import (
 )
 
 type GetOrganizationUsersResponseBody struct {
-	Haseditpermissions bool               `json:"haseditpermissions" validate:"nonzero"`
+	Haseditpermissions bool               `json:"haseditpermissions"`
 	Users              []OrganizationUser `json:"users" validate:"nonzero"`
 }
 

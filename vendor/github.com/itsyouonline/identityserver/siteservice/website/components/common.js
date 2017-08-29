@@ -36,7 +36,11 @@ function authenticationInterceptor($q, $window) {
     return {
         'responseError': function (response) {
             if (response.status === 401 || response.status === 403 || response.status === 419) {
-                $window.location.href = '/login';
+                if ($window.location.href.indexOf('/register') != -1) {
+                    $window.location.href = '/register';
+                } else {
+                    $window.location.href = '/login';
+                }
             } else if (response.status.toString().startsWith('5')) {
                 $window.location.href = 'error' + response.status;
             }
