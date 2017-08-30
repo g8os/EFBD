@@ -17,6 +17,52 @@ func TestHashBytes(t *testing.T) {
 	}
 }
 
+func TestHasher(t *testing.T) {
+	assert := assert.New(t)
+
+	data := make([]byte, 435)
+	rand.Read(data)
+
+	hasher, err := NewHasher()
+	if assert.NoError(err) {
+		assert.NotNil(hasher)
+	}
+
+	h := hasher.HashBytes(data)
+	if assert.NotNil(h, "Nil hash returned from the hashfunction") {
+		assert.False(h.Equals(NilHash), "empty has returned")
+	}
+}
+
+func TestKeyedHasher(t *testing.T) {
+	assert := assert.New(t)
+
+	data := make([]byte, 435)
+	rand.Read(data)
+
+	h1, err := NewKeyedHasher([]byte("foo"))
+	if assert.NoError(err) {
+		assert.NotNil(h1)
+	}
+	h2, err := NewKeyedHasher([]byte("bar"))
+	if assert.NoError(err) {
+		assert.NotNil(h2)
+	}
+
+	hash1 := h1.HashBytes(data)
+	if assert.NotNil(hash1, "Nil hash returned from the hashfunction") {
+		assert.Len(hash1, HashSize)
+		assert.NotEqual(NilHash, hash1, "empty has returned")
+	}
+	hash2 := h2.HashBytes(data)
+	if assert.NotNil(hash2, "Nil hash returned from the hashfunction") {
+		assert.Len(hash2, HashSize)
+		assert.NotEqual(NilHash, hash2, "empty has returned")
+	}
+
+	assert.NotEqual(hash1, hash2)
+}
+
 func TestNilHash(t *testing.T) {
 	assert.Len(t, NilHash, HashSize)
 	assert.True(t, NewHash().Equals(NilHash))
