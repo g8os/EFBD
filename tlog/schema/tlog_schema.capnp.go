@@ -4,6 +4,7 @@ package schema
 
 import (
 	strconv "strconv"
+
 	capnp "zombiezen.com/go/capnproto2"
 	text "zombiezen.com/go/capnproto2/encoding/text"
 	schemas "zombiezen.com/go/capnproto2/schemas"

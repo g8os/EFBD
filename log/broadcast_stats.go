@@ -30,7 +30,7 @@ type StatisticsKey uint8
 
 // StatisticsKey options
 const (
-	StatisticsKeyIOPSRead = iota
+	StatisticsKeyIOPSRead = StatisticsKey(iota)
 	StatisticsKeyIOPSWrite
 	StatisticsKeyTroughputRead
 	StatisticsKeyTroughputWrite

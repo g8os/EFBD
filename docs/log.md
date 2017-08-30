@@ -184,7 +184,26 @@ More in-depth information about the actual implementation in 0-Disk can be found
 
 ### Logged statistics
 
-    // TODO: describe format of statistics broadcasted + services that broadcast them
+ * IOPS read 
+    * logged by: nbdserver
+    * broadcasts: `10::vdisk.iops.read@virt.\<vdisk ID\>:\<value\>|A`
+    * [0-core aggregation type][StatLogSpec]: Averages
+    * value unit: (partial) blocks per second
+ * IOPS write
+    * logged by: nbdserver
+    * broadcasts: `10::vdisk.iops.write@virt.\<vdisk ID\>:\<value\>|A`
+    * [0-core aggregation type][StatLogSpec]: Averages
+    * value unit: (partial) blocks per second
+ * throughput read
+    * logged by: nbdserver
+    * broadcasts: `10::vdisk.throughput.read@virt.\<vdisk ID\>:\<value\>|A`
+    * [0-core aggregation type][StatLogSpec]: Averages
+    * value unit: kB/s
+ * throughput write
+    * logged by: nbdserver
+    * broadcasts: `10::vdisk.throughput.write@virt.\<vdisk ID\>:\<value\>|A`
+    * [0-core aggregation type][StatLogSpec]: Averages
+    * value unit: kB/s
 
 [zeroLog]: https://github.com/zero-os/0-log/
 [loglevels]: https://github.com/zero-os/0-log/blob/master/README.md#supported-log-levels
