@@ -10,6 +10,47 @@ import (
 	"github.com/zero-os/0-Disk/log"
 )
 
+var (
+	// ErrServerMarkedInvalid is returned in case a server is not valid,
+	// and has been marked as such.
+	ErrServerMarkedInvalid = errors.New("ardb server marked invalid")
+	// ErrTemplateClusterNotSpecified is returned in case a
+	// template server is not specified for a vdisk,
+	// while a server for it is reuqired.
+	ErrTemplateClusterNotSpecified = errors.New("template cluster not configured for vdisk")
+)
+
+// Connection defines the interface expected for any ARDB connection.
+type Connection interface {
+	redis.Conn
+
+	// ConnectionConfig returns the configuration used to
+	// configure this connection.
+	ConnectionConfig() config.StorageServerConfig
+}
+
+// newConnection returns a new available ARDB connection from a given pool,
+// using a given storage server config.
+func newConnection(pool *RedisPool, cfg config.StorageServerConfig) *connection {
+	conn := pool.Get(cfg.Address, cfg.Database)
+	return &connection{
+		Conn: conn,
+		cfg:  cfg,
+	}
+}
+
+// connection is a simple struct, which combines an ARDB connection,
+// with its configuration it was created with.
+type connection struct {
+	redis.Conn
+	cfg config.StorageServerConfig
+}
+
+// ConnectionConfig implements Connection.ConnectionConfig
+func (conn *connection) ConnectionConfig() config.StorageServerConfig {
+	return conn.cfg
+}
+
 // ConnProvider defines the interface to get ARDB connections
 // to (meta)data storage servers.
 type ConnProvider interface {
@@ -24,17 +65,21 @@ type ConnProvider interface {
 type DataConnProvider interface {
 	// DataConnection gets an ardb (data) connection based on the given modulo index,
 	// which depends on the available servers in the cluster used by the provider.
-	DataConnection(index int64) (conn redis.Conn, err error)
+	DataConnection(index int64) (conn Connection, err error)
 	// TemplateConnection gets an ardb (template data) connection based on the given modulo index,
 	// which depends on the available servers in the cluster used by the provider.
-	TemplateConnection(index int64) (conn redis.Conn, err error)
+	TemplateConnection(index int64) (conn Connection, err error)
+	// MarkTemplateConnectionInvalid marks the server for a given index invalid,
+	// which is to be used as a hint that a connection for that server no longer has to be returned,
+	// until the connection issue has been resolved.
+	MarkTemplateConnectionInvalid(index int64)
 }
 
 // MetadataConnProvider defines the interface to get an ARDB metadata connection.
 type MetadataConnProvider interface {
 	// MetaConnection gets an ardb (metadata) connection
 	// the the metadata storage server of the cluster used by the provider.
-	MetadataConnection() (conn redis.Conn, err error)
+	MetadataConnection() (conn Connection, err error)
 }
 
 // StaticProvider creates a Static Provider using the given NBD Config.
@@ -87,35 +132,53 @@ type staticRedisProvider struct {
 }
 
 // DataConnection implements DataConnProvider.DataConnection
-func (rp *staticRedisProvider) DataConnection(index int64) (conn redis.Conn, err error) {
+func (rp *staticRedisProvider) DataConnection(index int64) (conn Connection, err error) {
 	bcIndex := index % rp.numberOfServers
-	connConfig := &rp.dataConnectionConfigs[bcIndex]
+	connConfig := rp.dataConnectionConfigs[bcIndex]
 
-	conn = rp.redisPool.Get(connConfig.Address, connConfig.Database)
+	conn = newConnection(rp.redisPool, connConfig)
 	return
 }
 
 // TemplateConnection implements DataConnProvider.TemplateConnection
-func (rp *staticRedisProvider) TemplateConnection(index int64) (conn redis.Conn, err error) {
+func (rp *staticRedisProvider) TemplateConnection(index int64) (conn Connection, err error) {
 	// not all vdisks have a templateStoragecluster defined,
 	// it is therefore not a guarantee that at least one server is available,
 	// a given we do have in the ConnectionString method
 	if rp.numberOfTemplateServers < 1 {
-		err = errNoTemplateAvailable
+		err = ErrTemplateClusterNotSpecified
 		return
 	}
 
 	bcIndex := index % rp.numberOfTemplateServers
-	connConfig := &rp.templateDataConnectionConfigs[bcIndex]
+	connConfig := rp.templateDataConnectionConfigs[bcIndex]
 
-	conn = rp.redisPool.Get(connConfig.Address, connConfig.Database)
+	// if a config address is not given,
+	// it can only be because the server has been marked invalid by the user of this provider.
+	if connConfig.Address == "" {
+		return nil, ErrServerMarkedInvalid
+	}
+
+	conn = newConnection(rp.redisPool, connConfig)
 	return
 }
 
+// MarkTemplateConnectionInvalid implements DataConnProvider.MarkTemplateConnectionInvalid
+func (rp *staticRedisProvider) MarkTemplateConnectionInvalid(index int64) {
+	if rp.numberOfTemplateServers < 1 {
+		return
+	}
+
+	// disable the template server for the given index,
+	// until the next config reload or until the end.
+	bcIndex := index % rp.numberOfTemplateServers
+	rp.templateDataConnectionConfigs[bcIndex].Address = ""
+}
+
 // MetadataConnection implements MetadataConnProvider.MetaConnection
-func (rp *staticRedisProvider) MetadataConnection() (conn redis.Conn, err error) {
+func (rp *staticRedisProvider) MetadataConnection() (conn Connection, err error) {
 	connConfig := rp.metaConnectionConfig
-	conn = rp.redisPool.Get(connConfig.Address, connConfig.Database)
+	conn = newConnection(rp.redisPool, *connConfig)
 	return
 }
 
@@ -149,28 +212,38 @@ type redisProvider struct {
 
 	// used to close background listener
 	done chan struct{}
+
 	// to protect connection configs
-	mux sync.RWMutex
+	dataMux     sync.RWMutex
+	metaMux     sync.RWMutex
+	templateMux sync.RWMutex
 }
 
 // DataConnection implements DataConnProvider.DataConnection
-func (rp *redisProvider) DataConnection(index int64) (redis.Conn, error) {
-	rp.mux.RLock()
-	defer rp.mux.RUnlock()
+func (rp *redisProvider) DataConnection(index int64) (Connection, error) {
+	rp.dataMux.RLock()
+	defer rp.dataMux.RUnlock()
 	return rp.static.DataConnection(index)
 }
 
 // TemplateConnection implements DataConnProvider.TemplateConnection
-func (rp *redisProvider) TemplateConnection(index int64) (redis.Conn, error) {
-	rp.mux.RLock()
-	defer rp.mux.RUnlock()
+func (rp *redisProvider) TemplateConnection(index int64) (Connection, error) {
+	rp.templateMux.RLock()
+	defer rp.templateMux.RUnlock()
 	return rp.static.TemplateConnection(index)
 }
 
+// MarkTemplateConnectionInvalid implements DataConnProvider.MarkTemplateConnectionInvalid
+func (rp *redisProvider) MarkTemplateConnectionInvalid(index int64) {
+	rp.templateMux.Lock()
+	defer rp.templateMux.Unlock()
+	rp.static.MarkTemplateConnectionInvalid(index)
+}
+
 // MetadataConnection implements MetadataConnProvider.MetaConnection
-func (rp *redisProvider) MetadataConnection() (redis.Conn, error) {
-	rp.mux.RLock()
-	defer rp.mux.RUnlock()
+func (rp *redisProvider) MetadataConnection() (Connection, error) {
+	rp.metaMux.RLock()
+	defer rp.metaMux.RUnlock()
 	return rp.static.MetadataConnection()
 }
 
@@ -199,7 +272,13 @@ func (rp *redisProvider) listen(ctx context.Context, vdiskID string, source conf
 		for {
 			select {
 			case cfg := <-ch:
+				rp.dataMux.Lock()
+				rp.metaMux.Lock()
+				rp.templateMux.Lock()
 				rp.static.setConfig(&cfg)
+				rp.dataMux.Unlock()
+				rp.metaMux.Unlock()
+				rp.templateMux.Unlock()
 
 			case <-rp.done:
 				rp.done = nil
@@ -219,9 +298,3 @@ func (rp *redisProvider) Close() error {
 	close(rp.done)
 	return rp.static.Close()
 }
-
-var (
-	// error returned when no template storage cluster has been defined,
-	// while a connection to it was requested.
-	errNoTemplateAvailable = errors.New("no template ardb connection available")
-)

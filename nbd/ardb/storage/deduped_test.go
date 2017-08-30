@@ -329,6 +329,81 @@ func TestGetPrimaryOrTemplateContent(t *testing.T) {
 	testDedupContentExists(t, redisProviderA, testContent)
 }
 
+// test feature implemented for
+// https://github.com/zero-os/0-Disk/issues/369
+func TestDedupedStorageTemplateServerDown(t *testing.T) {
+	const (
+		vdiskIDA   = "a"
+		vdiskIDB   = "b"
+		blockSize  = 8
+		blockCount = 8
+	)
+
+	var (
+		err error
+	)
+
+	redisProviderA := redisstub.NewInMemoryRedisProvider(nil)
+	storageA, err := Deduped(
+		vdiskIDA, blockSize,
+		ardb.DefaultLBACacheLimit, false, redisProviderA)
+	if err != nil || storageA == nil {
+		t.Fatalf("storageA could not be created: %v", err)
+	}
+
+	redisProviderB := redisstub.NewInMemoryRedisProvider(redisProviderA)
+	storageB, err := Deduped(
+		vdiskIDB, blockSize,
+		ardb.DefaultLBACacheLimit, true, redisProviderB)
+	if err != nil || storageB == nil {
+		t.Fatalf("storageB could not be created: %v", err)
+	}
+
+	someContent := []byte{1, 0, 0, 0, 0, 0, 0, 0}
+	someIndex := int64(0)
+
+	someContentPlusOne := []byte{2, 0, 0, 0, 0, 0, 0, 0}
+	someIndexPlusOne := someIndex + 1
+
+	// write some content to the template storage (storageA)
+	err = storageA.SetBlock(someIndex, someContent)
+	if err != nil {
+		t.Fatalf("could not write template content for index %d: %v", someIndex, err)
+	}
+	err = storageA.SetBlock(someIndexPlusOne, someContentPlusOne)
+	if err != nil {
+		t.Fatalf("could not write template content for index %d: %v", someIndexPlusOne, err)
+	}
+	err = storageA.Flush()
+	if err != nil {
+		t.Fatalf("couldn't flush template content: %v", err)
+	}
+
+	// let's copy the metadata from storageA to storageB
+	copyTestMetaData(t, vdiskIDA, vdiskIDB, redisProviderA, redisProviderB)
+
+	// now get that content in storageB, should be possible
+	content, err := storageB.GetBlock(someIndex)
+	if err != nil {
+		t.Fatalf("could not read template content at index %d: %v", someIndex, err)
+	}
+	if !bytes.Equal(someContent, content) {
+		t.Fatalf("invalid content for block index %d: %v", someIndex, content)
+	}
+
+	// now mark template invalid, and that should make it return an expected error instead
+	redisProviderB.MarkTemplateConnectionInvalid(-1)
+	content, err = storageB.GetBlock(someIndexPlusOne)
+	if len(content) != 0 {
+		t.Fatalf("content should be empty but was was: %v",
+			content)
+	}
+	if err != ardb.ErrServerMarkedInvalid {
+		t.Fatalf("error should be '%v', but instead was: %v",
+			ardb.ErrServerMarkedInvalid, err)
+	}
+}
+
 // test in a response to https://github.com/zero-os/0-Disk/issues/89
 func TestGetDedupedTemplateContentDeadlock(t *testing.T) {
 	const (
@@ -485,7 +560,7 @@ func TestListDedupedBlockIndices(t *testing.T) {
 	)
 
 	redisProvider := redisstub.NewInMemoryRedisProvider(nil)
-	address := redisProvider.Address()
+	address := redisProvider.PrimaryAddress()
 	clusterConfig := config.StorageClusterConfig{
 		DataStorage: []config.StorageServerConfig{
 			config.StorageServerConfig{

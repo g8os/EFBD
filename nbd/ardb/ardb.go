@@ -2,6 +2,8 @@ package ardb
 
 import (
 	"errors"
+	"io"
+	"net"
 
 	"github.com/garyburd/redigo/redis"
 	"github.com/zero-os/0-Disk/config"
@@ -16,6 +18,27 @@ const (
 	GibibyteAsBytes int64 = 1024 * 1024 * 1024
 	MebibyteAsBytes int64 = 1024 * 1024
 )
+
+// MapErrorToBroadcastStatus tries to map the given error,
+// returned by a `Connection` operation to a broadcast's message status.
+func MapErrorToBroadcastStatus(err error) (log.MessageStatus, bool) {
+	if netErr, ok := err.(net.Error); ok {
+		if netErr.Timeout() {
+			return log.StatusServerTimeout, true
+		}
+		if netErr.Temporary() {
+			return log.StatusServerTempError, true
+		}
+
+		return log.StatusUnknownError, true
+	}
+
+	if err == io.EOF {
+		return log.StatusServerDisconnect, true
+	}
+
+	return 0, false
+}
 
 // GetConnection gets an ardb connection given a storage server config
 func GetConnection(cfg config.StorageServerConfig) (redis.Conn, error) {

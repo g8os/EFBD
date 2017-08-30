@@ -539,7 +539,7 @@ func notifyFlushError(err error) {
 		status := func() log.MessageStatus {
 			switch e.Code {
 			case lib.StatusTimeoutError:
-				return log.StatusServerTimeout
+				return log.StatusClusterTimeout
 			case lib.StatusInvalidShardAddress:
 				return log.StatusInvalidConfig
 			default:

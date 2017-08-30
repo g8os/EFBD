@@ -125,10 +125,30 @@ func (ss *nonDedupedStorage) getPrimaryOrTemplateContent(blockIndex int64) (cont
 		return // critical err, or content is found
 	}
 
-	content = func() (content []byte) {
+	content, err = func() (content []byte, err error) {
 		// get a connection to a template data storage server, based on the modulo blockIndex
 		conn, err := ss.provider.TemplateConnection(blockIndex)
 		if err != nil {
+			if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
+				log.Errorf("template server error for vdisk %s: %v", ss.vdiskID, err)
+				// broadcast the connection issue to 0-Orchestrator
+				cfg := conn.ConnectionConfig()
+				log.Broadcast(
+					status,
+					log.SubjectStorage,
+					log.ARDBServerTimeoutBody{
+						Address:  cfg.Address,
+						Database: cfg.Database,
+						Type:     log.ARDBTemplateServer,
+						VdiskID:  ss.vdiskID,
+					},
+				)
+				// mark template connection for the given block index invalid,
+				// so it remains marked invalid until next config reload.
+				ss.provider.MarkTemplateConnectionInvalid(blockIndex)
+			} else if err == ardb.ErrTemplateClusterNotSpecified {
+				err = nil
+			}
 			return
 		}
 		defer conn.Close()
@@ -137,32 +157,52 @@ func (ss *nonDedupedStorage) getPrimaryOrTemplateContent(blockIndex int64) (cont
 		// a nil block is returned in case it didn't exist
 		content, err = ardb.RedisBytes(conn.Do("HGET", ss.templateStorageKey, blockIndex))
 		if err != nil {
-			log.Debugf(
-				"content for block %d (vdisk %s) not available in primary-, nor in template storage: %s",
-				blockIndex, ss.templateVdiskID, err.Error())
 			content = nil
+			if err == redis.ErrNil {
+				log.Debugf(
+					"content for block %d (vdisk %s) not available in primary-, nor in template storage: %s",
+					blockIndex, ss.templateVdiskID, err.Error())
+			} else if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
+				log.Errorf("template server error for vdisk %s: %v", ss.vdiskID, err)
+				// broadcast the connection issue to 0-Orchestrator
+				cfg := conn.ConnectionConfig()
+				log.Broadcast(
+					status,
+					log.SubjectStorage,
+					log.ARDBServerTimeoutBody{
+						Address:  cfg.Address,
+						Database: cfg.Database,
+						Type:     log.ARDBTemplateServer,
+						VdiskID:  ss.vdiskID,
+					},
+				)
+				// mark template connection for the given block index invalid,
+				// so it remains marked invalid until next config reload.
+				ss.provider.MarkTemplateConnectionInvalid(blockIndex)
+			}
 		}
 
 		return
 	}()
+	if err != nil || content == nil {
+		return
+	}
 
 	// check if we found the content in the template server
-	if content != nil {
-		// store template content in primary storage asynchronously
-		go func() {
-			err := ss.SetBlock(blockIndex, content)
-			if err != nil {
-				// we won't return error however, but just log it
-				log.Infof(
-					"couldn't store template content block %d in primary storage: %s",
-					blockIndex, err.Error())
-			}
-		}()
+	// store template content in primary storage asynchronously
+	go func() {
+		err := ss.SetBlock(blockIndex, content)
+		if err != nil {
+			// we won't return error however, but just log it
+			log.Infof(
+				"couldn't store template content block %d in primary storage: %s",
+				blockIndex, err.Error())
+		}
+	}()
 
-		log.Debugf(
-			"block %d not available in primary storage, but did find it in template storage",
-			blockIndex)
-	}
+	log.Debugf(
+		"block %d not available in primary storage, but did find it in template storage",
+		blockIndex)
 
 	return
 }

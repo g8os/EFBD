@@ -227,6 +227,67 @@ func TestGetNondedupedTemplateContent(t *testing.T) {
 	testNondedupContentExists(t, redisProviderA, vdiskID, testBlockIndex, testContent)
 }
 
+// test feature implemented for
+// https://github.com/zero-os/0-Disk/issues/369
+func TestNonDedupedStorageTemplateServerDown(t *testing.T) {
+	const (
+		vdiskID = "a"
+	)
+
+	redisProviderA := redisstub.NewInMemoryRedisProvider(nil)
+	storageA, err := NonDeduped(vdiskID, "", 8, true, redisProviderA)
+	if err != nil || storageA == nil {
+		t.Fatalf("storageA could not be created: %v", err)
+	}
+
+	redisProviderB := redisstub.NewInMemoryRedisProvider(redisProviderA)
+	storageB, err := NonDeduped(vdiskID, "", 8, true, redisProviderB)
+	if err != nil || storageB == nil {
+		t.Fatalf("storageB could not be created: %v", err)
+	}
+
+	someContent := []byte{1, 0, 0, 0, 0, 0, 0, 0}
+	someIndex := int64(0)
+
+	someContentPlusOne := []byte{2, 0, 0, 0, 0, 0, 0, 0}
+	someIndexPlusOne := someIndex + 1
+
+	// write some content to the template storage (storageA)
+	err = storageA.SetBlock(someIndex, someContent)
+	if err != nil {
+		t.Fatalf("could not write template content for index %d: %v", someIndex, err)
+	}
+	err = storageA.SetBlock(someIndexPlusOne, someContentPlusOne)
+	if err != nil {
+		t.Fatalf("could not write template content for index %d: %v", someIndexPlusOne, err)
+	}
+	err = storageA.Flush()
+	if err != nil {
+		t.Fatalf("couldn't flush template content: %v", err)
+	}
+
+	// now get that content in storageB, should be possible
+	content, err := storageB.GetBlock(someIndex)
+	if err != nil {
+		t.Fatalf("could not read template content at index %d: %v", someIndex, err)
+	}
+	if !bytes.Equal(someContent, content) {
+		t.Fatalf("invalid content for block index %d: %v", someIndex, content)
+	}
+
+	// now mark template invalid, and that should make it return an expected error instead
+	redisProviderB.MarkTemplateConnectionInvalid(-1)
+	content, err = storageB.GetBlock(someIndexPlusOne)
+	if len(content) != 0 {
+		t.Fatalf("content should be empty but was was: %v",
+			content)
+	}
+	if err != ardb.ErrServerMarkedInvalid {
+		t.Fatalf("error should be '%v', but instead was: %v",
+			ardb.ErrServerMarkedInvalid, err)
+	}
+}
+
 func TestGetNondedupedTemplateContentDeadlock(t *testing.T) {
 	const (
 		vdiskID    = "a"
@@ -358,7 +419,7 @@ func TestListNonDedupedBlockIndices(t *testing.T) {
 		blockCount = 16
 	)
 
-	redisProvider := redisstub.NewInMemoryRedisProviderMultiServers(4, false)
+	redisProvider := redisstub.NewInMemoryRedisProviderMultiServers(4, 0, false)
 	defer redisProvider.Close()
 	clusterConfig := redisProvider.ClusterConfig()
 
