@@ -63,7 +63,7 @@ const (
 	SubjectETCD
 	// SubjectTlog identifies the messages has to do with tlog
 	SubjectTlog
-	// SubjectT0Stor identifies the messages has to do with 0-stor
+	// SubjectZeroStor identifies the messages has to do with zerostor
 	SubjectZeroStor
 )
 
@@ -72,7 +72,7 @@ const (
 	subjectStorageStr  = "ardb"
 	subjectETCDStr     = "etcd"
 	subjectTlogStr     = "tlog"
-	subjectZeroStorStr = "0-stor"
+	subjectZeroStorStr = "zerostor"
 	subjectNilStr      = ""
 )
 
@@ -82,10 +82,12 @@ type MessageStatus uint
 
 // status codes
 const (
-	StatusUnknownError   MessageStatus = 400
-	StatusClusterTimeout MessageStatus = 401
-	StatusServerTimeout  MessageStatus = 402
-	StatusInvalidConfig  MessageStatus = 403
+	StatusUnknownError     MessageStatus = 400
+	StatusClusterTimeout   MessageStatus = 401
+	StatusInvalidConfig    MessageStatus = 403
+	StatusServerTimeout    MessageStatus = 421
+	StatusServerDisconnect MessageStatus = 422
+	StatusServerTempError  MessageStatus = 423
 )
 
 // InvalidConfigBody is the data given for a StatusInvalidConfig message.
@@ -97,3 +99,55 @@ type InvalidConfigBody struct {
 	// which has extra requirements the configs does not fullfill.
 	VdiskID string `json:"vdiskID,omitempty"`
 }
+
+// ARDBServerTimeoutBody is the data given
+// for a ARDB StatusServerTimeout message.
+type ARDBServerTimeoutBody struct {
+	Address  string         `json:"address"`
+	Database int            `json:"db"`
+	Type     ARDBServerType `json:"type"`
+	VdiskID  string         `json:"vdiskID"`
+}
+
+// ARDBServerType defines the type of ARDB Server,
+// for any broadcast purposes.
+type ARDBServerType uint8
+
+// String implements Stringer.String
+func (st ARDBServerType) String() string {
+	switch st {
+	case ARDBPrimaryServer:
+		return ardbPrimaryServerStr
+	case ARDBSlaveServer:
+		return ardbSlaveServer
+	case ARDBTemplateServer:
+		return ardbTemplateServer
+	default:
+		return ""
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.MarshalText.
+// Returns this message subject in string format.
+func (st ARDBServerType) MarshalText() ([]byte, error) {
+	str := st.String()
+	if str == "" {
+		return nil, errors.New("invalid ardb server type cannot be marshalled")
+	}
+
+	return []byte(str), nil
+}
+
+// ARDBServerType enum values
+const (
+	ARDBPrimaryServer ARDBServerType = iota
+	ARDBSlaveServer
+	ARDBTemplateServer
+)
+
+// subjects
+const (
+	ardbPrimaryServerStr = "primary"
+	ardbSlaveServer      = "slave"
+	ardbTemplateServer   = "template"
+)

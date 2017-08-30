@@ -125,12 +125,16 @@ func (ds *dedupedStorage) Flush() (err error) {
 	return
 }
 
-func (ds *dedupedStorage) getDataConnection(hash zerodisk.Hash) (redis.Conn, error) {
+func (ds *dedupedStorage) getDataConnection(hash zerodisk.Hash) (ardb.Connection, error) {
 	return ds.provider.DataConnection(int64(hash[0]))
 }
 
-func (ds *dedupedStorage) getTemplateConnection(hash zerodisk.Hash) (redis.Conn, error) {
+func (ds *dedupedStorage) getTemplateConnection(hash zerodisk.Hash) (ardb.Connection, error) {
 	return ds.provider.TemplateConnection(int64(hash[0]))
+}
+
+func (ds *dedupedStorage) markTemplateConnectionInvalid(hash zerodisk.Hash) {
+	ds.provider.MarkTemplateConnectionInvalid(int64(hash[0]))
 }
 
 // getPrimaryContent gets content from the primary storage.
@@ -160,12 +164,33 @@ func (ds *dedupedStorage) getPrimaryOrTemplateContent(hash zerodisk.Hash) (conte
 	}
 
 	// try to fetch it from the template storage if available
-	content = func() (content []byte) {
+	content, err = func() (content []byte, err error) {
 		conn, err := ds.getTemplateConnection(hash)
 		if err != nil {
 			log.Debugf(
 				"content not available in primary storage for %v and no template storage available: %s",
 				hash, err.Error())
+			if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
+				log.Errorf("template server error for vdisk %s: %v", ds.vdiskID, err)
+				// broadcast the connection issue to 0-Orchestrator
+				cfg := conn.ConnectionConfig()
+				log.Broadcast(
+					status,
+					log.SubjectStorage,
+					log.ARDBServerTimeoutBody{
+						Address:  cfg.Address,
+						Database: cfg.Database,
+						Type:     log.ARDBTemplateServer,
+						VdiskID:  ds.vdiskID,
+					},
+				)
+				// mark template connection for the given block index invalid,
+				// so it remains marked invalid until next config reload.
+				ds.markTemplateConnectionInvalid(hash)
+			} else if err == ardb.ErrTemplateClusterNotSpecified {
+				err = nil
+			}
+
 			return
 		}
 		defer conn.Close()
@@ -173,35 +198,55 @@ func (ds *dedupedStorage) getPrimaryOrTemplateContent(hash zerodisk.Hash) (conte
 		content, err = ardb.RedisBytes(conn.Do("GET", hash.Bytes()))
 		if err != nil {
 			content = nil
-			log.Debugf(
-				"content for %v not available in primary-, nor in template storage: %s",
-				hash, err.Error())
+			if err == redis.ErrNil {
+				log.Debugf(
+					"content for %v not available in primary-, nor in template storage: %s",
+					hash, err.Error())
+			} else if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
+				log.Errorf("template server error for vdisk %s: %v", ds.vdiskID, err)
+				// broadcast the connection issue to 0-Orchestrator
+				cfg := conn.ConnectionConfig()
+				log.Broadcast(
+					status,
+					log.SubjectStorage,
+					log.ARDBServerTimeoutBody{
+						Address:  cfg.Address,
+						Database: cfg.Database,
+						Type:     log.ARDBTemplateServer,
+						VdiskID:  ds.vdiskID,
+					},
+				)
+				// mark template connection for the given block index invalid,
+				// so it remains marked invalid until next config reload.
+				ds.markTemplateConnectionInvalid(hash)
+			}
 		}
 
 		return
 	}()
-
-	if content != nil {
-		// store template content in primary storage asynchronously
-		go func() {
-			err := ds.setContent(hash, content)
-			if err != nil {
-				// we won't return error however, but just log it
-				log.Errorf("couldn't store template content in primary storage: %s", err.Error())
-				return
-			}
-
-			log.Debugf(
-				"stored template content for %v in primary storage (asynchronously)",
-				hash)
-		}()
-
-		log.Debugf(
-			"content not available in primary storage for %v, but did find it in template storage",
-			hash)
+	if content == nil || err != nil {
+		return
 	}
 
-	// err = nil, content = ?
+	// store template content in primary storage asynchronously
+	go func() {
+		err := ds.setContent(hash, content)
+		if err != nil {
+			// we won't return error however, but just log it
+			log.Errorf("couldn't store template content in primary storage: %s", err.Error())
+			return
+		}
+
+		log.Debugf(
+			"stored template content for %v in primary storage (asynchronously)",
+			hash)
+	}()
+
+	log.Debugf(
+		"content not available in primary storage for %v, but did find it in template storage",
+		hash)
+
+	// err = nil, content != nil
 	return
 }
 

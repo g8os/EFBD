@@ -41,7 +41,7 @@ func TestSlaveSyncEndToEnd(t *testing.T) {
 
 	// 0-stor
 	stubSource, _, cleanFunc := newZeroStorConfig(t, vdiskID, conf.PrivKey, conf.DataShards,
-		conf.ParityShards, redisProvider.Address())
+		conf.ParityShards, redisProvider.PrimaryAddress())
 	defer cleanFunc()
 
 	// Slave syncer

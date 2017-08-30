@@ -56,20 +56,48 @@ Thanks to the [0-Log library][zerolog] the final output of the example above wou
 
 | status code  | meaning |
 | ----- | ------- |
+| `400` | generic/unknown error |
 | `401` | cluster time out |
 | `403` | invalid config |
+| `421` | server timeout |
+| `422` | server disconnect |
+| `423` | server temporary error |
 
 #### Status Subjects
 
 | subject  | related to: |
 | ----- | ------- |
+| `ardb` | (our usage of) an [ardb][ardb] server/cluster |
 | `etcd` | (our usage of) an [etcd][etcd] server/cluster |
+| `zerostor` | (our usage of) an [zerostor][zerostor] server/cluster |
 
 ### Messages
 
 What follows is a list of all possible messages broadcasted by 0-Disk services,
 including their format, its reason and what we expect to be done about it (by the [0-Orchestrator][zeroOrchestrator]).
 
+#### ardb storage server issues
+
+```js
+{
+    "subject": "ardb",       // ardb
+    "status": 421,           // all possible status codes: { 400, 421, 422, 423 }
+    "data": {
+        "address": "1.2.3.4:16379", // address of ardb server
+        "db": 41,                   // database index of ardb server
+        "type": "template",         // ardb server type, options: {primary, slave, template}
+        "vdiskID": "vd2",           // vdiskID this server ardb server was used for
+    },
+}
+```
+
+Sent when we get a permanent/temporary (net) timeout, while trying to apply one or multiple operations on an ARDB server.
+It is for example sent when we can't fetch content from a template server due to a connection timeout.
+
+This is a critical failure and can't be restored from in most cases,  without intervention from the [0-Orchestrator][zeroOrchestrator].
+
+This message is send in the hope that the ardb server can come back online, ready for use by the 0-Disk services in question,
+or if that is not possible any other solution that makes it possible again to recover (from) the lost functionality.
 
 #### etcd cluster time out
 
@@ -86,6 +114,42 @@ Sent when we get a time out while trying to setup or use a connection to/of an e
 This is a critical failure and can't be restored from in most cases, without intervention from the [0-Orchestrator][zeroOrchestrator]. One of the consequences of the [etcd][etcd] cluster being down, is that no new [vdisk][vdisk] can be mounted until the cluster is back online. 
 
 This message is send in the hope that the etcd cluster can come back online, ready for use by the 0-Disk services in question.
+
+#### zerostor cluster time out
+
+```js
+{
+    "subject": "zerostor",   // 0-stor
+    "status": 401,           // cluster time out
+    "data": ["1.1.1.1:22"],  // endpoints of the cluster
+}
+```
+
+Sent when we get a time out while trying to setup or use a connection to/of a 0-stor cluster.
+It is for example sent when get a timeout error while trying to flush content to the 0-stor cluster in question.
+
+This is a critical failure and can't be restored from without intervention from the [0-Orchestrator][zeroOrchestrator].
+
+This message is send in the hope that the 0-stor cluster can come back online, ready for use by the 0-Disk services in question.
+Or if that is not possible, that it can be replaced by another 0-stor cluster which is active and ready for useage.
+
+#### zerostor cluster unknown error
+
+```js
+{
+    "subject": "zerostor",   // 0-stor
+    "status": 400,           // unknown error
+    "data": ["1.1.1.1:22"],  // endpoints of the cluster
+}
+```
+
+Sent when we get an unknown error while trying to setup or use a connection to/of a 0-stor cluster.
+It is for example sent when get an unknown error while trying to flush content to the 0-stor cluster in question.
+
+This is a critical failure and can't be restored from without intervention from the [0-Orchestrator][zeroOrchestrator].
+
+This message is send in the hope that the 0-stor cluster can come back online, ready for use by the 0-Disk services in question.
+Or if that is not possible, that it can be replaced by another 0-stor cluster which is active and ready for useage.
 
 #### received an invalid config from an etcd cluster
 
@@ -132,5 +196,7 @@ More in-depth information about the actual implementation in 0-Disk can be found
 [tlog]: /docs/glossary.md#tlog
 [etcd]: /docs/glossary.md#etcd
 [vdisk]: /docs/glossary.md#vdisk
+
+[zerostor]: https://github.com/zero-os/0-stor
 
 [zeroDiskLogGodcs]: https://godoc.org/github.com/zero-os/0-Disk/log
