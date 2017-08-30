@@ -407,7 +407,7 @@
   branch = "master"
   name = "github.com/zero-os/0-log"
   packages = ["."]
-  revision = "ccc8546908d549fcdeb59a357e0c3c41653d3a19"
+  revision = "add221c3f0f49deca312d00f6a08658948ae9c0c"
 
 [[projects]]
   branch = "master"

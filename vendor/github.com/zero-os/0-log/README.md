@@ -1,4 +1,4 @@
-# 0-log
+# 0-log [![Build Status](https://travis-ci.org/zero-os/0-log.svg?branch=master)](https://travis-ci.org/zero-os/0-log)
 
 A package that prints out log messages in a format the [0-Core][core] log monitor can read.
 

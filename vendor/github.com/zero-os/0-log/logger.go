@@ -153,7 +153,7 @@ func msgStatistics(msg interface{}) (string, error) {
 		return "", err
 	}
 
-	str := fmt.Sprintf("%s:%f|%s",
+	str := fmt.Sprintf("%s:%-1g|%s",
 		statMsg.Key, statMsg.Value, statMsg.Operation)
 
 	if len(statMsg.Tags) != 0 {

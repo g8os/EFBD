@@ -144,12 +144,20 @@ func TestStatsInput(t *testing.T) {
 	// test message formatting
 	str, err := msgStatistics(valFullStatMsg)
 	assertNilError(t, err)
-	assertEqual(t, "somekey:123.456000|A|foo=bar", str)
+	assertEqual(t, "somekey:123.456|A|foo=bar", str)
 
 	// test full log output
 	var tw testWriter
 	printLog(&tw, LevelStatistics, str)
-	assertEqual(t, "10::somekey:123.456000|A|foo=bar\n", tw.Val)
+	assertEqual(t, "10::somekey:123.456|A|foo=bar\n", tw.Val)
+
+	// test message formatting with a floating value,
+	// which ensures we are not rounding up to 6,
+	// and instead using as much precision as is needed to preserve the value
+	valFullStatMsg.Value = 1.1234000001
+	str, err = msgStatistics(valFullStatMsg)
+	assertNilError(t, err)
+	assertEqual(t, "somekey:1.1234000001|A|foo=bar", str)
 
 	// test invalid  message
 	_, err = msgStatistics("")
