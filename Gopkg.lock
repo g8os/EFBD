@@ -413,7 +413,7 @@
   branch = "master"
   name = "github.com/zero-os/0-stor"
   packages = ["client","client/config","client/goraml","client/goraml/goraml","client/goraml/librairies/reservation","client/itsyouonline","client/lib","client/lib/block","client/lib/chunker","client/lib/compress","client/lib/distribution","client/lib/encrypt","client/lib/hash","client/lib/replication","client/meta","client/meta/block","client/meta/embedserver","client/meta/schema","client/pipe","client/stor","client/stor/common","client/stor/grpc","client/stor/rest","grpc_store","server/api/grpc","server/api/rest","server/db","server/db/badger","server/goraml","server/goraml/librairies/reservation","server/jwt","server/manager","server/routes","server/stats","server/storserver"]
-  revision = "4e21bbc64897d83da461b74f52d384d9d73604e1"
+  revision = "77fc7cbaeb97bc7e94d611ed146d67a8156248b8"
 
 [[projects]]
   branch = "master"

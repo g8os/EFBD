@@ -6,8 +6,10 @@ import (
 )
 
 const (
+	// ShardType0Stor means that it is 0-stor shard
 	ShardType0Stor = "0-stor"
-	ShardTypeEtcd  = "etcd"
+	// ShardTypeEtcd means that it is etcd shard
+	ShardTypeEtcd = "etcd"
 )
 
 const (
@@ -63,6 +65,7 @@ func (se ShardError) Nil() bool {
 	return len(se.errors) == 0
 }
 
+// Num returns the number of underlying errors
 func (se ShardError) Num() int {
 	se.mux.Lock()
 	defer se.mux.Unlock()
@@ -82,4 +85,12 @@ func (se ShardError) Error() string {
 		return err.Error()
 	}
 	return string(b)
+}
+
+// Errors returns the underlying errors
+func (se ShardError) Errors() []serverError {
+	se.mux.Lock()
+	defer se.mux.Unlock()
+
+	return se.errors
 }

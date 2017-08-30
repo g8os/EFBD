@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/emirpasic/gods/sets/treeset"
+	"github.com/zero-os/0-stor/client/lib"
 
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
@@ -483,7 +484,8 @@ func (vd *vdisk) runFlusher(ctx context.Context, cancelFunc context.CancelFunc) 
 
 		rawAgg, err := vd.storClient.ProcessStore(blocks)
 		if err != nil {
-			log.Infof("flush %v failed: %v", vd.id, err)
+			log.Errorf("flush %v failed: %v", vd.id, err)
+			notifyFlushError(err)
 			status = tlog.BlockStatusFlushFailed
 		}
 
@@ -504,9 +506,12 @@ func (vd *vdisk) runFlusher(ctx context.Context, cancelFunc context.CancelFunc) 
 		}
 
 		if status != tlog.BlockStatusFlushOK {
-			// we are failing to flush
-			// it is better to kill ourself
-			return
+			// We are failing to flush!
+			// Put the blocks back, hope it
+			// can be flushed next time.
+			// FIXME at https://github.com/zero-os/0-Disk/issues/399
+			tlogs = append(tlogs, blocks...)
+			continue
 		}
 		// update last sequence flushed
 		if len(seqs) > 0 {
@@ -514,6 +519,34 @@ func (vd *vdisk) runFlusher(ctx context.Context, cancelFunc context.CancelFunc) 
 		}
 		// send aggregation to slave syncer
 		vd.sendAggToSlaveSync(rawAgg)
+	}
+}
+
+func notifyFlushError(err error) {
+	se, ok := err.(lib.ShardError)
+	if !ok {
+		return
+	}
+	for _, e := range se.Errors() {
+		subj := func() log.MessageSubject {
+			switch e.Kind {
+			case lib.ShardTypeEtcd:
+				return log.SubjectETCD
+			default:
+				return log.SubjectZeroStor
+			}
+		}()
+		status := func() log.MessageStatus {
+			switch e.Code {
+			case lib.StatusTimeoutError:
+				return log.StatusServerTimeout
+			case lib.StatusInvalidShardAddress:
+				return log.StatusInvalidConfig
+			default:
+				return log.StatusUnknownError
+			}
+		}()
+		log.Broadcast(status, subj, e.Addrs)
 	}
 }
 
