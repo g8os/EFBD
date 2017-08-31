@@ -48,7 +48,10 @@ func NewWriter(w block.Writer, conf Config) (*Writer, error) {
 // WriteBlock implements block.Writer interface
 func (w Writer) WriteBlock(key, val []byte, md *meta.Meta) (*meta.Meta, error) {
 	hashed := w.hasher.Hash(val)
-	md.SetSize(uint64(len(hashed)))
+
+	chunk := md.GetChunk(key)
+	chunk.Size = uint64(len(hashed))
+
 	return w.w.WriteBlock(key, hashed, md)
 }
 

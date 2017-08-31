@@ -7,7 +7,7 @@ struct Metadata {
 	size @0 :UInt64;
 	# Size of the data in bytes
 
-	epoch @1 :UInt64;
+	epoch @1 :Int64;
 	# creation epoch
 
 	key @2 :Data;
@@ -16,18 +16,26 @@ struct Metadata {
 	encrKey @3 :Data;
 	# Encryption key used to encrypt this file
 
-	shard @4 :List(Text);
-	# List of shard of the file. It's a url the 0-stor
+	struct Chunk {
+		key @0 :Data;
+		# Key used in 0-stor
+
+		size @1 :UInt64;
+		# Size of the chunk in bytes
+
+		shards @2 :List(Text);
+		# List of shards of the chunk. It's a url the 0-stor
+	}
+	chunks @4 :List(Chunk);
+	# List of chunks of the file.
+	# Can be only 1 if we don't split the file with chunker pipe
 
 	previous @5 :Data;
 	# Key to the previous metadata entry
-	
+
 	next @6 :Data;
 	# Key to the next metadata entry
-	
+
 	configPtr @7 :Data;
 	# Key to the configuration used by the lib to set the data.
-
-	numOfChunks @8:UInt64;
-	# number of chunks
 }

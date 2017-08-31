@@ -55,7 +55,7 @@ func ValidateNamespaceLabel(nsid string) error {
 }
 
 // check JWT token and get it's scopes
-func CheckJWTGetScopes(tokenStr string) ([]string, error) {
+func CheckJWTGetScopes(tokenStr string) ([]string, int64, error) {
 	jwtStr := strings.TrimSpace(strings.TrimPrefix(tokenStr, "Bearer"))
 
 	token, err := jwtgo.Parse(jwtStr, func(token *jwtgo.Token) (interface{}, error) {
@@ -65,17 +65,22 @@ func CheckJWTGetScopes(tokenStr string) ([]string, error) {
 		return iyoPublicKey, nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	claims, ok := token.Claims.(jwtgo.MapClaims)
 	if !(ok && token.Valid) {
-		return nil, fmt.Errorf("invalid token")
+		return nil, 0, fmt.Errorf("invalid token")
 	}
 
 	var scopes []string
 	for _, v := range claims["scope"].([]interface{}) {
 		scopes = append(scopes, v.(string))
 	}
-	return scopes, nil
+
+	exp, ok := claims["exp"].(float64)
+	if !ok {
+		return nil, 0, fmt.Errorf("invalid expiration claims in token")
+	}
+	return scopes, int64(exp), nil
 }

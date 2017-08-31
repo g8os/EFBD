@@ -22,24 +22,30 @@ func TestReplication(t *testing.T) {
 
 func testReplication(t *testing.T, async bool) {
 	var writers []block.Writer
-	numWriter := 10
+	var err error
+	numWriter := 1
 	data := make([]byte, 4096)
 	rand.Read(data)
+	key := []byte("testkey")
 
 	// create block writers which do the replication
 	for i := 0; i < numWriter; i++ {
 		writers = append(writers, block.NewBytesBuffer())
 	}
 
-	md, err := meta.New(nil, 0, nil)
-	require.Nil(t, err)
+	md := meta.New(key)
 
 	w := NewWriter(writers, Config{Async: async})
-	md, err = w.WriteBlock(nil, data, md)
-	assert.Nil(t, err)
-	assert.Equal(t, numWriter*len(data), int(md.Size()))
+	md, err = w.WriteBlock(key, data, md)
+	require.NoError(t, err)
+
+	assert.Equal(t, len(data), int(md.Size()), "size of the file in metadata is not valid")
+	// assert.Equal(t, len(writers), len(md.Chunks[0].Shards), "shard number is not valid")
 	for i := 0; i < numWriter; i++ {
 		buff := writers[i].(*block.BytesBuffer)
-		assert.Equal(t, data, buff.Bytes())
+		assert.Equal(t, data, buff.Bytes(), "content of the replication is not valid")
+	}
+	for _, chunk := range md.Chunks {
+		assert.EqualValues(t, len(data), chunk.Size, "size of the chunks is not valid")
 	}
 }

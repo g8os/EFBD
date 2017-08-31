@@ -19,7 +19,12 @@ func newSnappyWriter(w block.Writer) *snappyWriter {
 
 func (sw snappyWriter) WriteBlock(key, val []byte, md *meta.Meta) (*meta.Meta, error) {
 	encoded := snappy.Encode(nil, val)
-	md.SetSize(uint64(len(encoded)))
+
+	// update chunk size in metadata
+	// update chunk size in metadata
+	chunk := md.GetChunk(key)
+	chunk.Size = uint64(len(encoded))
+
 	return sw.w.WriteBlock(key, encoded, md)
 }
 

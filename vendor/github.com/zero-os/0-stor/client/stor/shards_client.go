@@ -72,35 +72,32 @@ func (sc *ShardsClient) ObjectCreate(key, val []byte, refList []string) (*meta.M
 			break
 		}
 	}
-
-	return meta.New(key, uint64(len(val)), []string{shard})
+	md := meta.New(key)
+	chunk := md.GetChunk(key)
+	chunk.Shards = []string{shard}
+	chunk.Size = uint64(len(val))
+	return md, nil
 }
 
 // ObjectGet gets the data based on info in the metadata
 func (sc *ShardsClient) ObjectGet(md *meta.Meta) ([]byte, error) {
-	key, err := md.Key()
-	if err != nil {
-		return nil, err
-	}
+	var (
+		obj *common.Object
+		cli Client
+		err error
+	)
 
-	// get server shards
-	shards, err := md.GetShardsSlice()
-	if err != nil {
-		return nil, err
-	}
+	for _, chunk := range md.Chunks {
+		for _, shard := range chunk.Shards {
+			cli, err = sc.getClient(shard)
+			if err != nil {
+				continue
+			}
 
-	var obj *common.Object
-	var cli Client
-
-	for _, shard := range shards {
-		cli, err = sc.getClient(shard)
-		if err != nil {
-			continue
-		}
-
-		obj, err = cli.ObjectGet(key)
-		if err == nil {
-			return obj.Value, nil
+			obj, err = cli.ObjectGet(md.Key)
+			if err == nil {
+				return obj.Value, nil
+			}
 		}
 	}
 	return nil, err

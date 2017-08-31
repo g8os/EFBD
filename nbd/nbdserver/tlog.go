@@ -109,7 +109,7 @@ type transaction struct {
 	Sequence  uint64
 	Content   []byte
 	Index     int64
-	Timestamp uint64
+	Timestamp int64
 }
 
 // SetBlock implements BlockStorage.SetBlock
@@ -611,7 +611,7 @@ func (tls *tlogStorage) getLatestSequence() (sequence uint64) {
 // using an interface makes it possible to use a dummy version
 // for testing purposes
 type tlogClient interface {
-	Send(op uint8, seq uint64, index int64, timestamp uint64, data []byte) error
+	Send(op uint8, seq uint64, index int64, timestamp int64, data []byte) error
 	ForceFlushAtSeq(uint64) error
 	WaitNbdSlaveSync() error
 	ChangeServerAddresses([]string)

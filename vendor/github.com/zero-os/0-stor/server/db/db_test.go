@@ -82,7 +82,9 @@ func TestObjectValidateCRC(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.True(t, obj2.ValidCRC(), "CRC should be valid")
-	obj2.Data[3] = -obj2.Data[3] // corrupte the data
+	for i := 0; i < 10; i++ {
+		obj2.Data[i] = -obj2.Data[i] // corrupte the data
+	}
 	assert.False(t, obj2.ValidCRC(), "CRC should be different")
 }
 

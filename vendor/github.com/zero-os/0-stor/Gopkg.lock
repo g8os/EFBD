@@ -164,6 +164,12 @@
   version = "1.0.0"
 
 [[projects]]
+  name = "github.com/karlseguin/ccache"
+  packages = ["."]
+  revision = "a2d62155777b39595c825ed3824279e642a5db3c"
+  version = "v2.0.2"
+
+[[projects]]
   name = "github.com/matttproud/golang_protobuf_extensions"
   packages = ["pbutil"]
   revision = "3247c84500bff8d9fb6d579d800f20b3e091582c"
@@ -322,6 +328,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "dafe38407c292e78baee97fab8d9da1bc9c4d0cc26b40f0eef81c9daf26effcc"
+  inputs-digest = "476a2360f39264da01fa5a04816f1ced8a7030cf7cff03a3a0d900557eba9bda"
   solver-name = "gps-cdcl"
   solver-version = 1

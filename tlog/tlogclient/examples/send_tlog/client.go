@@ -4,7 +4,6 @@ import (
 	"flag"
 	"io"
 	"sync"
-	"time"
 
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
@@ -84,7 +83,7 @@ func main() {
 	// send the data
 	for i := 0; i < numLogsToSend; i++ {
 		seq := uint64(i)
-		err := client.Send(schema.OpSet, seq, int64(seq), uint64(time.Now().Unix()), data)
+		err := client.Send(schema.OpSet, seq, int64(seq), tlog.TimeNowTimestamp(), data)
 		if err != nil {
 			log.Fatalf("send failed at seq=%v, err= %v", seq, err)
 			return

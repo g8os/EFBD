@@ -64,13 +64,15 @@ func (sd StorDistributor) WriteBlock(key, value []byte, md *meta.Meta) (*meta.Me
 	}
 
 	var (
-		shardErr lib.ShardError
+		shardErr = &lib.ShardError{}
 		wg       sync.WaitGroup
 	)
 
 	wg.Add(len(encoded))
+
 	for i, piece := range encoded {
 		go func(idx int, data []byte) {
+
 			defer wg.Done()
 			if _, err := sd.storClients[idx].ObjectCreate(key, data, nil); err != nil {
 				shardErr.Add([]string{sd.shards[idx]}, lib.ShardType0Stor, err, 0)
@@ -84,14 +86,9 @@ func (sd StorDistributor) WriteBlock(key, value []byte, md *meta.Meta) (*meta.Me
 		return md, shardErr
 	}
 
-	if err := sd.updateMeta(md, len(value), sd.shards); err != nil {
-		return md, err
-	}
-
-	if err := sd.metaCli.Put(string(key), md); err != nil {
-		shardErr.Add(sd.metaCli.Endpoints(), lib.ShardTypeEtcd, err, 0)
-		return nil, shardErr
-	}
+	chunk := md.GetChunk(key)
+	chunk.Size = uint64(len(value))
+	chunk.Shards = sd.shards
 
 	mdBytes, err := md.Bytes()
 	if err != nil {
@@ -99,11 +96,6 @@ func (sd StorDistributor) WriteBlock(key, value []byte, md *meta.Meta) (*meta.Me
 	}
 
 	return sd.w.WriteBlock(key, mdBytes, md)
-}
-
-func (sd StorDistributor) updateMeta(md *meta.Meta, size int, shards []string) error {
-	md.SetSize(uint64(size))
-	return md.SetShardSlice(shards)
 }
 
 // StorRestorer defines distributor that get the data
@@ -120,8 +112,7 @@ type StorRestorer struct {
 }
 
 // NewStorRestorer creates new StorRestorer
-func NewStorRestorer(conf Config, shards, metaShards []string, proto, org, namespace,
-	iyoToken string) (*StorRestorer, error) {
+func NewStorRestorer(conf Config, shards, metaShards []string, proto, org, namespace, iyoToken string) (*StorRestorer, error) {
 
 	dec, err := NewDecoder(conf.Data, conf.Parity)
 	if err != nil {
@@ -153,60 +144,54 @@ func (sr StorRestorer) ReadBlock(metaKey []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	key, err := md.Key()
-	if err != nil {
-		return nil, err
-	}
+	pieces := make([][]byte, sr.dec.k+sr.dec.m)
 
-	shards, err := md.GetShardsSlice()
-	if err != nil {
-		return nil, err
-	}
-
-	chunks := make([][]byte, sr.dec.k+sr.dec.m)
-
-	// read all chunks from stor.Clients concurrently
+	// read all pieces from stor.Clients concurrently
 	var (
 		mux      sync.Mutex
 		wg       sync.WaitGroup
-		shardErr lib.ShardError
+		shardErr = &lib.ShardError{}
 	)
 
-	wg.Add(len(shards))
+	for _, chunk := range md.Chunks {
 
-	for i, v := range shards {
-		// start goroutine for each shard
-		go func(idx int, shard string) {
-			defer wg.Done()
+		for i, shard := range chunk.Shards {
 
-			// get value from each shard
-			val := func() (val []byte) {
-				// get the proper shard
-				sc, err := sr.getStorClient(shard)
-				if err != nil {
-					shardErr.Add([]string{shard}, lib.ShardType0Stor, err, lib.StatusInvalidShardAddress)
+			wg.Add(1)
+
+			// start goroutine for each shard
+			go func(idx int, shard string) {
+				defer wg.Done()
+
+				// get value from each shard
+				val := func() (val []byte) {
+					// get the proper shard
+					sc, err := sr.getStorClient(shard)
+					if err != nil {
+						shardErr.Add([]string{shard}, lib.ShardType0Stor, err, lib.StatusInvalidShardAddress)
+						return
+					}
+
+					// get the object
+					obj, err := sc.ObjectGet(chunk.Key)
+					if err != nil {
+						shardErr.Add([]string{shard}, lib.ShardType0Stor, err, lib.StatusUnknownError)
+						return
+					}
+
+					// store the value
+					val = obj.Value
 					return
+				}()
+
+				mux.Lock()
+				defer mux.Unlock()
+
+				if len(val) != 0 {
+					pieces[idx] = val
 				}
-
-				// get the object
-				obj, err := sc.ObjectGet(key)
-				if err != nil {
-					shardErr.Add([]string{shard}, lib.ShardType0Stor, err, lib.StatusUnknownError)
-					return
-				}
-
-				// store the value
-				val = obj.Value
-				return
-			}()
-
-			mux.Lock()
-			defer mux.Unlock()
-
-			if len(val) != 0 {
-				chunks[idx] = val
-			}
-		}(i, v)
+			}(i, shard)
+		}
 	}
 	wg.Wait()
 
@@ -216,7 +201,7 @@ func (sr StorRestorer) ReadBlock(metaKey []byte) ([]byte, error) {
 	}
 
 	// decode
-	return sr.dec.Decode(chunks, int(md.Size()))
+	return sr.dec.Decode(pieces, int(md.Size()))
 }
 
 func (sr *StorRestorer) getStorClient(shard string) (stor.Client, error) {
@@ -241,8 +226,7 @@ func (sr *StorRestorer) createStorClients(shards []string) error {
 			continue
 		}
 
-		clients, err := createStorClientsWithToken(sr.conf, []string{shard}, sr.proto,
-			sr.org, sr.namespace, sr.jwtToken)
+		clients, err := createStorClientsWithToken(sr.conf, []string{shard}, sr.proto, sr.org, sr.namespace, sr.jwtToken)
 		if err != nil {
 			return err
 		}

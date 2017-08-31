@@ -16,8 +16,7 @@ type StorReader struct {
 	namespace string
 }
 
-func NewStorReader(conf Config, shards, metaShards []string, org, namespace,
-	iyoToken, proto string) (*StorReader, error) {
+func NewStorReader(conf Config, shards, metaShards []string, org, namespace, iyoToken, proto string) (*StorReader, error) {
 
 	// create meta client
 	metaCli, err := meta.NewClient(metaShards)
@@ -37,7 +36,7 @@ func NewStorReader(conf Config, shards, metaShards []string, org, namespace,
 }
 
 func (sr *StorReader) ReadBlock(metaKey []byte) ([]byte, error) {
-	var shardErr lib.ShardError
+	var shardErr *lib.ShardError
 
 	// get metadata
 	md, err := sr.metaCli.Get(string(metaKey))
@@ -46,32 +45,23 @@ func (sr *StorReader) ReadBlock(metaKey []byte) ([]byte, error) {
 		return nil, shardErr
 	}
 
-	// get shards from the metadata
-	shards, err := md.GetShardsSlice()
-	if err != nil {
-		return nil, err
-	}
+	// loop over all the chunks of the object
+	for _, chunk := range md.Chunks {
+		// for each chunk try to get the object from one of the shards
+		for _, shard := range chunk.Shards {
+			sc, err := sr.getClient(shard)
+			if err != nil {
+				shardErr.Add([]string{shard}, lib.ShardType0Stor, err, lib.StatusInvalidShardAddress)
+				continue
+			}
 
-	// get object key
-	objKey, err := md.Key()
-	if err != nil {
-		return nil, err
-	}
-
-	for _, shard := range shards {
-		sc, err := sr.getClient(shard)
-		if err != nil {
-			shardErr.Add([]string{shard}, lib.ShardType0Stor, err, lib.StatusInvalidShardAddress)
-			continue
+			obj, err := sc.ObjectGet(chunk.Key)
+			if err != nil {
+				shardErr.Add([]string{shard}, lib.ShardType0Stor, err, lib.StatusUnknownError)
+				continue
+			}
+			return obj.Value, nil
 		}
-
-		obj, err := sc.ObjectGet(objKey)
-		if err != nil {
-			shardErr.Add([]string{shard}, lib.ShardType0Stor, err, lib.StatusUnknownError)
-			continue
-		}
-
-		return obj.Value, nil
 	}
 	return nil, shardErr
 }

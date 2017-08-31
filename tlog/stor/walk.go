@@ -10,7 +10,7 @@ type WalkResult struct {
 }
 
 // Walk walks the history from fromEpoch to toEpoch.
-func (c *Client) Walk(fromEpoch, toEpoch uint64) <-chan *WalkResult {
+func (c *Client) Walk(fromEpoch, toEpoch int64) <-chan *WalkResult {
 
 	wrCh := make(chan *WalkResult, 2)
 	go func() {

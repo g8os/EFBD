@@ -20,7 +20,7 @@ func init() {
 	tabPolynomial = crc32.MakeTable(POLYNOMIAL)
 }
 
-// object is the data structure used to encode, decode object on the disk
+// Object is the data structure used to encode, decode object on the disk
 type Object struct {
 	ReferenceList [RefIDCount][RefIDLenght]byte
 	CRC           uint32
@@ -84,5 +84,5 @@ func (o *Object) Decode(b []byte) error {
 
 // ValidCRC compare the content of the data and the crc, return true if CRC match data, false otherwrise
 func (o *Object) ValidCRC() bool {
-	return crc32.Checksum([]byte(o.Data), tabPolynomial) == o.CRC
+	return crc32.Checksum(o.Data, tabPolynomial) == o.CRC
 }

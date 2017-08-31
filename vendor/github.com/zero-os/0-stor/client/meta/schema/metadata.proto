@@ -1,0 +1,23 @@
+syntax = "proto3";
+option go_package = "schema";
+
+
+message ProtoMetadata {
+    uint64 size = 1;
+
+    uint64 epoch = 2;
+
+    bytes key = 3;
+
+    bytes encrKey = 4;
+
+    repeated string shards = 5;
+
+    bytes previous = 6;
+
+    bytes next = 7;
+
+    bytes configPtr = 8;
+
+    uint64 numChunks = 9;
+}

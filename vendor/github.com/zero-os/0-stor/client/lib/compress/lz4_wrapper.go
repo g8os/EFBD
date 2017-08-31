@@ -30,10 +30,13 @@ func (lw lz4Writer) WriteBlock(key, data []byte, md *meta.Meta) (*meta.Meta, err
 
 	// compress the data
 	n, err := io.Copy(comp, rd)
-	md.SetSize(uint64(n))
 	if err != nil {
 		return md, err
 	}
+	// update chunk size in metadata
+	// update chunk size in metadata
+	chunk := md.GetChunk(key)
+	chunk.Size = uint64(n)
 
 	// flush and close the compressor
 	if err := comp.Close(); err != nil {

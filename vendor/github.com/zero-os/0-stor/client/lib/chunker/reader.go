@@ -2,9 +2,9 @@ package chunker
 
 import (
 	"bufio"
-	"fmt"
 	"io"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/zero-os/0-stor/client/lib/block"
 	"github.com/zero-os/0-stor/client/meta"
 )
@@ -12,34 +12,24 @@ import (
 // BlockReader is chunker which implements block.Reader interface
 type BlockReader struct {
 	conf       Config
-	metaCli    *meta.Client
 	fileWriter *bufio.Writer
 }
 
 // NewBlockReader creates new chunker blockreader
-func NewBlockReader(conf Config, metaShards []string) (*BlockReader, error) {
-	metaCli, err := meta.NewClient(metaShards)
-	if err != nil {
-		return nil, err
-	}
+func NewBlockReader(conf Config) (*BlockReader, error) {
+
 	return &BlockReader{
-		conf:    conf,
-		metaCli: metaCli,
+		conf: conf,
 	}, nil
 }
 
 // Restore restores the chunked data and write the result to the given io.Writer
-func (br *BlockReader) Restore(key []byte, w io.Writer, rd block.Reader) error {
+func (br *BlockReader) Restore(key []byte, w io.Writer, rd block.Reader, md *meta.Meta) error {
 	br.fileWriter = bufio.NewWriter(w)
 
-	md, err := br.metaCli.Get(string(key))
-	if err != nil {
-		return err
-	}
-
-	for i := 0; i < int(md.NumOfChunks()); i++ {
-		fmt.Printf("read block : %v\n", string(chunkKey(key, i)))
-		if _, err := rd.ReadBlock(chunkKey(key, i)); err != nil {
+	for _, chunk := range md.Chunks {
+		log.Debugf("read block : %v\n", chunk.Key)
+		if _, err := rd.ReadBlock(chunk.Key); err != nil {
 			return err
 		}
 	}

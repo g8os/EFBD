@@ -51,7 +51,7 @@ func (p Pipe) CreateBlockReader(shards, metaShards []string, proto, org, namespa
 		return mb.NewReader(conf, metaShards)
 	case chunkerStr:
 		conf := p.Config.(chunker.Config)
-		return chunker.NewBlockReader(conf, metaShards)
+		return chunker.NewBlockReader(conf)
 	case storClientStr:
 		conf := stor.Config{
 			Protocol: proto,

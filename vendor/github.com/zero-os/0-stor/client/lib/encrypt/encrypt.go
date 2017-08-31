@@ -42,8 +42,9 @@ func NewEncrypterDecrypter(conf Config) (EncrypterDecrypter, error) {
 
 // Writer defines encryption writer
 type Writer struct {
-	ed EncrypterDecrypter
-	w  block.Writer
+	ed      EncrypterDecrypter
+	w       block.Writer
+	encrKey string
 }
 
 // NewWriter creates new encryption writer
@@ -53,8 +54,9 @@ func NewWriter(w block.Writer, conf Config) (*Writer, error) {
 		return nil, err
 	}
 	return &Writer{
-		w:  w,
-		ed: ed,
+		w:       w,
+		ed:      ed,
+		encrKey: conf.PrivKey,
 	}, nil
 }
 
@@ -64,14 +66,20 @@ func (w Writer) WriteBlock(key, plain []byte, md *meta.Meta) (*meta.Meta, error)
 	if err != nil {
 		return nil, err
 	}
-	md.SetSize(uint64(len(encrypted)))
+
+	// update chunk size in metadata
+	chunk := md.GetChunk(key)
+	chunk.Size = uint64(len(encrypted))
+	md.EncrKey = []byte(w.encrKey)
+
 	return w.w.WriteBlock(key, encrypted, md)
 }
 
 // Reader defines encryption reader.
 // It use ioutil.ReadAll so it won't save your memory usage
 type Reader struct {
-	ed EncrypterDecrypter
+	ed      EncrypterDecrypter
+	encrKey string
 }
 
 // NewReader creates new encryption reader

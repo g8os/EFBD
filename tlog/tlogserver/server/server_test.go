@@ -139,7 +139,7 @@ func TestEndToEnd(t *testing.T) {
 		for i := 0; i < numLogs; i++ {
 			x := uint64(i)
 			// check we can send it without error
-			err := client.Send(schema.OpSet, x, int64(x), x, data)
+			err := client.Send(schema.OpSet, x, int64(x), int64(x), data)
 			assert.Nil(t, err)
 		}
 	}()
@@ -263,14 +263,14 @@ func TestUnordered(t *testing.T) {
 
 				x := uint64(i)
 				// check we can send it without error
-				err := client.Send(schema.OpSet, seq, int64(x), x, data)
+				err := client.Send(schema.OpSet, seq, int64(x), int64(x), data)
 				if !assert.Nil(t, err) {
 					cancelFunc()
 					return
 				}
 
 				// send it twice, to test duplicated message
-				err = client.Send(schema.OpSet, seq, int64(x), x, data)
+				err = client.Send(schema.OpSet, seq, int64(x), int64(x), data)
 				if !assert.Nil(t, err) {
 					cancelFunc()
 					return

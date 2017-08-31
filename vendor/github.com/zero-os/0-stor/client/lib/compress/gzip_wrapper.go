@@ -48,10 +48,15 @@ func (gw gzipWriter) WriteBlock(key, p []byte, md *meta.Meta) (*meta.Meta, error
 		}
 		return written, w.Close()
 	}()
-	md.SetSize(uint64(written))
+
 	if err != nil {
 		return md, err
 	}
+
+	// update chunk size in metadata
+	chunk := md.GetChunk(key)
+	chunk.Size = uint64(written)
+
 	return gw.w.WriteBlock(key, buf.Bytes(), md)
 }
 

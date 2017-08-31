@@ -91,11 +91,6 @@ func (s HandshakeRequest_List) Set(i int, v HandshakeRequest) error {
 	return s.List.SetStruct(i, v.Struct)
 }
 
-func (s HandshakeRequest_List) String() string {
-	str, _ := text.MarshalList(0xe0d4e6d68fa24ac0, s.List)
-	return str
-}
-
 // HandshakeRequest_Promise is a wrapper for a HandshakeRequest promised by a client call.
 type HandshakeRequest_Promise struct{ *capnp.Pipeline }
 
@@ -160,11 +155,6 @@ func (s HandshakeResponse_List) At(i int) HandshakeResponse {
 
 func (s HandshakeResponse_List) Set(i int, v HandshakeResponse) error {
 	return s.List.SetStruct(i, v.Struct)
-}
-
-func (s HandshakeResponse_List) String() string {
-	str, _ := text.MarshalList(0xee959a7d96c96641, s.List)
-	return str
 }
 
 // HandshakeResponse_Promise is a wrapper for a HandshakeResponse promised by a client call.
@@ -246,11 +236,6 @@ func (s TlogResponse_List) At(i int) TlogResponse { return TlogResponse{s.List.S
 
 func (s TlogResponse_List) Set(i int, v TlogResponse) error { return s.List.SetStruct(i, v.Struct) }
 
-func (s TlogResponse_List) String() string {
-	str, _ := text.MarshalList(0x98d11ae1c78a24d9, s.List)
-	return str
-}
-
 // TlogResponse_Promise is a wrapper for a TlogResponse promised by a client call.
 type TlogResponse_Promise struct{ *capnp.Pipeline }
 
@@ -328,12 +313,12 @@ func (s TlogBlock) SetData(v []byte) error {
 	return s.Struct.SetData(1, v)
 }
 
-func (s TlogBlock) Timestamp() uint64 {
-	return s.Struct.Uint64(16)
+func (s TlogBlock) Timestamp() int64 {
+	return int64(s.Struct.Uint64(16))
 }
 
-func (s TlogBlock) SetTimestamp(v uint64) {
-	s.Struct.SetUint64(16, v)
+func (s TlogBlock) SetTimestamp(v int64) {
+	s.Struct.SetUint64(16, uint64(v))
 }
 
 func (s TlogBlock) Operation() uint8 {
@@ -356,11 +341,6 @@ func NewTlogBlock_List(s *capnp.Segment, sz int32) (TlogBlock_List, error) {
 func (s TlogBlock_List) At(i int) TlogBlock { return TlogBlock{s.List.Struct(i)} }
 
 func (s TlogBlock_List) Set(i int, v TlogBlock) error { return s.List.SetStruct(i, v.Struct) }
-
-func (s TlogBlock_List) String() string {
-	str, _ := text.MarshalList(0x8cf178de3c82d431, s.List)
-	return str
-}
 
 // TlogBlock_Promise is a wrapper for a TlogBlock promised by a client call.
 type TlogBlock_Promise struct{ *capnp.Pipeline }
@@ -422,12 +402,12 @@ func (s TlogAggregation) SetSize(v uint64) {
 	s.Struct.SetUint64(0, v)
 }
 
-func (s TlogAggregation) Timestamp() uint64 {
-	return s.Struct.Uint64(8)
+func (s TlogAggregation) Timestamp() int64 {
+	return int64(s.Struct.Uint64(8))
 }
 
-func (s TlogAggregation) SetTimestamp(v uint64) {
-	s.Struct.SetUint64(8, v)
+func (s TlogAggregation) SetTimestamp(v int64) {
+	s.Struct.SetUint64(8, uint64(v))
 }
 
 func (s TlogAggregation) VdiskID() (string, error) {
@@ -503,11 +483,6 @@ func (s TlogAggregation_List) Set(i int, v TlogAggregation) error {
 	return s.List.SetStruct(i, v.Struct)
 }
 
-func (s TlogAggregation_List) String() string {
-	str, _ := text.MarshalList(0xe46ab5b4b619e094, s.List)
-	return str
-}
-
 // TlogAggregation_Promise is a wrapper for a TlogAggregation promised by a client call.
 type TlogAggregation_Promise struct{ *capnp.Pipeline }
 
@@ -570,11 +545,6 @@ func (s Command_List) At(i int) Command { return Command{s.List.Struct(i)} }
 
 func (s Command_List) Set(i int, v Command) error { return s.List.SetStruct(i, v.Struct) }
 
-func (s Command_List) String() string {
-	str, _ := text.MarshalList(0xdbe14b5e7e7c6009, s.List)
-	return str
-}
-
 // Command_Promise is a wrapper for a Command promised by a client call.
 type Command_Promise struct{ *capnp.Pipeline }
 
@@ -610,28 +580,28 @@ const schema_f4533cbae6e08506 = "x\xda\x8c\x94M\x88\x1cU\x14\x85\xcfy\xb7\xba3#"
 	"\xb6\xd7X\x02\xfc\xcb\xaexI\xa8\xaf(\xe6\xd6,," +
 	"\x9a\xa8a\x00p\x12\x8a\x93\xe0T\x185\xcd\x09\x96\xa0" +
 	"X\x02+\xed\xc0\xb6\xb9\x05\x8a[\xc0J3\xc8\x82\xfe" +
-	"K\x9e\x85]c\xb3\xa0\x0b&\xfd\xb3y\x9c\x984\xc8" +
-	"\xc2\x18\x8cX\x86b\x19\xfc\x8f(\xea\xc6N%qd" +
-	"\x8dKcb\x90\xc6\x9d\xfb\x01\xbdK\xa8\xf7(\xf6\xc3" +
-	"\x98q\x93\xdf%\xd4\x87\x15\x0f\xda,\xc8\x16-\x15\x14" +
-	"\x15F\x8c\xd0r+xDX\xcc\xb4u\xc3\xfe\x0f\xc6" +
-	"\xddn\x105\x81\xb1\xde\xd3\xc3\xde\x83M\xcc\xcc\xddj" +
-	"~\xbfb%{!1C\x7fk3\x1c\xf4\xf4\xd6\xf4" +
-	"<\x1cDM\xdb\x0e\xe6M\xdd\x1d\xb3\xcc\\\xefm\x83" +
-	"\xde\xc1,\xa0\x9f\x12\xea\xf6\xd0\xb7q\xb5cB\xddQ" +
-	"\xf4\x15{\x14\x84)\xa0\xdbB\x9d9\x0a\xee\xe8Q\xb0" +
-	"p\x06\xd0\x99P\xbf\xaaxr\xc9\xa46\x8c#N@" +
-	"q\x02<\xb9\xd4\x0c\xed\xfc#\x0fq3\x147\x83\xf9" +
-	"\xf10\xb5\xd9Q\xb3\x80\xa9b\xfc\xc1\xec\xa9\xb1&{" +
-	"8LY\xfc\xbah\"i\x18\x12\x8a\xdc\xd0\x98[\xe6" +
-	"\xa1V+5-\x07@\xd4\x0bu\x04o\x17\xea)\xa1" +
-	">;4\xf6\xd1\xf4\x08\xf2}c+\xf5\xf5\xf0\x9e]" +
-	"\x0fo\xc7\xc8y\xa1\xfe\xd6\xe1-=\xbc\xbfqw~" +
-	"-\xd4\xdf+V\xa2\xa0k\xfa~+6|qhr" +
-	"\x1dx\xc7\x03:\xf8\\'n\xcc\x0fp\xda6\xfc\xce" +
-	"\x81\xaeXIR\xb34\xf87\xfc\xaf\x8d\xdb$\x8ed" +
-	"\x0d\xea\xb3\xa3\xb8y\xb7ps\xdev\x0b\xf5}k7" +
-	"9\xc6\xfe\xbf\x01\x00\x00\xff\xff\xa8\x8cJ\xeb"
+	"K\x9e\x85]c\xb3\xa0\x0b&}u\x1e'&\x0d\xb2" +
+	"0\x06#\x96\xa1X\x06\xff#\x8a\xba\xb1SI\x1cY" +
+	"\xe3\xd2\x98\x18\xa4q\xe7~@\xef\x12\xea=\x8a\xfd0" +
+	"f\xdc\xe4w\x09\xf5a\xc5\x836\x0b\xb2EK\x05E" +
+	"\x85\x11#\xb4\xdc\x0a\x1e\x11\x16~\xb6n\xd8\xff\xc1\xb8" +
+	"\xdb\x0d\xa2&0\xd6{z\xd8{\xb0\x89\x99\xb9[\xcd" +
+	"\xefW\xacd/$f\xe8om\x86\x83\x9e\xde\x9a\x9e" +
+	"\x87\x83\xa8i\xdb\xc1\xbc\xa9\xbbc\x96\x99\xeb\xbdm\xd0" +
+	";\x98\x05\xf4SB\xdd\x1e\xfa6\xaevL\xa8;\x8a" +
+	"\xbeb\x8f\x820\x05t[\xa83G\xc1\x1d=\x0a\x16" +
+	"\xce\x00:\x13\xeaW\x15O.\x99\xd4\x86q\xc4\x09(" +
+	"N\x80'\x97\x9a\xa1\x9d\x7f\xe4!n\x86\xe2f0?" +
+	"\x1e\xa66;j\x160U\x8c?\x98=5\xd6d\x0f" +
+	"\x87)\x8b_\x17M$\x0dCB\x91\x1b\x1as\xcb<" +
+	"\xd4j\xa5\xa6\xe5\x00\x88z\xa1\x8e\xe0\xedB=%\xd4" +
+	"g\x87\xc6>\x9a\x1eA\xbeol\xa5\xbe\x1e\xde\xb3\xeb" +
+	"\xe1\xed\x189/\xd4\xdf:\xbc\xa5\x87\xf77\xee\xce\xaf" +
+	"\x85\xfa{\xc5J\x14tM\xdfo\xc5\x86/\x0eM\xae" +
+	"\x03\xefx@\x07\x9f\xeb\xc4\x8d\xf9\x01N\xdb\x86\xdf9" +
+	"\xd0\x15+Ij\x96\x06\xff\x86\xff\xb5q\x9b\xc4\x91\xac" +
+	"A}v\x147\xef\x16n\xce\xdbn\xa1\xbeo\xed&" +
+	"\xc7\xd8\xff7\x00\x00\xff\xff\x86\xd4J\xdb"
 
 func init() {
 	schemas.Register(schema_f4533cbae6e08506,

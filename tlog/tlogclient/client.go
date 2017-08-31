@@ -469,7 +469,7 @@ func (c *Client) signalCond(cond *sync.Cond) {
 // It returns error in these cases:
 // - failed to encode the capnp.
 // - failed to recover from broken network connection.
-func (c *Client) Send(op uint8, seq uint64, index int64, timestamp uint64, data []byte) error {
+func (c *Client) Send(op uint8, seq uint64, index int64, timestamp int64, data []byte) error {
 	c.wLock.Lock()
 	defer c.wLock.Unlock()
 
@@ -481,7 +481,7 @@ func (c *Client) Send(op uint8, seq uint64, index int64, timestamp uint64, data 
 }
 
 // send tlog block to server
-func (c *Client) send(op uint8, seq uint64, index int64, timestamp uint64, data []byte) (*schema.TlogBlock, error) {
+func (c *Client) send(op uint8, seq uint64, index int64, timestamp int64, data []byte) (*schema.TlogBlock, error) {
 	hash := zerodisk.HashBytes(data)
 
 	sender := func() (interface{}, error) {

@@ -5,20 +5,35 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/karlseguin/ccache"
+	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
-
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"golang.org/x/net/context"
-
 	"github.com/zero-os/0-stor/server/jwt"
-
-	"google.golang.org/grpc/metadata"
 )
 
 type Method string
+
+type jwtCacheVal struct {
+	valid  bool
+	scopes []string
+}
+
+const (
+	// number of entries we want to keep in the LRU cache
+	// rough estimation size of jwtCacheVal is 150 bytes
+	// if our jwtCacheSize = 1024, it takes : 150 * 1024 bytes = 153 kilobytes
+	jwtCacheSize = 2 << 11 // 4096
+)
+
+var (
+	jwtCache *ccache.Cache
+)
 
 var (
 	MethodWrite  Method = "write"
@@ -27,9 +42,19 @@ var (
 	MethodAdmin  Method = "admin"
 )
 
-//ErrNoJWTToken is return when the grpc request doesnt provide a valid jwt token
-var ErrNoJWTToken = errors.New("No jwt token in context")
-var ErrWrongScopes = errors.New("JWT token doesn't contains required scopes")
+var (
+	//ErrNoJWTToken is return when the grpc request doesnt provide a valid jwt token
+	ErrNoJWTToken = errors.New("No jwt token in context")
+
+	ErrWrongScopes = errors.New("JWT token doesn't contains required scopes")
+)
+
+func init() {
+	conf := ccache.Configure()
+	conf.MaxSize(jwtCacheSize)
+
+	jwtCache = ccache.New(conf)
+}
 
 func validateJWT(ctx context.Context, method Method, label string) error {
 	isTesting, ok := os.LookupEnv("STOR_TESTING")
@@ -37,16 +62,17 @@ func validateJWT(ctx context.Context, method Method, label string) error {
 		return nil
 	}
 
+	var scopes []string
 	token, err := extractJWTToken(ctx)
 	if err != nil {
 		return status.Error(codes.Unauthenticated, err.Error())
 	}
 
-	scopes, err := jwt.CheckJWTGetScopes(token)
+	scopes, err = getScopes(token)
 	if err != nil {
 		return status.Error(codes.Unauthenticated, err.Error())
 	}
-	// codes.Unauthenticated
+
 	expected, err := expectedScopes(method, label)
 	if err != nil {
 		return status.Error(codes.Unauthenticated, err.Error())
@@ -58,6 +84,69 @@ func validateJWT(ctx context.Context, method Method, label string) error {
 	}
 
 	return nil
+}
+
+// getScopes tries to get token's scopes from cache.
+// if not exist, it extract the scopes and insert it to cache
+func getScopes(token string) ([]string, error) {
+	scopes, inCache, err := getScopesFromCache(token)
+	if err != nil {
+		// there is error in token
+		return nil, err
+	}
+	if inCache {
+		// token is not in cache
+		return scopes, nil
+	}
+
+	scopes, exp, err := jwt.CheckJWTGetScopes(token)
+
+	if err != nil || time.Until(time.Unix(exp, 0)).Seconds() < 0 {
+		// Insert invalid or expired token to cache
+		// so we don't need to validate it again
+		jwtCache.Set(token, jwtCacheVal{
+			valid: false,
+		}, time.Hour*24)
+
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("expired token")
+	}
+
+	// insert valid token to cache
+	cacheVal := jwtCacheVal{
+		valid:  true,
+		scopes: scopes,
+	}
+	jwtCache.Set(token, cacheVal, time.Until(time.Unix(exp, 0)))
+	return scopes, nil
+}
+
+// get scopes from the cache
+func getScopesFromCache(token string) (scopes []string, exists bool, err error) {
+	item := jwtCache.Get(token)
+	if item == nil {
+		return
+	}
+	exists = true
+
+	// check validity
+	cacheVal := item.Value().(jwtCacheVal)
+	if !cacheVal.valid {
+		err = fmt.Errorf("invalid token")
+		return
+	}
+
+	// check cache expiration
+	if item.Expired() {
+		jwtCache.Delete(token)
+		err = fmt.Errorf("expired token")
+		return
+	}
+
+	scopes = cacheVal.scopes
+	return
 }
 
 // extractJWTToken extract a token from the incoming grpc request

@@ -3,22 +3,20 @@ package client
 import (
 	"crypto/rand"
 	"io/ioutil"
-	"log"
 	"os"
 	"path"
 	"testing"
 
+	"github.com/zero-os/0-stor/client/lib/compress"
 	"github.com/zero-os/0-stor/client/lib/distribution"
+	"github.com/zero-os/0-stor/client/lib/encrypt"
 	"github.com/zero-os/0-stor/client/lib/replication"
 	"github.com/zero-os/0-stor/client/meta/embedserver"
-
-	"github.com/zero-os/0-stor/client/lib/encrypt"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zero-os/0-stor/client/config"
 	"github.com/zero-os/0-stor/client/itsyouonline"
-	"github.com/zero-os/0-stor/client/lib/compress"
 	"github.com/zero-os/0-stor/server/storserver"
 )
 
@@ -60,17 +58,17 @@ func testIYOClient(t testing.TB) (*itsyouonline.Client, string, string, string) 
 	iyoOrganization := os.Getenv("iyo_organization")
 
 	if iyoClientID == "" {
-		log.Fatal("[iyo] Missing (iyo_client_id) environement variable")
+		t.Error(t, "[iyo] Missing (iyo_client_id) environement variable")
 
 	}
 
 	if iyoSecret == "" {
-		log.Fatal("[iyo] Missing (iyo_secret) environement variable")
+		t.Error(t, "[iyo] Missing (iyo_secret) environement variable")
 
 	}
 
 	if iyoOrganization == "" {
-		log.Fatal("[iyo] Missing (iyo_organization) environement variable")
+		t.Error(t, "[iyo] Missing (iyo_organization) environement variable")
 
 	}
 
@@ -177,6 +175,74 @@ func TestRoundTripGRPC(t *testing.T) {
 			},
 		},
 		{
+			"pip-compress-encrypt",
+			[]config.Pipe{
+				{
+					Name: "compress",
+					Type: "compress",
+					Config: compress.Config{
+						Type: compress.TypeSnappy,
+					},
+				},
+				{
+					Name: "encrypt",
+					Type: "encrypt",
+					Config: encrypt.Config{
+						Type:    encrypt.TypeAESGCM,
+						PrivKey: "cF0BFpIsljOS8UmaP8YRHRX0nBPVRVPw",
+					},
+				},
+			},
+		},
+		{
+			"pip-compress-encrypt-replication",
+			[]config.Pipe{
+				{
+					Name: "compress",
+					Type: "compress",
+					Config: compress.Config{
+						Type: compress.TypeSnappy,
+					},
+				},
+				{
+					Name: "encrypt",
+					Type: "encrypt",
+					Config: encrypt.Config{
+						Type:    encrypt.TypeAESGCM,
+						PrivKey: "cF0BFpIsljOS8UmaP8YRHRX0nBPVRVPw",
+					},
+				},
+				{
+					Name: "replication",
+					Type: "replication",
+					Config: replication.Config{
+						Async:  true,
+						Number: len(servers),
+					},
+				},
+			},
+		},
+		{
+			"pip-compress-distribution",
+			[]config.Pipe{
+				{
+					Name: "compress",
+					Type: "compress",
+					Config: compress.Config{
+						Type: compress.TypeSnappy,
+					},
+				},
+				{
+					Name: "distribution",
+					Type: "distribution",
+					Config: distribution.Config{
+						Data:   3,
+						Parity: 1,
+					},
+				},
+			},
+		},
+		{
 			"pip-compress-encrypt-distribution",
 			[]config.Pipe{
 				{
@@ -224,15 +290,11 @@ func TestRoundTripGRPC(t *testing.T) {
 			require.NoError(t, err, "fail to write data to the store")
 
 			// validate metadata
-			metaKey, err := meta.Key()
-			require.NoError(t, err, "fail to read key from meta")
-
-			// meta keys are different then normal when using distribution
-			require.Equal(t, key, metaKey, "Key in metadata is not the same")
-
-			metaShards, err := meta.GetShardsSlice()
-			for _, shard := range metaShards {
-				assert.Contains(t, metaShards, shard, "shards in metadata is not one of the shards configured in the client")
+			assert.Equal(t, key, meta.Key, "Key in metadata is not the same")
+			for _, chunk := range meta.Chunks {
+				for _, shard := range chunk.Shards {
+					assert.Contains(t, shards, shard, "shards in metadata is not one of the shards configured in the client")
+				}
 			}
 
 			// read data back

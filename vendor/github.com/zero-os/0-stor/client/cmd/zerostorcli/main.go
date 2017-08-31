@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/urfave/cli"
 	"github.com/zero-os/0-stor/client"
@@ -18,6 +20,7 @@ var (
 func main() {
 	var cl *client.Client
 	var nsMgr itsyouonline.NamespaceManager
+	var key string
 
 	app := cli.NewApp()
 	app.Name = "0-stor cli"
@@ -46,6 +49,13 @@ func main() {
 				{
 					Name:  "upload",
 					Usage: "upload a file. e.g: cli file upload myfile",
+					Flags: []cli.Flag{
+						cli.StringFlag{
+							Name:        "key, k",
+							Usage:       "key to use to store the file, if empty use the name of the file as key",
+							Destination: &key,
+						},
+					},
 					Action: func(c *cli.Context) error {
 						if len(c.Args()) < 1 {
 							return cli.NewExitError("need to give the path to the file to upload", 1)
@@ -58,11 +68,15 @@ func main() {
 							return cli.NewExitError(fmt.Errorf("can't read the file: %v", err), 1)
 						}
 
-						if _, err := cl.WriteF([]byte(fileName), f, nil, nil, nil); err != nil {
+						if key == "" {
+							key = filepath.Base(fileName)
+						}
+
+						_, err = cl.WriteF([]byte(key), f, nil, nil, nil)
+						if err != nil {
 							return cli.NewExitError(fmt.Errorf("upload failed : %v", err), 1)
 						}
-						fmt.Printf("file uploaded, key = %v\n", fileName)
-
+						fmt.Printf("file uploaded, key = %v\n", key)
 						return nil
 					},
 				},
@@ -86,6 +100,33 @@ func main() {
 							return cli.NewExitError(fmt.Errorf("download file failed: %v", err), 1)
 						}
 						fmt.Printf("file downloaded to %s\n", output)
+
+						return nil
+					},
+				},
+				{
+					Name:  "metadata",
+					Usage: "print the metadata of a key",
+					Action: func(c *cli.Context) error {
+						if len(c.Args()) < 1 {
+							return cli.NewExitError(fmt.Errorf("need to give the key of the object to inspect"), 1)
+						}
+
+						key := c.Args().Get(0)
+						if key == "" {
+							return cli.NewExitError("key cannot be empty", 1)
+						}
+
+						meta, err := cl.GetMeta([]byte(key))
+						if err != nil {
+							return cli.NewExitError(fmt.Sprintf("fail to get metadata: %v", err), 1)
+						}
+
+						b, err := json.Marshal(meta)
+						if err != nil {
+							return cli.NewExitError("error encoding metadata into json", 1)
+						}
+						fmt.Print(string(b))
 
 						return nil
 					},

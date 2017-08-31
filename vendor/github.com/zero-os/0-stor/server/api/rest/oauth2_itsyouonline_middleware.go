@@ -97,7 +97,7 @@ func (om *Oauth2itsyouonlineMiddleware) Handler(next http.Handler) http.Handler 
 		}
 
 		// if len(oauth2ServerPublicKey) > 0 {
-		userScopes, err := jwt.CheckJWTGetScopes(accessToken)
+		userScopes, _, err := jwt.CheckJWTGetScopes(accessToken)
 		if err != nil {
 			log.Errorln(err.Error())
 			log.Errorf("[IYO] User scopes : %v", userScopes)

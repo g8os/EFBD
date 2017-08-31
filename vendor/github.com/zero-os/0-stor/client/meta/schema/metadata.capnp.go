@@ -14,12 +14,12 @@ type Metadata struct{ capnp.Struct }
 const Metadata_TypeID = 0x84eb980ee3c7d21d
 
 func NewMetadata(s *capnp.Segment) (Metadata, error) {
-	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 24, PointerCount: 6})
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 16, PointerCount: 6})
 	return Metadata{st}, err
 }
 
 func NewRootMetadata(s *capnp.Segment) (Metadata, error) {
-	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 24, PointerCount: 6})
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 16, PointerCount: 6})
 	return Metadata{st}, err
 }
 
@@ -41,12 +41,12 @@ func (s Metadata) SetSize(v uint64) {
 	s.Struct.SetUint64(0, v)
 }
 
-func (s Metadata) Epoch() uint64 {
-	return s.Struct.Uint64(8)
+func (s Metadata) Epoch() int64 {
+	return int64(s.Struct.Uint64(8))
 }
 
-func (s Metadata) SetEpoch(v uint64) {
-	s.Struct.SetUint64(8, v)
+func (s Metadata) SetEpoch(v int64) {
+	s.Struct.SetUint64(8, uint64(v))
 }
 
 func (s Metadata) Key() ([]byte, error) {
@@ -77,26 +77,26 @@ func (s Metadata) SetEncrKey(v []byte) error {
 	return s.Struct.SetData(1, v)
 }
 
-func (s Metadata) Shard() (capnp.TextList, error) {
+func (s Metadata) Chunks() (Metadata_Chunk_List, error) {
 	p, err := s.Struct.Ptr(2)
-	return capnp.TextList{List: p.List()}, err
+	return Metadata_Chunk_List{List: p.List()}, err
 }
 
-func (s Metadata) HasShard() bool {
+func (s Metadata) HasChunks() bool {
 	p, err := s.Struct.Ptr(2)
 	return p.IsValid() || err != nil
 }
 
-func (s Metadata) SetShard(v capnp.TextList) error {
+func (s Metadata) SetChunks(v Metadata_Chunk_List) error {
 	return s.Struct.SetPtr(2, v.List.ToPtr())
 }
 
-// NewShard sets the shard field to a newly
-// allocated capnp.TextList, preferring placement in s's segment.
-func (s Metadata) NewShard(n int32) (capnp.TextList, error) {
-	l, err := capnp.NewTextList(s.Struct.Segment(), n)
+// NewChunks sets the chunks field to a newly
+// allocated Metadata_Chunk_List, preferring placement in s's segment.
+func (s Metadata) NewChunks(n int32) (Metadata_Chunk_List, error) {
+	l, err := NewMetadata_Chunk_List(s.Struct.Segment(), n)
 	if err != nil {
-		return capnp.TextList{}, err
+		return Metadata_Chunk_List{}, err
 	}
 	err = s.Struct.SetPtr(2, l.List.ToPtr())
 	return l, err
@@ -144,20 +144,12 @@ func (s Metadata) SetConfigPtr(v []byte) error {
 	return s.Struct.SetData(5, v)
 }
 
-func (s Metadata) NumOfChunks() uint64 {
-	return s.Struct.Uint64(16)
-}
-
-func (s Metadata) SetNumOfChunks(v uint64) {
-	s.Struct.SetUint64(16, v)
-}
-
 // Metadata_List is a list of Metadata.
 type Metadata_List struct{ capnp.List }
 
 // NewMetadata creates a new list of Metadata.
 func NewMetadata_List(s *capnp.Segment, sz int32) (Metadata_List, error) {
-	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 24, PointerCount: 6}, sz)
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 16, PointerCount: 6}, sz)
 	return Metadata_List{l}, err
 }
 
@@ -173,31 +165,130 @@ func (p Metadata_Promise) Struct() (Metadata, error) {
 	return Metadata{s}, err
 }
 
-const schema_f4533cbae6e08506 = "x\xdaD\xcd\xcd\xca\xd3@\x14\xc6\xf1\xe7\x99\xc9\xc7\xfb" +
-	"\x82o\xdb!\x83 \xb4T\xa4\x82\x14\xfc\xa8K\x11\x14" +
-	"\xdd)b\xa7\xb9\x82\x98NM)MC\x92\x8a\xbaq" +
-	"\xa3\xf7\xe0\xb5\xb8q%\xaeD\xf4\x0a\x04A\x04\x15\x14" +
-	"*TQ\"\x83Dw\xe7\xff\xe3\x1cN\xef\xf5U1" +
-	"\xf1\x9f\x130\xda\x0f\x9a\xc1\xdb\x97\xef;O?=\x86" +
-	"9N\xd9\x04O\xde}xv9\xde\xc1\x0fB@\xbd" +
-	"\xf8\xa9\xde\x84\xc0\xe4UC\x9cm\xaa4\xb3\xeb\xe4\xfc" +
-	"Z\xd8:\x99'ur.M\x8a\xbc\xb8t\xcb^\xf9" +
-	"\xdbS\xd2\x8c\xa4\x07x\x04\xd4\x971`>J\x9a\x9d" +
-	"\xa0\"5\x1d~\xbb\x08\x98\xcf\x92f/H\xa1)\x00" +
-	"\xf5\xfd\x14`\xbeJ\x9a_\x82JRS\x02\xea\xc75" +
-	"\xc0\xec$g\x14T\x9e\xd0\xf4\x00\xf5\xdb]\xef%c" +
-	"\xed\xd4\x97\x9a>\x10)\xde\x00\xe2\x1e%\xe3\xbe\xf3\xc0" +
-	"\xd3\x0c\x80\xe8\x04\xc7@\xac\x9d\x9ft\x1e\xfa\x9a!\x10" +
-	"\x0d8\x03\xe2\xbe\xf33\xce\x0f\x84\xe6\x01\x10\x9d\xe6\x1d" +
-	" \x1e9\xbf@\xc1n\xb5|hy\x08\xc1Cph" +
-	"\x8bM\x9a\xb5\x15\xae\xec\x03\x1eA\xf0\x08|d\xf3\xb4" +
-	"\xbc\xf9\xbf\x87U\x96\x94sv\xc0\xa9$\x8fA\xb8\xb1" +
-	")J{o\xb9\xd9V\x00\xda\xc5nn\xef\xd7m4" +
-	"\xe9&_,\xefNk\xb0\xfcg\xf9v}{q=" +
-	"\xdb\"\xccWU\xfb\xfbO\x00\x00\x00\xff\xff\xdc\xc6U" +
-	"k"
+type Metadata_Chunk struct{ capnp.Struct }
+
+// Metadata_Chunk_TypeID is the unique identifier for the type Metadata_Chunk.
+const Metadata_Chunk_TypeID = 0x8215e3820528ef57
+
+func NewMetadata_Chunk(s *capnp.Segment) (Metadata_Chunk, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 2})
+	return Metadata_Chunk{st}, err
+}
+
+func NewRootMetadata_Chunk(s *capnp.Segment) (Metadata_Chunk, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 2})
+	return Metadata_Chunk{st}, err
+}
+
+func ReadRootMetadata_Chunk(msg *capnp.Message) (Metadata_Chunk, error) {
+	root, err := msg.RootPtr()
+	return Metadata_Chunk{root.Struct()}, err
+}
+
+func (s Metadata_Chunk) String() string {
+	str, _ := text.Marshal(0x8215e3820528ef57, s.Struct)
+	return str
+}
+
+func (s Metadata_Chunk) Key() ([]byte, error) {
+	p, err := s.Struct.Ptr(0)
+	return []byte(p.Data()), err
+}
+
+func (s Metadata_Chunk) HasKey() bool {
+	p, err := s.Struct.Ptr(0)
+	return p.IsValid() || err != nil
+}
+
+func (s Metadata_Chunk) SetKey(v []byte) error {
+	return s.Struct.SetData(0, v)
+}
+
+func (s Metadata_Chunk) Size() uint64 {
+	return s.Struct.Uint64(0)
+}
+
+func (s Metadata_Chunk) SetSize(v uint64) {
+	s.Struct.SetUint64(0, v)
+}
+
+func (s Metadata_Chunk) Shards() (capnp.TextList, error) {
+	p, err := s.Struct.Ptr(1)
+	return capnp.TextList{List: p.List()}, err
+}
+
+func (s Metadata_Chunk) HasShards() bool {
+	p, err := s.Struct.Ptr(1)
+	return p.IsValid() || err != nil
+}
+
+func (s Metadata_Chunk) SetShards(v capnp.TextList) error {
+	return s.Struct.SetPtr(1, v.List.ToPtr())
+}
+
+// NewShards sets the shards field to a newly
+// allocated capnp.TextList, preferring placement in s's segment.
+func (s Metadata_Chunk) NewShards(n int32) (capnp.TextList, error) {
+	l, err := capnp.NewTextList(s.Struct.Segment(), n)
+	if err != nil {
+		return capnp.TextList{}, err
+	}
+	err = s.Struct.SetPtr(1, l.List.ToPtr())
+	return l, err
+}
+
+// Metadata_Chunk_List is a list of Metadata_Chunk.
+type Metadata_Chunk_List struct{ capnp.List }
+
+// NewMetadata_Chunk creates a new list of Metadata_Chunk.
+func NewMetadata_Chunk_List(s *capnp.Segment, sz int32) (Metadata_Chunk_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 8, PointerCount: 2}, sz)
+	return Metadata_Chunk_List{l}, err
+}
+
+func (s Metadata_Chunk_List) At(i int) Metadata_Chunk { return Metadata_Chunk{s.List.Struct(i)} }
+
+func (s Metadata_Chunk_List) Set(i int, v Metadata_Chunk) error { return s.List.SetStruct(i, v.Struct) }
+
+// Metadata_Chunk_Promise is a wrapper for a Metadata_Chunk promised by a client call.
+type Metadata_Chunk_Promise struct{ *capnp.Pipeline }
+
+func (p Metadata_Chunk_Promise) Struct() (Metadata_Chunk, error) {
+	s, err := p.Pipeline.Struct()
+	return Metadata_Chunk{s}, err
+}
+
+const schema_f4533cbae6e08506 = "x\xda\\\x91Mk\x13_\x18\xc5\xcfy\xee\xdc\x19\x0a" +
+	"i\xfb\xbfd\xfe\xd6\x8dD\\I\xc1\x97\xd6]\x11R" +
+	"\xac\x82o\x85<\xc9\xc2\xf50\x19M(\x9d\x84L*" +
+	"\xeaF(\xfa\x1d\xfc\x02\xae\xc5\xa5~\x81n\\\xa8(" +
+	"T\xa8P\xa9\xb8q!B\x85\"\xc8\xc8\xb5$\xb1\xee" +
+	"\xe6\x9cY\xdc\xdf\xf9=\xe7-\x97e\xc1\xce\x09\xa0\xc7" +
+	"mX\xde\xfav\xdan\xee\xfd\xbf\x09\xad\x91\xe5\x89\xb7" +
+	"[{3O\xbe>\x82\x95\x08X\xf8>\xcf*\x19\x01" +
+	"\xee\xd73\xfc\xf5W\x8fQ\xca\xf0\xf1\xee\x97\x97\x17[" +
+	"\xfb\xb0a\x04T\x9f\xf2g\xf59\xe7\x80\x0b/\xb8E" +
+	"\x9c)\x8b\xb4\x93\xad'\xe7\xd6M6L\xda\xc909" +
+	"\x9b&\xfd\xbc\xbf\xb4:\x8a+\xb3\x9d\x8d|\xadAj" +
+	"\xc5\x04@@\xc0]9\x05\xe8\xb2\xa1\xde\x14\x921}" +
+	"wm\x1e\xd0\xcb\x86\xda\x10:aL\x01\xdc\xea\x12\xa0" +
+	"W\x0d\xb5-\x8c\xd6\xb2\xfb\x9c\x86p\x1a\x9c-\xba\x0f" +
+	"2NA8\x05\xd6\x8bN2h\x17\x9c\x01\x1b\x86\xac" +
+	"@\xfc\xe7\x18L\xfe\x05\xab\x1ff\x0d\xc8\x89\x17\xc7\xc5" +
+	"\xda\x8a'\xd5\x93c\xcc7\x1e\xe9\x95\xa1n\x0b\xdd\x88" +
+	"\xf3\xfd\"\xa0\xaf\x0duGH9\xc4\xfc\xe0\xf7\xbc3" +
+	"\xd4]\xa13\x8ci\x00\xf7\xf1\x12\xa0\xdb\x86\xfaY\xe8" +
+	"\x02\x89\x19\x00\xee\x93\x1f\xb4c\xa8\x07BgML\x0b" +
+	"\xb8\x1f\xd7\x01\xdd7lR\xe8\xc2 f\xe8O\xe1\x1f" +
+	"?0l\x05\xbe\x8dl\xec\x0fT%\x9b@\x93\x86\xad" +
+	"\x0a\xe5\xa8\x86Z\xd6\xef\xa5\x1dZ\x08-\x8e\xd8z\x98" +
+	"\xe5\xe9\xe0\xc6$\xd7S?t,\xec\xbf\x89\x05\xf0\x8f" +
+	"\xba\xfe \xbb\xdb\xedm\x14\x00\xc6\xc6\xf3\xec\xdep\x14" +
+	"\xca\xb4\x97\xdf\xee\xdei\x0c\xc1\xc1\xa8\xfb\x1d\x00\x00\xff" +
+	"\xff\xa9#\x84\xd0"
 
 func init() {
 	schemas.Register(schema_f4533cbae6e08506,
+		0x8215e3820528ef57,
 		0x84eb980ee3c7d21d)
 }

@@ -136,10 +136,7 @@ func (c *Client) doWrite(writer block.Writer, key, val []byte, prevKey []byte,
 	// create new metadata which we want to pass through
 	// to the pipe
 	if md == nil {
-		md, err = meta.New(key, 0, nil)
-		if err != nil {
-			return nil, err
-		}
+		md = meta.New(key)
 	}
 
 	// process the data through the pipe
@@ -164,9 +161,14 @@ func (c *Client) ReadF(key []byte, w io.Writer) ([]byte, error) {
 		return nil, err
 	}
 
+	md, err := c.metaCli.Get(string(key))
+	if err != nil {
+		return nil, err
+	}
+
 	rp0 := readPipe.Readers[len(readPipe.Readers)-1]
 	chunkReader := rp0.(*chunker.BlockReader)
-	return nil, chunkReader.Restore(key, w, readPipe)
+	return nil, chunkReader.Restore(key, w, readPipe, md)
 
 }
 
@@ -177,18 +179,14 @@ func (c *Client) Read(key []byte) ([]byte, error) {
 
 func (c *Client) linkMeta(curMd, prevMd *meta.Meta, curKey, prevKey []byte) error {
 	if len(prevKey) == 0 {
-		return nil
+		return c.metaCli.Put(string(curKey), curMd)
 	}
 
 	// point next key of previous meta to new meta
-	if err := prevMd.SetNext(curKey); err != nil {
-		return err
-	}
+	prevMd.Next = curKey
 
 	// point prev key of new meta to previous one
-	if err := curMd.SetPrevious(prevKey); err != nil {
-		return err
-	}
+	curMd.Previous = prevKey
 
 	// update prev meta
 	if err := c.metaCli.Put(string(prevKey), prevMd); err != nil {

@@ -72,7 +72,7 @@ func TestSlaveSyncEndToEnd(t *testing.T) {
 		x := uint64(i)
 
 		// check we can send it without error
-		err := client.Send(schema.OpSet, x, int64(x), x, data[offset:offset+blockSize])
+		err := client.Send(schema.OpSet, x, int64(x), int64(x), data[offset:offset+blockSize])
 		require.Nil(t, err)
 	}
 	maxSeq := uint64(numLogs - 1)

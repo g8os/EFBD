@@ -10,6 +10,6 @@ func TimeNow() time.Time {
 }
 
 // TimeNowTimestamp returns current timestamp
-func TimeNowTimestamp() uint64 {
-	return uint64(TimeNow().UnixNano())
+func TimeNowTimestamp() int64 {
+	return TimeNow().UnixNano()
 }
