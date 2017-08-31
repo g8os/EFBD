@@ -38,20 +38,34 @@ API documentation : [https://godoc.org/github.com/zero-os/0-stor/client](https:/
 ## Metadata
 
 **Metadata format**
-- Capnp format for the metadata:
+- Format for the metadata:
     ```
-    struct Metadata {
-        Size @0 :UInt64; # Size of the data in bytes
-        Epoch @1 :UInt64; # creation epoch
-        Key @2 :Data; # key used in the 0-stor
-        EncrKey @3 :Data; # Encryption key used to encrypt this file
-        Shard @4 :List(Text); # List of shard of the file. It's a url the 0-stor
-        Previous @5 :Data; # Key to the previous metadata entry
-        Next @6 :Data; # Key to the next metadata entry
-        ConfigPtr @7 :Data; # Key to the configuration used by the lib to set the data.
-    }
+	type Chunk struct {
+		Size   uint64    # Size of the chunk in bytes
+		Key    []byte    # key used in the 0-stor
+		Shards []string
+	}
+	type Meta struct {
+		Epoch     int64  # creation epoch
+		Key       []byte # key used in the 0-stor
+		EncrKey   []byte # Encryption key used to encrypt this file
+		Chunks    []*Chunk # list of chunks of the files
+		Previous  []byte   # Key to the previous metadata entry
+		Next      []byte   # Key to the next metadata entry
+		ConfigPtr []byte   # Key to the configuration used by the lib to set the data.
+	}
+    ```
+**chunks**
 
-    ```
+Depending of what pipe you use to process your data, the data can be splitted into multiple chunks or not.  Which mean the metadata can be composed of minimum one up to n chunks.
+
+Each chunks can then have one or multiple shards.
+
+- If you use replication, each shards is the location of one of the replicate.
+- If you use distribution, each shards is the location of one of the data or parity block.
+
+
+
 **metadata linked list**
 
 With `Previous` and `Next` fields in the metadata, we can build metadata linked list of sequential data
@@ -322,7 +336,7 @@ See [lib](./lib) directory for more details.
 
 ## CLI
 
-A simple cli can be found on [cli](./cmd/cli) directory.
+A simple cli can be found on [cli](./cmd/zerostorcli) directory.
 
 ## Daemon
 

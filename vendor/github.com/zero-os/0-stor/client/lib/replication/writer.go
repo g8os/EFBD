@@ -23,8 +23,7 @@ type StorWriter struct {
 	numReplication int
 }
 
-func NewStorWriter(w block.Writer, conf Config, shards, metaShards []string, org, namespace,
-	iyoToken, proto string) (*StorWriter, error) {
+func NewStorWriter(w block.Writer, conf Config, shards, metaShards []string, org, namespace, iyoToken, proto string) (*StorWriter, error) {
 	clients := make(map[string]stor.Client)
 
 	// create meta client
@@ -59,7 +58,7 @@ func NewStorWriter(w block.Writer, conf Config, shards, metaShards []string, org
 // If number of failed shards is more than max failed allowed,
 // then the error contains the failed shards
 func (sw *StorWriter) WriteBlock(key, val []byte, md *meta.Meta) (*meta.Meta, error) {
-	var shardErr lib.ShardError
+	var shardErr *lib.ShardError
 	var okShards []string // list of OK shards
 
 	// get random shards
@@ -116,14 +115,9 @@ func (sw *StorWriter) WriteBlock(key, val []byte, md *meta.Meta) (*meta.Meta, er
 	}
 
 	// update meta
-	md.SetKey(key)
-	md.SetShardSlice(okShards)
-	md.SetSize(uint64(len(val)))
-
-	if err := sw.metaCli.Put(string(key), md); err != nil {
-		shardErr.Add(sw.metaCli.Endpoints(), lib.ShardTypeEtcd, err, lib.StatusUnknownError)
-		return md, shardErr
-	}
+	chunk := md.GetChunk(key)
+	chunk.Shards = okShards
+	chunk.Size = uint64(len(val))
 
 	return sw.w.WriteBlock(key, val, md)
 }

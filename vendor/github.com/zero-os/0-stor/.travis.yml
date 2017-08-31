@@ -1,32 +1,47 @@
-language: go
-sudo: true
-dist: trusty
-
-jobs:
+matrix:
   include:
-    - stage: tests
-      go: 1.9
-      install: skip
-      script: cd client; bash codecov.sh
-    - stage: tests
-      go: 1.9
-      install: skip
-      script: cd server; bash codecov.sh
-    - stage: tests
-      go: 1.9
+    - language: python
+      sudo: true
+      dist: trusty
+      python: 3.5
       install:
-        - go get -u github.com/Jumpscale/go-raml
+        - sudo apt install git -y
+        - pip3 install pyyaml
+        - pip3 install git+https://github.com/gigforks/packet-python.git
+      before_script:
+        - bash test/prepare_testing_env/run_tests.sh before
       script:
-          - go-raml server -l go --api-file-per-method --dir servertmp --ramlfile specs/raml/sdstor.raml --lib-root-urls https://raw.githubusercontent.com/Jumpscale-Cockpit/raml-definitions/master/ #validate raml server generation
-          - go-raml client -l python --ramlfile specs/raml/sdstor.raml --dir clienttmp # validate client generation
+        - bash test/prepare_testing_env/run_tests.sh test
+      after_script:
+        - bash test/prepare_testing_env/run_tests.sh after
 
-    - stage: tests
-      before_install:
-          - sudo apt-get -qq update
-          - sudo apt-get install -y npm
-          - sudo npm install -g raml2html
-      script:
-          - cd specs/raml raml2html -p sdstor.raml > sdstor.html
+    - language: go
+      sudo: true
+      dist: trusty
 
-after_success:
-  - bash <(curl -s https://codecov.io/bash)
+      jobs:
+        include:
+          - stage: tests
+            go: 1.9
+            install: skip
+            script: cd client; bash codecov.sh
+          - stage: tests
+            go: 1.9
+            install: skip
+            script: cd server; bash codecov.sh
+          - stage: tests
+            go: 1.9
+            install:
+              - go get -u github.com/Jumpscale/go-raml
+            script:
+                - go-raml server -l go --api-file-per-method --dir servertmp --ramlfile specs/raml/sdstor.raml --lib-root-urls https://raw.githubusercontent.com/Jumpscale-Cockpit/raml-definitions/master/ #validate raml server generation
+                - go-raml client -l python --ramlfile specs/raml/sdstor.raml --dir clienttmp # validate client generation
+
+          - stage: tests
+            before_install:
+                - sudo apt-get -qq update
+                - sudo apt-get install -y npm
+                - sudo npm install -g raml2html
+            script:
+                - cd specs/raml raml2html -p sdstor.raml > sdstor.html
+

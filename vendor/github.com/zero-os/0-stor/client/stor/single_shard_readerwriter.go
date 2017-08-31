@@ -27,9 +27,12 @@ func (ssw *SingleShardWriter) WriteBlock(key, val []byte, md *meta.Meta) (*meta.
 	if err != nil {
 		return md, err
 	}
-	md.SetKey(key)
-	if err := md.SetShardSlice([]string{ssw.Shard}); err != nil {
-		return md, err
-	}
+	md.Key = key
+
+	md.Chunks = append(md.Chunks, &meta.Chunk{
+		Key:    key,
+		Size:   uint64(len(val)),
+		Shards: []string{ssw.Shard},
+	})
 	return md, nil
 }

@@ -34,16 +34,16 @@ type nextFunc func(md *meta.Meta) (key []byte, err error)
 // func to check that the walk still meet the epoch criteria
 // - if nextKey not nil and err nil, then we should walk to next key
 // - if err is not nil, we should stop
-type checkEpochFunc func(epoch, fromEpoch, toEpoch uint64, md *meta.Meta) (nextKey []byte, err error)
+type checkEpochFunc func(epoch, fromEpoch, toEpoch int64, md *meta.Meta) (nextKey []byte, err error)
 
 // Walk walks over the metadata linked list in forward fashion and
 // fetch the data stored in 0-stor as described by the metadata
-func (c *Client) Walk(startKey []byte, fromEpoch, toEpoch uint64) <-chan *WalkResult {
+func (c *Client) Walk(startKey []byte, fromEpoch, toEpoch int64) <-chan *WalkResult {
 	next := func(md *meta.Meta) ([]byte, error) {
-		return md.Next()
+		return md.Next, nil
 	}
 
-	checkEpoch := func(epoch, fromEpoch, toEpoch uint64, md *meta.Meta) (nextKey []byte, err error) {
+	checkEpoch := func(epoch, fromEpoch, toEpoch int64, md *meta.Meta) (nextKey []byte, err error) {
 		if epoch < fromEpoch {
 			// still long way to go, proceed to next key
 			nextKey, err := next(md)
@@ -63,12 +63,12 @@ func (c *Client) Walk(startKey []byte, fromEpoch, toEpoch uint64) <-chan *WalkRe
 }
 
 // WalkBack is backward version of the Walk
-func (c *Client) WalkBack(startKey []byte, fromEpoch, toEpoch uint64) <-chan *WalkResult {
+func (c *Client) WalkBack(startKey []byte, fromEpoch, toEpoch int64) <-chan *WalkResult {
 	next := func(md *meta.Meta) ([]byte, error) {
-		return md.Previous()
+		return md.Previous, nil
 	}
 
-	checkEpoch := func(epoch, fromEpoch, toEpoch uint64, md *meta.Meta) (nextKey []byte, err error) {
+	checkEpoch := func(epoch, fromEpoch, toEpoch int64, md *meta.Meta) (nextKey []byte, err error) {
 		if epoch > toEpoch {
 			// still long way to go, proceed to next key
 			nextKey, err := next(md)
@@ -87,7 +87,7 @@ func (c *Client) WalkBack(startKey []byte, fromEpoch, toEpoch uint64) <-chan *Wa
 	return c.walk(startKey, fromEpoch, toEpoch, next, checkEpoch)
 }
 
-func (c *Client) walk(startKey []byte, fromEpoch, toEpoch uint64, next nextFunc,
+func (c *Client) walk(startKey []byte, fromEpoch, toEpoch int64, next nextFunc,
 	checkEpoch checkEpochFunc) <-chan *WalkResult {
 
 	wrCh := make(chan *WalkResult, 1)
@@ -112,8 +112,7 @@ func (c *Client) walk(startKey []byte, fromEpoch, toEpoch uint64, next nextFunc,
 			}
 
 			// check if this meta is what we want
-			epoch := md.Epoch()
-			nextKey, err := checkEpoch(epoch, fromEpoch, toEpoch, md)
+			nextKey, err := checkEpoch(md.Epoch, fromEpoch, toEpoch, md)
 			if err != nil {
 				if err == errEpochPassed {
 					return

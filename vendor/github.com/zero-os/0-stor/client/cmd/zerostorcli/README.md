@@ -11,7 +11,7 @@ Simple cli to store file to 0-stor.
 ## Configuration
 
 - By default, client uses current ```config.yaml``` file in same dir
-- If you want to use another file use ```./cli --conf newFile```
+./- If you want to use another file use ```zerostorcli --conf newFile```
 
 - Update the client config.yaml file in the same directory
     - Update the organization & namespace to match existing IYO ```{organization}.0stor.{namespace}```
@@ -26,6 +26,7 @@ The CLI expose two group of commands, file and namespace. Each group contains su
 - file
   - upload: Upload a file to the 0-stor(s)
   - download: Download a file from the 0-stor(s)
+  - metadata: Print the metadata of a key
 - namespace
   - create: Create a namespace by creation the required sub-ogranization on [ItsYou.Online](https://itsyou.online/)
   - delete: Delete a namespace by deleting the sub-organizations.
@@ -45,7 +46,7 @@ The `config.yaml` used in this example has 4 pipes defines for data processing.
 #### Upload file
 
 ```
-./cli --conf conf_file file upload file_name
+./zerostorcli --conf conf_file file upload file_name
 ```
 
 upload file and use the `file_name` as 0-stor key
@@ -54,17 +55,26 @@ upload file and use the `file_name` as 0-stor key
 
 #### Download file
 ```
-./cli --conf conf_file file download key result_file_name
+./zerostorcli --conf conf_file file download key result_file_name
 ```
 
 Get value with key=`key` from 0-stor server and write it to `result_file_name`
 
 `conf_file` is the configuration file. See `config.yaml` here for the example
 
+
+#### Read metadata of a file
+
+```
+./zerostocli --conf config_file file metadata key | json_pp
+```
+This will print the metadata of the object with the key `key` and pretty print the json output
+
+
 #### Create a namespace
 
 ```
-./cli --conf conf_file namespace create namespace_test
+./zerostorcli --conf conf_file namespace create namespace_test
 ```
 
 This command will create the required sub-organization on ItsYou.online.
@@ -76,7 +86,7 @@ This command used the `organization` field from the configuration file. If the o
 
 #### Delete a namespace
 ```
-./cli --conf conf_file namespace delete namespace_test
+./zerostorcli --conf conf_file namespace delete namespace_test
 ```
 
 This command will delete the organization `myorg.0stor.namespace_test` and all its sub-organization
@@ -84,7 +94,7 @@ This command will delete the organization `myorg.0stor.namespace_test` and all i
 #### Set rights of a user into a namespace
 
 ```shell
-./cli --conf conf_file namespace set-acl --namespace namespace_test --user johndoe -r -w -d
+./zerostorcli --conf conf_file namespace set-acl --namespace namespace_test --user johndoe -r -w -d
 ```
 
 This command will authorize the user `johndoe` into the namespace `namespace_test` with the right read, write and delete.
@@ -104,7 +114,7 @@ To remove some right, just re-execute the command with the new rights. if no rig
 #### Get the right of a user
 
 ```shell
-/cli --conf demo.yaml namespace get-acl --namespace namespace_test --user johndoe
+./zerostorcli --conf demo.yaml namespace get-acl --namespace namespace_test --user johndoe
 ```
 
 This command will the right that a user has for the specified namespace:

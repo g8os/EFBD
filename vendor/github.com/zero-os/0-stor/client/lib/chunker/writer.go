@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/zero-os/0-stor/client/lib/block"
 	"github.com/zero-os/0-stor/client/meta"
 )
@@ -36,26 +37,27 @@ func NewBlockWriter(w block.Writer, conf Config, metaShards []string, r io.Reade
 // WriteBlock implements block.Writer.WriteBlock interface
 // val is being ignore here
 func (bw *BlockWriter) WriteBlock(key, val []byte, md *meta.Meta) (*meta.Meta, error) {
-	var err error
+	var (
+		n   int
+		err error
+	)
 	rd := NewReader(bw.rd, bw.conf)
-
-	var n, totWritten int
 
 	for rd.Next() {
 		data := rd.Value()
-		fmt.Printf("write key=%v \n", string(chunkKey(key, n)))
+		log.Debugf("write key=%v \n", string(chunkKey(key, n)))
 		md, err = bw.w.WriteBlock(chunkKey(key, n), data, md)
 		if err != nil {
 			return md, err
 		}
-		totWritten += int(md.Size())
+
+		// add a new chunk to the metadata
+		chunk := md.GetChunk(key)
+		chunk.Shards = []string{} // the final location is not known yet at this stage
+		chunk.Size = uint64(len(data))
+
 		n++
 	}
-	md, err = meta.New(key, uint64(totWritten), []string{})
-	if err != nil {
-		return md, err
-	}
 
-	md.SetNumOfChunks(uint64(n))
-	return md, bw.metaCli.Put(string(key), md)
+	return md, nil
 }

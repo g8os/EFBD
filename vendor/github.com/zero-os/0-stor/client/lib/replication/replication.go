@@ -43,7 +43,7 @@ func NewWriter(writers []block.Writer, conf Config) *Writer {
 	}
 }
 
-// Write writes data to underlying writer
+// WriteBlock writes data to underlying writer
 func (w *Writer) WriteBlock(key, data []byte, md *meta.Meta) (*meta.Meta, error) {
 	if w.async {
 		_, md, err := writeAsync(w.writers, key, data, md, w.maxFailed)
@@ -60,13 +60,12 @@ func (w *Writer) Write(key, data []byte, md *meta.Meta) ([]block.Writer, *meta.M
 	return writeSync(w.writers, key, data, md, w.maxFailed)
 }
 
-func writeAsync(writers []block.Writer, key, data []byte, md *meta.Meta,
-	maxFailed int) ([]block.Writer, *meta.Meta, error) {
+func writeAsync(writers []block.Writer, key, data []byte, md *meta.Meta, maxFailed int) ([]block.Writer, *meta.Meta, error) {
 
 	var wg sync.WaitGroup
 	var mux sync.Mutex
 	var errs []error
-	var written int
+
 	var failedWriters []block.Writer
 
 	wg.Add(len(writers))
@@ -77,7 +76,8 @@ func writeAsync(writers []block.Writer, key, data []byte, md *meta.Meta,
 
 			mux.Lock()
 			defer mux.Unlock()
-			md, err := writer.WriteBlock(key, data, md)
+
+			_, err := writer.WriteBlock(key, data, md)
 
 			// call the lock here to protect `errs` & `written` var
 			// which is global to this func
@@ -87,24 +87,24 @@ func writeAsync(writers []block.Writer, key, data []byte, md *meta.Meta,
 				failedWriters = append(failedWriters, writer)
 				return
 			}
-
-			written += int(md.Size())
 		}(writer)
 	}
 
 	wg.Wait()
 
-	md.SetSize(uint64(written))
+	// md.Size += uint64(written)
 	if len(errs) > maxFailed {
 		return failedWriters, md, Error{errs: errs}
 	}
 
+	chunk := md.GetChunk(key)
+	chunk.Size = uint64(len(data))
+
 	return failedWriters, md, nil
 }
 
-func writeSync(writers []block.Writer, key, data []byte, md *meta.Meta,
-	maxFailed int) ([]block.Writer, *meta.Meta, error) {
-	var written int
+func writeSync(writers []block.Writer, key, data []byte, md *meta.Meta, maxFailed int) ([]block.Writer, *meta.Meta, error) {
+
 	var failedWriters []block.Writer
 	var failedNum int
 
@@ -117,8 +117,10 @@ func writeSync(writers []block.Writer, key, data []byte, md *meta.Meta,
 				return failedWriters, md, err
 			}
 		}
-		written += int(md.Size())
-		md.SetSize(uint64(written))
 	}
+
+	chunk := md.GetChunk(key)
+	chunk.Size = uint64(len(data))
+
 	return failedWriters, md, nil
 }

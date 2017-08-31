@@ -5,8 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
 	"github.com/zero-os/0-stor/client/lib/block"
 	"github.com/zero-os/0-stor/client/meta"
 )
@@ -42,23 +40,22 @@ func testRoundTrip(t *testing.T, conf Config) {
 
 	// create writer
 	w, err := NewWriter(conf, buf)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
-	md, err := meta.New(nil, 0, nil)
-	require.Nil(t, err)
+	md := meta.New(nil)
 	// compress by write to the writer
 	_, err = w.WriteBlock(nil, payload, md)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	// create reader
 	r, err := NewReader(conf)
-	if !assert.Nil(t, err) {
+	if !assert.NoError(t, err) {
 		return
 	}
 
 	// decompress by read from the reader
 	b, err := r.ReadBlock(buf.Bytes())
-	if !assert.Nil(t, err) {
+	if !assert.NoError(t, err) {
 		return
 	}
 

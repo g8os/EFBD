@@ -1,12 +1,11 @@
 package meta
 
 import (
-	"crypto/rand"
-	mr "math/rand"
 	"net"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/zero-os/0-stor/client/meta/embedserver"
@@ -14,41 +13,32 @@ import (
 
 func TestRoundTrip(t *testing.T) {
 	etcd, err := embedserver.New()
-	require.Nil(t, err)
+	require.NoError(t, err)
 	defer etcd.Stop()
 
 	c, err := NewClient([]string{etcd.ListenAddr()})
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	// prepare the data
-	key := make([]byte, 32)
-	rand.Read(key)
-
-	size := mr.Uint64()
-	shards := []string{"http://1.2.3.5:1234"}
-
-	// create the metadata object
-	md, err := New(key, size, shards)
-	require.Nil(t, err)
+	md := createCapnpMeta(t)
 
 	// put the metadata
-	err = c.Put(string(key), md)
-	require.Nil(t, err)
+	err = c.Put(string(md.Key), md)
+	require.NoError(t, err)
 
 	// get it back
-	storedMd, err := c.Get(string(key))
-	require.Nil(t, err)
+	storedMd, err := c.Get(string(md.Key))
+	require.NoError(t, err)
 
 	// check stored value
-	storedKey, err := storedMd.Key()
-	require.Nil(t, err)
-	require.Equal(t, key, storedKey)
-
-	require.Equal(t, size, storedMd.Size())
-
-	storedShards, err := md.GetShardsSlice()
-	require.Nil(t, err)
-	require.Equal(t, shards, storedShards)
+	assert.Equal(t, md.Key, storedMd.Key, "key is different")
+	assert.Equal(t, md.Size(), storedMd.Size(), "size is different")
+	assert.Equal(t, md.Epoch, storedMd.Epoch, "epoch is different")
+	assert.Equal(t, md.EncrKey, storedMd.EncrKey, "encryption key is different")
+	assert.Equal(t, md.Previous, storedMd.Previous, "previous pointer is different")
+	assert.Equal(t, md.Next, storedMd.Next, "next pointer is different")
+	assert.Equal(t, md.ConfigPtr, storedMd.ConfigPtr, "config pointer is different")
+	assert.Equal(t, md.Chunks, storedMd.Chunks, "chunks are differents")
 }
 
 // test that client can return gracefully when the server is not exist
@@ -69,8 +59,7 @@ func TestServerDown(t *testing.T) {
 	require.Nil(t, err)
 
 	key := "key"
-	md, err := New([]byte(key), 0, []string{"12345"})
-	require.Nil(t, err)
+	md := New([]byte(key))
 
 	// make sure we can do some operation to server
 	err = c.Put(key, md)
@@ -94,7 +83,7 @@ func TestServerDown(t *testing.T) {
 	select {
 	case <-time.After(metaOpTimeout + (5 * time.Second)):
 		// the put operation should be exited before the timeout
-		t.Fatal("the operation should already returns with error")
+		t.Error("the operation should already returns with error")
 	case <-done:
 		t.Logf("operation exited successfully")
 	}
@@ -111,7 +100,7 @@ func TestServerDown(t *testing.T) {
 	select {
 	case <-time.After(metaOpTimeout + (5 * time.Second)):
 		// the Get operation should be exited before the timeout
-		t.Fatal("the operation should already returns with error")
+		t.Error("the operation should already returns with error")
 	case <-done:
 		t.Logf("operation exited successfully")
 	}

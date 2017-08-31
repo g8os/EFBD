@@ -65,19 +65,18 @@ func testRoundTrip(t *testing.T, compressType string) {
 	finalWriter := block.NewBytesBuffer()
 
 	pw, err := NewWritePipe(&conf, "", finalWriter, nil)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
-	md, err := meta.New(key, 0, nil)
-	require.Nil(t, err)
+	md := meta.New(key)
 
 	_, err = pw.WriteBlock(key, data, md)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	// read it
 	rp, err := NewReadPipe(&conf, "")
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	readResult, err := rp.ReadBlock(finalWriter.Bytes())
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Equal(t, data, readResult)
 }

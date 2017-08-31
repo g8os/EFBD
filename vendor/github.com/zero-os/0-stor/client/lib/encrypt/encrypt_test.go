@@ -49,8 +49,7 @@ func testRoundTrip(t *testing.T, conf Config) {
 	w, err := NewWriter(buf, conf)
 	require.Nil(t, err)
 
-	md, err := meta.New(nil, 0, nil)
-	require.Nil(t, err)
+	md := meta.New(nil)
 
 	_, err = w.WriteBlock(nil, plain, md)
 	require.Nil(t, err)

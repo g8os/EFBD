@@ -103,9 +103,9 @@ func testWalk(t *testing.T, forward bool) {
 	// walk over it
 	var wrCh <-chan *WalkResult
 	if forward {
-		wrCh = cli.Walk(firstKey, uint64(startEpoch), uint64(endEpoch))
+		wrCh = cli.Walk(firstKey, startEpoch, endEpoch)
 	} else {
-		wrCh = cli.WalkBack(firstKey, uint64(startEpoch), uint64(endEpoch))
+		wrCh = cli.WalkBack(firstKey, startEpoch, endEpoch)
 	}
 
 	var i int

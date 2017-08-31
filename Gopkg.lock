@@ -212,6 +212,12 @@
   revision = "ae77be60afb1dcacde03767a8c37337fad28ac14"
 
 [[projects]]
+  name = "github.com/karlseguin/ccache"
+  packages = ["."]
+  revision = "a2d62155777b39595c825ed3824279e642a5db3c"
+  version = "v2.0.2"
+
+[[projects]]
   name = "github.com/mattn/go-colorable"
   packages = ["."]
   revision = "167de6bfdfba052fa6b2d3664c8f5272e23c9072"
@@ -413,7 +419,7 @@
   branch = "master"
   name = "github.com/zero-os/0-stor"
   packages = ["client","client/config","client/goraml","client/goraml/goraml","client/goraml/librairies/reservation","client/itsyouonline","client/lib","client/lib/block","client/lib/chunker","client/lib/compress","client/lib/distribution","client/lib/encrypt","client/lib/hash","client/lib/replication","client/meta","client/meta/block","client/meta/embedserver","client/meta/schema","client/pipe","client/stor","client/stor/common","client/stor/grpc","client/stor/rest","grpc_store","server/api/grpc","server/api/rest","server/db","server/db/badger","server/goraml","server/goraml/librairies/reservation","server/jwt","server/manager","server/routes","server/stats","server/storserver"]
-  revision = "77fc7cbaeb97bc7e94d611ed146d67a8156248b8"
+  revision = "16a7d1959bccccabea241e36e1f9f04aa2e98a4d"
 
 [[projects]]
   branch = "master"
@@ -472,6 +478,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "e3c01319a6b26efeeb74db53a959fa9afb3decaa9b6f43d63c825c73466b5785"
+  inputs-digest = "b41c64c1ea6cc97c3a2d89a77a294153ecd41ed481b1faf682bef926b57b2c74"
   solver-name = "gps-cdcl"
   solver-version = 1

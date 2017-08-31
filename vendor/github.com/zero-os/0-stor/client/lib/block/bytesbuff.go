@@ -20,7 +20,6 @@ func NewBytesBuffer() *BytesBuffer {
 
 // WriteBlock implements block.Writer interface
 func (bb *BytesBuffer) WriteBlock(key, val []byte, md *meta.Meta) (*meta.Meta, error) {
-	n, err := bb.Buffer.Write(val)
-	md.SetSize(uint64(n))
+	_, err := bb.Buffer.Write(val)
 	return md, err
 }
