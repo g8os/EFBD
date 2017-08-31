@@ -130,7 +130,7 @@ func waitForBlockReceivedResponse(t *testing.T, client *Client, minSequence, max
 
 func testClientSend(t *testing.T, client *Client, startSeq, endSeq uint64, data []byte) {
 	for x := startSeq; x <= endSeq; x++ {
-		err := client.Send(schema.OpSet, x, int64(x), x, data)
+		err := client.Send(schema.OpSet, x, int64(x), int64(x), data)
 		require.Nil(t, err)
 	}
 

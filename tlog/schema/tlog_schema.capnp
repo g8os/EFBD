@@ -31,7 +31,7 @@ struct TlogBlock {
 	index @1 :Int64;
 	hash  @2 :Data;
 	data @3 :Data;
-	timestamp @4 :UInt64;
+	timestamp @4 :Int64;
 	operation @5 :UInt8; # disk operation  1=OpSet,2=OpDelete
 }
 
@@ -39,7 +39,7 @@ struct TlogBlock {
 struct TlogAggregation {
 	name @0 :Text; # unused now
 	size @1 :UInt64; # number of blocks in this aggregation
-	timestamp @2 :UInt64;
+	timestamp @2 :Int64;
 	vdiskID @3 :Text;
 	blocks @4 :List(TlogBlock);
 	prev @5 :Data; # hash of the previous aggregation

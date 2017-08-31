@@ -24,19 +24,19 @@ type Limiter interface {
 	// EndBlock returns true if it is the end of block we want to decode
 	EndBlock(schema.TlogBlock) bool
 
-	FromEpoch() uint64
+	FromEpoch() int64
 
-	ToEpoch() uint64
+	ToEpoch() int64
 }
 
 // LimitByTimestamp implements limiter based on the timestamp
 type LimitByTimestamp struct {
-	startTs uint64
-	endTs   uint64
+	startTs int64
+	endTs   int64
 }
 
 // NewLimitByTimestamp creates new LimitByTimestamp limiter
-func NewLimitByTimestamp(startTs, endTs uint64) LimitByTimestamp {
+func NewLimitByTimestamp(startTs, endTs int64) LimitByTimestamp {
 	if endTs == 0 {
 		endTs = tlog.TimeNowTimestamp()
 	}
@@ -46,11 +46,11 @@ func NewLimitByTimestamp(startTs, endTs uint64) LimitByTimestamp {
 	}
 }
 
-func (lbt LimitByTimestamp) FromEpoch() uint64 {
+func (lbt LimitByTimestamp) FromEpoch() int64 {
 	return lbt.startTs
 }
 
-func (lbt LimitByTimestamp) ToEpoch() uint64 {
+func (lbt LimitByTimestamp) ToEpoch() int64 {
 	return lbt.endTs
 }
 
@@ -94,7 +94,7 @@ func (lbt LimitByTimestamp) StartBlock(block schema.TlogBlock) bool {
 type LimitBySequence struct {
 	startSeq uint64
 	endSeq   uint64
-	endTs    uint64
+	endTs    int64
 }
 
 // NewLimitBySequence creates new LimitBySequence object
@@ -106,11 +106,11 @@ func NewLimitBySequence(startSeq, endSeq uint64) LimitBySequence {
 	}
 }
 
-func (lbs LimitBySequence) FromEpoch() uint64 {
+func (lbs LimitBySequence) FromEpoch() int64 {
 	return 0
 }
 
-func (lbs LimitBySequence) ToEpoch() uint64 {
+func (lbs LimitBySequence) ToEpoch() int64 {
 	return lbs.endTs
 }
 

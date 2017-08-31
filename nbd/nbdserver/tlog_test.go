@@ -320,7 +320,7 @@ func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
 	zeroBlock := make([]byte, blockSize)
 
 	startTs := tlog.TimeNowTimestamp()
-	var lastBlockTs uint64 // timestamp before the last block
+	var lastBlockTs int64 // timestamp before the last block
 
 	for i := 0; i < blocks; i++ {
 		if i == blocks-1 {

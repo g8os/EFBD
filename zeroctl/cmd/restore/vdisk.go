@@ -19,8 +19,8 @@ var vdiskCmdCfg struct {
 	SourceConfig             config.SourceConfig
 	DataShards, ParityShards int
 	PrivKey                  string
-	StartTs                  uint64 // start timestamp
-	EndTs                    uint64 // end timestamp
+	StartTs                  int64 // start timestamp
+	EndTs                    int64 // end timestamp
 	Force                    bool
 }
 
@@ -143,11 +143,11 @@ func init() {
 		&vdiskCmdCfg.PrivKey,
 		"priv-key", "12345678901234567890123456789012",
 		"private key")
-	VdiskCmd.Flags().Uint64Var(
+	VdiskCmd.Flags().Int64Var(
 		&vdiskCmdCfg.StartTs,
 		"start-timestamp", 0,
 		"start UTC timestamp in nanosecond(default 0: since beginning)")
-	VdiskCmd.Flags().Uint64Var(
+	VdiskCmd.Flags().Int64Var(
 		&vdiskCmdCfg.EndTs,
 		"end-timestamp", 0,
 		"end UTC timestamp in nanosecond(default 0: until the end)")

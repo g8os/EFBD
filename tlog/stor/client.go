@@ -131,11 +131,8 @@ func (c *Client) ProcessStore(blocks []*schema.TlogBlock) ([]byte, error) {
 	// we set our initial meta because
 	// we need to set our own timestamp in the 0-stor metadata server
 	// in order to have only one epoch for both tlog aggregation and 0-stor metadata
-	initialMeta, err := meta.New(key, 0, nil)
-	if err != nil {
-		return nil, err
-	}
-	initialMeta.SetEpoch(timestamp)
+	initialMeta := meta.New(key)
+	initialMeta.Epoch = timestamp
 
 	// stor to 0-stor
 	lastMd, err := c.storClient.Write(key, data, c.lastMetaKey, c.lastMd, initialMeta)
