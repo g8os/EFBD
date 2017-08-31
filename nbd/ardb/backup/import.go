@@ -113,11 +113,16 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 		if err != nil {
 			return err
 		}
+		hasher, err := newKeyedHasher(cfg.CompressionType, cfg.CryptoKey)
+		if err != nil {
+			return err
+		}
 
 		pipeline := &importPipeline{
 			StorageDriver: src,
 			Decrypter:     decrypter,
 			Decompressor:  decompressor,
+			Hasher:        hasher,
 		}
 
 		// launch worker
@@ -382,6 +387,7 @@ type importPipeline struct {
 	StorageDriver StorageDriver
 	Decrypter     Decrypter
 	Decompressor  Decompressor
+	Hasher        zerodisk.Hasher
 }
 
 func (p *importPipeline) ReadBlock(index int64, hash zerodisk.Hash) ([]byte, error) {
@@ -389,11 +395,6 @@ func (p *importPipeline) ReadBlock(index int64, hash zerodisk.Hash) ([]byte, err
 	err := p.StorageDriver.GetDedupedBlock(hash, bufA)
 	if err != nil {
 		return nil, err
-	}
-
-	blockHash := zerodisk.HashBytes(bufA.Bytes())
-	if !hash.Equals(blockHash) {
-		return nil, fmt.Errorf("block %d's hash does not match its content", index)
 	}
 
 	bufB := bytes.NewBuffer(nil)
@@ -411,6 +412,11 @@ func (p *importPipeline) ReadBlock(index int64, hash zerodisk.Hash) ([]byte, err
 	bytes, err := ioutil.ReadAll(bufA)
 	if err != nil {
 		return nil, err
+	}
+
+	blockHash := p.Hasher.HashBytes(bytes)
+	if !hash.Equals(blockHash) {
+		return nil, fmt.Errorf("block %d's hash does not match its content", index)
 	}
 
 	return bytes, nil

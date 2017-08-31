@@ -7,6 +7,8 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
+
+	"github.com/zero-os/0-Disk"
 )
 
 // static sizes
@@ -173,4 +175,9 @@ func validateCryptoKey(key []byte) error {
 	}
 
 	return errors.New("invalid crypto key")
+}
+
+func newKeyedHasher(ct CompressionType, ck CryptoKey) (zerodisk.Hasher, error) {
+	key := append(ck[:], byte(ct))
+	return zerodisk.NewKeyedHasher(key)
 }

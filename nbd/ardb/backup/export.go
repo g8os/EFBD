@@ -8,11 +8,10 @@ import (
 	"io"
 	"sync"
 
+	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
-
-	"github.com/zero-os/0-Disk"
 )
 
 // Export a block storage to aa FTP Server,
@@ -282,8 +281,13 @@ func exportBS(ctx context.Context, src storage.BlockStorage, blockIndices []int6
 		if err != nil {
 			return err
 		}
+		hasher, err := newKeyedHasher(cfg.CompressionType, cfg.CryptoKey)
+		if err != nil {
+			return err
+		}
 
 		pipeline := &exportPipeline{
+			Hasher:        hasher,
 			Compressor:    compressor,
 			Encrypter:     encrypter,
 			StorageDriver: dst,
@@ -376,6 +380,7 @@ type exportConfig struct {
 
 // compress -> encrypt -> store
 type exportPipeline struct {
+	Hasher        zerodisk.Hasher
 	Compressor    Compressor
 	Encrypter     Encrypter
 	StorageDriver StorageDriver
@@ -386,6 +391,12 @@ func (p *exportPipeline) WriteBlock(index int64, data []byte) error {
 	bufA := bytes.NewBuffer(data)
 	bufB := bytes.NewBuffer(nil)
 
+	hash := p.Hasher.HashBytes(bufA.Bytes())
+	blockIsNew := p.DedupedMap.SetHash(index, hash)
+	if !blockIsNew {
+		return nil // we're done here
+	}
+
 	err := p.Compressor.Compress(bufA, bufB)
 	if err != nil {
 		return err
@@ -395,12 +406,6 @@ func (p *exportPipeline) WriteBlock(index int64, data []byte) error {
 	err = p.Encrypter.Encrypt(bufB, bufA)
 	if err != nil {
 		return err
-	}
-
-	hash := zerodisk.HashBytes(bufA.Bytes())
-	blockIsNew := p.DedupedMap.SetHash(index, hash)
-	if !blockIsNew {
-		return nil // we're done here
 	}
 
 	return p.StorageDriver.SetDedupedBlock(hash, bufA)
