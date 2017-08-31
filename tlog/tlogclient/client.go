@@ -18,10 +18,11 @@ import (
 )
 
 const (
-	sendRetryNum     = 5
-	sendSleepTime    = 500 * time.Millisecond // sleep duration before retrying the Send
-	resendTimeoutDur = 2 * time.Second        // duration to wait before re-send the tlog.
-	readTimeout      = 2 * time.Second
+	sendRetryNum         = 5
+	sendSleepTime        = 500 * time.Millisecond // sleep duration before retrying the Send
+	resendTimeoutDur     = 2 * time.Second        // duration to wait before re-send the tlog.
+	readTimeout          = 2 * time.Second
+	failedFlushSleepTime = 10 * time.Second
 )
 
 var (
@@ -77,7 +78,9 @@ type Client struct {
 
 	waitSlaveSyncCond *sync.Cond
 
-	serverAddrLock sync.Mutex
+	// serverAddr lock to protect our list of servers
+	serverAddrLock       sync.Mutex
+	curServerFailedFlush bool
 }
 
 // New creates a new tlog client for a vdisk with 'addrs' is the tlogserver addresses.
@@ -138,16 +141,30 @@ func (c *Client) ChangeServerAddresses(servers []string) {
 // and use 2nd entry as main server
 func (c *Client) shiftServer() {
 	c.serverAddrLock.Lock()
-	c.serverAddrLock.Unlock()
+	defer c.serverAddrLock.Unlock()
 
 	c.servers = append(c.servers[1:], c.servers[0])
 }
 
 func (c *Client) curServerAddress() string {
 	c.serverAddrLock.Lock()
-	c.serverAddrLock.Unlock()
+	defer c.serverAddrLock.Unlock()
 
 	return c.servers[0]
+}
+
+func (c *Client) setCurServerFailedFlushStatus(status bool) {
+	c.serverAddrLock.Lock()
+	defer c.serverAddrLock.Unlock()
+
+	c.curServerFailedFlush = status
+}
+
+func (c *Client) getCurServerFailedFlushStatus() bool {
+	c.serverAddrLock.Lock()
+	defer c.serverAddrLock.Unlock()
+
+	return c.curServerFailedFlush
 }
 
 // reconnect to server
@@ -190,6 +207,15 @@ func (c *Client) connect(firstSequence uint64, resetFirstSeq bool) (err error) {
 
 	c.rLock.Lock()
 	defer c.rLock.Unlock()
+
+	if c.getCurServerFailedFlushStatus() {
+		// sleep for a while
+		// in case of failed flush
+		// to give the time for server to recover
+		time.Sleep(failedFlushSleepTime)
+	}
+
+	c.setCurServerFailedFlushStatus(false)
 
 	defer func() {
 		if err == nil {
@@ -311,6 +337,8 @@ func (c *Client) Recv() <-chan *Result {
 						log.Info("tlog client receive BlockStatusWaitNbdSlaveSyncReceived")
 						c.signalCond(c.waitSlaveSyncCond)
 					case tlog.BlockStatusFlushFailed:
+						log.Errorf("tlogclient receive BlockStatusFlushFailed for vdisk: %v", c.vdiskID)
+						c.setCurServerFailedFlushStatus(true)
 						if err := c.reconnectFromRead(ErrFlushFailed); err != nil {
 							reChan <- &Result{
 								Err: ErrFlushFailed,

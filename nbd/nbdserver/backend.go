@@ -244,7 +244,7 @@ func (ab *backend) GoBackground(ctx context.Context) {
 		case err = <-done:
 			log.Infof("vdisk '%s' finished the flush under SIGTERM handler", ab.vdiskID)
 
-		case <-time.After(2 * time.Minute):
+		case <-time.After(flushWaitRetry * flushWaitRetryNum):
 			// TODO :
 			// - how long is the reasonable waiting time?
 			// - put this value in the config?

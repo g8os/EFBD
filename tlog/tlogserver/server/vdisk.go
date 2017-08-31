@@ -78,6 +78,9 @@ type vdisk struct {
 	withSlaveSyncer bool
 	ssMux           sync.Mutex
 
+	ctx        context.Context
+	cancelFunc context.CancelFunc
+
 	storClient *stor.Client
 }
 
@@ -99,6 +102,7 @@ func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, config
 
 	var aggComm *aggmq.AggComm
 
+	ctx, cancelFunc := context.WithCancel(parentCtx)
 	// create slave syncer
 	apc := aggmq.AggProcessorConfig{
 		VdiskID:      vdiskID,
@@ -132,9 +136,10 @@ func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, config
 		aggComm:         aggComm,
 		aggMq:           aggMq,
 		apc:             apc,
-	}
 
-	ctx, cancelFunc := context.WithCancel(parentCtx)
+		ctx:        ctx,
+		cancelFunc: cancelFunc,
+	}
 
 	if err := vd.watchConfig(ctx); err != nil {
 		return nil, err
@@ -152,6 +157,7 @@ func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, config
 	go vd.handleSighup(ctx)
 	go vd.cleanup(ctx, cleanup)
 
+	log.Infof("vdisk %v created", vd.id)
 	return vd, nil
 }
 
@@ -213,7 +219,10 @@ func (vd *vdisk) createFlusher() error {
 
 // do all necessary cleanup for this vdisk
 func (vd *vdisk) cleanup(ctx context.Context, cleanup vdiskCleanupFunc) {
-	defer cleanup(vd.id)
+	defer func() {
+		log.Infof("vdisk %v cleanup", vd.id)
+		cleanup(vd.id)
+	}()
 	select {
 	case <-ctx.Done():
 		if err := vd.storClient.Close(); err != nil {
@@ -507,11 +516,10 @@ func (vd *vdisk) runFlusher(ctx context.Context, cancelFunc context.CancelFunc) 
 
 		if status != tlog.BlockStatusFlushOK {
 			// We are failing to flush!
-			// Put the blocks back, hope it
-			// can be flushed next time.
-			// FIXME at https://github.com/zero-os/0-Disk/issues/399
-			tlogs = append(tlogs, blocks...)
-			continue
+			// Stop! So the client could connect to other server
+			// Or reconnect to us again and then we retry the flush process
+			log.Errorf("vdisk %v is failing to flush, stop it", vd.id)
+			return
 		}
 		// update last sequence flushed
 		if len(seqs) > 0 {
