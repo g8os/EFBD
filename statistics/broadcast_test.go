@@ -1,4 +1,4 @@
-package log
+package statistics
 
 import (
 	"testing"
@@ -11,18 +11,18 @@ func TestStatsLog(t *testing.T) {
 
 	// test valid cases
 	//without tags
-	err := BroadcastStatistics("vdisk1", StatisticsKeyIOPSWrite, 1.234, AggregationAverages, nil)
+	err := Broadcast("vdisk1", KeyIOPSWrite, 1.234, AggregationAverages, nil)
 	assert.NoError(err)
 	//with tags
 	tags := MetricTags{
 		"foo":   "world",
 		"hello": "bar",
 	}
-	err = BroadcastStatistics("vdisk1", StatisticsKeyTroughputRead, 2.345, AggregationDifferentiates, tags)
+	err = Broadcast("vdisk1", KeyTroughputRead, 2.345, AggregationDifferentiates, tags)
 	assert.NoError(err)
 
 	// invalid Aggregation type
-	err = BroadcastStatistics("vdisk1", StatisticsKeyIOPSWrite, 3.456, AggregationType("an invalid aggregation type"), nil)
+	err = Broadcast("vdisk1", KeyIOPSWrite, 3.456, AggregationType("an invalid aggregation type"), nil)
 	assert.Error(err)
 }
 
@@ -31,27 +31,27 @@ func TestCreateKey(t *testing.T) {
 
 	validCases := []struct {
 		vdiskID  string
-		key      StatisticsKey
+		key      Key
 		expected string
 	}{
 		{
 			vdiskID:  "vdisk1",
-			key:      StatisticsKeyIOPSRead,
+			key:      KeyIOPSRead,
 			expected: "vdisk.iops.read@virt.vdisk1",
 		},
 		{
 			vdiskID:  "vdisk2",
-			key:      StatisticsKeyIOPSWrite,
+			key:      KeyIOPSWrite,
 			expected: "vdisk.iops.write@virt.vdisk2",
 		},
 		{
 			vdiskID:  "vdisk1",
-			key:      StatisticsKeyTroughputRead,
+			key:      KeyTroughputRead,
 			expected: "vdisk.throughput.read@virt.vdisk1",
 		},
 		{
 			vdiskID:  "vdisk3",
-			key:      StatisticsKeyTroughputWrite,
+			key:      KeyTroughputWrite,
 			expected: "vdisk.throughput.write@virt.vdisk3",
 		},
 	}
@@ -63,18 +63,18 @@ func TestCreateKey(t *testing.T) {
 
 	invalidCases := []struct {
 		vdiskID  string
-		key      StatisticsKey
+		key      Key
 		expected error
 	}{
 		{
 			vdiskID:  "",
-			key:      StatisticsKeyIOPSRead,
+			key:      KeyIOPSRead,
 			expected: ErrNilVdiskID,
 		},
 		{
 			vdiskID:  "vdisk1",
-			key:      StatisticsKey(255),
-			expected: ErrInvalidStatisticsKey,
+			key:      Key(255),
+			expected: ErrInvalidKey,
 		},
 	}
 

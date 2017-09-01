@@ -9,35 +9,31 @@ import (
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/nbd/gonbdserver/nbd"
+	"github.com/zero-os/0-Disk/statistics"
 )
 
-func newBackend(vdiskID string, size uint64, blockSize int64, storage storage.BlockStorage, vComp *vdiskCompletion, connProvider ardb.ConnProvider) *backend {
-	// create statistics loggers
-	readStatisticsLogger := log.StartIOPSThroughputStatsLoggerRead(vdiskID, blockSize)
-	writeStatisticsLogger := log.StartIOPSThroughputStatsLoggerWrite(vdiskID, blockSize)
-
+func newBackend(vdiskID string, size uint64, blockSize int64, storage storage.BlockStorage, vComp *vdiskCompletion, connProvider ardb.ConnProvider, readStatistics, writeStatistics statistics.IOPSThroughputLogger) *backend {
 	return &backend{
-		vdiskID:               vdiskID,
-		blockSize:             blockSize,
-		size:                  size,
-		storage:               storage,
-		connProvider:          connProvider,
-		vComp:                 vComp,
-		readStatisticsLogger:  readStatisticsLogger,
-		writeStatisticsLogger: writeStatisticsLogger,
+		vdiskID:         vdiskID,
+		blockSize:       blockSize,
+		size:            size,
+		storage:         storage,
+		connProvider:    connProvider,
+		vComp:           vComp,
+		readStatistics:  readStatistics,
+		writeStatistics: writeStatistics,
 	}
 }
 
 // backend is a nbd.Backend implementation on top of ARDB
 type backend struct {
-	vdiskID               string
-	blockSize             int64
-	size                  uint64
-	storage               storage.BlockStorage
-	connProvider          ardb.ConnProvider
-	vComp                 *vdiskCompletion
-	readStatisticsLogger  log.IOPSThroughputLogger
-	writeStatisticsLogger log.IOPSThroughputLogger
+	vdiskID                         string
+	blockSize                       int64
+	size                            uint64
+	storage                         storage.BlockStorage
+	connProvider                    ardb.ConnProvider
+	vComp                           *vdiskCompletion
+	readStatistics, writeStatistics statistics.IOPSThroughputLogger
 }
 
 // WriteAt implements nbd.Backend.WriteAt
@@ -68,7 +64,7 @@ func (ab *backend) WriteAt(ctx context.Context, b []byte, offset int64) (bytesWr
 
 	bytesWritten = int64(len(b))
 
-	go ab.writeStatisticsLogger.Send(bytesWritten)
+	go ab.writeStatistics.Send(bytesWritten)
 
 	return
 }
@@ -100,7 +96,7 @@ func (ab *backend) WriteZeroesAt(ctx context.Context, offset, length int64) (byt
 
 	bytesWritten = length
 
-	go ab.writeStatisticsLogger.Send(bytesWritten)
+	go ab.writeStatistics.Send(bytesWritten)
 
 	return
 }
@@ -179,7 +175,7 @@ func (ab *backend) ReadAt(ctx context.Context, offset, length int64) (payload []
 		payload = p
 	}
 
-	go ab.readStatisticsLogger.Send(int64(len(payload)))
+	go ab.readStatistics.Send(int64(len(payload)))
 
 	return
 }
@@ -197,8 +193,8 @@ func (ab *backend) Flush(ctx context.Context) (err error) {
 
 // Close implements nbd.Backend.Close
 func (ab *backend) Close(ctx context.Context) (err error) {
-	ab.writeStatisticsLogger.Stop()
-	ab.readStatisticsLogger.Stop()
+	ab.writeStatistics.Stop()
+	ab.readStatistics.Stop()
 
 	if ab.connProvider != nil {
 		ab.connProvider.Close()

@@ -1,11 +1,13 @@
-package log
+package statistics
 
 import (
-	"context"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-log"
 )
 
 var (
@@ -13,30 +15,44 @@ var (
 )
 
 func TestIOPSThroughputLogger(t *testing.T) {
-	SetLevel(DebugLevel)
+	log.SetLevel(log.DebugLevel)
 	assert := assert.New(t)
 	blockSize := int64(4096)
 	vdiskID := "testVdisk"
+	clusterID := "testCluster"
+	source := config.NewStubSource()
+	source.SetPrimaryStorageCluster(vdiskID, clusterID, &config.StorageClusterConfig{
+		DataStorage: []config.StorageServerConfig{
+			config.StorageServerConfig{
+				Address:  "localhost:123",
+				Database: 1,
+			},
+		},
+	})
 
 	// test read stats logger
-	readLogger := StartIOPSThroughputStatsLoggerRead(vdiskID, blockSize)
+	// nil source should only log an error
+	readLogger := StartIOPSThroughputRead(nil, vdiskID, blockSize)
 
-	// send one block and check if data to be broadcasted matches
+	// send one block and check if data to be broadcasted matches up
 	readLogger.Send(blockSize)
 
 	bcData := <-broadcastChan
 	assert.Equal(float64(blockSize), bcData.datbytesPerSec*interval.Seconds())
 	assert.Equal(vdiskID, bcData.vdiskID)
 	assert.Equal(blockSize, bcData.blockSize)
-	assert.Equal(StatisticsKeyIOPSRead, bcData.iopsKey)
-	assert.Equal(StatisticsKeyTroughputRead, bcData.tpKey)
+	assert.Equal(KeyIOPSRead, bcData.iopsKey)
+	assert.Equal(KeyTroughputRead, bcData.tpKey)
+	// no need for this casting in go >= 1.9
+	tags := zerolog.MetricTags(bcData.tags)
+	assert.Equal("", tags.String())
 
 	// close and check if context is closed
 	readLogger.Stop()
 
 	readLoggerClosed := func() bool {
 		select {
-		case <-bcData.ctx.Done():
+		case <-readLogger.ctx.Done():
 			return true
 		default:
 			return false
@@ -58,22 +74,25 @@ func TestIOPSThroughputLogger(t *testing.T) {
 	assert.False(readLoggerReceivedOnClose, "should not broadcast when logger is closed")
 
 	// test write stats logger
-	writeLogger := StartIOPSThroughputStatsLoggerWrite(vdiskID, blockSize)
+	writeLogger := StartIOPSThroughputWrite(source, vdiskID, blockSize)
 
-	// send one block and check if data to be broadcasted matches
+	// send one block and check if data to be broadcasted matches up
 	writeLogger.Send(blockSize)
 	bcData = <-broadcastChan
 	assert.Equal(float64(blockSize), bcData.datbytesPerSec*interval.Seconds())
 	assert.Equal(vdiskID, bcData.vdiskID)
 	assert.Equal(blockSize, bcData.blockSize)
-	assert.Equal(StatisticsKeyIOPSWrite, bcData.iopsKey)
-	assert.Equal(StatisticsKeyTroughputWrite, bcData.tpKey)
+	assert.Equal(KeyIOPSWrite, bcData.iopsKey)
+	assert.Equal(KeyTroughputWrite, bcData.tpKey)
+	// no need for this casting in go >= 1.9
+	tags = zerolog.MetricTags(bcData.tags)
+	assert.Equal("cluster_id="+clusterID, tags.String())
 
 	// stop logger as to not interfere with upcoming tests
 	writeLogger.Stop()
 
 	// test invalid direction
-	faultyLogger := iopsThroughputStatsLogger(255, vdiskID, blockSize)
+	faultyLogger := iopsThroughput(255, nil, vdiskID, blockSize)
 	defer faultyLogger.Stop()
 	faultyLogger.Send(blockSize)
 	time.Sleep(interval * 2)
@@ -88,23 +107,23 @@ func TestIOPSThroughputLogger(t *testing.T) {
 	assert.False(faultyLoggerReceivedWhileClosed, "faultyLogger's context should be in state: Done")
 }
 
-type broadcastData struct {
-	ctx            context.Context
-	vdiskID        string
-	blockSize      int64
-	datbytesPerSec float64
-	iopsKey, tpKey StatisticsKey
-}
-
-func broadcastIOPSThroughputTest(ctx context.Context, vdiskID string, blockSize int64, bytesPerSec float64, iopsKey, tpKey StatisticsKey) {
+func broadcastIOPSThroughputTest(vdiskID string, blockSize int64, bytesPerSec float64, iopsKey, tpKey Key, tags MetricTags) {
 	broadcastChan <- broadcastData{
-		ctx,
 		vdiskID,
 		blockSize,
 		bytesPerSec,
 		iopsKey,
 		tpKey,
+		tags,
 	}
+}
+
+type broadcastData struct {
+	vdiskID        string
+	blockSize      int64
+	datbytesPerSec float64
+	iopsKey, tpKey Key
+	tags           MetricTags
 }
 
 func init() {
