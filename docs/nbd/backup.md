@@ -16,12 +16,13 @@ For more information about the actual Golang implementation of this backup modul
     1. [Inflation](#inflation): going from smaller to bigger blocks;
     2. [Deflation](#deflation): going from bigger to smaller blocks;
 4. [Storage](#storage): information on how a snapshot is stored;
-5. [Export](#export): how a snapshot (backup) is created from a [vdisk][vdisk];
-6. [Import](#import): how a [vdisk](#vdisk) is created from a snapshot (backup);
+5. [Hashing](#hashing): information on the hashing of deduped blocks;
+6. [Export](#export): how a snapshot (backup) is created from a [vdisk][vdisk];
+7. [Import](#import): how a [vdisk](#vdisk) is created from a snapshot (backup);
 
 ## Deduped Map
 
-All blocks of a [vdisk][vdisk]'s [snapshot][snapshot] are deduped. This deduplication is done using the [hash][hash] of the compressed+encrypted block. Meaning that if you have multiple blocks (in one or multiple [snapshots][snapshot]) which are compressed using the same compression algorithm and encrypted using the same private key, will only be stored once.
+All blocks of a [vdisk][vdisk]'s [snapshot][snapshot] are deduped. This deduplication is done using the [hash][hash] of the clear-text version of the block. Meaning that if you have multiple blocks with the exact same content and which are compressed using the same compression algorithm and encrypted using the same private key, it will only be stored once. More information about this can be found in the [Hashing](#hashing) section of this document.
 
 The deduped map is encoded using the [bencoding][bencode] encoding format. It is choosen for its simplicity and efficiency. The encoded version of the deduped map is also compressed and encrypted before writing it to the storage server, using the same compression algorithm and private key used for the compression and encryption of the (deduped) blocks.
 
@@ -115,6 +116,28 @@ All deduped blocks are stored under `/XX/YY/ZZZZZZZZZZZZZZZZZZZZZZZZZZZZ` of the
 
 Thus a snapshot (backup) is essentially a collection of many deduped blocks, and one deduped map. The tree example above should give you an idea of how a snapshot will be stored on the server. Note that the example above is using a very tiny [vdisk][vdisk]. Most likely you'll have a lot more deduped block files though. Increasing the snapshot's [block size](#block-sizes) will result in less files, but it will also make the de-duplication less effective. The file count is also not a good metric. A better metric is the total size of all blocks for a snapshot. And for that an effective de-duplication will help you a lot.
 
+## Hashing
+
+So far we have learned about how (export) blocks are formed, identified and linked to the correct block index. We've also learned that the ID of a block is equal to its [hash][hash]. But how exactly do we generate this [hash][hash]?
+
+The encryption hashing algorithm used is [blake2b][blake2b]. This algorithm is used to generate a hash for each block using its content as the input. However, because all blocks are deduped, we need to ensure that whoever references a deduped block's hash, can also in fact read the block content. Meaning that they need to know the private key used to encrypt that block, as well as the compression algorithm used to compress the clear-text version of that block-text's content prior to encrypting.
+
+Therefore all blocks are hashed using a key. This key is formed using the private key used for encryption, as well as the algorithm type used for compression. By hashing a block using a key which contains all this information we ensure that two blocks which generate the same hash only if all following conditions are met:
+
++ The block content is exactly the same, meaning that all bytes are equal and in the same order;
++ The blocks are compressed using the same compression algorithm;
++ The compressed blocks are encrypted using the same private key;
+
+By guaranteeing that all duplicate hashes meet the conditions listed above we ensure that each referencer of that block can also read that block.
+
+The key used for hashing is generated as follows:
+
+```go
+hashKey := append(privateKey, byte(compressionType))
+```
+
+The encryption algorithm does not have to be part of this key as the same encryption algorithm is used for all backup purposes. The encryption algorithm cannot be conigured by the user and is hardcoded instead.
+
 ## Export
 
 The backup module provides a global `Export` function which allows you to export a given [vdisk][vdisk]. While it is possible to do so via the public module API, it is instead usually done using the [zeroctl tool][zeroctl]. It should be noted that a [vdisk][vdisk] should first be unmounted before being exported. While there is no protection against this, failing to do so will result in unexpected behavior.
@@ -171,6 +194,7 @@ Please read through the inline-documented import code at "[/nbd/ardb/backup/impo
 [aes]: https://godoc.org/crypto/aes
 [gcm]: https://godoc.org/crypto/cipher#NewGCM
 [bencode]: https://godoc.org/github.com/zeebo/bencode
+[blake2b]: https://godoc.org/github.com/minio/blake2b-simd
 
 [zeroctl]: /docs/zeroctl/zeroctl.md
 [export]: /docs/zeroctl/commands/export.md
