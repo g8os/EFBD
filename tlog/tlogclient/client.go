@@ -108,7 +108,7 @@ func New(servers []string, vdiskID string, firstSequence uint64, resetFirstSeq b
 // ChangeServerAddresses change servers to the given servers
 func (c *Client) ChangeServerAddresses(servers []string) {
 	c.serverAddrLock.Lock()
-	c.serverAddrLock.Unlock()
+	defer c.serverAddrLock.Unlock()
 
 	if len(servers) == 0 {
 		return
@@ -138,14 +138,14 @@ func (c *Client) ChangeServerAddresses(servers []string) {
 // and use 2nd entry as main server
 func (c *Client) shiftServer() {
 	c.serverAddrLock.Lock()
-	c.serverAddrLock.Unlock()
+	defer c.serverAddrLock.Unlock()
 
 	c.servers = append(c.servers[1:], c.servers[0])
 }
 
 func (c *Client) curServerAddress() string {
 	c.serverAddrLock.Lock()
-	c.serverAddrLock.Unlock()
+	defer c.serverAddrLock.Unlock()
 
 	return c.servers[0]
 }
