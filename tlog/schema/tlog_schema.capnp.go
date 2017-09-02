@@ -3,6 +3,7 @@
 package schema
 
 import (
+	strconv "strconv"
 	capnp "zombiezen.com/go/capnproto2"
 	text "zombiezen.com/go/capnproto2/encoding/text"
 	schemas "zombiezen.com/go/capnproto2/schemas"
@@ -91,6 +92,11 @@ func (s HandshakeRequest_List) Set(i int, v HandshakeRequest) error {
 	return s.List.SetStruct(i, v.Struct)
 }
 
+func (s HandshakeRequest_List) String() string {
+	str, _ := text.MarshalList(0xe0d4e6d68fa24ac0, s.List)
+	return str
+}
+
 // HandshakeRequest_Promise is a wrapper for a HandshakeRequest promised by a client call.
 type HandshakeRequest_Promise struct{ *capnp.Pipeline }
 
@@ -157,197 +163,17 @@ func (s HandshakeResponse_List) Set(i int, v HandshakeResponse) error {
 	return s.List.SetStruct(i, v.Struct)
 }
 
+func (s HandshakeResponse_List) String() string {
+	str, _ := text.MarshalList(0xee959a7d96c96641, s.List)
+	return str
+}
+
 // HandshakeResponse_Promise is a wrapper for a HandshakeResponse promised by a client call.
 type HandshakeResponse_Promise struct{ *capnp.Pipeline }
 
 func (p HandshakeResponse_Promise) Struct() (HandshakeResponse, error) {
 	s, err := p.Pipeline.Struct()
 	return HandshakeResponse{s}, err
-}
-
-type TlogResponse struct{ capnp.Struct }
-
-// TlogResponse_TypeID is the unique identifier for the type TlogResponse.
-const TlogResponse_TypeID = 0x98d11ae1c78a24d9
-
-func NewTlogResponse(s *capnp.Segment) (TlogResponse, error) {
-	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 1})
-	return TlogResponse{st}, err
-}
-
-func NewRootTlogResponse(s *capnp.Segment) (TlogResponse, error) {
-	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 1})
-	return TlogResponse{st}, err
-}
-
-func ReadRootTlogResponse(msg *capnp.Message) (TlogResponse, error) {
-	root, err := msg.RootPtr()
-	return TlogResponse{root.Struct()}, err
-}
-
-func (s TlogResponse) String() string {
-	str, _ := text.Marshal(0x98d11ae1c78a24d9, s.Struct)
-	return str
-}
-
-func (s TlogResponse) Status() int8 {
-	return int8(s.Struct.Uint8(0))
-}
-
-func (s TlogResponse) SetStatus(v int8) {
-	s.Struct.SetUint8(0, uint8(v))
-}
-
-func (s TlogResponse) Sequences() (capnp.UInt64List, error) {
-	p, err := s.Struct.Ptr(0)
-	return capnp.UInt64List{List: p.List()}, err
-}
-
-func (s TlogResponse) HasSequences() bool {
-	p, err := s.Struct.Ptr(0)
-	return p.IsValid() || err != nil
-}
-
-func (s TlogResponse) SetSequences(v capnp.UInt64List) error {
-	return s.Struct.SetPtr(0, v.List.ToPtr())
-}
-
-// NewSequences sets the sequences field to a newly
-// allocated capnp.UInt64List, preferring placement in s's segment.
-func (s TlogResponse) NewSequences(n int32) (capnp.UInt64List, error) {
-	l, err := capnp.NewUInt64List(s.Struct.Segment(), n)
-	if err != nil {
-		return capnp.UInt64List{}, err
-	}
-	err = s.Struct.SetPtr(0, l.List.ToPtr())
-	return l, err
-}
-
-// TlogResponse_List is a list of TlogResponse.
-type TlogResponse_List struct{ capnp.List }
-
-// NewTlogResponse creates a new list of TlogResponse.
-func NewTlogResponse_List(s *capnp.Segment, sz int32) (TlogResponse_List, error) {
-	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 8, PointerCount: 1}, sz)
-	return TlogResponse_List{l}, err
-}
-
-func (s TlogResponse_List) At(i int) TlogResponse { return TlogResponse{s.List.Struct(i)} }
-
-func (s TlogResponse_List) Set(i int, v TlogResponse) error { return s.List.SetStruct(i, v.Struct) }
-
-// TlogResponse_Promise is a wrapper for a TlogResponse promised by a client call.
-type TlogResponse_Promise struct{ *capnp.Pipeline }
-
-func (p TlogResponse_Promise) Struct() (TlogResponse, error) {
-	s, err := p.Pipeline.Struct()
-	return TlogResponse{s}, err
-}
-
-type TlogBlock struct{ capnp.Struct }
-
-// TlogBlock_TypeID is the unique identifier for the type TlogBlock.
-const TlogBlock_TypeID = 0x8cf178de3c82d431
-
-func NewTlogBlock(s *capnp.Segment) (TlogBlock, error) {
-	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 32, PointerCount: 2})
-	return TlogBlock{st}, err
-}
-
-func NewRootTlogBlock(s *capnp.Segment) (TlogBlock, error) {
-	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 32, PointerCount: 2})
-	return TlogBlock{st}, err
-}
-
-func ReadRootTlogBlock(msg *capnp.Message) (TlogBlock, error) {
-	root, err := msg.RootPtr()
-	return TlogBlock{root.Struct()}, err
-}
-
-func (s TlogBlock) String() string {
-	str, _ := text.Marshal(0x8cf178de3c82d431, s.Struct)
-	return str
-}
-
-func (s TlogBlock) Sequence() uint64 {
-	return s.Struct.Uint64(0)
-}
-
-func (s TlogBlock) SetSequence(v uint64) {
-	s.Struct.SetUint64(0, v)
-}
-
-func (s TlogBlock) Index() int64 {
-	return int64(s.Struct.Uint64(8))
-}
-
-func (s TlogBlock) SetIndex(v int64) {
-	s.Struct.SetUint64(8, uint64(v))
-}
-
-func (s TlogBlock) Hash() ([]byte, error) {
-	p, err := s.Struct.Ptr(0)
-	return []byte(p.Data()), err
-}
-
-func (s TlogBlock) HasHash() bool {
-	p, err := s.Struct.Ptr(0)
-	return p.IsValid() || err != nil
-}
-
-func (s TlogBlock) SetHash(v []byte) error {
-	return s.Struct.SetData(0, v)
-}
-
-func (s TlogBlock) Data() ([]byte, error) {
-	p, err := s.Struct.Ptr(1)
-	return []byte(p.Data()), err
-}
-
-func (s TlogBlock) HasData() bool {
-	p, err := s.Struct.Ptr(1)
-	return p.IsValid() || err != nil
-}
-
-func (s TlogBlock) SetData(v []byte) error {
-	return s.Struct.SetData(1, v)
-}
-
-func (s TlogBlock) Timestamp() int64 {
-	return int64(s.Struct.Uint64(16))
-}
-
-func (s TlogBlock) SetTimestamp(v int64) {
-	s.Struct.SetUint64(16, uint64(v))
-}
-
-func (s TlogBlock) Operation() uint8 {
-	return s.Struct.Uint8(24)
-}
-
-func (s TlogBlock) SetOperation(v uint8) {
-	s.Struct.SetUint8(24, v)
-}
-
-// TlogBlock_List is a list of TlogBlock.
-type TlogBlock_List struct{ capnp.List }
-
-// NewTlogBlock creates a new list of TlogBlock.
-func NewTlogBlock_List(s *capnp.Segment, sz int32) (TlogBlock_List, error) {
-	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 32, PointerCount: 2}, sz)
-	return TlogBlock_List{l}, err
-}
-
-func (s TlogBlock_List) At(i int) TlogBlock { return TlogBlock{s.List.Struct(i)} }
-
-func (s TlogBlock_List) Set(i int, v TlogBlock) error { return s.List.SetStruct(i, v.Struct) }
-
-// TlogBlock_Promise is a wrapper for a TlogBlock promised by a client call.
-type TlogBlock_Promise struct{ *capnp.Pipeline }
-
-func (p TlogBlock_Promise) Struct() (TlogBlock, error) {
-	s, err := p.Pipeline.Struct()
-	return TlogBlock{s}, err
 }
 
 type TlogAggregation struct{ capnp.Struct }
@@ -483,6 +309,11 @@ func (s TlogAggregation_List) Set(i int, v TlogAggregation) error {
 	return s.List.SetStruct(i, v.Struct)
 }
 
+func (s TlogAggregation_List) String() string {
+	str, _ := text.MarshalList(0xe46ab5b4b619e094, s.List)
+	return str
+}
+
 // TlogAggregation_Promise is a wrapper for a TlogAggregation promised by a client call.
 type TlogAggregation_Promise struct{ *capnp.Pipeline }
 
@@ -491,123 +322,387 @@ func (p TlogAggregation_Promise) Struct() (TlogAggregation, error) {
 	return TlogAggregation{s}, err
 }
 
-type Command struct{ capnp.Struct }
+type TlogClientMessage struct{ capnp.Struct }
+type TlogClientMessage_Which uint16
 
-// Command_TypeID is the unique identifier for the type Command.
-const Command_TypeID = 0xdbe14b5e7e7c6009
+const (
+	TlogClientMessage_Which_block            TlogClientMessage_Which = 0
+	TlogClientMessage_Which_forceFlushAtSeq  TlogClientMessage_Which = 1
+	TlogClientMessage_Which_waitNBDSlaveSync TlogClientMessage_Which = 2
+)
 
-func NewCommand(s *capnp.Segment) (Command, error) {
-	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 16, PointerCount: 0})
-	return Command{st}, err
+func (w TlogClientMessage_Which) String() string {
+	const s = "blockforceFlushAtSeqwaitNBDSlaveSync"
+	switch w {
+	case TlogClientMessage_Which_block:
+		return s[0:5]
+	case TlogClientMessage_Which_forceFlushAtSeq:
+		return s[5:20]
+	case TlogClientMessage_Which_waitNBDSlaveSync:
+		return s[20:36]
+
+	}
+	return "TlogClientMessage_Which(" + strconv.FormatUint(uint64(w), 10) + ")"
 }
 
-func NewRootCommand(s *capnp.Segment) (Command, error) {
-	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 16, PointerCount: 0})
-	return Command{st}, err
+// TlogClientMessage_TypeID is the unique identifier for the type TlogClientMessage.
+const TlogClientMessage_TypeID = 0xc8407b23fdf6d1a2
+
+func NewTlogClientMessage(s *capnp.Segment) (TlogClientMessage, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 16, PointerCount: 1})
+	return TlogClientMessage{st}, err
 }
 
-func ReadRootCommand(msg *capnp.Message) (Command, error) {
+func NewRootTlogClientMessage(s *capnp.Segment) (TlogClientMessage, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 16, PointerCount: 1})
+	return TlogClientMessage{st}, err
+}
+
+func ReadRootTlogClientMessage(msg *capnp.Message) (TlogClientMessage, error) {
 	root, err := msg.RootPtr()
-	return Command{root.Struct()}, err
+	return TlogClientMessage{root.Struct()}, err
 }
 
-func (s Command) String() string {
-	str, _ := text.Marshal(0xdbe14b5e7e7c6009, s.Struct)
+func (s TlogClientMessage) String() string {
+	str, _ := text.Marshal(0xc8407b23fdf6d1a2, s.Struct)
 	return str
 }
 
-func (s Command) Type() uint8 {
-	return s.Struct.Uint8(0)
+func (s TlogClientMessage) Which() TlogClientMessage_Which {
+	return TlogClientMessage_Which(s.Struct.Uint16(0))
+}
+func (s TlogClientMessage) Block() (TlogBlock, error) {
+	p, err := s.Struct.Ptr(0)
+	return TlogBlock{Struct: p.Struct()}, err
 }
 
-func (s Command) SetType(v uint8) {
-	s.Struct.SetUint8(0, v)
+func (s TlogClientMessage) HasBlock() bool {
+	if s.Struct.Uint16(0) != 0 {
+		return false
+	}
+	p, err := s.Struct.Ptr(0)
+	return p.IsValid() || err != nil
 }
 
-func (s Command) Sequence() uint64 {
+func (s TlogClientMessage) SetBlock(v TlogBlock) error {
+	s.Struct.SetUint16(0, 0)
+	return s.Struct.SetPtr(0, v.Struct.ToPtr())
+}
+
+// NewBlock sets the block field to a newly
+// allocated TlogBlock struct, preferring placement in s's segment.
+func (s TlogClientMessage) NewBlock() (TlogBlock, error) {
+	s.Struct.SetUint16(0, 0)
+	ss, err := NewTlogBlock(s.Struct.Segment())
+	if err != nil {
+		return TlogBlock{}, err
+	}
+	err = s.Struct.SetPtr(0, ss.Struct.ToPtr())
+	return ss, err
+}
+
+func (s TlogClientMessage) ForceFlushAtSeq() uint64 {
 	return s.Struct.Uint64(8)
 }
 
-func (s Command) SetSequence(v uint64) {
+func (s TlogClientMessage) SetForceFlushAtSeq(v uint64) {
+	s.Struct.SetUint16(0, 1)
 	s.Struct.SetUint64(8, v)
 }
 
-// Command_List is a list of Command.
-type Command_List struct{ capnp.List }
+func (s TlogClientMessage) SetWaitNBDSlaveSync() {
+	s.Struct.SetUint16(0, 2)
 
-// NewCommand creates a new list of Command.
-func NewCommand_List(s *capnp.Segment, sz int32) (Command_List, error) {
-	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 16, PointerCount: 0}, sz)
-	return Command_List{l}, err
 }
 
-func (s Command_List) At(i int) Command { return Command{s.List.Struct(i)} }
+// TlogClientMessage_List is a list of TlogClientMessage.
+type TlogClientMessage_List struct{ capnp.List }
 
-func (s Command_List) Set(i int, v Command) error { return s.List.SetStruct(i, v.Struct) }
+// NewTlogClientMessage creates a new list of TlogClientMessage.
+func NewTlogClientMessage_List(s *capnp.Segment, sz int32) (TlogClientMessage_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 16, PointerCount: 1}, sz)
+	return TlogClientMessage_List{l}, err
+}
 
-// Command_Promise is a wrapper for a Command promised by a client call.
-type Command_Promise struct{ *capnp.Pipeline }
+func (s TlogClientMessage_List) At(i int) TlogClientMessage {
+	return TlogClientMessage{s.List.Struct(i)}
+}
 
-func (p Command_Promise) Struct() (Command, error) {
+func (s TlogClientMessage_List) Set(i int, v TlogClientMessage) error {
+	return s.List.SetStruct(i, v.Struct)
+}
+
+func (s TlogClientMessage_List) String() string {
+	str, _ := text.MarshalList(0xc8407b23fdf6d1a2, s.List)
+	return str
+}
+
+// TlogClientMessage_Promise is a wrapper for a TlogClientMessage promised by a client call.
+type TlogClientMessage_Promise struct{ *capnp.Pipeline }
+
+func (p TlogClientMessage_Promise) Struct() (TlogClientMessage, error) {
 	s, err := p.Pipeline.Struct()
-	return Command{s}, err
+	return TlogClientMessage{s}, err
 }
 
-const schema_f4533cbae6e08506 = "x\xda\x8c\x94M\x88\x1cU\x14\x85\xcfy\xb7\xba3#" +
-	"I:E\xb7\x90d3.\xb2\x88\x83\xa3It!!" +
-	"\x103\x8a\xc4\x11!\xaf#\x08\xe2O\xca\xee\x97\xeer" +
-	"\xba\xabj\xea\xd5\xccDQ\xa3\x82\x1bQD\x88\x12\x83" +
-	"BF\"DH@!\x11\x11\x17\x11\x04u)\x04A" +
-	"D\x99\x80\xc4U\x84\x80+AJ^u\xfa\x87\x9ea" +
-	"tWu\xfb\xbcw\xef9\xf7\xeb\xda\xf37\x1fP{" +
-	"K\xcb\x02\xe8\xdd\xa5r\xbe\xf7\xea\xeb\x07~;q\xf3" +
-	"-\xe8\x1d\xf4\xf2\xf2\x1b\xab\xd7\xbf:p\xf4/\x94\xd4" +
-	"&\xe0\xde\x15\xeed\xf5s\xba\xc7\x8b|\x82`\xfe\xf3" +
-	"\xae7\xbf\xbb\xb6\xf3\xc7\xd3N\xce\x11y\xa1)\xc9>" +
-	"Vo\x97M@\xd5\x97e0\x9f<\xf6\xd2+\xcf<" +
-	"z\xed\x17\xa7VC\xb5\xe7\xc4\xaf\xc9m\xac\xbe[\x88" +
-	"\xdf.\xc4W\xe6>~\xe7\xa7\xebWW\xc7\xc4\xbd\xab" +
-	"oH\x9dU\xba\x83\xd5\x7f\xe4\x0f0?\xb5\xba\xe3\x8b" +
-	"K\x97\x9f\xff}\\]\xdc\xfd\xab7\xc7\xea\xcd\xe2\xf1" +
-	"\x86W\xcc}\xe8\xf8\x0f\xef\xbf|\xe6\xbd?\xc7\xe6." +
-	"$\x8f\x95\x9fd5(\xbb\xbb\x9f./c&\xb7\x8d" +
-	"\xb6\xe9\x06\xf7d\xd2\x89[\xcf\xf6^\xeen\x04I\x94" +
-	"\xec\x7f\xbc\x13\xb7f;\xb14\xe6\x8f\x90z\xbbx\x80" +
-	"G\xc0\xff`\x0e\xd0\xa7\x85\xfa\x9c\xa2O\xd6\xe8\x8a+" +
-	"\xfb\x00\xfd\xa1P\x9fW\xa4\xaaQ\x01\xfe'\xd3\x80>" +
-	"+\xd4\x17\x14}a\x8d\x02\xf8\x9f\xba\xe29\xa1\xfeL" +
-	"\xd1\xf7T\x8d\x1e\xe0_\xac\x03\xfa\x82P\x7f\xa9\xe8\x97" +
-	"\xb6\xd7X\x02\xfc\xcb\xaexI\xa8\xaf(\xe6\xd6,," +
-	"\x9a\xa8a\x00p\x12\x8a\x93\xe0T\x185\xcd\x09\x96\xa0" +
-	"X\x02+\xed\xc0\xb6\xb9\x05\x8a[\xc0J3\xc8\x82\xfe" +
-	"K\x9e\x85]c\xb3\xa0\x0b&}u\x1e'&\x0d\xb2" +
-	"0\x06#\x96\xa1X\x06\xff#\x8a\xba\xb1SI\x1cY" +
-	"\xe3\xd2\x98\x18\xa4q\xe7~@\xef\x12\xea=\x8a\xfd0" +
-	"f\xdc\xe4w\x09\xf5a\xc5\x836\x0b\xb2EK\x05E" +
-	"\x85\x11#\xb4\xdc\x0a\x1e\x11\x16~\xb6n\xd8\xff\xc1\xb8" +
-	"\xdb\x0d\xa2&0\xd6{z\xd8{\xb0\x89\x99\xb9[\xcd" +
-	"\xefW\xacd/$f\xe8om\x86\x83\x9e\xde\x9a\x9e" +
-	"\x87\x83\xa8i\xdb\xc1\xbc\xa9\xbbc\x96\x99\xeb\xbdm\xd0" +
-	";\x98\x05\xf4SB\xdd\x1e\xfa6\xaevL\xa8;\x8a" +
-	"\xbeb\x8f\x820\x05t[\xa83G\xc1\x1d=\x0a\x16" +
-	"\xce\x00:\x13\xeaW\x15O.\x99\xd4\x86q\xc4\x09(" +
-	"N\x80'\x97\x9a\xa1\x9d\x7f\xe4!n\x86\xe2f0?" +
-	"\x1e\xa66;j\x160U\x8c?\x98=5\xd6d\x0f" +
-	"\x87)\x8b_\x17M$\x0dCB\x91\x1b\x1as\xcb<" +
-	"\xd4j\xa5\xa6\xe5\x00\x88z\xa1\x8e\xe0\xedB=%\xd4" +
-	"g\x87\xc6>\x9a\x1eA\xbeol\xa5\xbe\x1e\xde\xb3\xeb" +
-	"\xe1\xed\x189/\xd4\xdf:\xbc\xa5\x87\xf77\xee\xce\xaf" +
-	"\x85\xfa{\xc5J\x14tM\xdfo\xc5\x86/\x0eM\xae" +
-	"\x03\xefx@\x07\x9f\xeb\xc4\x8d\xf9\x01N\xdb\x86\xdf9" +
-	"\xd0\x15+Ij\x96\x06\xff\x86\xff\xb5q\x9b\xc4\x91\xac" +
-	"A}v\x147\xef\x16n\xce\xdbn\xa1\xbeo\xed&" +
-	"\xc7\xd8\xff7\x00\x00\xff\xff\x86\xd4J\xdb"
+func (p TlogClientMessage_Promise) Block() TlogBlock_Promise {
+	return TlogBlock_Promise{Pipeline: p.Pipeline.GetPipeline(0)}
+}
+
+type TlogBlock struct{ capnp.Struct }
+
+// TlogBlock_TypeID is the unique identifier for the type TlogBlock.
+const TlogBlock_TypeID = 0x8cf178de3c82d431
+
+func NewTlogBlock(s *capnp.Segment) (TlogBlock, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 32, PointerCount: 2})
+	return TlogBlock{st}, err
+}
+
+func NewRootTlogBlock(s *capnp.Segment) (TlogBlock, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 32, PointerCount: 2})
+	return TlogBlock{st}, err
+}
+
+func ReadRootTlogBlock(msg *capnp.Message) (TlogBlock, error) {
+	root, err := msg.RootPtr()
+	return TlogBlock{root.Struct()}, err
+}
+
+func (s TlogBlock) String() string {
+	str, _ := text.Marshal(0x8cf178de3c82d431, s.Struct)
+	return str
+}
+
+func (s TlogBlock) Sequence() uint64 {
+	return s.Struct.Uint64(0)
+}
+
+func (s TlogBlock) SetSequence(v uint64) {
+	s.Struct.SetUint64(0, v)
+}
+
+func (s TlogBlock) Index() int64 {
+	return int64(s.Struct.Uint64(8))
+}
+
+func (s TlogBlock) SetIndex(v int64) {
+	s.Struct.SetUint64(8, uint64(v))
+}
+
+func (s TlogBlock) Hash() ([]byte, error) {
+	p, err := s.Struct.Ptr(0)
+	return []byte(p.Data()), err
+}
+
+func (s TlogBlock) HasHash() bool {
+	p, err := s.Struct.Ptr(0)
+	return p.IsValid() || err != nil
+}
+
+func (s TlogBlock) SetHash(v []byte) error {
+	return s.Struct.SetData(0, v)
+}
+
+func (s TlogBlock) Data() ([]byte, error) {
+	p, err := s.Struct.Ptr(1)
+	return []byte(p.Data()), err
+}
+
+func (s TlogBlock) HasData() bool {
+	p, err := s.Struct.Ptr(1)
+	return p.IsValid() || err != nil
+}
+
+func (s TlogBlock) SetData(v []byte) error {
+	return s.Struct.SetData(1, v)
+}
+
+func (s TlogBlock) Timestamp() int64 {
+	return int64(s.Struct.Uint64(16))
+}
+
+func (s TlogBlock) SetTimestamp(v int64) {
+	s.Struct.SetUint64(16, uint64(v))
+}
+
+func (s TlogBlock) Operation() uint8 {
+	return s.Struct.Uint8(24)
+}
+
+func (s TlogBlock) SetOperation(v uint8) {
+	s.Struct.SetUint8(24, v)
+}
+
+// TlogBlock_List is a list of TlogBlock.
+type TlogBlock_List struct{ capnp.List }
+
+// NewTlogBlock creates a new list of TlogBlock.
+func NewTlogBlock_List(s *capnp.Segment, sz int32) (TlogBlock_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 32, PointerCount: 2}, sz)
+	return TlogBlock_List{l}, err
+}
+
+func (s TlogBlock_List) At(i int) TlogBlock { return TlogBlock{s.List.Struct(i)} }
+
+func (s TlogBlock_List) Set(i int, v TlogBlock) error { return s.List.SetStruct(i, v.Struct) }
+
+func (s TlogBlock_List) String() string {
+	str, _ := text.MarshalList(0x8cf178de3c82d431, s.List)
+	return str
+}
+
+// TlogBlock_Promise is a wrapper for a TlogBlock promised by a client call.
+type TlogBlock_Promise struct{ *capnp.Pipeline }
+
+func (p TlogBlock_Promise) Struct() (TlogBlock, error) {
+	s, err := p.Pipeline.Struct()
+	return TlogBlock{s}, err
+}
+
+type TlogResponse struct{ capnp.Struct }
+
+// TlogResponse_TypeID is the unique identifier for the type TlogResponse.
+const TlogResponse_TypeID = 0x98d11ae1c78a24d9
+
+func NewTlogResponse(s *capnp.Segment) (TlogResponse, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 1})
+	return TlogResponse{st}, err
+}
+
+func NewRootTlogResponse(s *capnp.Segment) (TlogResponse, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 1})
+	return TlogResponse{st}, err
+}
+
+func ReadRootTlogResponse(msg *capnp.Message) (TlogResponse, error) {
+	root, err := msg.RootPtr()
+	return TlogResponse{root.Struct()}, err
+}
+
+func (s TlogResponse) String() string {
+	str, _ := text.Marshal(0x98d11ae1c78a24d9, s.Struct)
+	return str
+}
+
+func (s TlogResponse) Status() int8 {
+	return int8(s.Struct.Uint8(0))
+}
+
+func (s TlogResponse) SetStatus(v int8) {
+	s.Struct.SetUint8(0, uint8(v))
+}
+
+func (s TlogResponse) Sequences() (capnp.UInt64List, error) {
+	p, err := s.Struct.Ptr(0)
+	return capnp.UInt64List{List: p.List()}, err
+}
+
+func (s TlogResponse) HasSequences() bool {
+	p, err := s.Struct.Ptr(0)
+	return p.IsValid() || err != nil
+}
+
+func (s TlogResponse) SetSequences(v capnp.UInt64List) error {
+	return s.Struct.SetPtr(0, v.List.ToPtr())
+}
+
+// NewSequences sets the sequences field to a newly
+// allocated capnp.UInt64List, preferring placement in s's segment.
+func (s TlogResponse) NewSequences(n int32) (capnp.UInt64List, error) {
+	l, err := capnp.NewUInt64List(s.Struct.Segment(), n)
+	if err != nil {
+		return capnp.UInt64List{}, err
+	}
+	err = s.Struct.SetPtr(0, l.List.ToPtr())
+	return l, err
+}
+
+// TlogResponse_List is a list of TlogResponse.
+type TlogResponse_List struct{ capnp.List }
+
+// NewTlogResponse creates a new list of TlogResponse.
+func NewTlogResponse_List(s *capnp.Segment, sz int32) (TlogResponse_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 8, PointerCount: 1}, sz)
+	return TlogResponse_List{l}, err
+}
+
+func (s TlogResponse_List) At(i int) TlogResponse { return TlogResponse{s.List.Struct(i)} }
+
+func (s TlogResponse_List) Set(i int, v TlogResponse) error { return s.List.SetStruct(i, v.Struct) }
+
+func (s TlogResponse_List) String() string {
+	str, _ := text.MarshalList(0x98d11ae1c78a24d9, s.List)
+	return str
+}
+
+// TlogResponse_Promise is a wrapper for a TlogResponse promised by a client call.
+type TlogResponse_Promise struct{ *capnp.Pipeline }
+
+func (p TlogResponse_Promise) Struct() (TlogResponse, error) {
+	s, err := p.Pipeline.Struct()
+	return TlogResponse{s}, err
+}
+
+const schema_f4533cbae6e08506 = "x\xda\x8cSQh\x1cU\x14=\xe7\xbd\x99M\x0a\x9b" +
+	"l\x86]\xa1-H\x04+\xd4b\xb5m\xf4\xc3Rh" +
+	"\xb26%\x09*}\x9b\x80P\x04;n^w\xc7l" +
+	"f6\xf3&IU\xa4Z\xf0\xa7\x08\"4R\x8bB" +
+	"SZh\xa1E\x85VD\xfc\xa8 X?\x0bE\xf0" +
+	"G\"H\xfd\x13\x04\xf1\xaf\x8e\xbc\xd9\xeen\xdc\x06\xd3" +
+	"\xbf}w\xcf\xbcw\xce\xb9\xe7\xec\xc9\x8bQ\xb1\xd7]" +
+	"\x96\x80\xda\xe9\xe6\xd2\xbdwN\x1d\xf8\xe5\xc4\x9f\x1f@" +
+	"m\xa3\x93\xe6\xde_\xbb\xfb\xcd\x81\xe9\xbf\xe0\x8a>`" +
+	"d\x95\xdbY\xfc\x92\xf6\xe75\xbeB0\xfdy\xc7\xe9" +
+	"\x1f~\xdd~\xfb\xac\x85s\x1d<\xc3\xb8r\x1f\x8b\x8f" +
+	"\xc8>\xa0\xe8\xc9e0\xbdp\xfb\xef{\x8f\xbf=z" +
+	"\xcb\xa2E\x17=\xce>\x09\x8c\xbc'\x8f\xb2\xb8\x92\xc1" +
+	"?\x92\x9f\x83\xe9\xcd\xa9\x0b\x1f\xfet\xf7\xceZ\x0f\xbc" +
+	"u\xf9sN\x85\xc5I\xc7\xa2\xc7\x9d\xdf\xc1\xf4\xcc\xda" +
+	"\xb6\xaf\xae\xdfx\xe3\xb7^\xb4\x85\x8c<\xe1N\xb1\xf8" +
+	"\xbc\x9b}\xe8f\xcc\xc7\x8e\xff\xf8\xf1;\xe7V\xfe\xe8" +
+	"a\x9e\xa1WrGY\xbc\x92\xb3w_\xca-cw" +
+	"j\xaau=\xef?\x93\xc8FT{\xadux\xba\xea" +
+	"7\xc3\xe6\xfe\x99FT+7\"Y\x9d;B\xaa\xad" +
+	"\xd2\x01\x1c\x02\xde'S\x80:+\xa9.\x0azd\x89" +
+	"v\xb8\xba\x0fP\x9fJ\xaa\xcb\x82\x14%\x0a\xc0\xbb\xb4" +
+	"\x0bP\xe7%\xd5UAO\xb2D\x09xW\xec\xf0\xa2" +
+	"\xa4\xfaB\xd0sD\x89\x0e\xe0]\xab\x00\xea\xaa\xa4\xfa" +
+	"Z\xd0s\xb7\x96\xe8\x02\xde\x0d;\xbc.\xa9n\x0a\xa6" +
+	"F/,\xea\xb0\xaa\x01p\x0b\x04\xb7\x80\xc3A8\xab" +
+	"O\xd0\x85\xa0\x0b\x16\xea\xbe\xa9s\x00\x82\x03`a\xd6" +
+	"O\xfc\xf6!M\x82ym\x12\x7f\x1el\xb6\xd1i\xd4" +
+	"\xd4\xb1\x9f\x04\x11\x182\x07\xc1\x1c\xb8\x89\x15\x15m\x86" +
+	"\x9bQh\xb4u\xa3\xbf\xe3\xc6\x93\xfb\x01\xb5CR\xed" +
+	"\x11l\x9b\xb1\xdb2\x7fJRM\x08\x1e4\x89\x9f," +
+	"\x1a\x0a\x08\x0a\xac\x13B\xc3A\xf0\x88d\xa6gp\xdd" +
+	"\xfb\xce\x86\xef\xbf\xd0\x08t\x98\xbc\xa4\x8d\xf1e-#" +
+	"\x91\x97N>M3\x16\xe3\xd6\xfeQI\xf5\xa2\xe0\xa3" +
+	"\xfc'\xbdOd\xf2\x14\xa0&$\xd5\x8c\xe0\x80\xb8\x97" +
+	"\xb6\xf6\xa2N\x03jFR\x1d\x13\x1c~\xbd\x11U\xe7" +
+	"8\xd4m\x07\xc8!0=\x1e\xc5U}\xb8\xb1HS" +
+	"\x1fK\xa6\xf5B\xc7\xf6t\xd9\x0f\x92\x97\xcb\x87\xa6\xd9" +
+	"\xf0\x97\xf4\xf4\x9ba\x15}\xffC}\xc2\x0fgM\xdd" +
+	"\x9f\xd3\x15+\xdc0\xb1\xcc\x87:\xf6\xf9e@\xbd*" +
+	"\xa9\xea]\xfb\xb4\x9d\x1d\x93T\x0dAO\xb0E:\x88" +
+	"\x01U\x97T\x89\x0d\xd3c\xad0-\x9c\x03T\"\xa9" +
+	"\xde\x15<\xb9\xa4c\x13D!\xfb!\xd8\x0f\x9e\\\x9a" +
+	"\x0d\xcc\xdc\xe4!\xe6!\x98\xb7\x8a\x82\xd8dJ\x86\xb3" +
+	"\x05t\xf4\xc4\xda\xe8\xe4p\x103\xfbwQ\x87\xb2\xaa" +
+	"I\x08r\xd3\x9d\x8c\xd5j\xb1\xae\xd9\x1c\x85@OK" +
+	"l\xce\xcfH\xaa\xf3]a\x9f\xedZ\xd7\x9c\xb6\xb0\xd5" +
+	"\xcaF-)o\xd4\x12\x1b\xb5\xcb\x92\xea{\xdb\x12\xd9" +
+	"j\xc9w\xf6\xceo%\xd5-\xc1B\xe8\xcf\xeb\xb6\xde" +
+	"\x82\x09\xde\xea\x8a\xdc\xa0\x03\xbd\x06\x1d\xcc\xa2\xd0I\xe5" +
+	"\x7f#1\x08\x16\x9a\xb1^\xea\x94\xea\xa16n\x9aQ" +
+	"(\x1fhL\xb9\xdb\x18\x8f\xce\xfd\xcaXm;%\xd5" +
+	"\xb3\x0fn\xb2\xa7B\xff\x06\x00\x00\xff\xff\x06\xb2f\xbd"
 
 func init() {
 	schemas.Register(schema_f4533cbae6e08506,
 		0x8cf178de3c82d431,
 		0x98d11ae1c78a24d9,
-		0xdbe14b5e7e7c6009,
+		0xc8407b23fdf6d1a2,
 		0xe0d4e6d68fa24ac0,
 		0xe46ab5b4b619e094,
 		0xee959a7d96c96641)

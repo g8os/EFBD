@@ -218,66 +218,45 @@ func (s *Server) handle(conn *net.TCPConn) error {
 	go s.sendResp(ctx, conn, vdisk.ID(), vdisk.ResponseChan())
 
 	for {
-		msgType, err := tlog.ReadCheckMessageType(br)
+		msg, err := capnp.NewDecoder(br).Decode()
 		if err != nil {
-			if err == io.EOF { // EOF in this stage is not an error
-				err = nil
+			if err == io.EOF {
+				return nil // EOF in this stage is not an error
+			}
+			return err
+		}
+
+		cmd, err := schema.ReadRootTlogClientMessage(msg)
+		if err != nil {
+			return err
+		}
+
+		switch which := cmd.Which(); which {
+		case schema.TlogClientMessage_Which_block:
+			block, bErr := cmd.Block()
+			if bErr != nil {
+				err = bErr
+			} else {
+				err = s.handleBlock(vdisk, &block)
 			}
 
-			return err
+		case schema.TlogClientMessage_Which_forceFlushAtSeq:
+			err = s.handleForceFlushAtSeq(vdisk, cmd.ForceFlushAtSeq())
+
+		case schema.TlogClientMessage_Which_waitNBDSlaveSync:
+			err = s.handleWaitNBDSlaveSync(vdisk)
+
+		default:
+			err = fmt.Errorf("%v is not a supported client message type", which)
 		}
 
-		switch msgType {
-		case tlog.MessageForceFlushAtSeq, tlog.MessageWaitNbdSlaveSync:
-			err = s.handleCommand(vdisk, br, msgType)
-		case tlog.MessageTlogBlock:
-			err = s.handleBlock(vdisk, br)
-		default:
-			err = fmt.Errorf("unhandled message type:%v", msgType)
-		}
 		if err != nil {
 			return err
 		}
-
 	}
 }
 
-func (s *Server) handleCommand(vd *vdisk, br *bufio.Reader, mType uint8) error {
-	msg, err := capnp.NewDecoder(br).Decode()
-	if err != nil {
-		return err
-	}
-
-	cmd, err := schema.ReadRootCommand(msg)
-	if err != nil {
-		return err
-	}
-
-	switch mType {
-	case tlog.MessageForceFlushAtSeq:
-		vd.forceFlushAtSeq(cmd.Sequence())
-		vd.respChan <- &BlockResponse{
-			Status: tlog.BlockStatusForceFlushReceived.Int8(),
-		}
-	case tlog.MessageWaitNbdSlaveSync:
-		vd.waitSlaveSync()
-		log.Debugf("sending BlockStatusWaitNbdSlaveSyncReceived to vdisk: %v", vd.id)
-		vd.respChan <- &BlockResponse{
-			Status: tlog.BlockStatusWaitNbdSlaveSyncReceived.Int8(),
-		}
-	}
-
-	return nil
-}
-
-func (s *Server) handleBlock(vd *vdisk, br *bufio.Reader) error {
-	// decode
-	block, err := s.ReadDecodeBlock(br)
-	if err != nil {
-		log.Errorf("failed to decode tlog: %v", err)
-		return err
-	}
-
+func (s *Server) handleBlock(vd *vdisk, block *schema.TlogBlock) error {
 	// check hash
 	if err := s.hash(block, vd.ID()); err != nil {
 		log.Debugf("hash check failed:%v\n", err)
@@ -289,6 +268,23 @@ func (s *Server) handleBlock(vd *vdisk, br *bufio.Reader) error {
 	vd.respChan <- &BlockResponse{
 		Status:    tlog.BlockStatusRecvOK.Int8(),
 		Sequences: []uint64{block.Sequence()},
+	}
+	return nil
+}
+
+func (s *Server) handleForceFlushAtSeq(vd *vdisk, sequence uint64) error {
+	vd.forceFlushAtSeq(sequence)
+	vd.respChan <- &BlockResponse{
+		Status: tlog.BlockStatusForceFlushReceived.Int8(),
+	}
+	return nil
+}
+
+func (s *Server) handleWaitNBDSlaveSync(vd *vdisk) error {
+	vd.waitSlaveSync()
+	log.Debugf("sending BlockStatusWaitNbdSlaveSyncReceived to vdisk: %v", vd.id)
+	vd.respChan <- &BlockResponse{
+		Status: tlog.BlockStatusWaitNbdSlaveSyncReceived.Int8(),
 	}
 	return nil
 }
@@ -326,19 +322,19 @@ func (s *Server) readDecodeHandshakeRequest(r io.Reader) (*schema.HandshakeReque
 	return &resp, nil
 }
 
-// ReadDecodeBlock reads and decodes tlog block message from client
-func (s *Server) ReadDecodeBlock(r io.Reader) (*schema.TlogBlock, error) {
+// ReadDecodeClientMessage reads and decodes tlog message from client
+func (s *Server) ReadDecodeClientMessage(r io.Reader) (*schema.TlogClientMessage, error) {
 	msg, err := capnp.NewDecoder(r).Decode()
 	if err != nil {
 		return nil, err
 	}
 
-	tlb, err := schema.ReadRootTlogBlock(msg)
+	cmd, err := schema.ReadRootTlogClientMessage(msg)
 	if err != nil {
 		return nil, err
 	}
 
-	return &tlb, nil
+	return &cmd, nil
 }
 
 // hash tlog data and check against given hash from client

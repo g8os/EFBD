@@ -87,20 +87,20 @@ func newDummyServer(s *server.Server) *dummyServer {
 // run this dummy server.
 func (ds *dummyServer) run(t *testing.T, logsToIgnore map[uint64]struct{}) error {
 	for {
-		// read message type
-		msgType, err := tlog.ReadCheckMessageType(ds.reqPipeReader)
+		// read client command
+		cmd, err := ds.serv.ReadDecodeClientMessage(ds.reqPipeReader)
 		if err != nil {
-			t.Fatalf("failed to read message type:%v", err)
+			t.Fatal("failed to read client message")
 		}
 
-		if msgType != tlog.MessageTlogBlock {
-			t.Fatalf("unhandled message:%v", msgType)
+		if w := cmd.Which(); w != schema.TlogClientMessage_Which_block {
+			t.Fatalf("unhandled client message: %v", w)
 		}
 
-		// receive the message
-		block, err := ds.serv.ReadDecodeBlock(ds.reqPipeReader)
+		// get block
+		block, err := cmd.Block()
 		if err != nil {
-			t.Fatalf("error decode block:%v", err)
+			t.Fatalf("error getting block from block client message: %v", err)
 		}
 		seq := block.Sequence()
 

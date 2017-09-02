@@ -18,11 +18,23 @@ struct HandshakeResponse {
 	status @1 :Int8;
 }
 
-# Response from server to client
-struct TlogResponse {
-	status @0 :Int8;
-	sequences @1 :List(UInt64);
-	# only exist in flush response
+# tlog block aggregation
+struct TlogAggregation {
+	name @0 :Text; # unused now
+	size @1 :UInt64; # number of blocks in this aggregation
+	timestamp @2 :Int64;
+	vdiskID @3 :Text;
+	blocks @4 :List(TlogBlock);
+	prev @5 :Data; # hash of the previous aggregation
+}
+
+# message to send from client to server
+struct TlogClientMessage {
+	union {
+		block @0 :TlogBlock;        # block message
+		forceFlushAtSeq @1 :UInt64; # force flush at seq message
+		waitNBDSlaveSync @2 :Void;  # Wait NBD Slave Sync message
+	}
 }
 
 # a tlog block
@@ -35,18 +47,8 @@ struct TlogBlock {
 	operation @5 :UInt8; # disk operation  1=OpSet,2=OpDelete
 }
 
-# tlog block aggregation
-struct TlogAggregation {
-	name @0 :Text; # unused now
-	size @1 :UInt64; # number of blocks in this aggregation
-	timestamp @2 :Int64;
-	vdiskID @3 :Text;
-	blocks @4 :List(TlogBlock);
-	prev @5 :Data; # hash of the previous aggregation
-}
-
-# Command to tlog server.
-struct Command {
-   type @0 :UInt8; 				# command type
-   sequence @1 :UInt64;			# sequence number
+# Response from server to client
+struct TlogResponse {
+	status @0 :Int8;
+	sequences @1 :List(UInt64); # can be nil
 }

@@ -106,10 +106,8 @@ func TestReconnectFromRead(t *testing.T) {
 }
 
 func (c *Client) forceFlushAtSeq(seq uint64) error {
-	if err := tlog.WriteMessageType(c.bw, tlog.MessageForceFlushAtSeq); err != nil {
-		return err
-	}
-	if err := c.encodeSendCommand(c.bw, tlog.MessageForceFlushAtSeq, seq); err != nil {
+	err := c.encodeForceFlushAtSeq(c.bw, seq)
+	if err != nil {
 		return err
 	}
 	return c.bw.Flush()
