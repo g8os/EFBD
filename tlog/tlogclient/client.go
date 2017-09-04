@@ -39,6 +39,8 @@ var (
 )
 
 // Response defines a response from tlog server
+// TODO: find a better way to return a response to the client's user,
+//       as it might not make sense for all commands to return sequences.
 type Response struct {
 	Status    tlog.BlockStatus // status of the call
 	Sequences []uint64         // flushed sequences number (optional)
@@ -350,7 +352,7 @@ func (c *Client) recvOne() (*Response, error) {
 	defer c.rLock.Unlock()
 
 	// decode capnp and build response
-	tr, err := c.decodeBlockResponse(c.rd)
+	tr, err := c.decodeTlogResponse(c.rd)
 	if err != nil {
 		return nil, err
 	}
@@ -392,10 +394,7 @@ func (c *Client) ForceFlushAtSeq(seq uint64) error {
 	defer c.wLock.Unlock()
 
 	sender := func() (interface{}, error) {
-		if err := tlog.WriteMessageType(c.bw, tlog.MessageForceFlushAtSeq); err != nil {
-			return nil, err
-		}
-		if err := c.encodeSendCommand(c.bw, tlog.MessageForceFlushAtSeq, seq); err != nil {
+		if err := c.encodeForceFlushAtSeq(c.bw, seq); err != nil {
 			return nil, err
 		}
 		return nil, c.bw.Flush()
@@ -412,10 +411,7 @@ func (c *Client) WaitNbdSlaveSync() error {
 	defer c.wLock.Unlock()
 
 	sender := func() (interface{}, error) {
-		if err := tlog.WriteMessageType(c.bw, tlog.MessageWaitNbdSlaveSync); err != nil {
-			return nil, err
-		}
-		if err := c.encodeSendCommand(c.bw, tlog.MessageWaitNbdSlaveSync, 0); err != nil {
+		if err := c.encodeWaitNBDSlaveSync(c.bw); err != nil {
 			return nil, err
 		}
 		return nil, c.bw.Flush()
@@ -485,10 +481,6 @@ func (c *Client) send(op uint8, seq uint64, index int64, timestamp int64, data [
 	hash := zerodisk.HashBytes(data)
 
 	sender := func() (interface{}, error) {
-		if err := tlog.WriteMessageType(c.bw, tlog.MessageTlogBlock); err != nil {
-			return nil, err
-		}
-
 		block, err := c.encodeBlockCapnp(c.bw, op, seq, index, hash[:], timestamp, data)
 		if err != nil {
 			return block, err

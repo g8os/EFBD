@@ -38,7 +38,12 @@ func (c *Client) encodeBlockCapnp(w io.Writer, op uint8, seq uint64, index int64
 		return nil, fmt.Errorf("failed to build build (block) capnp: %s", err.Error())
 	}
 
-	block, err := schema.NewRootTlogBlock(seg)
+	cmd, err := schema.NewRootTlogClientMessage(seg)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't create client message: %s", err.Error())
+	}
+
+	block, err := schema.NewTlogBlock(seg)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't create block: %s", err.Error())
 	}
@@ -57,21 +62,37 @@ func (c *Client) encodeBlockCapnp(w io.Writer, op uint8, seq uint64, index int64
 	block.SetIndex(index)
 	block.SetTimestamp(timestamp)
 
+	cmd.SetBlock(block)
+
 	return &block, capnp.NewEncoder(w).Encode(msg)
 }
 
-// encode and send command
-func (c *Client) encodeSendCommand(w io.Writer, cmdType uint8, seq uint64) error {
+// encode and send ForceFlushAtSeq command
+func (c *Client) encodeForceFlushAtSeq(w io.Writer, seq uint64) error {
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
 	if err != nil {
 		return err
 	}
-	cmd, err := schema.NewRootCommand(seg)
+	cmd, err := schema.NewRootTlogClientMessage(seg)
 	if err != nil {
 		return err
 	}
-	cmd.SetType(cmdType)
-	cmd.SetSequence(seq)
+	cmd.SetForceFlushAtSeq(seq)
+
+	return capnp.NewEncoder(w).Encode(msg)
+}
+
+// encode and send WaitNBDSlaveSync command
+func (c *Client) encodeWaitNBDSlaveSync(w io.Writer) error {
+	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
+	if err != nil {
+		return err
+	}
+	cmd, err := schema.NewRootTlogClientMessage(seg)
+	if err != nil {
+		return err
+	}
+	cmd.SetWaitNBDSlaveSync()
 
 	return capnp.NewEncoder(w).Encode(msg)
 }
@@ -86,7 +107,7 @@ func (c *Client) decodeHandshakeResponse() (*schema.HandshakeResponse, error) {
 	return &resp, err
 }
 
-func (c *Client) decodeBlockResponse(rd io.Reader) (*schema.TlogResponse, error) {
+func (c *Client) decodeTlogResponse(rd io.Reader) (*schema.TlogResponse, error) {
 	msg, err := capnp.NewDecoder(rd).Decode()
 	if err != nil {
 		return nil, err

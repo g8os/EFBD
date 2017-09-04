@@ -137,12 +137,15 @@ func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, config
 	ctx, cancelFunc := context.WithCancel(parentCtx)
 
 	if err := vd.watchConfig(ctx); err != nil {
+		cancelFunc()
 		return nil, err
 	}
 	if err := vd.createFlusher(); err != nil {
+		cancelFunc()
 		return nil, err
 	}
 	if err := vd.manageSlaveSync(); err != nil {
+		cancelFunc()
 		return nil, err
 	}
 
