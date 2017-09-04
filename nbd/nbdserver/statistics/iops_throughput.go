@@ -9,65 +9,43 @@ import (
 	"github.com/zero-os/0-Disk/log"
 )
 
+// Logger defines an nbd statistics logger interface
+type Logger interface {
+	Send(int64)
+	Stop()
+}
+
 var (
 	// broadcast interval in seconds
-	interval = 1 * time.Minute
+	interval = 5 * time.Minute
 	// func that does the broadcasting
 	//is stubbed during testing
 	broadcastFunc = broadcastIOPSThroughput
 )
 
-// IOPSThroughputLogger is the API
-// used for interacting with the statistics logger
-type IOPSThroughputLogger struct {
-	vdiskID       string
-	ctx           context.Context
-	dataMessenger chan<- int64
-	cancel        context.CancelFunc
-}
-
-// Send sends amount of bytes (read/written) to the log data(bytes) aggrigator
-func (l IOPSThroughputLogger) Send(data int64) {
-	if l.ctx == nil {
-		return
-	}
-
-	select {
-	case <-l.ctx.Done():
-		log.Debugf("Couldn't send statistic, IOPS/throughput logger is in done state for vdisk: %s", l.vdiskID)
-	default:
-		l.dataMessenger <- data
-	}
-}
-
-// Stop stops the statistics logging
-func (l IOPSThroughputLogger) Stop() {
-	if l.ctx == nil {
-		return
-	}
-	log.Infof("Stopping IOPS/Throughput statistics logger for vdisk: %s", l.vdiskID)
-	l.cancel()
-}
-
 // StartIOPSThroughputRead sets up statistics logger for read IOPS and throughput
-func StartIOPSThroughputRead(source config.Source, vdiskID string, blockSize int64) IOPSThroughputLogger {
+func StartIOPSThroughputRead(source config.Source, vdiskID string, blockSize int64) Logger {
 	return iopsThroughput(iopsRead, source, vdiskID, blockSize)
 }
 
 // StartIOPSThroughputWrite sets up statistics logger for write IOPS and throughput
-func StartIOPSThroughputWrite(source config.Source, vdiskID string, blockSize int64) IOPSThroughputLogger {
+func StartIOPSThroughputWrite(source config.Source, vdiskID string, blockSize int64) Logger {
 	return iopsThroughput(iopsWrite, source, vdiskID, blockSize)
 }
 
 // IOPSTroughput sets up statistics logger for IOPS and throughput
-func iopsThroughput(direction iopsDirection, source config.Source, vdiskID string, blockSize int64) IOPSThroughputLogger {
+func iopsThroughput(direction iopsDirection, source config.Source, vdiskID string, blockSize int64) Logger {
+	ctx, cancel := context.WithCancel(context.Background())
+
 	if !direction.validate() {
 		log.Errorf("IOPS and throughput statistics interval logger closed due to invalid keys for vdisk: %s", vdiskID)
-		return IOPSThroughputLogger{}
+		cancel()
+		return IOPSThroughputLogger{
+			ctx: ctx,
+		}
 	}
 
 	dataMsg := make(chan int64)
-	ctx, cancel := context.WithCancel(context.Background())
 	var (
 		data          int64
 		dataLock      sync.Mutex
@@ -125,9 +103,9 @@ func iopsTroughputIntervalLogger(ctx context.Context, vdiskID string, direction 
 			*data = 0
 			dataLock.Unlock()
 			clusterIDLock.Lock()
-			var tags MetricTags
+			var tags log.MetricTags
 			if *clusterID != "" {
-				tags = MetricTags{
+				tags = log.MetricTags{
 					"cluster_id": *clusterID,
 				}
 			}
@@ -141,7 +119,7 @@ func iopsTroughputIntervalLogger(ctx context.Context, vdiskID string, direction 
 }
 
 // broadcastIOPSThroughput actually broadcast statistics based on provided data
-func broadcastIOPSThroughput(vdiskID string, blockSize int64, bytesPerSec float64, iopsKey, tpKey Key, tags MetricTags) {
+func broadcastIOPSThroughput(vdiskID string, blockSize int64, bytesPerSec float64, iopsKey, tpKey log.StatisticsKey, tags log.MetricTags) {
 	// no need to log if 0?
 	if bytesPerSec == 0 {
 		log.Debugf("statistic value was 0, skipped broadcasting for vdisk: %s", vdiskID)
@@ -150,21 +128,21 @@ func broadcastIOPSThroughput(vdiskID string, blockSize int64, bytesPerSec float6
 
 	// broadcast iops
 	value := bytesPerSec / float64(blockSize)
-	Broadcast(
+	log.BroadcastStatistics(
 		vdiskID,
 		iopsKey,
 		value,
-		AggregationAverages,
+		log.AggregationAverages,
 		tags,
 	)
 
 	// broadcast throughput (kB/s)
 	value = bytesPerSec / 1024
-	Broadcast(
+	log.BroadcastStatistics(
 		vdiskID,
 		tpKey,
 		value,
-		AggregationAverages,
+		log.AggregationAverages,
 		tags,
 	)
 }
@@ -200,24 +178,67 @@ func (d iopsDirection) validate() bool {
 	return true
 }
 
-func (d iopsDirection) iopsKey() Key {
-	switch d {
+func (d *iopsDirection) iopsKey() log.StatisticsKey {
+	switch *d {
 	case iopsRead:
-		return KeyIOPSRead
+		return log.StatisticsKeyIOPSRead
 	case iopsWrite:
-		return KeyIOPSWrite
+		return log.StatisticsKeyIOPSWrite
 	default:
-		return KeyEnumLength
+		return log.StatisticsKeyEnumLength
 	}
 }
 
-func (d iopsDirection) throughputKey() Key {
-	switch d {
+func (d *iopsDirection) throughputKey() log.StatisticsKey {
+	switch *d {
 	case iopsRead:
-		return KeyTroughputRead
+		return log.StatisticsKeyTroughputRead
 	case iopsWrite:
-		return KeyTroughputWrite
+		return log.StatisticsKeyTroughputWrite
 	default:
-		return KeyEnumLength
+		return log.StatisticsKeyEnumLength
+	}
+}
+
+// DummyLogger defines a dummy logger
+// Can be used for testing
+type DummyLogger struct{}
+
+// Send is a dummy send method
+// implements the Logger interface
+func (dl DummyLogger) Send(i int64) {}
+
+// Stop is a dummy stop method
+// implements the Logger interface
+func (dl DummyLogger) Stop() {}
+
+// IOPSThroughputLogger defines a logger specific for IOPS and Throughput statistics
+type IOPSThroughputLogger struct {
+	vdiskID       string
+	ctx           context.Context
+	dataMessenger chan<- int64
+	cancel        context.CancelFunc
+}
+
+// Send sends amount of bytes (read/written) to the log data(bytes) aggrigator
+// implements the Logger interface
+func (l IOPSThroughputLogger) Send(data int64) {
+	select {
+	case <-l.ctx.Done():
+		log.Debugf("Couldn't send statistic, IOPS/throughput logger is in done state for vdisk: %s", l.vdiskID)
+	default:
+		l.dataMessenger <- data
+	}
+}
+
+// Stop stops the statistics logging
+// implements the Logger interface
+func (l IOPSThroughputLogger) Stop() {
+	select {
+	case <-l.ctx.Done():
+		return
+	default:
+		log.Infof("Stopping IOPS/Throughput statistics logger for vdisk: %s", l.vdiskID)
+		l.cancel()
 	}
 }

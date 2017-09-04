@@ -15,5 +15,37 @@ No error is returned as this would be used as a last resort to notify the 0-Orch
 
 More information about Broadcast can be found in the 0-Disk docs: https://github.com/zero-os/0-Disk/blob/master/docs/log.md#broadcasting-to-0-orchestrator
 and more information about 0-log can be found at the 0-log github page: https://github.com/zero-os/0-log
+
+BroadcastStatistics
+
+BroadcastStatistics is a function that wraps 0-log specifically for logging statistical information to the 0-core log monitor.
+
+The parameters are used to form a zerolog.MsgStatistics struct, used to format a statistics message's message.
+
+More in depth information about zerolog.MsgStatistics can be found in the godocs: https://godoc.org/github.com/zero-os/0-log#MsgStatistics
+and the zerolog docs: https://github.com/zero-os/0-log .
+
+AggregationType and MetricTags are wrappers for the zerolog types with the same names
+provided to avoid using the 0-log package in other parts of 0-Disk.
+
+An error will be returned in the following cases:
+
+	- The vdiskID is empty (ErrNilVdiskID)
+	- The StatisticsKey is invalid (ErrInvalidStatisticsKey)
+	- The aggregation type is invalid (zerolog.ErrInvalidAggregationType)
+
+usage example without tags:
+
+	BroadcastStatistics("vdisk1", StatisticsKeyIOPSWrite, 1.234, AggregationAverages, nil)
+	// outputs: 10::vdisk.iops.write@virt.vdisk1:1.234000|A
+
+usage example with tags:
+
+	tags := MetricTags{
+		"foo":   "world",
+		"hello": "bar",
+	}
+	BroadcastStatistics("vdisk2", StatisticsKeyTroughputRead, 2.345, AggregationDifferentiates, tags)
+	// outputs: 10::vdisk.throughput.read@virt.vdisk2:2.345000|D|foo=world,hello=bar
 */
 package log

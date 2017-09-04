@@ -9,7 +9,7 @@ import (
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/nbd/gonbdserver/nbd"
-	"github.com/zero-os/0-Disk/statistics"
+	"github.com/zero-os/0-Disk/nbd/nbdserver/statistics"
 )
 
 // backendFactoryConfig is used to create a new BackendFactory

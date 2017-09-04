@@ -1,14 +1,14 @@
-// +build go1.9
+// +build !go1.9
 
-package statistics
+package log
 
 import (
 	"github.com/zero-os/0-log"
 )
 
-// Broadcast broadcasts statistics data for 0-Core statistics monitor
+// BroadcastStatistics broadcasts statistics data for 0-Core statistics monitor
 // using the 0-Log package
-func Broadcast(vdiskID string, key Key, value float64, op AggregationType, tags MetricTags) error {
+func BroadcastStatistics(vdiskID string, key StatisticsKey, value float64, op AggregationType, tags MetricTags) error {
 	k, err := createKey(vdiskID, key)
 	if err != nil {
 		return nil
@@ -18,9 +18,9 @@ func Broadcast(vdiskID string, key Key, value float64, op AggregationType, tags 
 		Key:   k,
 		Value: value,
 		// aggregation operation
-		Operation: op,
+		Operation: zerolog.AggregationType(op),
 		// metric tags for the statistic
-		Tags: tags,
+		Tags: zerolog.MetricTags(tags),
 	}
 
 	return zerolog.Log(zerolog.LevelStatistics, msg)
@@ -30,17 +30,17 @@ func Broadcast(vdiskID string, key Key, value float64, op AggregationType, tags 
 
 // AggregationType represents an statistics aggregation type
 // wraps zerolog.AggregationType
-type AggregationType = zerolog.AggregationType
+type AggregationType zerolog.AggregationType
 
 const (
 	// AggregationAverages represents an averaging aggregation type
 	// wraps zerolog.AggregationAverages
-	AggregationAverages = zerolog.AggregationAverages
+	AggregationAverages = AggregationType(zerolog.AggregationAverages)
 	// AggregationDifferentiates represents a differentiating aggregation type
 	// wraps zerolog.AggregationDifferentiates
-	AggregationDifferentiates = zerolog.AggregationDifferentiates
+	AggregationDifferentiates = AggregationType(zerolog.AggregationDifferentiates)
 )
 
 // MetricTags represents statistics metric tags
 // wraps zerolog.MetricTags
-type MetricTags = zerolog.MetricTags
+type MetricTags zerolog.MetricTags

@@ -9,10 +9,10 @@ import (
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/nbd/gonbdserver/nbd"
-	"github.com/zero-os/0-Disk/statistics"
+	"github.com/zero-os/0-Disk/nbd/nbdserver/statistics"
 )
 
-func newBackend(vdiskID string, size uint64, blockSize int64, storage storage.BlockStorage, vComp *vdiskCompletion, connProvider ardb.ConnProvider, readStatistics, writeStatistics statistics.IOPSThroughputLogger) *backend {
+func newBackend(vdiskID string, size uint64, blockSize int64, storage storage.BlockStorage, vComp *vdiskCompletion, connProvider ardb.ConnProvider, readStatistics, writeStatistics statistics.Logger) *backend {
 	return &backend{
 		vdiskID:         vdiskID,
 		blockSize:       blockSize,
@@ -33,7 +33,7 @@ type backend struct {
 	storage                         storage.BlockStorage
 	connProvider                    ardb.ConnProvider
 	vComp                           *vdiskCompletion
-	readStatistics, writeStatistics statistics.IOPSThroughputLogger
+	readStatistics, writeStatistics statistics.Logger
 }
 
 // WriteAt implements nbd.Backend.WriteAt
@@ -64,7 +64,7 @@ func (ab *backend) WriteAt(ctx context.Context, b []byte, offset int64) (bytesWr
 
 	bytesWritten = int64(len(b))
 
-	go ab.writeStatistics.Send(bytesWritten)
+	ab.writeStatistics.Send(bytesWritten)
 
 	return
 }
@@ -96,7 +96,7 @@ func (ab *backend) WriteZeroesAt(ctx context.Context, offset, length int64) (byt
 
 	bytesWritten = length
 
-	go ab.writeStatistics.Send(bytesWritten)
+	ab.writeStatistics.Send(bytesWritten)
 
 	return
 }
@@ -175,7 +175,7 @@ func (ab *backend) ReadAt(ctx context.Context, offset, length int64) (payload []
 		payload = p
 	}
 
-	go ab.readStatistics.Send(int64(len(payload)))
+	ab.readStatistics.Send(int64(len(payload)))
 
 	return
 }

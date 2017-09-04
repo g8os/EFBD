@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
+	"github.com/zero-os/0-Disk/nbd/nbdserver/statistics"
 	"github.com/zero-os/0-Disk/redisstub"
-	"github.com/zero-os/0-Disk/statistics"
 )
 
 func TestDedupedBackendReadWrite(t *testing.T) {
@@ -56,7 +56,7 @@ func testBackendReadWrite(ctx context.Context, t *testing.T, vdiskID string, blo
 	}
 
 	vComp := newVdiskCompletion()
-	backend := newBackend(vdiskID, size, blockSize, storage, vComp, nil, statistics.IOPSThroughputLogger{}, statistics.IOPSThroughputLogger{})
+	backend := newBackend(vdiskID, size, blockSize, storage, vComp, nil, statistics.DummyLogger{}, statistics.DummyLogger{})
 	if !assert.NotNil(t, backend) {
 		return
 	}

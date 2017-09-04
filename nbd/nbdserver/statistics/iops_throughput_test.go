@@ -32,7 +32,7 @@ func TestIOPSThroughputLogger(t *testing.T) {
 
 	// test read stats logger
 	// nil source should only log an error
-	readLogger := StartIOPSThroughputRead(nil, vdiskID, blockSize)
+	readLogger := StartIOPSThroughputRead(nil, vdiskID, blockSize).(IOPSThroughputLogger)
 
 	// send one block and check if data to be broadcasted matches up
 	readLogger.Send(blockSize)
@@ -41,8 +41,8 @@ func TestIOPSThroughputLogger(t *testing.T) {
 	assert.Equal(float64(blockSize), bcData.datbytesPerSec*interval.Seconds())
 	assert.Equal(vdiskID, bcData.vdiskID)
 	assert.Equal(blockSize, bcData.blockSize)
-	assert.Equal(KeyIOPSRead, bcData.iopsKey)
-	assert.Equal(KeyTroughputRead, bcData.tpKey)
+	assert.Equal(log.StatisticsKeyIOPSRead, bcData.iopsKey)
+	assert.Equal(log.StatisticsKeyTroughputRead, bcData.tpKey)
 	// no need for this casting in go >= 1.9
 	tags := zerolog.MetricTags(bcData.tags)
 	assert.Equal("", tags.String())
@@ -82,8 +82,8 @@ func TestIOPSThroughputLogger(t *testing.T) {
 	assert.Equal(float64(blockSize), bcData.datbytesPerSec*interval.Seconds())
 	assert.Equal(vdiskID, bcData.vdiskID)
 	assert.Equal(blockSize, bcData.blockSize)
-	assert.Equal(KeyIOPSWrite, bcData.iopsKey)
-	assert.Equal(KeyTroughputWrite, bcData.tpKey)
+	assert.Equal(log.StatisticsKeyIOPSWrite, bcData.iopsKey)
+	assert.Equal(log.StatisticsKeyTroughputWrite, bcData.tpKey)
 	// no need for this casting in go >= 1.9
 	tags = zerolog.MetricTags(bcData.tags)
 	assert.Equal("cluster_id="+clusterID, tags.String())
@@ -107,7 +107,7 @@ func TestIOPSThroughputLogger(t *testing.T) {
 	assert.False(faultyLoggerReceivedWhileClosed, "faultyLogger's context should be in state: Done")
 }
 
-func broadcastIOPSThroughputTest(vdiskID string, blockSize int64, bytesPerSec float64, iopsKey, tpKey Key, tags MetricTags) {
+func broadcastIOPSThroughputTest(vdiskID string, blockSize int64, bytesPerSec float64, iopsKey, tpKey log.StatisticsKey, tags log.MetricTags) {
 	broadcastChan <- broadcastData{
 		vdiskID,
 		blockSize,
@@ -122,8 +122,8 @@ type broadcastData struct {
 	vdiskID        string
 	blockSize      int64
 	datbytesPerSec float64
-	iopsKey, tpKey Key
-	tags           MetricTags
+	iopsKey, tpKey log.StatisticsKey
+	tags           log.MetricTags
 }
 
 func init() {

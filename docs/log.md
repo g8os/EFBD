@@ -176,36 +176,49 @@ Sent when receiving an invalid config for a certain key, while reading or watchi
 
 This message is send in the hope that the config can be made valid by receiving an(other) update from the [0-Orchestrator][zeroOrchestrator].
 
-# Statistics logging
+## Broadcast statistics 
 
-## Broadcast 
+The `BroadcastStatistics` function in the `0-Disk/log` package logs statistical messages using the [0-Log library][zeroLog] to broadcast messages for the [0-core log monitor][zeroCoreLogMonitor] using the [Statistics Log message format spec][StatLogSpec]. The broadcasted statistics messages are send at [log level 10 (statistics/monitoring message)][loglevels]. 
 
-The `Broadcast` function in the `0-Disk/statistics` package logs statistical messages using the [0-Log library][zeroLog] to broadcast messages for the [0-core log monitor][zeroCoreLogMonitor] using the [Statistics Log message format spec][StatLogSpec]. The broadcasted statistics messages are send at [log level 10 (statistics/monitoring message)][loglevels]. 
-
-More in-depth information about the actual implementation in 0-Disk can be found in [the statistics module Godocs][zeroDiskStatisticsGodcs].
+More in-depth information about the actual implementation in 0-Disk can be found in [the log module Godocs][zeroDiskLogGodcs].
 
 ### Logged statistics
 
  * IOPS read 
     * logged by: nbdserver
-    * broadcasts: `10::vdisk.iops.read@virt.<vdisk ID>:<value>|A`
+    * broadcasts: `10::vdisk.iops.read@virt.<vdisk ID>:<value>|A|cluster_id=<clusterID>`
     * [0-core aggregation type][StatLogSpec]: Averages
     * value unit: (partial) blocks per second
+    * possible tags:
+        * cluster_id: the primary storage cluster ID
+    * logging interval: 5 minutes
  * IOPS write
     * logged by: nbdserver
-    * broadcasts: `10::vdisk.iops.write@virt.<vdisk ID>:<value>|A`
+    * broadcasts: `10::vdisk.iops.write@virt.<vdisk ID>:<value>|A|cluster_id=<clusterID>`
     * [0-core aggregation type][StatLogSpec]: Averages
     * value unit: (partial) blocks per second
- * throughput read
+    * possible tags:
+        * cluster_id: the primary storage cluster ID
+    * logging interval: 5 minutes
+ * Throughput read
     * logged by: nbdserver
-    * broadcasts: `10::vdisk.throughput.read@virt.<vdisk ID>:<value>|A`
+    * broadcasts: `10::vdisk.throughput.read@virt.<vdisk ID>:<value>|A|cluster_id=<clusterID>`
     * [0-core aggregation type][StatLogSpec]: Averages
     * value unit: kB/s
- * throughput write
+    * possible tags:
+        * cluster_id: the primary storage cluster ID
+    * logging interval: 5 minutes
+ * Throughput write
     * logged by: nbdserver
-    * broadcasts: `10::vdisk.throughput.write@virt.<vdisk ID>:<value>|A`
+    * broadcasts: `10::vdisk.throughput.write@virt.<vdisk ID>:<value>|A|cluster_id=<clusterID>`
     * [0-core aggregation type][StatLogSpec]: Averages
     * value unit: kB/s
+    * possible tags:
+        * cluster_id: the primary storage cluster ID
+    * logging interval: 5 minutes
+
+More details over the nbd server statistics logging can be found in the [nbd server statistics module godocs][zeroDiskStatisticsGodcs]
+
 
 [zeroLog]: https://github.com/zero-os/0-log/
 [loglevels]: https://github.com/zero-os/0-log/blob/master/README.md#supported-log-levels
@@ -221,4 +234,4 @@ More in-depth information about the actual implementation in 0-Disk can be found
 [zerostor]: https://github.com/zero-os/0-stor
 
 [zeroDiskLogGodcs]: https://godoc.org/github.com/zero-os/0-Disk/log
-[zeroDiskStatisticsGodcs]: https://godoc.org/github.com/zero-os/0-Disk/statistics
+[zeroDiskStatisticsGodcs]: https://godoc.org/github.com/zero-os/0-Disk/nbd/nbdserver/statistics

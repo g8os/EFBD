@@ -4,12 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/zero-os/0-Disk/statistics"
-
 	"github.com/stretchr/testify/require"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
+	"github.com/zero-os/0-Disk/nbd/nbdserver/statistics"
 	"github.com/zero-os/0-Disk/redisstub"
 )
 
@@ -74,7 +73,7 @@ func testBackendSigtermHandler(ctx context.Context, t *testing.T, vdiskID string
 	require.NotNil(t, storage)
 
 	vComp := newVdiskCompletion()
-	backend := newBackend(vdiskID, size, blockSize, storage, vComp, nil, statistics.IOPSThroughputLogger{}, statistics.IOPSThroughputLogger{})
+	backend := newBackend(vdiskID, size, blockSize, storage, vComp, nil, statistics.DummyLogger{}, statistics.DummyLogger{})
 	require.NotNil(t, backend)
 
 	go backend.GoBackground(ctx)
