@@ -50,7 +50,7 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 
 	vdiskID := args[0]
 
-	logLevel := log.ErrorLevel
+	logLevel := log.InfoLevel
 	if cmdConf.Verbose {
 		logLevel = log.DebugLevel
 	}
@@ -69,7 +69,10 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	_, err = player.Replay(decoder.NewLimitByTimestamp(vdiskCmdCfg.StartTs, vdiskCmdCfg.EndTs))
+	log.Infof("restoring vdisk with start timestamp=%v end timestamp=%v",
+		vdiskCmdCfg.StartTs, vdiskCmdCfg.EndTs)
+	lastSeq, err := player.Replay(decoder.NewLimitByTimestamp(vdiskCmdCfg.StartTs, vdiskCmdCfg.EndTs))
+	log.Infof("restore finished with last sequence = %v and err = %v", lastSeq, err)
 	return err
 }
 
