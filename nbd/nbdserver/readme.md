@@ -26,18 +26,11 @@ Use `nbdserver -h` or `nbdserver --help` to get more information about all avail
 
 ### Example
 
-Make sure you have an ARDB server(s) running, on the connection info specified in the used `config.yml` file.
+Make sure you have an ARDB server(s) running, on the connection info specified in the used configured (using configuration stored in the etcd server running at `myserver:2037`).
 
 ```
-make nbdserver && bin/nbdserver -protocol tcp -address ":6666"
+make nbdserver && bin/nbdserver -protocol tcp -address ":6666" -config myserver:2037
 ```
-
-You can also instead simply run the nbdserver with no flag specified `bin/nbdserver`
-to run it on the default `/tmp/nbd-socket` unix socket,
-which is the same as the more explicit version `bin/nbdserver -protocol unix --address /tmp/nbd-socket`.
-
-Note that if you don't have the `config.yml` file in your current working directory,
-you'll have to specify the config file explicitly using the `-config path` flag.
 
 Connect your `nbd-client` to the server running on `localhost:6666`:
 

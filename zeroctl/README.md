@@ -2,8 +2,8 @@
 
 zeroctl controls the 0-Disk resources.
 
-It can be used to copy, delete, list and restore vdisks.
+It can be used to copy, delete, list, import, export and restore vdisks.
 
 ## More
 
-See the [0-Disk documentation](/docs/commandlinetool/commandlinetool.md) for more detailed documentation.
+See the [zeroctl documentation](/docs/zeroctl/zeroctl.md) for more detailed documentation.
