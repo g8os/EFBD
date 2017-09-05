@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
-	"github.com/zero-os/0-Disk/nbd/nbdserver/statistics"
 	"github.com/zero-os/0-Disk/redisstub"
 )
 
@@ -56,7 +55,7 @@ func testBackendReadWrite(ctx context.Context, t *testing.T, vdiskID string, blo
 	}
 
 	vComp := newVdiskCompletion()
-	backend := newBackend(vdiskID, size, blockSize, storage, vComp, nil, statistics.DummyLogger{}, statistics.DummyLogger{})
+	backend := newBackend(vdiskID, size, blockSize, storage, vComp, nil, dummyVdiskLogger{})
 	if !assert.NotNil(t, backend) {
 		return
 	}
@@ -181,3 +180,9 @@ func testBackendReadWrite(ctx context.Context, t *testing.T, vdiskID string, blo
 		return
 	}
 }
+
+type dummyVdiskLogger struct{}
+
+func (vl dummyVdiskLogger) LogReadOperation(bytes int64)  {}
+func (vl dummyVdiskLogger) LogWriteOperation(bytes int64) {}
+func (vl dummyVdiskLogger) Close() error                  { return nil }

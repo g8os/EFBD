@@ -132,8 +132,13 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	}
 
 	// create statistics loggers
-	readStatistics := statistics.StartIOPSThroughputRead(f.configSource, vdiskID, blockSize)
-	writeStatistics := statistics.StartIOPSThroughputWrite(f.configSource, vdiskID, blockSize)
+	vdiskLogger, err := statistics.NewVdiskLogger(ctx, f.configSource, vdiskID)
+	if err != nil {
+		blockStorage.Close()
+		redisProvider.Close()
+		log.Infof("couldn't create vdisk logger: %s", err.Error())
+		return nil, err
+	}
 
 	// Create the actual ARDB backend
 	backend = newBackend(
@@ -142,8 +147,7 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 		blockStorage,
 		f.vdiskComp,
 		redisProvider,
-		readStatistics,
-		writeStatistics,
+		vdiskLogger,
 	)
 
 	return
