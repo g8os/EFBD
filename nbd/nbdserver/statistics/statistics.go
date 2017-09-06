@@ -2,7 +2,9 @@ package statistics
 
 import (
 	"context"
+	"fmt"
 	"math/big"
+	"os"
 	"time"
 
 	"github.com/zero-os/0-Disk/config"
@@ -256,6 +258,33 @@ func (agg *vdiskAggregator) Reset() (iops, throughput float64) {
 		return
 	}
 
+	// compute averages based on the aggregated values
+	iops, throughput = agg.computeAverages()
+
+	if iops < 1.0 {
+		fmt.Fprintf(os.Stderr,
+			"totalIOPS = %d ; totalThroughput = %v ; start = %v ; end = %v ; durInSecs = %v\n",
+			agg.iops, agg.throughput, agg.start, agg.end, agg.end.Sub(agg.start).Seconds())
+	}
+
+	// reset all values
+	agg.timer, agg.C = nil, nil
+	agg.iops = 0
+	agg.throughput.SetFloat64(0)
+
+	// return compute results
+	return
+}
+
+func (agg *vdiskAggregator) computeAverages() (iops, throughput float64) {
+	// if start == end, it means we only have received one operation,
+	if agg.start == agg.end {
+		iops = float64(agg.iops)
+		throughput, _ = agg.throughput.Float64()
+		return
+	}
+	// received multiple operations (hopefully more than 2)
+
 	// compute interval durations
 	dur := agg.end.Sub(agg.start)
 	dursecs := big.NewFloat(dur.Seconds())
@@ -269,18 +298,13 @@ func (agg *vdiskAggregator) Reset() (iops, throughput float64) {
 	agg.throughput.Quo(&agg.throughput, dursecs)
 	throughput, _ = agg.throughput.Float64()
 
-	// reset all values
-	agg.timer, agg.C = nil, nil
-	agg.iops = 0
-	agg.throughput.SetFloat64(0)
-
-	// return compute results
+	// return average operations
 	return
 }
 
 // MaxVdiskAggregationDuration defines the maximum aggregation duration
 // used for vdisk operation statistics.
-const MaxVdiskAggregationDuration = time.Second * 30
+const MaxVdiskAggregationDuration = time.Second
 
 const (
 	clusterIDKey = "clusterID"
