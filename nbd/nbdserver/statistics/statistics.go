@@ -2,30 +2,12 @@ package statistics
 
 import (
 	"context"
-	"fmt"
 	"math/big"
-	"os"
 	"time"
 
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 )
-
-// ====
-// [TODO] Answer following questions:
-//
-//   Are we OK that due to irregular activity that it won't be uncommon
-// to have lower average aggregation statistics (iops/throughput) values.
-// Meaning that we might broadcast a low IOPS/throughput value,
-// not because the vdisk is performing bad, but because we have an interval period,
-// where we have one operation at the start, and another one closer to the end of the interval,
-// with a big gap in between.
-//    => I'm not sure if there is a good solution as long as we wish to keep average values,
-//       however this problem could be partly avoided by logging every second,
-//       as we'll have much more accurate values due to the fact that the gaps
-//       will be very tiny if they exist at all, hence not invalidating the data.
-//
-// ====
 
 // VdiskLogger defines an nbd  statistics logger interface
 type VdiskLogger interface {
@@ -150,31 +132,45 @@ func (vl *vdiskLogger) Close() error {
 func (vl *vdiskLogger) background() {
 	var cfg config.VdiskNBDConfig
 	var bytes int64
+	var start, end time.Time
+	var duration time.Duration
 
+	// ticker which helps us aggregate values on regular intervals,
+	// as to monitor the activity of a vdisk.
+	ticker := time.NewTicker(vdiskAggregationDuration)
+	defer ticker.Stop()
+
+	start = time.Now()
 	for {
 		select {
 		// context is finished, log for one last time and exit
 		case <-vl.ctx.Done():
 			log.Debug("logging last minute vdisks statistics")
-			vl.broadcastReadStatistics()
-			vl.broadcastWriteStatistics()
+			end = time.Now()
+			duration = end.Sub(start)
+			vl.broadcastReadStatistics(duration)
+			vl.broadcastWriteStatistics(duration)
 
 			log.Debug("exit vdiskLogger because context is done")
 			return
 
-		// one of our stats timers is finished
-		case <-vl.readAggregator.C:
-			vl.broadcastReadStatistics()
-		case <-vl.writeAggregator.C:
-			vl.broadcastWriteStatistics()
+		// interval timer ticks,
+		// compute interval duration,
+		// and reset start timer
+		case end = <-ticker.C:
+			duration = end.Sub(start)
+			start = end
+
+			vl.broadcastReadStatistics(duration)
+			vl.broadcastWriteStatistics(duration)
 
 		// config has updated, check if our tags change
 		case cfg = <-vl.configCh:
-			if vl.tags[clusterIDKey] != cfg.StorageClusterID {
-				vl.tags[clusterIDKey] = cfg.StorageClusterID
-
-				vl.readAggregator.Stop()
-				vl.writeAggregator.Stop()
+			vl.tags[clusterKey] = cfg.StorageClusterID
+			if cfg.TemplateStorageClusterID == "" {
+				delete(vl.tags, templateClusterKey)
+			} else {
+				vl.tags[templateClusterKey] = cfg.TemplateStorageClusterID
 			}
 
 		// incoming data
@@ -188,37 +184,24 @@ func (vl *vdiskLogger) background() {
 
 // internal func to reset the read aggregator
 // and broadcast its aggregated iops/throughput values.
-func (vl *vdiskLogger) broadcastReadStatistics() {
-	iops, throughput := vl.readAggregator.Reset()
-	if iops == 0 {
-		return
-	}
-
+func (vl *vdiskLogger) broadcastReadStatistics(duration time.Duration) {
+	iops, throughput := vl.readAggregator.Reset(duration)
 	vl.broadcastFunc(vl.readIOPSKey, iops, vl.tags)
 	vl.broadcastFunc(vl.readThroughputKey, throughput, vl.tags)
 }
 
 // internal func to reset the write aggregator
 // and broadcast its aggregated iops/throughput values.
-func (vl *vdiskLogger) broadcastWriteStatistics() {
-	iops, throughput := vl.writeAggregator.Reset()
-	if iops == 0 {
-		return
-	}
-
+func (vl *vdiskLogger) broadcastWriteStatistics(duration time.Duration) {
+	iops, throughput := vl.writeAggregator.Reset(duration)
 	vl.broadcastFunc(vl.writeIOPSKey, iops, vl.tags)
 	vl.broadcastFunc(vl.writeThroughputKey, throughput, vl.tags)
 }
 
 // vdiskAggregator is used to aggregate values for a given r/w direction.
 type vdiskAggregator struct {
-	// public timer channel,
-	// only ever set while this aggregator is active
-	C <-chan time.Time
-
 	// time values
-	start, end time.Time
-	timer      *time.Timer
+	start time.Time
 
 	// total values
 	iops       int64
@@ -231,63 +214,32 @@ type vdiskAggregator struct {
 func (agg *vdiskAggregator) TrackBytes(bytes int64) {
 	agg.iops++
 	agg.throughput.Add(&agg.throughput, big.NewFloat(0).SetInt64(bytes))
-	agg.end = time.Now()
-
-	if agg.timer == nil {
-		agg.start = time.Now()
-		agg.timer = time.NewTimer(vdiskAggregationDuration)
-		agg.C = agg.timer.C
-	}
-}
-
-// Stop this vdisk aggregator,
-// this will result in the Reset function being called a bit later.
-// A manual stop can be useful in case we need to stop before the planned interval duration.
-func (agg *vdiskAggregator) Stop() {
-	if agg.timer == nil {
-		return
-	}
-
-	agg.timer.Stop()
 }
 
 // Reset returns the aggregate values as an average over the active duration,
 // and reset the aggregator's internal values.
-func (agg *vdiskAggregator) Reset() (iops, throughput float64) {
-	if agg.timer == nil {
+func (agg *vdiskAggregator) Reset(duration time.Duration) (iops, throughput float64) {
+	if agg.iops == 0 {
 		return
 	}
 
 	// compute averages based on the aggregated values
-	iops, throughput = agg.computeAverages()
-
-	if iops < 1.0 {
-		fmt.Fprintf(os.Stderr,
-			"totalIOPS = %d ; totalThroughput = %v ; start = %v ; end = %v ; durInSecs = %v\n",
-			agg.iops, agg.throughput, agg.start, agg.end, agg.end.Sub(agg.start).Seconds())
-	}
+	iops, throughput = agg.computeAverages(duration)
 
 	// reset all values
-	agg.timer, agg.C = nil, nil
 	agg.iops = 0
 	agg.throughput.SetFloat64(0)
+	agg.start = time.Now()
 
 	// return compute results
 	return
 }
 
-func (agg *vdiskAggregator) computeAverages() (iops, throughput float64) {
-	// if start == end, it means we only have received one operation,
-	if agg.start == agg.end {
-		iops = float64(agg.iops)
-		throughput, _ = agg.throughput.Float64()
+func (agg *vdiskAggregator) computeAverages(duration time.Duration) (iops, throughput float64) {
+	if duration < minVdiskAggregationDuration {
 		return
 	}
-	// received multiple operations (hopefully more than 2)
-
-	// compute interval durations
-	dur := agg.end.Sub(agg.start)
-	dursecs := big.NewFloat(dur.Seconds())
+	dursecs := big.NewFloat(duration.Seconds())
 
 	// compute IOPS
 	bigIOPS := big.NewFloat(0).SetInt64(agg.iops)
@@ -302,15 +254,22 @@ func (agg *vdiskAggregator) computeAverages() (iops, throughput float64) {
 	return
 }
 
-// MaxVdiskAggregationDuration defines the maximum aggregation duration
-// used for vdisk operation statistics.
-const MaxVdiskAggregationDuration = time.Second
+const (
+	// MaxVdiskAggregationDuration defines the maximum aggregation duration
+	// used for vdisk operation (average) statistics.
+	MaxVdiskAggregationDuration = time.Second * 30
+	// MinVdiskAggregationDuration defines the minimum aggregation duration
+	// used for vdisk operation (average) statistics.
+	MinVdiskAggregationDuration = time.Second
+)
 
 const (
-	clusterIDKey = "clusterID"
+	clusterKey         = "cluster"
+	templateClusterKey = "templateCluster"
 )
 
 var (
-	vdiskAggregationDuration = MaxVdiskAggregationDuration
-	vdiskThroughputScalar    = big.NewFloat(1024)
+	vdiskAggregationDuration    = MaxVdiskAggregationDuration
+	minVdiskAggregationDuration = MinVdiskAggregationDuration
+	vdiskThroughputScalar       = big.NewFloat(1024)
 )
