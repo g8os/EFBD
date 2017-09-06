@@ -9,11 +9,6 @@ import (
 // BroadcastStatistics broadcasts statistics data for 0-Core statistics monitor
 // using the 0-Log package
 func BroadcastStatistics(key string, value float64, op AggregationType, tags MetricTags) error {
-	k, err := createKey(vdiskID, key)
-	if err != nil {
-		return nil
-	}
-
 	msg := zerolog.MsgStatistics{
 		Key:   key,
 		Value: value,
