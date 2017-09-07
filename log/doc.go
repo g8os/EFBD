@@ -30,22 +30,17 @@ provided to avoid using the 0-log package in other parts of 0-Disk.
 
 An error will be returned in the following cases:
 
-	- The vdiskID is empty (ErrNilVdiskID)
-	- The StatisticsKey is invalid (ErrInvalidStatisticsKey)
 	- The aggregation type is invalid (zerolog.ErrInvalidAggregationType)
 
 usage example without tags:
 
-	BroadcastStatistics("vdisk1", StatisticsKeyIOPSWrite, 1.234, AggregationAverages, nil)
-	// outputs: 10::vdisk.iops.write@virt.vdisk1:1.234000|A
+	BroadcastStatistics("vvdisk.iops.write@virt.a", 268.51483871176936, AggregationAverages, nil)
+	// outputs: 10::vdisk.iops.write@virt.a:268.51483871176936|A
 
 usage example with tags:
 
-	tags := MetricTags{
-		"foo":   "world",
-		"hello": "bar",
-	}
-	BroadcastStatistics("vdisk2", StatisticsKeyTroughputRead, 2.345, AggregationDifferentiates, tags)
-	// outputs: 10::vdisk.throughput.read@virt.vdisk2:2.345000|D|foo=world,hello=bar
+	tags := MetricTags{"cluster": "a"}
+	BroadcastStatistics("vvdisk.iops.write@virt.a", 268.51483871176936, AggregationAverages, tags)
+	// outputs: 10::vdisk.iops.write@virt.a:268.51483871176936|A|cluster=a
 */
 package log

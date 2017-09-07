@@ -184,41 +184,44 @@ More in-depth information about the actual implementation in 0-Disk can be found
 
 ### Logged statistics
 
- * IOPS read 
-    * logged by: nbdserver
-    * broadcasts: `10::vdisk.iops.read@virt.<vdisk ID>:<value>|A|cluster_id=<clusterID>`
+ * [vdisk][vdisk] IOPS read 
+    * logged by: [nbdserver][nbdserver]
+    * broadcasts: `10::vdisk.iops.read@virt.<vdiskID>:<value>|A|cluster=<clusterID>,templateCluster=<templateClusterID>`
     * [0-core aggregation type][StatLogSpec]: Averages
     * value unit: (partial) blocks per second
-    * possible tags:
-        * cluster_id: the primary storage cluster ID
-    * logging interval: 5 minutes
- * IOPS write
-    * logged by: nbdserver
-    * broadcasts: `10::vdisk.iops.write@virt.<vdisk ID>:<value>|A|cluster_id=<clusterID>`
+    * metric tags:
+        * `cluster`: the primary storage cluster ID (required)
+        * `templateCluster`: the template storage cluster ID (optional, not given when not defined)
+    * logging interval: 30 seconds (or less in case the vdisk unmounts before an interval ends)
+ * [vdisk][vdisk] IOPS write
+    * logged by: [nbdserver][nbdserver]
+    * broadcasts: `10::vdisk.iops.write@virt.<vdiskID>:<value>|A|cluster=<clusterID>,templateCluster=<templateClusterID>`
     * [0-core aggregation type][StatLogSpec]: Averages
     * value unit: (partial) blocks per second
-    * possible tags:
-        * cluster_id: the primary storage cluster ID
-    * logging interval: 5 minutes
- * Throughput read
-    * logged by: nbdserver
-    * broadcasts: `10::vdisk.throughput.read@virt.<vdisk ID>:<value>|A|cluster_id=<clusterID>`
+    * metric tags:
+        * `cluster`: the primary storage cluster ID (required)
+        * `templateCluster`: the template storage cluster ID (optional, not given when not defined)
+    * logging interval: 30 seconds (or less in case the vdisk unmounts before an interval ends)
+ * [vdisk][vdisk] Throughput read
+    * logged by: [nbdserver][nbdserver]
+    * broadcasts: `10::vdisk.throughput.read@virt.<vdiskID>:<value>|A|cluster=<clusterID>,templateCluster=<templateClusterID>`
     * [0-core aggregation type][StatLogSpec]: Averages
-    * value unit: kB/s
-    * possible tags:
-        * cluster_id: the primary storage cluster ID
-    * logging interval: 5 minutes
- * Throughput write
-    * logged by: nbdserver
-    * broadcasts: `10::vdisk.throughput.write@virt.<vdisk ID>:<value>|A|cluster_id=<clusterID>`
+    * value unit: KiB/s
+    * metric tags:
+        * `cluster`: the primary storage cluster ID (required)
+        * `templateCluster`: the template storage cluster ID (optional, not given when not defined)
+    * logging interval: 30 seconds (or less in case the vdisk unmounts before an interval ends)
+ * [vdisk][vdisk] Throughput write
+    * logged by: [nbdserver][nbdserver]
+    * broadcasts: `10::vdisk.throughput.write@virt.<vdiskID>:<value>|A|cluster=<clusterID>,templateCluster=<templateClusterID>`
     * [0-core aggregation type][StatLogSpec]: Averages
-    * value unit: kB/s
-    * possible tags:
-        * cluster_id: the primary storage cluster ID
-    * logging interval: 5 minutes
+    * value unit: KiB/s
+    * metric tags:
+        * `cluster`: the primary storage cluster ID (required)
+        * `templateCluster`: the template storage cluster ID (optional, not given when not defined)
+    * logging interval: 30 seconds (or less in case the vdisk unmounts before an interval ends)
 
 More details over the nbd server statistics logging can be found in the [nbd server statistics module godocs][zeroDiskStatisticsGodcs]
-
 
 [zeroLog]: https://github.com/zero-os/0-log/
 [loglevels]: https://github.com/zero-os/0-log/blob/master/README.md#supported-log-levels
@@ -230,6 +233,8 @@ More details over the nbd server statistics logging can be found in the [nbd ser
 [tlog]: /docs/glossary.md#tlog
 [etcd]: /docs/glossary.md#etcd
 [vdisk]: /docs/glossary.md#vdisk
+
+[nbdserver]: /docs/nbd/nbd.md
 
 [zerostor]: https://github.com/zero-os/0-stor
 
