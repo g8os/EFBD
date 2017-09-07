@@ -72,7 +72,7 @@ func testBackendSigtermHandler(ctx context.Context, t *testing.T, vdiskID string
 	require.NotNil(t, storage)
 
 	vComp := newVdiskCompletion()
-	backend := newBackend(vdiskID, size, blockSize, storage, vComp, nil)
+	backend := newBackend(vdiskID, size, blockSize, storage, vComp, nil, dummyVdiskLogger{})
 	require.NotNil(t, backend)
 
 	go backend.GoBackground(ctx)

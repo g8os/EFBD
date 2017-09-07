@@ -9,6 +9,7 @@ import (
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/nbd/gonbdserver/nbd"
+	"github.com/zero-os/0-Disk/nbd/nbdserver/statistics"
 )
 
 // backendFactoryConfig is used to create a new BackendFactory
@@ -130,6 +131,15 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 		}
 	}
 
+	// create statistics loggers
+	vdiskLogger, err := statistics.NewVdiskLogger(ctx, f.configSource, vdiskID)
+	if err != nil {
+		blockStorage.Close()
+		redisProvider.Close()
+		log.Infof("couldn't create vdisk logger: %s", err.Error())
+		return nil, err
+	}
+
 	// Create the actual ARDB backend
 	backend = newBackend(
 		vdiskID,
@@ -137,6 +147,7 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 		blockStorage,
 		f.vdiskComp,
 		redisProvider,
+		vdiskLogger,
 	)
 
 	return
