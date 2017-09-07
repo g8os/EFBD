@@ -7,4 +7,5 @@ import (
 func md5Hash(plain []byte) []byte {
 	sum := md5.Sum(plain)
 	return sum[:]
+
 }

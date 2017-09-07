@@ -25,7 +25,7 @@ func (p Permission) perms() []string {
 	return perms
 }
 
-func (p Permission) scopes(org, namespace string) []string {
+func (p Permission) Scopes(org, namespace string) []string {
 	var scopes []string
 	scopePrefix := "user:memberof:" + org + "." + namespace + "."
 	for _, p := range p.perms() {

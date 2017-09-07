@@ -6,9 +6,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/zero-os/0-stor/client/lib/block"
-	"github.com/zero-os/0-stor/client/meta"
 )
 
 func TestRoundTrip(t *testing.T) {
@@ -43,31 +40,14 @@ func TestNonce(t *testing.T) {
 func testRoundTrip(t *testing.T, conf Config) {
 	plain := []byte("hello world")
 
-	// encrypt
-	buf := block.NewBytesBuffer()
+	encdec, err := NewEncrypterDecrypter(conf)
+	require.NoError(t, err)
 
-	w, err := NewWriter(buf, conf)
-	require.Nil(t, err)
+	chiper, err := encdec.Encrypt(plain)
+	require.NoError(t, err)
 
-	md := meta.New(nil)
-
-	_, err = w.WriteBlock(nil, plain, md)
-	require.Nil(t, err)
-
-	// decrypt ag
-	ag, err := newAESGCM([]byte(conf.PrivKey))
-	require.Nil(t, err)
-
-	dag, err := ag.Decrypt(buf.Bytes())
-	require.Nil(t, err)
-	require.Equal(t, plain, dag)
-
-	// decrypt
-	r, err := NewReader(conf)
-	require.Nil(t, err)
-
-	decrypted, err := r.ReadBlock(buf.Bytes())
-	require.Nil(t, err)
+	decrypted, err := encdec.Decrypt(chiper)
+	require.NoError(t, err)
 
 	require.Equal(t, plain, decrypted)
 }

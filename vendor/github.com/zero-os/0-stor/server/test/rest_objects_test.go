@@ -6,14 +6,13 @@ import (
 	"net/http"
 	"testing"
 
+	"fmt"
+	"sort"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zero-os/0-stor/server/api/rest"
 	"github.com/zero-os/0-stor/server/db"
-	//"fmt"
-	//"sort"
-	"fmt"
-	"sort"
 )
 
 func TestCreateObject(t *testing.T) {
@@ -48,9 +47,6 @@ func TestCreateObject(t *testing.T) {
 	err := json.NewEncoder(body).Encode(obj)
 	require.NoError(t, err)
 
-	err = iyoClient.CreateNamespace("namespace1")
-	require.NoError(t, err)
-
 	token, err := iyoClient.CreateJWT("namespace1", permissions["write"])
 	require.NoError(t, err)
 
@@ -76,7 +72,6 @@ func TestGetObject(t *testing.T) {
 	defer clean()
 
 	// create an object.
-
 	obj := db.Object{
 		Data: []byte("********************************abcdef"),
 	}
@@ -86,9 +81,6 @@ func TestGetObject(t *testing.T) {
 
 	nsid := iyoOrganization + "_0stor_namespace1"
 	err = database.Set([]byte(nsid+":myobject"), b)
-
-	err = iyoClient.CreateNamespace("namespace1")
-	require.NoError(t, err)
 
 	token, err := iyoClient.CreateJWT("namespace1", permissions["read"])
 	require.NoError(t, err)
@@ -141,9 +133,6 @@ func TestListObjects(t *testing.T) {
 		err = database.Set([]byte(key), b)
 	}
 
-	err := iyoClient.CreateNamespace("namespace1")
-	require.NoError(t, err)
-
 	token, err := iyoClient.CreateJWT("namespace1", permissions["read"])
 	require.NoError(t, err)
 
@@ -180,9 +169,6 @@ func TestDeleteObject(t *testing.T) {
 	require.NoError(t, err)
 
 	err = database.Set([]byte(nsid+":myobject"), b)
-
-	err = iyoClient.CreateNamespace("namespace1")
-	require.NoError(t, err)
 
 	token, err := iyoClient.CreateJWT("namespace1", permissions["all"])
 	require.NoError(t, err)
@@ -237,9 +223,6 @@ func TestCheckObjects(t *testing.T) {
 
 		err = database.Set([]byte(key), b)
 	}
-
-	err := iyoClient.CreateNamespace("namespace1")
-	require.NoError(t, err)
 
 	token, err := iyoClient.CreateJWT("namespace1", permissions["read"])
 	require.NoError(t, err)
