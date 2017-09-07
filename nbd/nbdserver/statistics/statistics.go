@@ -200,9 +200,6 @@ func (vl *vdiskLogger) broadcastWriteStatistics(duration time.Duration) {
 
 // vdiskAggregator is used to aggregate values for a given r/w direction.
 type vdiskAggregator struct {
-	// time values
-	start time.Time
-
 	// total values
 	iops       int64
 	throughput big.Float
@@ -229,7 +226,6 @@ func (agg *vdiskAggregator) Reset(duration time.Duration) (iops, throughput floa
 	// reset all values
 	agg.iops = 0
 	agg.throughput.SetFloat64(0)
-	agg.start = time.Now()
 
 	// return compute results
 	return
