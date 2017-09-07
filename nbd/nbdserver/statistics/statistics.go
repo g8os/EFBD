@@ -54,10 +54,6 @@ func NewVdiskLogger(ctx context.Context, configSource config.Source, vdiskID str
 		// incoming bytes (data) channel
 		readDataCh:  make(chan int64, 8),
 		writeDataCh: make(chan int64, 8),
-
-		// delegator to do the actual broadcasting work
-		// for each (early) finished aggregation interval
-		broadcastFunc: broadcastStatistic,
 	}
 	go logger.background()
 	return logger, nil
@@ -90,18 +86,9 @@ type vdiskLogger struct {
 	// aggregated stats input
 	readDataCh, writeDataCh chan int64
 
-	// for all purposes other than testing,
-	// this func is equal to `broadcastStatistic`
-	broadcastFunc broadcastFunc
-
 	// aggregators used for write and read operations
 	writeAggregator, readAggregator vdiskAggregator
 }
-
-// broadcastFunc is an internal function definition,
-// such that we can overwrite the broadcastFunc logic for a given vdiskLogger,
-// for testing purposes.
-type broadcastFunc func(key string, value float64, tags log.MetricTags)
 
 // broadcastStatistics is the actual broadcast function used for production,
 // using the zero-os/0-log lib wrapped in our log module,
@@ -137,7 +124,7 @@ func (vl *vdiskLogger) background() {
 
 	// ticker which helps us aggregate values on regular intervals,
 	// as to monitor the activity of a vdisk.
-	ticker := time.NewTicker(vdiskAggregationDuration)
+	ticker := time.NewTicker(MaxVdiskAggregationDuration)
 	defer ticker.Stop()
 
 	start = time.Now()
@@ -186,16 +173,16 @@ func (vl *vdiskLogger) background() {
 // and broadcast its aggregated iops/throughput values.
 func (vl *vdiskLogger) broadcastReadStatistics(duration time.Duration) {
 	iops, throughput := vl.readAggregator.Reset(duration)
-	vl.broadcastFunc(vl.readIOPSKey, iops, vl.tags)
-	vl.broadcastFunc(vl.readThroughputKey, throughput, vl.tags)
+	broadcastStatistic(vl.readIOPSKey, iops, vl.tags)
+	broadcastStatistic(vl.readThroughputKey, throughput, vl.tags)
 }
 
 // internal func to reset the write aggregator
 // and broadcast its aggregated iops/throughput values.
 func (vl *vdiskLogger) broadcastWriteStatistics(duration time.Duration) {
 	iops, throughput := vl.writeAggregator.Reset(duration)
-	vl.broadcastFunc(vl.writeIOPSKey, iops, vl.tags)
-	vl.broadcastFunc(vl.writeThroughputKey, throughput, vl.tags)
+	broadcastStatistic(vl.writeIOPSKey, iops, vl.tags)
+	broadcastStatistic(vl.writeThroughputKey, throughput, vl.tags)
 }
 
 // vdiskAggregator is used to aggregate values for a given r/w direction.
@@ -216,23 +203,7 @@ func (agg *vdiskAggregator) TrackBytes(bytes int64) {
 // Reset returns the aggregate values as an average over the active duration,
 // and reset the aggregator's internal values.
 func (agg *vdiskAggregator) Reset(duration time.Duration) (iops, throughput float64) {
-	if agg.iops == 0 {
-		return
-	}
-
-	// compute averages based on the aggregated values
-	iops, throughput = agg.computeAverages(duration)
-
-	// reset all values
-	agg.iops = 0
-	agg.throughput.SetFloat64(0)
-
-	// return compute results
-	return
-}
-
-func (agg *vdiskAggregator) computeAverages(duration time.Duration) (iops, throughput float64) {
-	if duration < minVdiskAggregationDuration {
+	if agg.iops == 0 || duration < MinVdiskAggregationDuration {
 		return
 	}
 	dursecs := big.NewFloat(duration.Seconds())
@@ -246,7 +217,11 @@ func (agg *vdiskAggregator) computeAverages(duration time.Duration) (iops, throu
 	agg.throughput.Quo(&agg.throughput, dursecs)
 	throughput, _ = agg.throughput.Float64()
 
-	// return average operations
+	// reset all values
+	agg.iops = 0
+	agg.throughput.SetFloat64(0)
+
+	// return compute results
 	return
 }
 
@@ -265,7 +240,5 @@ const (
 )
 
 var (
-	vdiskAggregationDuration    = MaxVdiskAggregationDuration
-	minVdiskAggregationDuration = MinVdiskAggregationDuration
-	vdiskThroughputScalar       = big.NewFloat(1024)
+	vdiskThroughputScalar = big.NewFloat(1024)
 )
