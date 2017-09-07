@@ -8,12 +8,16 @@ import (
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
+	"github.com/zero-os/0-Disk/tlog/generator"
 	cmdconfig "github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
 
 var vdiskCmdCfg struct {
 	SourceConfig            config.SourceConfig
 	ForceSameStorageCluster bool
+	DataShards              int
+	ParityShards            int
+	PrivKey                 string
 }
 
 // VdiskCmd represents the vdisk copy subcommand
@@ -24,7 +28,7 @@ var VdiskCmd = &cobra.Command{
 }
 
 func copyVdisk(cmd *cobra.Command, args []string) error {
-	logLevel := log.ErrorLevel
+	logLevel := log.InfoLevel
 	if cmdconfig.Verbose {
 		logLevel = log.InfoLevel
 	}
@@ -89,6 +93,31 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// try to read the Vdisk config of target vdisk
+	targetStaticConfig, err := config.ReadVdiskStaticConfig(configSource, targetVdiskID)
+	if err != nil {
+		return fmt.Errorf(
+			"couldn't read source vdisk %s's static config: %v", targetVdiskID, err)
+	}
+
+	if targetStaticConfig.Type.TlogSupport() {
+		log.Infof("generating tlog data for target vdisk `%v`", targetVdiskID)
+		generator, err := generator.New(configSource, generator.Config{
+			SourceVdiskID: sourceVdiskID,
+			TargetVdiskID: targetVdiskID,
+			DataShards:    vdiskCmdCfg.DataShards,
+			ParityShards:  vdiskCmdCfg.ParityShards,
+			PrivKey:       vdiskCmdCfg.PrivKey,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create tlog generator: %v", err)
+		}
+
+		if err := generator.GenerateFromStorage(); err != nil {
+			return fmt.Errorf("failed to generate tlog data for vdisk `%v` : %v", targetVdiskID, err)
+		}
+	}
+
 	// copy the vdisk
 	switch stype := sourceStaticConfig.Type.StorageType(); stype {
 	case config.StorageDeduped:
@@ -136,4 +165,18 @@ WARNING: when copying nondeduped vdisks,
 	VdiskCmd.Flags().BoolVar(
 		&vdiskCmdCfg.ForceSameStorageCluster, "same", false,
 		"enable flag to force copy within the same nbd servers")
+
+	VdiskCmd.Flags().IntVar(
+		&vdiskCmdCfg.DataShards,
+		"data-shards", 4,
+		"data shards (K) variable of erasure encoding")
+	VdiskCmd.Flags().IntVar(
+		&vdiskCmdCfg.ParityShards,
+		"parity-shards", 2,
+		"parity shards (M) variable of erasure encoding")
+	VdiskCmd.Flags().StringVar(
+		&vdiskCmdCfg.PrivKey,
+		"priv-key", "12345678901234567890123456789012",
+		"private key")
+
 }
