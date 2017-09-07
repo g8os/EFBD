@@ -5,10 +5,6 @@ import (
 	"sync"
 
 	storclient "github.com/zero-os/0-stor/client"
-	storclientconf "github.com/zero-os/0-stor/client/config"
-	"github.com/zero-os/0-stor/client/lib/compress"
-	"github.com/zero-os/0-stor/client/lib/distribution"
-	"github.com/zero-os/0-stor/client/lib/encrypt"
 	"github.com/zero-os/0-stor/client/lib/hash"
 	"github.com/zero-os/0-stor/client/meta"
 
@@ -135,7 +131,7 @@ func (c *Client) ProcessStore(blocks []*schema.TlogBlock) ([]byte, error) {
 	initialMeta.Epoch = timestamp
 
 	// stor to 0-stor
-	lastMd, err := c.storClient.Write(key, data, c.lastMetaKey, c.lastMd, initialMeta)
+	lastMd, err := c.storClient.WriteWithMeta(key, data, c.lastMetaKey, c.lastMd, initialMeta)
 	if err != nil {
 		return nil, err
 	}
@@ -161,45 +157,21 @@ func (c *Client) LastHash() []byte {
 }
 
 // creates 0-stor client config from Config
-func newStorClientConf(conf Config) *storclientconf.Config {
-	compressConf := compress.Config{
-		Type: compress.TypeSnappy,
-	}
-	encryptConf := encrypt.Config{
-		Type:    encrypt.TypeAESGCM,
-		PrivKey: conf.EncryptPrivKey,
-	}
-
-	distConf := distribution.Config{
-		Data:   conf.DataShardsNum,
-		Parity: conf.ParityShardsNum,
-	}
-
-	return &storclientconf.Config{
-		Organization: conf.Organization,
-		Namespace:    conf.Namespace,
-		Shards:       conf.ZeroStorShards,
-		MetaShards:   conf.MetaShards,
-		IYOAppID:     conf.IyoClientID,
-		IYOSecret:    conf.IyoSecret,
-		Protocol:     "grpc",
-		Pipes: []storclientconf.Pipe{
-			storclientconf.Pipe{
-				Name:   "pipe1",
-				Type:   "compress",
-				Config: compressConf,
-			},
-			storclientconf.Pipe{
-				Name:   "pipe2",
-				Type:   "encrypt",
-				Config: encryptConf,
-			},
-
-			storclientconf.Pipe{
-				Name:   "pipe3",
-				Type:   "distribution",
-				Config: distConf,
-			},
-		},
+func newStorClientConf(conf Config) storclient.Policy {
+	return storclient.Policy{
+		Organization:           conf.Organization,
+		Namespace:              conf.Namespace,
+		DataShards:             conf.ZeroStorShards,
+		MetaShards:             conf.MetaShards,
+		IYOAppID:               conf.IyoClientID,
+		IYOSecret:              conf.IyoSecret,
+		Protocol:               "grpc",
+		Compress:               true,
+		Encrypt:                true,
+		EncryptKey:             conf.EncryptPrivKey,
+		ReplicationNr:          0, //force to use distribution
+		ReplicationMaxSize:     0, //force to use distribution
+		DistributionNr:         conf.DataShardsNum,
+		DistributionRedundancy: conf.ParityShardsNum,
 	}
 }
