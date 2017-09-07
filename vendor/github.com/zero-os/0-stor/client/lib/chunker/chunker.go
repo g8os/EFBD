@@ -80,5 +80,8 @@ func (r *Reader) Next() bool {
 
 // Value returns current iterator value
 func (r *Reader) Value() []byte {
+	// out := make([]byte, len(r.curChunk))
+	// copy(out, r.curChunk)
+	// return out
 	return r.curChunk
 }

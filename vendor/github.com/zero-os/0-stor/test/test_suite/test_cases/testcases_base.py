@@ -6,6 +6,8 @@ from test_suite.framework.zero_store_cli import ZeroStoreCLI
 import threading
 from hashlib import md5
 import subprocess
+from testconfig import config
+import os
 
 
 class TestcasesBase(TestCase):
@@ -19,10 +21,11 @@ class TestcasesBase(TestCase):
         self.lg = self.utiles.logging
 
         self.zero_store_cli = ZeroStoreCLI()
-        self.default_config_path = '/gopath/src/github.com/zero-os/0-stor/client/cmd/zerostorcli/config.yaml'
+        gopath = os.environ.get('GOPATH', '/gopath')
+        self.default_config_path = '{gopath}/src/github.com/zero-os/0-stor/client/cmd/zerostorcli/config.yaml'.format(gopath=gopath)
 
-        self.number_of_servers = 2
-        self.number_of_files = 10
+        self.number_of_servers = int(config['main']['number_of_servers'])
+        self.number_of_files = int(config['main']['number_of_files'])
 
         self.uploader_job_ids = []
         self.downloader_job_ids = []
@@ -49,11 +52,11 @@ class TestcasesBase(TestCase):
         signal.alarm(600)
 
     def create_files(self, number_of_files):
-        self.execute_shell_commands(cmd='rm -rf /root/upload; rm -rf /root/download')
-        self.execute_shell_commands(cmd='mkdir /root/upload; mkdir /root/download')
+        self.execute_shell_commands(cmd='rm -rf /tmp/upload; rm -rf /tmp/download')
+        self.execute_shell_commands(cmd='mkdir -p /tmp/upload; mkdir -p /tmp/download')
         for i in range(0, number_of_files):
             file_size = random.randint(1024, 1024 * 1024)
-            file_path = '/root/upload/upload_file_%d' % random.randint(1, 1000)
+            file_path = '/tmp/upload/upload_file_%d' % random.randint(1, 1000)
 
             with open(file_path, 'w') as file:
                 file.write(str(random.randint(0, 9)) * file_size)
@@ -79,7 +82,7 @@ class TestcasesBase(TestCase):
         with open(self.default_config_path, 'r') as stream:
             config = yaml.load(stream)
         config.update(new_config)
-        new_config_file_path = '/root/config_%s.yaml' % self.random_string()
+        new_config_file_path = '/tmp/config_%s.yaml' % self.random_string()
         with open(new_config_file_path, 'w') as new_config_file:
             yaml.dump(config, new_config_file, default_flow_style=False)
         return new_config_file_path
@@ -253,7 +256,7 @@ class TestcasesBase(TestCase):
         self.reader_jobs.put({'id': job_id,
                               'key': uploader_file_info['key'],
                               'config_path': uploader_file_info['config_path'],
-                              'result': '/root/download/' + str(job_id)})
+                              'result': '/tmp/download/' + str(job_id)})
         TestcasesBase.downloaded_files_info.update({job_id: {'u_info': {'uploaded_job_id': uploader_job_id,
                                                                         'key': uploader_file_info['key'],
                                                                         'md5': uploader_file_info['md5'],

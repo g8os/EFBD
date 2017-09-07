@@ -10,14 +10,17 @@ import (
 	"testing"
 
 	log "github.com/Sirupsen/logrus"
+	jwtgo "github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/require"
 	"github.com/zero-os/0-stor/client/itsyouonline"
 	"github.com/zero-os/0-stor/server/api/rest"
 	"github.com/zero-os/0-stor/server/db"
 	"github.com/zero-os/0-stor/server/db/badger"
+	"github.com/zero-os/0-stor/server/jwt"
 	"github.com/zero-os/0-stor/server/manager"
 	"github.com/zero-os/0-stor/server/storserver"
+	"github.com/zero-os/0-stor/stubs"
 )
 
 func TestMain(m *testing.M) {
@@ -25,7 +28,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func getTestRestAPI(t *testing.T) (string, db.DB, string, *itsyouonline.Client, map[string]itsyouonline.Permission, func()) {
+func getTestRestAPI(t *testing.T) (string, db.DB, string, stubs.IYOClient, map[string]itsyouonline.Permission, func()) {
 
 	tmpDir, err := ioutil.TempDir("", "0stortest")
 	require.NoError(t, err)
@@ -45,26 +48,7 @@ func getTestRestAPI(t *testing.T) (string, db.DB, string, *itsyouonline.Client, 
 		srv.Close()
 	}
 
-	iyoClientID := os.Getenv("iyo_client_id")
-	iyoSecret := os.Getenv("iyo_secret")
-	iyoOrganization := os.Getenv("iyo_organization")
-
-	if iyoClientID == "" {
-		log.Fatal("[iyo] Missing (iyo_client_id) environement variable")
-
-	}
-
-	if iyoSecret == "" {
-		log.Fatal("[iyo] Missing (iyo_secret) environement variable")
-
-	}
-
-	if iyoOrganization == "" {
-		log.Fatal("[iyo] Missing (iyo_organization) environement variable")
-
-	}
-
-	iyoClient, iyoOrganization := getIYOClient(t)
+	iyoCl, organization := getIYOClient(t)
 
 	permissions := make(map[string]itsyouonline.Permission)
 
@@ -73,10 +57,10 @@ func getTestRestAPI(t *testing.T) (string, db.DB, string, *itsyouonline.Client, 
 	permissions["write"] = itsyouonline.Permission{Write: true}
 	permissions["delete"] = itsyouonline.Permission{Delete: true}
 
-	return srv.URL, db, iyoOrganization, iyoClient, permissions, clean
+	return srv.URL, db, organization, iyoCl, permissions, clean
 }
 
-func getTestGRPCServer(t *testing.T) (storserver.StoreServer, *itsyouonline.Client, string, func()) {
+func getTestGRPCServer(t *testing.T) (storserver.StoreServer, stubs.IYOClient, string, func()) {
 	tmpDir, err := ioutil.TempDir("", "0stortest")
 	require.NoError(t, err)
 
@@ -86,9 +70,7 @@ func getTestGRPCServer(t *testing.T) (storserver.StoreServer, *itsyouonline.Clie
 	_, err = server.Listen("localhost:0")
 	require.NoError(t, err, "server failed to start listening")
 
-	iyoClient, iyoOrg := getIYOClient(t)
-
-	iyoClient.CreateJWT("testnamespace", itsyouonline.Permission{})
+	jwtCreater, organization := getIYOClient(t)
 
 	clean := func() {
 		fmt.Sprintln("clean called")
@@ -96,32 +78,25 @@ func getTestGRPCServer(t *testing.T) (storserver.StoreServer, *itsyouonline.Clie
 		os.RemoveAll(tmpDir)
 	}
 
-	return server, iyoClient, iyoOrg, clean
+	return server, jwtCreater, organization, clean
 }
 
-func getIYOClient(t *testing.T) (*itsyouonline.Client, string) {
-	iyoClientID := os.Getenv("iyo_client_id")
-	iyoSecret := os.Getenv("iyo_secret")
-	iyoOrganization := os.Getenv("iyo_organization")
+func getIYOClient(t testing.TB) (stubs.IYOClient, string) {
+	pubKey, err := ioutil.ReadFile("../../devcert/jwt_pub.pem")
+	require.NoError(t, err)
+	jwt.SetJWTPublicKey(string(pubKey))
 
-	if iyoClientID == "" {
-		log.Fatal("[iyo] Missing (iyo_client_id) environement variable")
+	b, err := ioutil.ReadFile("../../devcert/jwt_key.pem")
+	require.NoError(t, err)
 
-	}
+	key, err := jwtgo.ParseECPrivateKeyFromPEM(b)
+	require.NoError(t, err)
 
-	if iyoSecret == "" {
-		log.Fatal("[iyo] Missing (iyo_secret) environement variable")
+	organization := "testorg"
+	jwtCreater, err := stubs.NewStubIYOClient(organization, key)
+	require.NoError(t, err, "failt to create MockJWTCreater")
 
-	}
-
-	if iyoOrganization == "" {
-		log.Fatal("[iyo] Missing (iyo_organization) environement variable")
-
-	}
-
-	iyoClient := itsyouonline.NewClient(iyoOrganization, iyoClientID, iyoSecret)
-
-	return iyoClient, iyoOrganization
+	return jwtCreater, organization
 }
 
 func populateDB(t *testing.T, namespace string, db db.DB) [][]byte {

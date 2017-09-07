@@ -28,6 +28,16 @@ func init() {
 
 }
 
+// SetJWTPublicKey configure the public key used to verify JWT token
+func SetJWTPublicKey(key string) error {
+	var err error
+	iyoPublicKey, err = jwtgo.ParseECPublicKeyFromPEM([]byte(key))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // CheckPermissions checks whether user has needed scopes
 func CheckPermissions(expectedScopes, userScopes []string) bool {
 	for _, scope := range userScopes {

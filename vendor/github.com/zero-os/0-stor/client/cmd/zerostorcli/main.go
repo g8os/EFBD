@@ -6,23 +6,49 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/urfave/cli"
 	"github.com/zero-os/0-stor/client"
-	"github.com/zero-os/0-stor/client/config"
 	"github.com/zero-os/0-stor/client/itsyouonline"
 )
 
 var (
 	confFile string
+
+	// CommitHash represents the Git commit hash at built time
+	CommitHash string
+	// BuildDate represents the date when this tool suite was built
+	BuildDate string
 )
+
+func outputVersion() string {
+	// Tool Version
+	version := "Version: " + "1.1.0-alpha-8"
+
+	// Build (Git) Commit Hash
+	if CommitHash != "" {
+		version += "\r\nBuild: " + CommitHash
+		if BuildDate != "" {
+			version += " " + BuildDate
+		}
+	}
+
+	// Output version and runtime information
+	return fmt.Sprintf("%s\r\nRuntime: %s %s\r\n",
+		version,
+		runtime.Version(), // Go Version
+		runtime.GOOS,      // OS Name
+	)
+}
 
 func main() {
 	var cl *client.Client
-	var nsMgr itsyouonline.NamespaceManager
+	var iyoCl itsyouonline.IYOClient
 	var key string
 
 	app := cli.NewApp()
+	app.Version = outputVersion()
 	app.Name = "0-stor cli"
 	app.Usage = "Interact with 0-stors"
 	app.Flags = []cli.Flag{
@@ -67,12 +93,13 @@ func main() {
 						if err != nil {
 							return cli.NewExitError(fmt.Errorf("can't read the file: %v", err), 1)
 						}
+						defer f.Close()
 
 						if key == "" {
 							key = filepath.Base(fileName)
 						}
 
-						_, err = cl.WriteF([]byte(key), f, nil, nil, nil)
+						_, err = cl.WriteF([]byte(key), f)
 						if err != nil {
 							return cli.NewExitError(fmt.Errorf("upload failed : %v", err), 1)
 						}
@@ -95,10 +122,10 @@ func main() {
 							return cli.NewExitError(fmt.Errorf("can't create output file: %v", err), 1)
 						}
 
-						_, err = cl.ReadF([]byte(key), fOutput)
-						if err != nil {
+						if err := cl.ReadF([]byte(key), fOutput); err != nil {
 							return cli.NewExitError(fmt.Errorf("download file failed: %v", err), 1)
 						}
+
 						fmt.Printf("file downloaded to %s\n", output)
 
 						return nil
@@ -138,7 +165,7 @@ func main() {
 			Usage: "Manage namespaces",
 			Before: func(c *cli.Context) error {
 				var err error
-				nsMgr, err = getNamespaceManager(c)
+				iyoCl, err = getNamespaceManager(c)
 				if err != nil {
 					return cli.NewExitError(err, 1)
 				}
@@ -154,7 +181,7 @@ func main() {
 						}
 
 						namespace := c.Args().First()
-						if err := nsMgr.CreateNamespace(namespace); err != nil {
+						if err := iyoCl.CreateNamespace(namespace); err != nil {
 							return cli.NewExitError(fmt.Errorf("creation of namespace %s failed: %v", namespace, err), 1)
 						}
 						fmt.Printf("Namespace %s created\n", namespace)
@@ -172,7 +199,7 @@ func main() {
 						}
 
 						namespace := c.Args().First()
-						if err := nsMgr.DeleteNamespace(namespace); err != nil {
+						if err := iyoCl.DeleteNamespace(namespace); err != nil {
 							return cli.NewExitError(err, 1)
 						}
 						fmt.Printf("Namespace %s deleted\n", namespace)
@@ -211,7 +238,7 @@ func main() {
 					Action: func(c *cli.Context) error {
 						namespace := c.String("namespace")
 						user := c.String("user")
-						currentPermision, err := nsMgr.GetPermission(namespace, user)
+						currentPermision, err := iyoCl.GetPermission(namespace, user)
 						if err != nil {
 							return cli.NewExitError(fmt.Errorf("fail to retrieve permission : %v", err), 1)
 						}
@@ -230,12 +257,12 @@ func main() {
 							Delete: currentPermision.Delete && !requestedPermission.Delete,
 							Admin:  currentPermision.Admin && !requestedPermission.Admin,
 						}
-						if err := nsMgr.RemovePermission(namespace, user, toRemove); err != nil {
+						if err := iyoCl.RemovePermission(namespace, user, toRemove); err != nil {
 							return cli.NewExitError(err, 1)
 						}
 
 						// Give requested permission
-						if err := nsMgr.GivePermission(namespace, user, requestedPermission); err != nil {
+						if err := iyoCl.GivePermission(namespace, user, requestedPermission); err != nil {
 							return cli.NewExitError(err, 1)
 						}
 
@@ -258,7 +285,7 @@ func main() {
 					Action: func(c *cli.Context) error {
 						namespace := c.String("namespace")
 						user := c.String("user")
-						perm, err := nsMgr.GetPermission(namespace, user)
+						perm, err := iyoCl.GetPermission(namespace, user)
 						if err != nil {
 							return cli.NewExitError(fmt.Errorf("fail to retrieve permission : %v", err), 1)
 						}
@@ -280,12 +307,12 @@ func main() {
 	}
 }
 func getClient(c *cli.Context) (*client.Client, error) {
-	conf, err := readConfig()
+	policy, err := readPolicy()
 	if err != nil {
 		return nil, err
 	}
 	// create client
-	cl, err := client.New(conf)
+	cl, err := client.New(policy)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client: %v", err)
 	}
@@ -293,21 +320,21 @@ func getClient(c *cli.Context) (*client.Client, error) {
 	return cl, nil
 }
 
-func getNamespaceManager(c *cli.Context) (itsyouonline.NamespaceManager, error) {
-	conf, err := readConfig()
+func getNamespaceManager(c *cli.Context) (itsyouonline.IYOClient, error) {
+	policy, err := readPolicy()
 	if err != nil {
 		return nil, err
 	}
 
-	return itsyouonline.NewClient(conf.Organization, conf.IYOAppID, conf.IYOSecret), nil
+	return itsyouonline.NewClient(policy.Organization, policy.IYOAppID, policy.IYOSecret), nil
 }
 
-func readConfig() (*config.Config, error) {
+func readPolicy() (client.Policy, error) {
 	// read config
 	f, err := os.Open(confFile)
 	if err != nil {
-		return nil, err
+		return client.Policy{}, err
 	}
 
-	return config.NewFromReader(f)
+	return client.NewPolicyFromReader(f)
 }

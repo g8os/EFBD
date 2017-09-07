@@ -13,6 +13,11 @@ const (
 	metaOpTimeout = 10 * time.Second
 )
 
+var (
+	// ErrMetadataNotFound is returned when a key is not found in etcd cluster
+	ErrMetadataNotFound = fmt.Errorf("key not found in etcd")
+)
+
 // Client defines client to store metadata
 type Client struct {
 	etcdClient *clientv3.Client
@@ -60,8 +65,8 @@ func (c *Client) Get(key string) (*Meta, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(resp.Kvs) != 1 {
-		return nil, fmt.Errorf("invalid number of kvs returned: %v", len(resp.Kvs))
+	if len(resp.Kvs) < 1 {
+		return nil, ErrMetadataNotFound
 	}
 
 	return Decode(resp.Kvs[0].Value)

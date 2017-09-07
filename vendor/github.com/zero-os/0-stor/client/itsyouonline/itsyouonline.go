@@ -18,11 +18,11 @@ var (
 	errNoPermission = errors.New("no permission")
 )
 
-// NamespaceManager defines the interface to manage namespaces and permissions on ItsYouOnline
-type NamespaceManager interface {
+// IYOClient defines the interface to manage namespaces and permissions on ItsYouOnline
+type IYOClient interface {
+	CreateJWT(namespace string, perm Permission) (string, error)
 	CreateNamespace(namespace string) error
 	DeleteNamespace(namespace string) error
-	CreateJWT(namespace string, perm Permission) (string, error)
 	GivePermission(namespace, userID string, perm Permission) error
 	RemovePermission(namespace, userID string, perm Permission) error
 	GetPermission(namespace, userID string) (Permission, error)
@@ -31,11 +31,10 @@ type NamespaceManager interface {
 // Client defines itsyouonline client which is designed to help 0-stor user.
 // It is not replacement for official itsyouonline client
 type Client struct {
-	org        string
-	clientID   string
-	secret     string
-	httpClient http.Client
-	iyoClient  *itsyouonline.Itsyouonline
+	org       string
+	clientID  string
+	secret    string
+	iyoClient *itsyouonline.Itsyouonline
 }
 
 // NewClient creates new client
@@ -60,7 +59,7 @@ func (c *Client) CreateJWT(namespace string, perm Permission) (string, error) {
 	}
 
 	// build scopes query
-	scopes := perm.scopes(c.org, "0stor"+"."+namespace)
+	scopes := perm.Scopes(c.org, "0stor"+"."+namespace)
 	if len(scopes) == 0 {
 		return "", errNoPermission
 	}
@@ -74,7 +73,7 @@ func (c *Client) CreateJWT(namespace string, perm Permission) (string, error) {
 	req.URL.RawQuery = buildQueryString(req, qp)
 
 	// do request
-	resp, err := c.httpClient.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", err
 	}

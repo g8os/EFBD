@@ -2,13 +2,11 @@ package client
 
 import (
 	"crypto/rand"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/zero-os/0-stor/client/config"
 	"github.com/zero-os/0-stor/client/meta"
 	"github.com/zero-os/0-stor/client/meta/embedserver"
 )
@@ -50,24 +48,32 @@ func testWalk(t *testing.T, forward bool) {
 	require.Nil(t, err)
 	defer etcd.Stop()
 
-	// client config
-	conf := config.Config{
-		Organization: os.Getenv("iyo_organization"),
-		Namespace:    "thedisk",
-		Protocol:     "rest",
-		Shards:       []string{"http://127.0.0.1:12345", "http://127.0.0.1:12346"},
-		MetaShards:   []string{etcd.ListenAddr()},
-		IYOAppID:     os.Getenv("iyo_client_id"),
-		IYOSecret:    os.Getenv("iyo_secret"),
+	servers, serverClean := testGRPCServer(t, 4)
+	defer serverClean()
+
+	dataShards := make([]string, len(servers))
+	for i, server := range servers {
+		dataShards[i] = server.Addr()
 	}
 
-	cli, err := newClient(&conf)
+	// client policy
+	policy := Policy{
+		Organization: "testorg",
+		Namespace:    "thedisk",
+		Protocol:     "grpc",
+		DataShards:   dataShards,
+		MetaShards:   []string{etcd.ListenAddr()},
+		IYOAppID:     "id",
+		IYOSecret:    "secret",
+	}
+
+	cli, err := getTestClient(policy)
 	require.Nil(t, err)
 
 	// override the storWriter and reader
-	bs := newBlockMap(cli.metaCli)
-	cli.storWriter = bs
-	cli.storReader = bs
+	// bs := newBlockMap(cli.metaCli)
+	// cli.storWriter = bs
+	// cli.storReader = bs
 
 	// create keys & data
 	var keys [][]byte
@@ -91,7 +97,8 @@ func testWalk(t *testing.T, forward bool) {
 	var firstKey []byte
 
 	for i, key := range keys {
-		prevMd, err = cli.Write(key, vals[i], prevKey, prevMd, nil)
+		prevMd, err = cli.WriteWithMeta(key, vals[i], prevKey, prevMd, nil)
+		require.NoError(t, err)
 		prevKey = key
 		if len(firstKey) == 0 {
 			firstKey = key

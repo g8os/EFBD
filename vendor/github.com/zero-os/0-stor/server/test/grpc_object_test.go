@@ -23,16 +23,12 @@ func TestListObject(t *testing.T) {
 	namespace := fmt.Sprintf("%s_0stor_testnamespace", org)
 	bufList := populateDB(t, namespace, server.DB())
 
-	err := iyoCl.CreateNamespace("testnamespace")
-	require.NoError(t, err, "fails to create the namespace on iyo")
-
 	// create client connection
 	conn, err := grpc.Dial(server.Addr(), grpc.WithInsecure())
 	require.NoError(t, err, "can't connect to the server")
 
 	defer func() {
 		conn.Close()
-		iyoCl.DeleteNamespace("testnamespace")
 		clean()
 	}()
 
@@ -80,16 +76,18 @@ func TestListObject(t *testing.T) {
 
 		stream, err := cl.List(ctx, &pb.ListObjectsRequest{Label: namespace})
 		require.NoError(t, err, "failed to call List")
-		_, err = stream.Recv()
-		// if err == io.EOF {
-		// 	break
-		// }
+		for {
+			_, err = stream.Recv()
+			if err == io.EOF {
+				break
+			}
 
-		require.Error(t, err)
-		statusErr, ok := status.FromError(err)
-		require.True(t, ok, "error is not valid rpc status error")
-		assert.Equal(t, "JWT token doesn't contains required scopes", statusErr.Message())
-
+			require.Error(t, err)
+			statusErr, ok := status.FromError(err)
+			require.True(t, ok, "error is not valid rpc status error")
+			assert.Equal(t, "JWT token doesn't contains required scopes", statusErr.Message())
+			break
+		}
 	})
 
 	t.Run("admin right", func(t *testing.T) {
@@ -115,16 +113,12 @@ func TestCheckObject(t *testing.T) {
 	namespace := fmt.Sprintf("%s_0stor_testnamespace", org)
 	populateDB(t, namespace, server.DB())
 
-	err := iyoCl.CreateNamespace("testnamespace")
-	require.NoError(t, err, "fails to create the namespace on iyo")
-
 	// create client connection
 	conn, err := grpc.Dial(server.Addr(), grpc.WithInsecure())
 	require.NoError(t, err, "can't connect to the server")
 
 	defer func() {
 		conn.Close()
-		iyoCl.DeleteNamespace("testnamespace")
 		clean()
 	}()
 
