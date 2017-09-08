@@ -3,6 +3,7 @@ graph zerodisk_overview {
   colorscheme=accent4
 
   ardb [label="ardb cluster" shape=cylinder]
+  ftpserver [label="FTP Server" shape=cylinder]
 
   user
     [shape=egg colorscheme=accent3]
@@ -25,8 +26,7 @@ graph zerodisk_overview {
     tlogserver [shape=rectangle]
 
     subgraph clusterTlogClient {
-      style=dotted
-      label="tlogclient module"
+      label=""
 
       tlogclient
       tlogplayer
@@ -67,8 +67,10 @@ graph zerodisk_overview {
   nbdETCD -- nbdserver [label="vdisk\nconfig" weight=0]
 
   tlogplayer -- zerostor [label="read"]
-  zeroctl -- tlogplayer
-  zeroctl -- nbdStorage [label="import/export"]
+  zeroctl -- tlogplayer [label="restore vdisk"]
+
+  zeroctl -- nbdStorage [label="import\nexport"]
+  zeroctl -- ftpserver [label="import\nexport" weight=0]
 
   user -- nbdserver [label="NBD Protocol"]
 }
