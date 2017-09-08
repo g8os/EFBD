@@ -33,7 +33,7 @@ class ZeroStoreCLI():
         out, error = self.execute_shell_commands(command)
         if error:
             queue.put({'job_id': job_id,
-                       'downloaded_path': 'ERROR! %s ' % error})
+                       'uploaded_key': 'ERROR! %s ' % error})
         else:
             result = out.split('\n')[-2]
             if 'file uploaded' in result:

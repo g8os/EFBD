@@ -1,38 +1,28 @@
-organization: mordor                                # itsyou.online organization name
-namespace: thedisk                                  # itsyou.online namespace
-protocol: rest
-iyo_app_id: ancd
-iyo_app_secret: defg
-
-shards:                                             # the address(es) of 0-stor server
-    - http://127.0.0.1:12345
-    - http://127.0.0.1:12346
-    - http://127.0.0.1:12347
+organization: myorg # itsyou.online organization name
+namespace: namespace1       # itsyou.online namespace
+protocol: grpc
+iyo_app_id: appID
+iyo_app_secret: secret
+# the address(es) of 0-stor server
+data_shards:
+    - 127.0.0.1:12345
+    - 127.0.0.1:12346
+    - 127.0.0.1:12347
+    - 127.0.0.1:12348
+# the address(es) of etcd server
 meta_shards:
-    - http://127.0.0.1:2379                         # the address(es) of etcd server
+    - http://127.0.0.1:2379
+    - http://127.0.0.1:22379                         # the address(es) of etcd server
+    - http://127.0.0.1:32379                         # the address(es) of etcd server
 
-pipes:
-    - name: pipe0
-      type: chunker
-      config:
-          chunkSize: 1024000
+block_size: 4096
 
-    - name: pipe1
-      type: compress
-      config:
-          type: snappy
+replication_nr: 4
+replication_max_size: 4096
 
-    - name: pipe2
-      type: encrypt 
-      config:
-          type: aes_gcm
-          privKey: ab345678901234567890123456789012
-          nonce: 123456789012
+distribution_data: 3
+distribution_parity: 1
 
-
-    - name: pipe3
-      type: distribution
-      config:
-          data: 2
-          parity: 1
-
+compress: true
+encrypt: true
+encrypt_key: ab345678901234567890123456789012

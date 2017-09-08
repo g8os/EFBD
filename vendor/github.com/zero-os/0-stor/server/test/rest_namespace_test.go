@@ -14,9 +14,6 @@ func TestGetNameSpace(t *testing.T) {
 	url, db, iyoOrganization, iyoClient, permissions, clean := getTestRestAPI(t)
 	defer clean()
 
-	err := iyoClient.CreateNamespace("namespace2")
-	require.NoError(t, err)
-
 	token, err := iyoClient.CreateJWT("namespace2", permissions["read"])
 	require.NoError(t, err)
 

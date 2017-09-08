@@ -1,111 +1,115 @@
 package distribution
 
 import (
-	"fmt"
-	"io"
-	"io/ioutil"
-	//"github.com/zero-os/0-stor/client/itsyouonline"
+	"github.com/templexxx/reedsolomon"
 )
 
-// Distributor distribute the data to the given outputs
-type Distributor struct {
-	enc     *Encoder
-	writers []io.Writer
+const (
+	padFactor = 256
+)
+
+// Encoder encode the data to be distributed
+// Use this object instead of the distribution if you
+// don't have Writers for your output
+type Encoder struct {
+	k   int
+	m   int
+	enc reedsolomon.EncodeReconster // encoder  & decoder
 }
 
-// Config defines distribution's configuration
-type Config struct {
-	Data   int `yaml:"data"`   // number of data shards
-	Parity int `yaml:"parity"` // number of parity shards
-}
-
-// NumPieces returns total number of pieces given the configuration
-func (c Config) NumPieces() int {
-	return c.Data + c.Parity
-}
-
-// NewDistributor creates new distribution
-func NewDistributor(writers []io.Writer, conf Config) (*Distributor, error) {
-	if len(writers) != conf.Data+conf.Parity {
-		return nil, fmt.Errorf("invalid number of writers: %v expected: %v", len(writers), conf.NumPieces())
-	}
-
-	enc, err := NewEncoder(conf.Data, conf.Parity)
+// NewEncoder creates new encoder
+func NewEncoder(k, m int) (*Encoder, error) {
+	ed, err := reedsolomon.New(k, m)
 	if err != nil {
 		return nil, err
 	}
 
-	return &Distributor{
-		enc:     enc,
-		writers: writers,
+	return &Encoder{
+		k:   k,
+		m:   m,
+		enc: ed,
 	}, nil
 }
 
-// Write writes blocks to the given output writers
-func (d Distributor) Write(data []byte) (int, error) {
-	var written int
+// Encode encodes the data using erasure code
+func (enc *Encoder) Encode(data []byte) ([][]byte, error) {
+	datas := enc.splitData(data)
+	parities := reedsolomon.NewMatrix(enc.m, len(datas[0]))
+	datas = append(datas, parities...)
 
-	encoded, err := d.enc.Encode(data)
-	if err != nil {
-		return written, err
-	}
-
-	for i, data := range encoded {
-		n, err := d.writers[i].Write(data)
-		written += n
-		if err != nil {
-			return written, err
-		}
-	}
-	return written, nil
+	err := enc.enc.Encode(datas)
+	return datas, err
 }
 
-// Restorer restore the distributed data from the given readers
-type Restorer struct {
-	dec     *Decoder
-	readers []io.Reader
+func (enc *Encoder) splitData(data []byte) [][]byte {
+	data = enc.padIfNeeded(data)
+	chunkSize := len(data) / enc.k
+	chunks := make([][]byte, enc.k)
+
+	for i := 0; i < enc.k; i++ {
+		chunks[i] = data[i*chunkSize : (i+1)*chunkSize]
+	}
+	return chunks
 }
 
-// NewRestorer creates restorer from the given reader.
-func NewRestorer(readers []io.Reader, conf Config) (*Restorer, error) {
-	if len(readers) != conf.NumPieces() {
-		return nil, fmt.Errorf("invalid number of readers: %v expected: %v", len(readers), conf.NumPieces())
+// add padding if needed
+func (enc *Encoder) padIfNeeded(data []byte) []byte {
+	padLen := getPadLen(len(data), enc.k)
+	if padLen == 0 {
+		return data
 	}
 
-	dec, err := NewDecoder(conf.Data, conf.Parity)
+	pad := make([]byte, padLen)
+	return append(data, pad...)
+}
+
+func getPadLen(dataLen, k int) int {
+	maxPadLen := k * padFactor
+	mod := dataLen % maxPadLen
+	if mod == 0 {
+		return 0
+	}
+	return maxPadLen - mod
+}
+
+func getPaddedLen(dataLen, k int) int {
+	return dataLen + getPadLen(dataLen, k)
+}
+
+// Decoder decodes the encoded data
+type Decoder struct {
+	k   int
+	m   int
+	dec reedsolomon.EncodeReconster // encoder  & decoder
+}
+
+// NewDecoder creates new decoder
+func NewDecoder(k, m int) (*Decoder, error) {
+	ed, err := reedsolomon.New(k, m)
 	if err != nil {
 		return nil, err
 	}
-	return &Restorer{
-		dec:     dec,
-		readers: readers,
+
+	return &Decoder{
+		k:   k,
+		m:   m,
+		dec: ed,
 	}, nil
 }
 
-// Read restores the data from the underlying reader.
-// length of the decoded argument must be the same as lenght of
-// the original data
-func (r *Restorer) Read(decoded []byte) (int, error) {
-	origLen := len(decoded)
-	chunks := make([][]byte, r.dec.k+r.dec.m)
-	chunkLen := getPaddedLen(origLen, r.dec.k) / r.dec.k
-
-	// read all chunks from the underlying reader
-	for i, reader := range r.readers {
-		data, err := ioutil.ReadAll(reader)
-		if err != nil || len(data) != chunkLen {
-			// error and invalid lenght are marked as data lost!
-		} else {
-			chunks[i] = data
-		}
-	}
-
+// Decode decodes the data using erasure code.
+// Lost is array of lost pieces index.
+// origLen is the original data length.
+func (d *Decoder) Decode(chunks [][]byte, origLen int) ([]byte, error) {
 	// decode
-	res, err := r.dec.Decode(chunks, origLen)
-	if err != nil || len(res) != origLen {
-		return len(res), err
+	if err := d.dec.ReconstructData(chunks); err != nil {
+		return nil, err
 	}
 
-	copy(decoded, res)
-	return len(res), nil
+	// merge the chunks
+	decoded := make([]byte, 0, origLen)
+	for i := 0; i < d.k; i++ {
+		decoded = append(decoded, chunks[i]...)
+	}
+	return decoded[:origLen], nil
 }

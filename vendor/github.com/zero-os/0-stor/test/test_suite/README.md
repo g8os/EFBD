@@ -69,3 +69,6 @@ downdloaded_files_info = {job_id:
 **def get_piplining_compination(self):**
 It returns list of all possible compination for pipes.
 
+
+**TO DO:**
+    - Path a config list to the reader instead of using the specifc 

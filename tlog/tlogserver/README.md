@@ -75,7 +75,6 @@ From this repo root directory
 make tlogserver
 ```
 
-
 **Usage**
 
 Run it
@@ -90,3 +89,6 @@ It starts tlog server that:
 
 Use tlog client as described in [client readme](../tlogclient/readme.md) to send transaction log to this tlog server.
 
+## More
+
+See the [tlog documentation](/docs/tlog/tlog.md) for more detailed documentation.

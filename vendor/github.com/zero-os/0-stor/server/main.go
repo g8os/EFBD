@@ -6,6 +6,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 
 	log "github.com/Sirupsen/logrus"
@@ -21,14 +22,40 @@ import (
 	"gopkg.in/validator.v2"
 )
 
-const version = "0.0.1"
+var (
+	version = "0.0.1"
+	// CommitHash represents the Git commit hash at built time
+	CommitHash string
+	// BuildDate represents the date when this tool suite was built
+	BuildDate string
+)
+
+func outputVersion() string {
+	// Tool Version
+	version := "Version: " + version
+
+	// Build (Git) Commit Hash
+	if CommitHash != "" {
+		version += "\r\nBuild: " + CommitHash
+		if BuildDate != "" {
+			version += " " + BuildDate
+		}
+	}
+
+	// Output version and runtime information
+	return fmt.Sprintf("%s\r\nRuntime: %s %s\r\n",
+		version,
+		runtime.Version(), // Go Version
+		runtime.GOOS,      // OS Name
+	)
+}
 
 func main() {
 	app := cli.NewApp()
 	app.Name = "zerostorserver"
 	app.Usage = "Generic object store used by zero-os"
 	app.Description = "Generic object store used by zero-os"
-	app.Version = version
+	app.Version = outputVersion()
 
 	log.SetFormatter(&log.TextFormatter{FullTimestamp: true})
 	log.SetOutput(os.Stdout)

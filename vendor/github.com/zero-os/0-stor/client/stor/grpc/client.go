@@ -16,6 +16,7 @@ var ErrNotImplemented = fmt.Errorf("not implemented")
 
 // client implement the stor.Client interface using grpc
 type client struct {
+	conn             *grpc.ClientConn
 	objService       pb.ObjectManagerClient
 	namespaceService pb.NamespaceManagerClient
 
@@ -27,10 +28,17 @@ type client struct {
 func New(conn *grpc.ClientConn, org, namespace, jwtToken string) *client {
 
 	return &client{
+		conn:             conn,
 		objService:       pb.NewObjectManagerClient(conn),
 		namespaceService: pb.NewNamespaceManagerClient(conn),
 		jwtToken:         jwtToken,
 		namespace:        fmt.Sprintf("%s_0stor_%s", org, namespace),
+	}
+}
+
+func (c *client) Close() {
+	if c.conn != nil {
+		c.conn.Close()
 	}
 }
 

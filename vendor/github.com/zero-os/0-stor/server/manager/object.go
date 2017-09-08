@@ -3,7 +3,6 @@ package manager
 import (
 	"fmt"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/zero-os/0-stor/server/db"
 )
 
@@ -36,7 +35,6 @@ func (mgr *ObjectManager) Set(key []byte, data []byte, referenceList []string) e
 	}
 
 	k := objKey(mgr.namespace, key)
-	log.Debugf("set objet %s into namespace %s", string(k), mgr.namespace)
 	return mgr.db.Set(k, b)
 }
 

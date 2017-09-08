@@ -418,8 +418,8 @@
 [[projects]]
   branch = "master"
   name = "github.com/zero-os/0-stor"
-  packages = ["client","client/config","client/goraml","client/goraml/goraml","client/goraml/librairies/reservation","client/itsyouonline","client/lib","client/lib/block","client/lib/chunker","client/lib/compress","client/lib/distribution","client/lib/encrypt","client/lib/hash","client/lib/replication","client/meta","client/meta/block","client/meta/embedserver","client/meta/schema","client/pipe","client/stor","client/stor/common","client/stor/grpc","client/stor/rest","grpc_store","server/api/grpc","server/api/rest","server/db","server/db/badger","server/goraml","server/goraml/librairies/reservation","server/jwt","server/manager","server/routes","server/stats","server/storserver"]
-  revision = "16a7d1959bccccabea241e36e1f9f04aa2e98a4d"
+  packages = ["client","client/goraml","client/goraml/goraml","client/goraml/librairies/reservation","client/itsyouonline","client/lib","client/lib/block","client/lib/chunker","client/lib/distribution","client/lib/encrypt","client/lib/hash","client/meta","client/meta/embedserver","client/meta/schema","client/stor","client/stor/common","client/stor/grpc","client/stor/rest","grpc_store","server/api/grpc","server/api/rest","server/db","server/db/badger","server/goraml","server/goraml/librairies/reservation","server/jwt","server/manager","server/routes","server/stats","server/storserver"]
+  revision = "a19fec7a8ec562c59134fd869e483f523f118844"
 
 [[projects]]
   branch = "master"
@@ -478,6 +478,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "b41c64c1ea6cc97c3a2d89a77a294153ecd41ed481b1faf682bef926b57b2c74"
+  inputs-digest = "8013d1253210767c6e604d4e39d9a5adf9baac73dbe7ee1faad408dcedf9eb70"
   solver-name = "gps-cdcl"
   solver-version = 1

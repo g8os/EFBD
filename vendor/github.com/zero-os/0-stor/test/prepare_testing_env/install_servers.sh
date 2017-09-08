@@ -1,6 +1,7 @@
 NUMBER_OF_SERVERS=${1:-1}
 ZT_NT=$2
 ZT_TOKEN=$3
+ZERO_STORE_BRANCH=$4
 
 install_requirements(){
     apt update
@@ -9,13 +10,14 @@ install_requirements(){
 }
 
 start_etcd_server(){
-    docker exec -it ${1} bash -c "tmux new -d -s etcd /tmp/etcd-download-test/etcd \
-    --advertise-client-urls  http://0.0.0.0:2379 \
-    --listen-client-urls http://0.0.0.0:2379"
+    docker_ip=$(get_server_ip ${1})
+    docker exec -it ${1} bash -c "tmux new -d -s etcd /home/etcd-download-test/etcd \
+    --advertise-client-urls  http://${docker_ip}:2379 \
+    --listen-client-urls http://${docker_ip}:2379"
 }
 
 start_zerostor_server(){
-    docker exec -it ${1} bash -c "tmux new -d -s zerostor /gopath/bin/server"
+    docker exec -it ${1} bash -c "tmux new -d -s zerostor /gopath/src/github.com/zero-os/0-stor/server/server"
 }
 
 get_server_ip(){
@@ -41,7 +43,7 @@ docker start basic-image
 docker cp docker_script.sh basic-image:/docker_script.sh
 SSH_KEY=$(cat ~/.ssh/id_rsa.pub)
 docker exec -it basic-image bash -c "mkdir ~/.ssh && echo ${SSH_KEY} >> ~/.ssh/authorized_keys"
-docker exec -it basic-image bash -c "bash docker_script.sh"
+docker exec -it basic-image bash -c "bash docker_script.sh ${ZERO_STORE_BRANCH}"
 docker commit basic-image zerostorserver-image
 
 # create zerostor servers

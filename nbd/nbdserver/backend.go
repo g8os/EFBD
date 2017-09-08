@@ -6,32 +6,35 @@ import (
 	"time"
 
 	"github.com/zero-os/0-Disk/log"
-
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/nbd/gonbdserver/nbd"
+	"github.com/zero-os/0-Disk/nbd/nbdserver/statistics"
 )
 
-func newBackend(vdiskID string, size uint64, blockSize int64, storage storage.BlockStorage, vComp *vdiskCompletion, connProvider ardb.ConnProvider) *backend {
+func newBackend(vdiskID string, size uint64, blockSize int64, storage storage.BlockStorage, vComp *vdiskCompletion, connProvider ardb.ConnProvider, vdiskStatsLogger statistics.VdiskLogger) *backend {
 	vComp.Add()
+
 	return &backend{
-		vdiskID:      vdiskID,
-		blockSize:    blockSize,
-		size:         size,
-		storage:      storage,
-		connProvider: connProvider,
-		vComp:        vComp,
+		vdiskID:          vdiskID,
+		blockSize:        blockSize,
+		size:             size,
+		storage:          storage,
+		connProvider:     connProvider,
+		vComp:            vComp,
+		vdiskStatsLogger: vdiskStatsLogger,
 	}
 }
 
 // backend is a nbd.Backend implementation on top of ARDB
 type backend struct {
-	vdiskID      string
-	blockSize    int64
-	size         uint64
-	storage      storage.BlockStorage
-	connProvider ardb.ConnProvider
-	vComp        *vdiskCompletion
+	vdiskID          string
+	blockSize        int64
+	size             uint64
+	storage          storage.BlockStorage
+	connProvider     ardb.ConnProvider
+	vComp            *vdiskCompletion
+	vdiskStatsLogger statistics.VdiskLogger
 }
 
 // WriteAt implements nbd.Backend.WriteAt
@@ -61,6 +64,7 @@ func (ab *backend) WriteAt(ctx context.Context, b []byte, offset int64) (bytesWr
 	}
 
 	bytesWritten = int64(len(b))
+	ab.vdiskStatsLogger.LogWriteOperation(bytesWritten)
 	return
 }
 
@@ -90,6 +94,7 @@ func (ab *backend) WriteZeroesAt(ctx context.Context, offset, length int64) (byt
 	}
 
 	bytesWritten = length
+	ab.vdiskStatsLogger.LogWriteOperation(bytesWritten)
 	return
 }
 
@@ -167,6 +172,7 @@ func (ab *backend) ReadAt(ctx context.Context, offset, length int64) (payload []
 		payload = p
 	}
 
+	ab.vdiskStatsLogger.LogReadOperation(int64(len(payload)))
 	return
 }
 
@@ -183,6 +189,8 @@ func (ab *backend) Flush(ctx context.Context) (err error) {
 
 // Close implements nbd.Backend.Close
 func (ab *backend) Close(ctx context.Context) (err error) {
+	ab.vdiskStatsLogger.Close()
+
 	if ab.connProvider != nil {
 		ab.connProvider.Close()
 	}

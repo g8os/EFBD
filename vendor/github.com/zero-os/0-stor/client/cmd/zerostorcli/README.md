@@ -17,7 +17,7 @@ Simple cli to store file to 0-stor.
     - Update the organization & namespace to match existing IYO ```{organization}.0stor.{namespace}```
     - Update ```iyo_client_id``` & ```iyo_secret```
     - Update ```meta_shards``` URL to match URL of existing etcd server
-    - Update ```shards``` URLs to match existing 0stor server instances.
+    - Update ```data_shards``` URLs to match existing 0stor server instances.
         - **Warning** : ALWAYS USE DIFFERENT 0STOR INSTANCES AS SHARDS (NOT ONE INSTANCE)
 
 ## Commands

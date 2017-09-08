@@ -15,8 +15,7 @@ response.
 
 ## usage example
 
-```
-
+```go
 package main
 
 import (
@@ -113,3 +112,7 @@ func main() {
 	wg.Wait() //wait until we receive all the response
 }
 ```
+
+## More
+
+See the [tlogclient documentation](/docs/tlog/client.md) for more detailed documentation.

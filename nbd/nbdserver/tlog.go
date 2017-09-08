@@ -269,6 +269,7 @@ func (tls *tlogStorage) Close() (err error) {
 	tls.storageMux.Lock()
 	defer tls.storageMux.Unlock()
 
+	log.Infof("tlog storage closed with cache empty = %v", tls.cache.Empty())
 	close(tls.done)
 
 	err = tls.storage.Close()
@@ -336,6 +337,10 @@ func (tls *tlogStorage) spawnBackgroundGoroutine(ctx context.Context) error {
 					tls.toFlushCh <- res.Resp.Sequences
 				case tlog.BlockStatusWaitNbdSlaveSyncReceived:
 
+				case tlog.BlockStatusFlushFailed:
+					log.Errorf(
+						"tlog server failed to flush for vdisk %s",
+						tls.vdiskID)
 				default:
 					panic(fmt.Errorf(
 						"tlog server had fatal failure for vdisk %s: %s",
