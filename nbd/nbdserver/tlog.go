@@ -16,11 +16,6 @@ import (
 	"github.com/zero-os/0-Disk/tlog/tlogclient"
 )
 
-const (
-	tlogFlushWaitRetry    = 5 * time.Second // retry force flush after this timeout
-	tlogFlushWaitRetryNum = 3
-)
-
 // newTlogStorage creates a tlog storage BlockStorage,
 // wrapping around a given backend storage,
 // using the given tlog client to send its write transactions to the tlog server.
@@ -230,12 +225,12 @@ func (tls *tlogStorage) Flush() (err error) {
 	var forceFlushNum int
 	for !finished {
 		select {
-		case <-time.After(tlogFlushWaitRetry): // retry it
+		case <-time.After(flushWaitRetry): // retry it
 			tls.tlog.ForceFlushAtSeq(latestSeq)
 
 			forceFlushNum++
 
-			if forceFlushNum >= tlogFlushWaitRetryNum {
+			if forceFlushNum >= flushWaitRetryNum {
 				// if reach max retry number
 				// signal the condition variable anyway
 				// to avoid the goroutine blocked forever
@@ -262,6 +257,7 @@ func (tls *tlogStorage) Close() (err error) {
 	tls.storageMux.Lock()
 	defer tls.storageMux.Unlock()
 
+	log.Infof("tlog storage closed with cache empty = %v", tls.cache.Empty())
 	close(tls.done)
 
 	err = tls.storage.Close()
@@ -326,6 +322,10 @@ func (tls *tlogStorage) spawnBackgroundGoroutine(ctx context.Context) error {
 					tls.toFlushCh <- res.Resp.Sequences
 				case tlog.BlockStatusWaitNbdSlaveSyncReceived:
 
+				case tlog.BlockStatusFlushFailed:
+					log.Errorf(
+						"tlog server failed to flush for vdisk %s",
+						tls.vdiskID)
 				default:
 					panic(fmt.Errorf(
 						"tlog server had fatal failure for vdisk %s: %s",
