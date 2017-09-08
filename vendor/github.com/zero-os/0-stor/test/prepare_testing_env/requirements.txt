@@ -1,4 +1,0 @@
-pyyaml
-nose
-termcolor
-nose-testconfig
