@@ -40,6 +40,29 @@ var validNBDStorageConfigs = []NBDStorageConfig{
 			},
 		},
 	},
+	// example to show that there can be more data slave servers than required
+	NBDStorageConfig{
+		StorageCluster: StorageClusterConfig{
+			DataStorage: []StorageServerConfig{
+				StorageServerConfig{
+					Address:  "localhost:16379",
+					Database: 1,
+				},
+			},
+		},
+		SlaveStorageCluster: &StorageClusterConfig{
+			DataStorage: []StorageServerConfig{
+				StorageServerConfig{
+					Address:  "foo:16320",
+					Database: 4,
+				},
+				StorageServerConfig{
+					Address:  "foo:16321",
+					Database: 5,
+				},
+			},
+		},
+	},
 	// minimal example
 	NBDStorageConfig{
 		StorageCluster: StorageClusterConfig{
@@ -133,7 +156,7 @@ var invalidNBDStorageConfigs = []NBDStorageConfig{
 		},
 		TemplateStorageCluster: new(StorageClusterConfig),
 	},
-	// template storage given, but is invalid
+	// slave storage given, but is invalid (no data servers given)
 	NBDStorageConfig{
 		StorageCluster: StorageClusterConfig{
 			DataStorage: []StorageServerConfig{
@@ -141,6 +164,20 @@ var invalidNBDStorageConfigs = []NBDStorageConfig{
 			},
 		},
 		SlaveStorageCluster: new(StorageClusterConfig),
+	},
+	// slave storage given, but is invalid (not enough data servers given)
+	NBDStorageConfig{
+		StorageCluster: StorageClusterConfig{
+			DataStorage: []StorageServerConfig{
+				StorageServerConfig{Address: "localhost:16381"},
+				StorageServerConfig{Address: "localhost:16382"},
+			},
+		},
+		SlaveStorageCluster: &StorageClusterConfig{
+			DataStorage: []StorageServerConfig{
+				StorageServerConfig{Address: "localhost:16383"},
+			},
+		},
 	},
 }
 

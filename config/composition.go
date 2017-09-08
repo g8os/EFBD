@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 )
 
@@ -42,12 +43,21 @@ func (cfg *NBDStorageConfig) Validate(storageType StorageType) error {
 
 	// ensure that if the slave cluster is given, it is valid
 	if cfg.SlaveStorageCluster != nil {
+		// ensure the static struct validation for the slave config checks out
 		err = cfg.SlaveStorageCluster.Validate()
 		if err != nil {
 			return fmt.Errorf(
 				"invalid NBDStorageConfig, invalid slave storage cluster: %v", err)
 		}
 
+		// ensure that the slave cluster defines enough data (storage) servers
+		slaveDataShardCount := len(cfg.SlaveStorageCluster.DataStorage)
+		primaryDataShardCount := len(cfg.StorageCluster.DataStorage)
+		if slaveDataShardCount < primaryDataShardCount {
+			return errInsufficientSlaveDataShards
+		}
+
+		// ensure that the slave contains a metadata (storage) server if required
 		err = cfg.SlaveStorageCluster.ValidateStorageType(storageType)
 		if err != nil {
 			return fmt.Errorf("invalid NBDStorageConfig.SlaveStorage: %v", err)
@@ -56,6 +66,11 @@ func (cfg *NBDStorageConfig) Validate(storageType StorageType) error {
 
 	return nil
 }
+
+var (
+	errInsufficientSlaveDataShards = errors.New("invalid NBDStorageConfig.SlaveStorage: insufficient slave data storage servers" +
+		" (require at least as much as the primary cluster has defined)")
+)
 
 // ValidateOptional validates the optional properties of this config,
 // using the Storage Type information.
