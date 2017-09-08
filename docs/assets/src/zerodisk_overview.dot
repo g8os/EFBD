@@ -34,6 +34,9 @@ graph zerodisk_overview {
 
     tlogclient -- tlogserver
   }
+  
+  tlogETCD [label="etcd cluster" shape=cylinder]
+  tlogETCD -- tlogserver [label="0-stor\nconfig"]
 
   subgraph clusterNBD {
     color=2
@@ -49,15 +52,19 @@ graph zerodisk_overview {
     ]
 
     nbdBackend [label="nbd backend"]
-    nbdStorage [label="BlockStorage"]
-  
+    nbdStorage [label="BlockStorage(s)"]
+
     nbdserver -- gonbdserver
-    nbdBackend -- nbdStorage
+    nbdBackend -- nbdStorage [style="dashed"]
     gonbdserver -- nbdBackend
-    nbdStorage -- tlogplayer [label="write"]
+    nbdStorage -- tlogplayer [label="write" style="dashed"]
     nbdStorage -- tlogclient
       [label="boot/db" style="dashed"]
   }
+
+  nbdETCD [label="etcd cluster" shape=cylinder]
+  nbdETCD -- nbdStorage [label="storage\nconfig" weight=0]
+  nbdETCD -- nbdserver [label="vdisk\nconfig" weight=0]
 
   tlogplayer -- zerostor [label="read"]
   zeroctl -- tlogplayer
