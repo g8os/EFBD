@@ -8,12 +8,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/zero-os/0-Disk/nbd/ardb"
+
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
 	"github.com/zero-os/0-Disk/tlog/tlogclient"
+
+	"github.com/garyburd/redigo/redis"
 )
 
 const (
@@ -24,9 +28,14 @@ const (
 // newTlogStorage creates a tlog storage BlockStorage,
 // wrapping around a given backend storage,
 // using the given tlog client to send its write transactions to the tlog server.
-func newTlogStorage(ctx context.Context, vdiskID, clusterID string, configSource config.Source, blockSize int64, storage storage.BlockStorage, client tlogClient) (storage.BlockStorage, error) {
+func newTlogStorage(ctx context.Context, vdiskID, clusterID string, configSource config.Source, blockSize int64, storage storage.BlockStorage, mdProvider ardb.MetadataConnProvider, client tlogClient) (storage.BlockStorage, error) {
 	if storage == nil {
 		return nil, errors.New("tlogStorage requires a non-nil BlockStorage")
+	}
+
+	metadata, err := newTlogMetadata(vdiskID, mdProvider)
+	if err != nil {
+		return nil, errors.New("tlogStorage requires a valid metadata ARDB provider: " + err.Error())
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -45,6 +54,12 @@ func newTlogStorage(ctx context.Context, vdiskID, clusterID string, configSource
 	}
 
 	if client == nil {
+		// TODO: use metadata.LastFlushedSequence to pass it onto the tlogclient,
+		//       after the handshake we should be able to retrieve the actual LastFlushedSequence,
+		//       and assign it to our metadata.LastFlushedSequence after we compared the 2.
+		//       If the one returned by the tlogclient (`client.LastFlushedSequence()`) is greater than ours,
+		//       we know we'll want to sync our storage first with the tlog head of this vdisk.
+		// see: https://github.com/zero-os/0-Disk/issues/230
 		client, err = tlogclient.New(tlogClusterConfig.Servers, vdiskID, 0, true)
 		if err != nil {
 			cancel()
@@ -56,6 +71,7 @@ func newTlogStorage(ctx context.Context, vdiskID, clusterID string, configSource
 		vdiskID:        vdiskID,
 		tlog:           client,
 		storage:        storage,
+		metadata:       metadata,
 		cache:          newInMemorySequenceCache(),
 		blockSize:      blockSize,
 		sequence:       0,
@@ -88,6 +104,7 @@ type tlogStorage struct {
 	mux           sync.RWMutex
 	tlog          tlogClient
 	storage       storage.BlockStorage
+	metadata      *tlogMetadata
 	cache         sequenceCache
 	blockSize     int64
 	sequence      uint64
@@ -207,7 +224,7 @@ func (tls *tlogStorage) DeleteBlock(blockIndex int64) (err error) {
 }
 
 // Flush implements BlockStorage.Flush
-func (tls *tlogStorage) Flush() (err error) {
+func (tls *tlogStorage) Flush() error {
 	tls.mux.Lock()
 	defer tls.mux.Unlock()
 
@@ -249,12 +266,50 @@ func (tls *tlogStorage) Flush() (err error) {
 		}
 	}
 
-	// flush actual storage
-	tls.storageMux.Lock()
-	defer tls.storageMux.Unlock()
+	var wg sync.WaitGroup
+	wg.Add(2)
 
-	err = tls.storage.Flush()
-	return
+	var errors flushErrors
+
+	go func() {
+		defer wg.Done()
+
+		// get last flushed sequnece from tlogclient
+		// NOTE: perhaps it would be better to keep the metadata up to date at all times
+		//       but for now I didn't see an easy/efficient way to keep the last flushed sequnece
+		//       up to date at all times, so I'm simply updating it right before flushing
+		tls.metadata.LastFlushedSequence = tls.tlog.LastFlushedSequence()
+
+		// flush last flushed sequence
+		err := tls.metadata.Flush()
+		if err != nil {
+			log.Errorf("error while flushing metadata: %v", err)
+			errors = append(errors, err)
+		}
+	}()
+
+	go func() {
+		// flush actual storage
+		tls.storageMux.Lock()
+		defer func() {
+			wg.Done()
+			tls.storageMux.Unlock()
+		}()
+
+		err := tls.storage.Flush()
+		if err != nil {
+			log.Errorf("error while flushing internal blockStorage: %v", err)
+			errors = append(errors, err)
+		}
+	}()
+
+	wg.Wait()
+	if len(errors) > 0 {
+		return errors
+	}
+
+	return nil
+
 }
 
 // Close implements BlockStorage.Close
@@ -616,6 +671,7 @@ type tlogClient interface {
 	WaitNbdSlaveSync() error
 	ChangeServerAddresses([]string)
 	Recv() <-chan *tlogclient.Result
+	LastFlushedSequence() uint64
 	Close() error
 }
 
@@ -863,6 +919,72 @@ func (dh *dataHistory) Trim(sequenceIndex uint64) ([]byte, bool) {
 func (dh *dataHistory) Empty() bool {
 	return dh.max == math.MaxUint64
 }
+
+// newTlogMetadata creates a new tlog metadata object.
+// Defauling to nil-values of properties for all properties
+// that weren't defined yet in the ARDB metadata storage.
+func newTlogMetadata(vdiskID string, provider ardb.MetadataConnProvider) (*tlogMetadata, error) {
+	var key string
+	var lastFlushedSequence uint64
+
+	if provider != nil {
+		conn, err := provider.MetadataConnection()
+		if err != nil {
+			// TODO: warn 0-Orchestrator and switch to slave?!
+			return nil, err
+		}
+		defer conn.Close()
+
+		key = TlogMetadataKey(vdiskID)
+
+		lastFlushedSequence, err = redis.Uint64(
+			conn.Do("HGET", key, tlogMetadataLastFlushedSequenceField))
+		if err != nil && err != redis.ErrNil {
+			return nil, err
+		}
+	}
+
+	return &tlogMetadata{
+		LastFlushedSequence: lastFlushedSequence,
+		key:                 key,
+		provider:            provider,
+	}, nil
+}
+
+type tlogMetadata struct {
+	LastFlushedSequence uint64
+
+	key      string
+	provider ardb.MetadataConnProvider
+}
+
+// Flush all the metadata for this tlogstorage into the ARDB metadata storage server.
+func (md *tlogMetadata) Flush() error {
+	if md.provider == nil {
+		return nil // nothing to do
+	}
+
+	conn, err := md.provider.MetadataConnection()
+	if err != nil {
+		// TODO: warn 0-Orchestrator and switch to slave?!
+		return err
+	}
+	defer conn.Close()
+
+	_, err = conn.Do("HSET", md.key, tlogMetadataLastFlushedSequenceField, md.LastFlushedSequence)
+	return err
+}
+
+// TlogMetadataKey returns the key of the ARDB hashmap,
+// which contains all the metadata stored for a tlog storage.
+func TlogMetadataKey(vdiskID string) string {
+	return tlogMetadataKeyPrefix + vdiskID
+}
+
+const (
+	tlogMetadataKeyPrefix                = "tlog:"
+	tlogMetadataLastFlushedSequenceField = "lfseq"
+)
 
 var (
 	// returned when a sequence is added,

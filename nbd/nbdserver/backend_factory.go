@@ -115,7 +115,7 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 			log.Debugf("creating tlogStorage for backend %v (%v)", vdiskID, staticConfig.Type)
 			blockStorage, err = newTlogStorage(ctx,
 				vdiskID, vdiskNBDConfig.TlogServerClusterID,
-				f.configSource, blockSize, blockStorage, nil)
+				f.configSource, blockSize, blockStorage, redisProvider, nil)
 			if err != nil {
 				blockStorage.Close()
 				redisProvider.Close()
