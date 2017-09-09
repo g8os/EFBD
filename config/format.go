@@ -230,19 +230,21 @@ func (cfg *StorageClusterConfig) Validate() error {
 // ValidateStorageType is an extra validation method,
 // allowing you to check if this cluster is valid for a certain storage type.
 func (cfg *StorageClusterConfig) ValidateStorageType(t StorageType) error {
-	if cfg == nil {
-		return errors.New("nil StorageClusterConfig is not valid")
+	if cfg == nil || t == StorageNonDeduped {
+		return nil // nothing to do
 	}
 
-	// both deduped and semideduped storage types require
-	// a metadata server to be defined
-	if t != StorageNonDeduped && cfg.MetadataStorage == nil {
-		return fmt.Errorf(
-			"invalid StorageClusterConfig: "+
-				"storage type %s requires a storage server for metadata", t)
+	return cfg.ValidateRequiredMetadataStorage()
+}
+
+// ValidateRequiredMetadataStorage allows you to ensure that this storage cluster
+// defines a valid Metadata Storage.
+func (cfg *StorageClusterConfig) ValidateRequiredMetadataStorage() error {
+	if cfg != nil && cfg.MetadataStorage == nil {
+		return errors.New("invalid StorageClusterConfig: require a storage server for metadata")
 	}
 
-	// config is valid
+	// composed config is valid
 	return nil
 }
 
