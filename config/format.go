@@ -224,6 +224,28 @@ func (cfg *StorageClusterConfig) Validate() error {
 		return fmt.Errorf("invalid StorageClusterConfig: %v", err)
 	}
 
+	// validate all data server configs
+	// and ensure that at least one data server is enabled
+	var serversAvailable bool
+	for _, serverConfig := range cfg.DataStorage {
+		err = serverConfig.Validate()
+		if err != nil {
+			return err
+		}
+		if !serverConfig.Disabled {
+			serversAvailable = true
+		}
+	}
+	if !serversAvailable {
+		return errNoDataServersAvailable
+	}
+
+	// validate the metadata server config (if defined)
+	err = cfg.MetadataStorage.Validate()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -456,9 +478,31 @@ func (cfg *TlogClusterConfig) Clone() TlogClusterConfig {
 
 // StorageServerConfig defines the config for a storage server
 type StorageServerConfig struct {
-	Address string `yaml:"address" valid:"dialstring,required"`
+	Address string `yaml:"address" valid:"optional"`
 	// Database '0' is assumed, in case no value is given.
 	Database int `yaml:"db" valid:"optional"`
+	// Disabled defines a storage server as non-usable/offline,
+	// making the rest of this storage server config irrelevant.
+	Disabled bool `yaml:"disabled" valid:"optional"`
+}
+
+// Validate this Storage Server Config,
+// returning an error in case this config is invalid.
+func (cfg *StorageServerConfig) Validate() error {
+	if cfg == nil || cfg.Disabled {
+		return nil // nothing to validate here
+	}
+
+	if cfg.Database < 0 {
+		return errInvalidStorageDatabase
+	}
+
+	if !valid.IsDialString(cfg.Address) {
+		return fmt.Errorf("'%s' is an invalid dialstring", cfg.Address)
+	}
+
+	// all checks out
+	return nil
 }
 
 // Equal checks if the 2 configs are equal.
@@ -476,6 +520,11 @@ func (cfg *StorageServerConfig) Equal(other *StorageServerConfig) bool {
 	}
 
 	// both configs are given
+
+	// are one of them disabled, while the other is not?
+	if cfg.Disabled != other.Disabled {
+		return false
+	}
 
 	// last cheap test, are their databases equal?
 	if cfg.Database != other.Database {
@@ -506,6 +555,11 @@ type ServerConfig struct {
 const (
 	// gibibyteAsBytes is a constant used to convert between GiB and bytes
 	gibibyteAsBytes = 1024 * 1024 * 1024
+)
+
+var (
+	errInvalidStorageDatabase = errors.New("invalid database")
+	errNoDataServersAvailable = errors.New("no data servers available")
 )
 
 func init() {

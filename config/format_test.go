@@ -3,7 +3,6 @@ package config
 import (
 	"testing"
 
-	valid "github.com/asaskevich/govalidator"
 	"github.com/stretchr/testify/assert"
 	yaml "gopkg.in/yaml.v2"
 )
@@ -230,14 +229,14 @@ func TestStorageClusterConfigClone(t *testing.T) {
 }
 
 // tests StorageServerConfig manual unmarshalling
-func TestStorageServerConfigYamlUnmarshal(t *testing.T) {
+func TestStorageServerConfigYamlUnmarshalAndValidate(t *testing.T) {
 	assert := assert.New(t)
 
 	for _, validCase := range validStorageServerConfigYAML {
 		var cfg StorageServerConfig
 		err := yaml.Unmarshal([]byte(validCase), &cfg)
 		if assert.NoErrorf(err, "'%v'", validCase) {
-			_, err = valid.ValidateStruct(&cfg)
+			err = cfg.Validate()
 			assert.NoErrorf(err, "'%v'", validCase)
 		}
 	}
@@ -246,7 +245,7 @@ func TestStorageServerConfigYamlUnmarshal(t *testing.T) {
 		var cfg StorageServerConfig
 		err := yaml.Unmarshal([]byte(invalidCase), &cfg)
 		if err == nil {
-			_, err = valid.ValidateStruct(&cfg)
+			err = cfg.Validate()
 			if assert.Errorf(err, "'%v' -> %v'", invalidCase, cfg) {
 				t.Logf("StorageServerConfig error: %v", err)
 			}

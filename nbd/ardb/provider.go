@@ -31,12 +31,16 @@ type Connection interface {
 
 // newConnection returns a new available ARDB connection from a given pool,
 // using a given storage server config.
-func newConnection(pool *RedisPool, cfg config.StorageServerConfig) *connection {
+func newConnection(pool *RedisPool, cfg config.StorageServerConfig) (*connection, error) {
+	if cfg.Disabled {
+		return nil, errDisabledStorageServer
+	}
+
 	conn := pool.Get(cfg.Address, cfg.Database)
 	return &connection{
 		Conn: conn,
 		cfg:  cfg,
-	}
+	}, nil
 }
 
 // connection is a simple struct, which combines an ARDB connection,
@@ -133,11 +137,38 @@ type staticRedisProvider struct {
 
 // DataConnection implements DataConnProvider.DataConnection
 func (rp *staticRedisProvider) DataConnection(index int64) (conn Connection, err error) {
+	// first try the modulo sharding,
+	// which will work for all default online shards
+	// and thus keep it as cheap as possible
 	bcIndex := index % rp.numberOfServers
 	connConfig := rp.dataConnectionConfigs[bcIndex]
+	if !connConfig.Disabled {
+		conn, err = newConnection(rp.redisPool, connConfig)
+		return
+	}
 
-	conn = newConnection(rp.redisPool, connConfig)
-	return
+	// keep trying until we find a non-offline shard
+	// in the same reproducable manner
+	// (another kind of tracing)
+	// using jumpConsistentHash taken from https://arxiv.org/pdf/1406.2294.pdf
+	var j int64
+	var key uint64
+	for {
+		key = uint64(index)
+		j = 0
+		for j < rp.numberOfServers {
+			bcIndex = j
+			key = key*2862933555777941757 + 1
+			j = int64(float64(bcIndex+1) * (float64(int64(1)<<31) / float64((key>>33)+1)))
+		}
+		connConfig = rp.dataConnectionConfigs[bcIndex]
+		if !connConfig.Disabled {
+			conn, err = newConnection(rp.redisPool, connConfig)
+			return
+		}
+
+		index++
+	}
 }
 
 // TemplateConnection implements DataConnProvider.TemplateConnection
@@ -159,7 +190,7 @@ func (rp *staticRedisProvider) TemplateConnection(index int64) (conn Connection,
 		return nil, ErrServerMarkedInvalid
 	}
 
-	conn = newConnection(rp.redisPool, connConfig)
+	conn, err = newConnection(rp.redisPool, connConfig)
 	return
 }
 
@@ -178,7 +209,7 @@ func (rp *staticRedisProvider) MarkTemplateConnectionInvalid(index int64) {
 // MetadataConnection implements MetadataConnProvider.MetaConnection
 func (rp *staticRedisProvider) MetadataConnection() (conn Connection, err error) {
 	connConfig := rp.metaConnectionConfig
-	conn = newConnection(rp.redisPool, *connConfig)
+	conn, err = newConnection(rp.redisPool, *connConfig)
 	return
 }
 
@@ -298,3 +329,7 @@ func (rp *redisProvider) Close() error {
 	close(rp.done)
 	return rp.static.Close()
 }
+
+var (
+	errDisabledStorageServer = errors.New("storage server is disabled")
+)

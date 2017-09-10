@@ -223,6 +223,12 @@ dataStorage:
   - address: localhost:16379
 metadataStorage:
   db: 2
+`, // only disabled data storages given
+	`
+dataStorage:
+  - address: localhost:16379
+    disabled: true
+  - disabled: true
 `,
 }
 
@@ -231,6 +237,7 @@ var validStorageServerConfigYAML = []string{
 	`
 address: localhost:16379
 db: 1
+disabled: false
 `, // complete example (2)
 	`
 address: 127.0.0.1:16379
@@ -246,12 +253,21 @@ db: 3
 	`
    address: "[2001:db8:0:3:3:3:3:3]:33"
 `,
+	// when disabled is true, the other properties are irrelevant
+	`
+disabled: true
+`,
 }
 
 var invalidStorageServerConfigYAML = []string{
 	// only db given
 	`
 db: 3
+`,
+	// invalid db given
+	`
+address: localhost:16379
+db: -1
 `,
 }
 
