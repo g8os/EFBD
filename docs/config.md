@@ -91,7 +91,7 @@ Stores static [VDisk][vdisk] information:
 Example Config:
 
 ```yaml
-blockSize: 4096 # should be a power of 2
+blockSize: 4096 # should be equal-or-greater than 512 and be a power of 2
 readOnly: false # optional, false by default
 size: 10 	# has to be greater then 0
 type: db	# should be a valid VDisk type (boot, db, cache or tmp)

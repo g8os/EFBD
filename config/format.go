@@ -98,7 +98,7 @@ func (cfg *VdiskStaticConfig) Validate() error {
 
 	if !ValidateBlockSize(int64(cfg.BlockSize)) {
 		return fmt.Errorf(
-			"blockSize '%d' is not a power of 2, while that is required", cfg.BlockSize)
+			"blockSize '%d' is invalid, should be equal-or-greater than 512 and be a power of 2", cfg.BlockSize)
 	}
 	if (cfg.Size * gibibyteAsBytes) < cfg.BlockSize {
 		return fmt.Errorf(

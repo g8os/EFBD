@@ -188,7 +188,7 @@ tmp (short for Temporary) is one of the available [vdisk](#vdisk) types. It uses
 
 ### vdisk
 
-A Virtual Disk (vdisk) is the 0-Disk component which emulates an actual [block](#block) [storage (2)](#storage) device. The actual [data (1)](#data) and [metadata (1,2,3)](#metadata) of the vdisk is stored in an [ardb cluster](#ardb). Using the [NBD server](#nbd) it can be mounted and used as if it was a physical disk.
+A Virtual Disk (vdisk) is the 0-Disk component which emulates an actual [block](#block) [storage (2)](#storage) device. The actual [data (1)](#data) and [metadata (1,2,3)](#metadata) of the vdisk is stored in an [ardb cluster](#ardb). Using the [NBD server](#nbd) it can be mounted and used as if it was a physical disk. All vdisks have a [block](#block) size which is a power of 2 and a minimum of 512.
 
 ### volume driver
 
