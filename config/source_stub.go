@@ -74,7 +74,7 @@ func (s *StubSource) Type() string {
 }
 
 // InvalidKey can be used to get a channel to wait for
-// an incoming ivnalid key.
+// an incoming invalid key.
 func (s *StubSource) InvalidKey() <-chan Key {
 	if s.invalidConfigSender == nil {
 		s.invalidConfigSender = make(chan Key, 1)

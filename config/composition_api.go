@@ -119,7 +119,7 @@ func ReadTlogStorageConfig(source Source, vdiskID string, staticConfig *VdiskSta
 			return nil, err
 		}
 
-		// validate optional properties of NBD Storage Config
+		// validate optional properties of Tlog Storage Config
 		// based on the storage type of this vdisk
 		if staticConfig == nil {
 			staticConfig, err = ReadVdiskStaticConfig(source, vdiskID)
