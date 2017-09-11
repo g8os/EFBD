@@ -202,9 +202,6 @@ func (s *Server) writeHandshakeResponse(w io.Writer, segmentBuf []byte, status t
 func (s *Server) handle(conn *net.TCPConn) error {
 	defer conn.Close()
 
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	defer cancelFunc()
-
 	br := bufio.NewReader(conn)
 
 	vdisk, err := s.handshake(br, conn, conn)
@@ -213,6 +210,9 @@ func (s *Server) handle(conn *net.TCPConn) error {
 		return err
 	}
 	defer vdisk.removeClient(conn)
+
+	ctx, cancelFunc := context.WithCancel(vdisk.ctx)
+	defer cancelFunc()
 
 	// start response sender
 	go s.sendResp(ctx, conn, vdisk.ID(), vdisk.ResponseChan())
@@ -290,12 +290,18 @@ func (s *Server) handleWaitNBDSlaveSync(vd *vdisk) error {
 }
 
 // response sender for a vdisk
-func (s *Server) sendResp(ctx context.Context, w io.Writer, vdiskID string, respChan <-chan *BlockResponse) {
+func (s *Server) sendResp(ctx context.Context, conn *net.TCPConn, vdiskID string, respChan <-chan *BlockResponse) {
+	defer func() {
+		log.Infof("sendResp cleanup for vdisk %v", vdiskID)
+		conn.Close() // it will also close the receiver
+	}()
+
 	segmentBuf := make([]byte, 0, s.maxRespSegmentBufLen)
+
 	for {
 		select {
 		case resp := <-respChan:
-			if err := resp.Write(w, segmentBuf); err != nil {
+			if err := resp.Write(conn, segmentBuf); err != nil && resp != nil {
 				log.Infof("failed to send resp to :%v, err:%v", vdiskID, err)
 				return
 			}
