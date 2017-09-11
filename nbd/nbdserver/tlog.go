@@ -206,10 +206,6 @@ func (tls *tlogStorage) Flush() (err error) {
 	tls.mux.Lock()
 	defer tls.mux.Unlock()
 
-	if tls.cache.Empty() {
-		return
-	}
-
 	// ForceFlush at the latest sequence
 	latestSeq := tls.getLatestSequence()
 	tls.tlog.ForceFlushAtSeq(latestSeq)
@@ -258,13 +254,8 @@ func (tls *tlogStorage) Flush() (err error) {
 
 // Close implements BlockStorage.Close
 func (tls *tlogStorage) Close() (err error) {
-	log.Infof("tlogStorage Close with lastSequence = %v, cache empty = %v",
-		tls.getLatestSequence(), tls.cache.Empty())
-
-	err = tls.Flush()
-	if err != nil {
-		log.Infof("error while flushing on Close: %v", err)
-	}
+	tls.mux.Lock()
+	defer tls.mux.Unlock()
 
 	tls.storageMux.Lock()
 	defer tls.storageMux.Unlock()
