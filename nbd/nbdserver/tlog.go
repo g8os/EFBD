@@ -266,50 +266,24 @@ func (tls *tlogStorage) Flush() error {
 		}
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(2)
+	// flush actual storage
+	tls.storageMux.Lock()
+	defer tls.storageMux.Unlock()
 
-	var errors flushErrors
-
-	go func() {
-		defer wg.Done()
-
-		// get last flushed sequnece from tlogclient
-		// NOTE: perhaps it would be better to keep the metadata up to date at all times
-		//       but for now I didn't see an easy/efficient way to keep the last flushed sequnece
-		//       up to date at all times, so I'm simply updating it right before flushing
-		tls.metadata.LastFlushedSequence = tls.tlog.LastFlushedSequence()
-
-		// flush last flushed sequence
-		err := tls.metadata.Flush()
-		if err != nil {
-			log.Errorf("error while flushing metadata: %v", err)
-			errors = append(errors, err)
-		}
-	}()
-
-	go func() {
-		// flush actual storage
-		tls.storageMux.Lock()
-		defer func() {
-			wg.Done()
-			tls.storageMux.Unlock()
-		}()
-
-		err := tls.storage.Flush()
-		if err != nil {
-			log.Errorf("error while flushing internal blockStorage: %v", err)
-			errors = append(errors, err)
-		}
-	}()
-
-	wg.Wait()
-	if len(errors) > 0 {
-		return errors
+	err := tls.storage.Flush()
+	if err != nil {
+		log.Errorf("error while flushing internal blockStorage: %v", err)
+		return err
 	}
 
-	return nil
-
+	// only if we succesfully flushed the storage,
+	// will we flush our metadata, as to make sure the metadata is in sync
+	// with the content stored in the internal block storage.
+	err = tls.metadata.Flush()
+	if err != nil {
+		log.Errorf("error while flushing metadata: %v", err)
+	}
+	return err
 }
 
 // Close implements BlockStorage.Close
@@ -568,6 +542,9 @@ func (tls *tlogStorage) flushCachedContent(sequences []uint64) error {
 		return errs
 	}
 
+	// the sequences are given in ordered form,
+	// thus we can simply try to set the last given sequence.
+	tls.metadata.SetLastFlushedSequence(sequences[len(sequences)-1])
 	return nil
 }
 
@@ -945,17 +922,32 @@ func newTlogMetadata(vdiskID string, provider ardb.MetadataConnProvider) (*tlogM
 	}
 
 	return &tlogMetadata{
-		LastFlushedSequence: lastFlushedSequence,
+		lastFlushedSequence: lastFlushedSequence,
 		key:                 key,
 		provider:            provider,
 	}, nil
 }
 
 type tlogMetadata struct {
-	LastFlushedSequence uint64
+	lastFlushedSequence uint64
 
 	key      string
 	provider ardb.MetadataConnProvider
+	mux      sync.Mutex
+}
+
+// SetLastFlushedSequence sets the given seq as the last flushed sequence,
+// only if the given sequence is greater than the one already used.
+func (md *tlogMetadata) SetLastFlushedSequence(seq uint64) bool {
+	md.mux.Lock()
+	defer md.mux.Unlock()
+
+	if seq <= md.lastFlushedSequence {
+		return false
+	}
+
+	md.lastFlushedSequence = seq
+	return true
 }
 
 // Flush all the metadata for this tlogstorage into the ARDB metadata storage server.
@@ -964,6 +956,9 @@ func (md *tlogMetadata) Flush() error {
 		return nil // nothing to do
 	}
 
+	md.mux.Lock()
+	defer md.mux.Unlock()
+
 	conn, err := md.provider.MetadataConnection()
 	if err != nil {
 		// TODO: warn 0-Orchestrator and switch to slave?!
@@ -971,7 +966,7 @@ func (md *tlogMetadata) Flush() error {
 	}
 	defer conn.Close()
 
-	_, err = conn.Do("HSET", md.key, tlogMetadataLastFlushedSequenceField, md.LastFlushedSequence)
+	_, err = conn.Do("HSET", md.key, tlogMetadataLastFlushedSequenceField, md.lastFlushedSequence)
 	return err
 }
 
