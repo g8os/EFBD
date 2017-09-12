@@ -97,6 +97,20 @@ func (c *Client) encodeWaitNBDSlaveSync(w io.Writer) error {
 	return capnp.NewEncoder(w).Encode(msg)
 }
 
+func (c *Client) encodeDisconnect(w io.Writer) error {
+	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
+	if err != nil {
+		return err
+	}
+	cmd, err := schema.NewRootTlogClientMessage(seg)
+	if err != nil {
+		return err
+	}
+	cmd.SetDisconnect()
+
+	return capnp.NewEncoder(w).Encode(msg)
+}
+
 func (c *Client) decodeHandshakeResponse() (*schema.HandshakeResponse, error) {
 	msg, err := capnp.NewDecoder(c.conn).Decode()
 	if err != nil {

@@ -43,7 +43,6 @@ func (vt *vdiskManager) Get(ctx context.Context, vdiskID string, firstSequence u
 	// check if this vdisk already exist
 	vd, ok := vt.vdisks[vdiskID]
 	if ok {
-		vd.addClient(conn)
 		return
 	}
 
@@ -53,7 +52,6 @@ func (vt *vdiskManager) Get(ctx context.Context, vdiskID string, firstSequence u
 	if err != nil {
 		return
 	}
-	vd.addClient(conn)
 	vt.vdisks[vdiskID] = vd
 
 	log.Debugf("create vdisk with expectedSequence:%v", vd.expectedSequence)

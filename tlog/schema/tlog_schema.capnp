@@ -34,6 +34,7 @@ struct TlogClientMessage {
 		block @0 :TlogBlock;        # block message
 		forceFlushAtSeq @1 :UInt64; # force flush at seq message
 		waitNBDSlaveSync @2 :Void;  # Wait NBD Slave Sync message
+        disconnect @3 :Void;        # disconnect from server
 	}
 }
 

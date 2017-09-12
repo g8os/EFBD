@@ -583,3 +583,13 @@ func (c *Client) Close() error {
 	}
 	return nil
 }
+
+// Disconncct disconnects client gracefully
+// It is on progress func which can only be used in unit test
+// See https://github.com/zero-os/0-Disk/issues/426 for the progress
+func (c *Client) Disconnect() error {
+	c.wLock.Lock()
+	defer c.wLock.Unlock()
+
+	return c.encodeDisconnect(c.conn)
+}

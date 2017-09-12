@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"os"
 	"os/signal"
@@ -9,7 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/emirpasic/gods/sets/treeset"
 	"github.com/zero-os/0-stor/client/lib"
 
 	"github.com/zero-os/0-Disk/config"
@@ -31,10 +31,9 @@ const (
 )
 
 const (
-	vdiskCmdForceFlushBlocking           = iota // blocking force flush
-	vdiskCmdForceFlushAtSeq                     // non-blocking force flush with sequence param
-	vdiskCmdClearUnorderedBlocksBlocking        // blocking clear all unordered blocks
-	vdiskCmdWaitSlaveSync                       // wait for slave sync to be finished
+	vdiskCmdForceFlushBlocking = iota // blocking force flush
+	vdiskCmdForceFlushAtSeq           // non-blocking force flush with sequence param
+	vdiskCmdWaitSlaveSync             // wait for slave sync to be finished
 )
 
 // command for vdisk flusher
@@ -52,16 +51,10 @@ type vdisk struct {
 
 	configSource config.Source
 
-	// channels for block receiver
-	blockInputChan       chan *schema.TlogBlock // input channel of block received from client
-	blockRecvCmdChan     chan uint8             // channel of block receiver command
-	blockRecvCmdRespChan chan struct{}          // channel of block receiver command response
-
 	// channels for flusher
 	orderedBlockChan   chan *schema.TlogBlock // ordered blocks from blockInputChan
 	flusherCmdChan     chan vdiskFlusherCmd   // channel of flusher command
 	flusherCmdRespChan chan struct{}          // channel of flusher command response
-	unwantedBlockChan  chan *schema.TlogBlock // channel of unwanted block : e.g.: double sent
 
 	expectedSequence     uint64 // expected sequence to be received
 	expectedSequenceLock sync.Mutex
@@ -69,8 +62,8 @@ type vdisk struct {
 	flusherConf *flusherConfig
 
 	// connected clients table
-	clientsTab     map[string]*net.TCPConn
-	clientsTabLock sync.Mutex
+	clientConn     *net.TCPConn
+	clientConnLock sync.Mutex
 
 	aggComm         *aggmq.AggComm
 	aggMq           *aggmq.MQ
@@ -118,20 +111,14 @@ func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, config
 		respChan:     make(chan *BlockResponse, respChanSize),
 		configSource: configSource,
 
-		// block receiver
-		blockInputChan:       make(chan *schema.TlogBlock, maxTlbInBuffer),
-		blockRecvCmdChan:     make(chan uint8, 1),
-		blockRecvCmdRespChan: make(chan struct{}, 1),
-		expectedSequence:     firstSequence,
+		expectedSequence: firstSequence,
 
 		// flusher
 		orderedBlockChan:   make(chan *schema.TlogBlock, maxTlbInBuffer),
 		flusherCmdChan:     make(chan vdiskFlusherCmd, 1),
 		flusherCmdRespChan: make(chan struct{}, 1),
-		unwantedBlockChan:  make(chan *schema.TlogBlock, 2),
 		flusherConf:        flusherConf,
 
-		clientsTab:      make(map[string]*net.TCPConn),
 		withSlaveSyncer: false,
 		aggComm:         aggComm,
 		aggMq:           aggMq,
@@ -141,13 +128,13 @@ func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, config
 		cancelFunc: cancelFunc,
 	}
 
-	if err := vd.watchConfig(ctx); err != nil {
+	if err := vd.watchConfig(); err != nil {
 		cancelFunc()
 		return nil, err
 	}
 	if err := vd.createFlusher(); err != nil {
 		cancelFunc()
-		return nil, err
+		return nil, fmt.Errorf("failed to create flusher: %v", err)
 	}
 	if err := vd.manageSlaveSync(); err != nil {
 		cancelFunc()
@@ -155,25 +142,24 @@ func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, config
 	}
 
 	// run vdisk goroutines
-	go vd.runFlusher(ctx, cancelFunc)
-	go vd.runBlockReceiver(ctx)
-	go vd.handleSighup(ctx)
-	go vd.cleanup(ctx, cleanup)
+	go vd.runFlusher()
+	go vd.handleSighup()
+	go vd.cleanup(cleanup)
 
 	log.Infof("vdisk %v created", vd.id)
 	return vd, nil
 }
 
-func (vd *vdisk) watchConfig(ctx context.Context) error {
+func (vd *vdisk) watchConfig() error {
 	// get the cluster ID
-	vtcCh, err := config.WatchVdiskTlogConfig(ctx, vd.configSource, vd.id)
+	vtcCh, err := config.WatchVdiskTlogConfig(vd.ctx, vd.configSource, vd.id)
 	if err != nil {
 		return err
 	}
 	vtc := <-vtcCh
 	zeroStorClusterID := vtc.ZeroStorClusterID
 
-	zeroStorClusterConfCh, err := config.WatchZeroStorClusterConfig(ctx, vd.configSource, zeroStorClusterID)
+	zeroStorClusterConfCh, err := config.WatchZeroStorClusterConfig(vd.ctx, vd.configSource, zeroStorClusterID)
 	if err != nil {
 		return err
 	}
@@ -184,7 +170,7 @@ func (vd *vdisk) watchConfig(ctx context.Context) error {
 	go func() {
 		for {
 			select {
-			case <-ctx.Done():
+			case <-vd.ctx.Done():
 				return
 				//case _, err := <-config.WatchTlogStorageConfig(ctx, vd.configSource, vd.id):
 				// TODO listen to this to watch for slave storage cluster
@@ -221,13 +207,13 @@ func (vd *vdisk) createFlusher() error {
 }
 
 // do all necessary cleanup for this vdisk
-func (vd *vdisk) cleanup(ctx context.Context, cleanup vdiskCleanupFunc) {
+func (vd *vdisk) cleanup(cleanup vdiskCleanupFunc) {
 	defer func() {
 		log.Infof("vdisk %v cleanup", vd.id)
 		cleanup(vd.id)
 	}()
 	select {
-	case <-ctx.Done():
+	case <-vd.ctx.Done():
 		if err := vd.storClient.Close(); err != nil {
 			log.Errorf("vdisk `%v` failed to close 0-stor client: %v", vd.id, err)
 		}
@@ -248,13 +234,6 @@ func (vd *vdisk) resetFirstSequence(newSeq uint64, conn *net.TCPConn) error {
 	if newSeq == vd.expectedSequence { // we already in same page, do nothing
 		return nil
 	}
-	if vd.numConnectedClient() != 1 {
-		vd.disconnectExcept(conn)
-	}
-
-	// send ignore all unordered blocks command
-	vd.blockRecvCmdChan <- vdiskCmdClearUnorderedBlocksBlocking
-	<-vd.blockRecvCmdRespChan
 
 	// send flush command
 	vd.flusherCmdChan <- vdiskFlusherCmd{
@@ -311,75 +290,9 @@ func (vd *vdisk) doWaitSlaveSync(respCh chan error, lastSeqFlushed uint64) {
 	respCh <- vd.aggComm.SendCmd(aggmq.CmdWaitSlaveSync, lastSeqFlushed)
 }
 
-// this is the flusher routine that receive the blocks and order it.
-func (vd *vdisk) runBlockReceiver(ctx context.Context) {
-	buffer := treeset.NewWith(tlogBlockComparator)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case cmd := <-vd.blockRecvCmdChan:
-			if cmd == vdiskCmdClearUnorderedBlocksBlocking {
-				buffer.Clear()
-				vd.blockRecvCmdRespChan <- struct{}{}
-			} else {
-				log.Errorf("invalid block receiver command = %v", cmd)
-			}
-		case tlb := <-vd.blockInputChan:
-			func() {
-				// We create closure here to make the locking easy.
-				// We are not creating separate func because the vd.expectedSequence
-				// should be local to `runBlockReceiver` func
-				vd.expectedSequenceLock.Lock()
-				defer vd.expectedSequenceLock.Unlock()
-
-				curSeq := tlb.Sequence()
-
-				if curSeq == vd.expectedSequence {
-					// it is the next sequence we wait
-					vd.orderedBlockChan <- tlb
-					vd.expectedSequence++
-				} else if curSeq > vd.expectedSequence {
-					// if this is not what we wait, buffer it
-					buffer.Add(tlb)
-				} else { // tlb.Sequence() < vd.expectedSequence -> duplicated message
-					vd.unwantedBlockChan <- tlb
-					return
-				}
-
-				if buffer.Empty() {
-					return
-				}
-
-				// lets see the buffer again, check if we have blocks that
-				// can be sent to the flusher.
-				it := buffer.Iterator()
-				blocks := []*schema.TlogBlock{}
-
-				expected := vd.expectedSequence
-				for it.Next() {
-					block := it.Value().(*schema.TlogBlock)
-					if block.Sequence() != expected {
-						break
-					}
-					expected++
-					blocks = append(blocks, block)
-				}
-
-				for _, block := range blocks {
-					buffer.Remove(block) // we can only do it here because the iterator is read only
-					vd.orderedBlockChan <- block
-					vd.expectedSequence++
-				}
-			}()
-		}
-	}
-}
-
 // this is the flusher routine that does the flush asynchronously
-func (vd *vdisk) runFlusher(ctx context.Context, cancelFunc context.CancelFunc) {
-	defer cancelFunc()
+func (vd *vdisk) runFlusher() {
+	defer vd.cancelFunc()
 
 	// buffer of all ordered tlog blocks
 	tlogs := []*schema.TlogBlock{}
@@ -406,7 +319,7 @@ func (vd *vdisk) runFlusher(ctx context.Context, cancelFunc context.CancelFunc) 
 	for {
 		cmdType = -1
 		select {
-		case <-ctx.Done():
+		case <-vd.ctx.Done():
 			return
 		case tlb := <-vd.orderedBlockChan:
 			// we receive tlog block, it already ordered
@@ -436,19 +349,6 @@ func (vd *vdisk) runFlusher(ctx context.Context, cancelFunc context.CancelFunc) 
 				continue
 			}
 			toFlushLen = len(tlogs)
-
-		case tlb := <-vd.unwantedBlockChan:
-			// it is block that not expected to come:
-			// - already received
-			// - already flushed
-			seq := tlb.Sequence()
-			if seq <= lastSeqFlushed {
-				vd.respChan <- &BlockResponse{
-					Status:    int8(tlog.BlockStatusFlushOK),
-					Sequences: []uint64{seq},
-				}
-			} // block received response already sent by main server handler
-			continue
 
 		case flusherCmd = <-vd.flusherCmdChan:
 			// got command
@@ -561,77 +461,14 @@ func notifyFlushError(err error) {
 	}
 }
 
-// number of connected clients to this vdisk
-func (vd *vdisk) numConnectedClient() int {
-	vd.clientsTabLock.Lock()
-	defer vd.clientsTabLock.Unlock()
-	return len(vd.clientsTab)
-}
-
-// add client to the table of connected clients
-func (vd *vdisk) addClient(conn *net.TCPConn) {
-	vd.clientsTabLock.Lock()
-	defer vd.clientsTabLock.Unlock()
-
-	vd.clientsTab[conn.RemoteAddr().String()] = conn
-}
-
-// remove client from the table of connected clients
-func (vd *vdisk) removeClient(conn *net.TCPConn) {
-	vd.clientsTabLock.Lock()
-	defer vd.clientsTabLock.Unlock()
-
-	addr := conn.RemoteAddr().String()
-	if _, ok := vd.clientsTab[addr]; !ok {
-		log.Errorf("vdisk failed to remove client:%v", addr)
-	} else {
-		delete(vd.clientsTab, addr)
-	}
-}
-
-// disconnect all connected clients except the
-// given exceptConn connection
-func (vd *vdisk) disconnectExcept(exceptConn *net.TCPConn) {
-	vd.clientsTabLock.Lock()
-	defer vd.clientsTabLock.Unlock()
-
-	var conns []*net.TCPConn
-	for _, conn := range vd.clientsTab {
-		if conn != exceptConn {
-			conns = append(conns, conn)
-			conn.Close()
-		}
-	}
-	for _, conn := range conns {
-		delete(vd.clientsTab, conn.RemoteAddr().String())
-	}
-}
-
-// the comparator function needed by https://godoc.org/github.com/emirpasic/gods/sets/treeset#NewWith
-func tlogBlockComparator(a, b interface{}) int {
-	tlbA := a.(*schema.TlogBlock)
-	tlbB := b.(*schema.TlogBlock)
-
-	seqA, seqB := tlbA.Sequence(), tlbB.Sequence()
-
-	switch {
-	case seqA < seqB:
-		return -1
-	case seqA > seqB:
-		return 1
-	default: // tlbA.Sequence() == tlbB.Sequence():
-		return 0
-	}
-}
-
 // handle SIGHUP
-func (vd *vdisk) handleSighup(ctx context.Context) {
+func (vd *vdisk) handleSighup() {
 	sigs := make(chan os.Signal)
 	signal.Notify(sigs, syscall.SIGHUP)
 
 	for {
 		select {
-		case <-ctx.Done():
+		case <-vd.ctx.Done():
 			return
 		case <-sigs:
 			vd.manageSlaveSync()

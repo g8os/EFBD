@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/zero-os/0-Disk/tlog/tlogclient"
 )
@@ -35,7 +35,7 @@ func TestForceFlushAtSeq(t *testing.T) {
 
 	// start the server
 	s, err := NewServer(conf, stubSource)
-	assert.Nil(t, err)
+	require.Nil(t, err)
 
 	go s.Listen(ctx)
 
@@ -51,13 +51,11 @@ func TestForceFlushAtSeq(t *testing.T) {
 
 	// create tlog client
 	client, err := tlogclient.New([]string{s.ListenAddr()}, vdiskID, firstSequence, false)
-	if !assert.Nil(t, err) {
-		return
-	}
+	require.Nil(t, err)
 
 	// Step 3
 	err = client.ForceFlushAtSeq(forceFlushedSeq)
-	assert.Nil(t, err)
+	require.Nil(t, err)
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -82,12 +80,6 @@ func TestForceFlushAtSeq(t *testing.T) {
 	// we still have some blocks to be flushed, but it is not important for this test
 }
 
-func TestForceFlushAtSeqPossibleRace(t *testing.T) {
-	for i := 0; i < 6; i++ {
-		testForceFlushAtSeqPossibleRace(t, i%2 == 0)
-	}
-}
-
 // Test server's force flush feature with possible race condition
 // Steps:
 // 1. set flushTime to very high value to avoid flush by timeout
@@ -96,7 +88,7 @@ func TestForceFlushAtSeqPossibleRace(t *testing.T) {
 // 3. create goroutine to wait for force flushed seq
 // 4. client send the logs
 // 5. client force flushed that sequence
-func testForceFlushAtSeqPossibleRace(t *testing.T, withSleep bool) {
+func TestForceFlushAtSeqPossibleRace(t *testing.T) {
 	const (
 		vdiskID       = "12345"
 		firstSequence = 0
@@ -113,7 +105,7 @@ func testForceFlushAtSeqPossibleRace(t *testing.T, withSleep bool) {
 
 	// start the server
 	s, err := NewServer(conf, stubSource)
-	assert.Nil(t, err)
+	require.Nil(t, err)
 
 	go s.Listen(ctx)
 
@@ -129,9 +121,7 @@ func testForceFlushAtSeqPossibleRace(t *testing.T, withSleep bool) {
 
 	// create tlog client
 	client, err := tlogclient.New([]string{s.ListenAddr()}, vdiskID, firstSequence, false)
-	if !assert.Nil(t, err) {
-		return
-	}
+	require.Nil(t, err)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -148,12 +138,8 @@ func testForceFlushAtSeqPossibleRace(t *testing.T, withSleep bool) {
 	testClientSendLog(ctx, t, client, cancelFunc, 0, numLogs, data)
 
 	// Step 5
-	if withSleep {
-		// to avoid race condition
-		time.Sleep(1 * time.Second)
-	}
 	err = client.ForceFlushAtSeq(forceFlushedSeq)
-	assert.Nil(t, err)
+	require.Nil(t, err)
 
 	ended := make(chan struct{}, 1)
 	go func() {
@@ -163,9 +149,9 @@ func testForceFlushAtSeqPossibleRace(t *testing.T, withSleep bool) {
 
 	select {
 	case <-time.After(3 * time.Second):
-		t.Fatalf("TestForceFlushAtSeqPossibleRace failed. too long, withSleep =%v", withSleep)
+		t.Fatalf("TestForceFlushAtSeqPossibleRace failed. too long")
 	case <-ended:
-		t.Logf("TestForceFlushAtSeqPossibleRace succeed, with sleep=%v", withSleep)
+		t.Logf("TestForceFlushAtSeqPossibleRace succeed")
 		break
 	}
 }

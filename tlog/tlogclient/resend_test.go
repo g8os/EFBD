@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"zombiezen.com/go/capnproto2"
 
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
@@ -84,11 +85,23 @@ func newDummyServer(s *server.Server) *dummyServer {
 	}
 }
 
+func readDecodeClientMessage(r io.Reader) (*schema.TlogClientMessage, error) {
+	msg, err := capnp.NewDecoder(r).Decode()
+	if err != nil {
+		return nil, err
+	}
+	cmd, err := schema.ReadRootTlogClientMessage(msg)
+	if err != nil {
+		return nil, err
+	}
+	return &cmd, nil
+}
+
 // run this dummy server.
 func (ds *dummyServer) run(t *testing.T, logsToIgnore map[uint64]struct{}) error {
 	for {
 		// read client command
-		cmd, err := ds.serv.ReadDecodeClientMessage(ds.reqPipeReader)
+		cmd, err := readDecodeClientMessage(ds.reqPipeReader)
 		if err != nil {
 			t.Fatal("failed to read client message")
 		}
