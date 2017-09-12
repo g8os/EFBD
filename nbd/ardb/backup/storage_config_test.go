@@ -97,7 +97,8 @@ var validStorageConfigs = []struct {
 	{StorageConfig{
 		StorageType: FTPStorageType,
 		Resource: FTPStorageConfig{
-			Address:  "ftp://localhost:2000/bar",
+			Address:  "localhost:2000",
+			RootDir:  "/bar",
 			Username: "foo",
 		},
 	}, "ftp://foo@localhost:2000/bar"},
@@ -105,7 +106,8 @@ var validStorageConfigs = []struct {
 	{StorageConfig{
 		StorageType: FTPStorageType,
 		Resource: FTPStorageConfig{
-			Address:  "ftp://localhost:2000/bar",
+			Address:  "localhost:2000",
+			RootDir:  "/bar",
 			Username: "foo",
 			Password: "boo",
 		},

@@ -110,8 +110,13 @@ func (cfg *FTPStorageConfig) validate() error {
 	if cfg.Address == "" {
 		return errors.New("no ftp server address given")
 	}
-	if !valid.IsURL(cfg.Address + cfg.RootDir) {
-		return errors.New("invalid ftp server address given")
+	if !valid.IsDialString(cfg.Address) {
+		return fmt.Errorf("invalid ftp server address given: %s", cfg.Address)
+	}
+	if cfg.RootDir != "" {
+		if ok, ft := valid.IsFilePath(cfg.RootDir); !ok || ft != valid.Unix {
+			return fmt.Errorf("invalid root dir given: %s", cfg.RootDir)
+		}
 	}
 
 	if cfg.Password != "" && cfg.Username == "" {

@@ -35,11 +35,11 @@ func TestFTPStorageConfigToString(t *testing.T) {
 		Expected string
 	}{
 		{FTPStorageConfig{Address: "localhost:2000"}, "ftp://localhost:2000"},
-		{FTPStorageConfig{Address: "localhost:2000/bar/foo"}, "ftp://localhost:2000/bar/foo"},
-		{FTPStorageConfig{Address: "localhost:2000/bar"}, "ftp://localhost:2000/bar"},
+		{FTPStorageConfig{Address: "localhost:2000", RootDir: "/bar/foo"}, "ftp://localhost:2000/bar/foo"},
+		{FTPStorageConfig{Address: "localhost:2000", RootDir: "/bar"}, "ftp://localhost:2000/bar"},
 		{FTPStorageConfig{Address: "localhost:2000", Username: "foo"}, "ftp://foo@localhost:2000"},
 		{FTPStorageConfig{Address: "localhost:2000", Username: "foo", Password: "boo"}, "ftp://foo:boo@localhost:2000"},
-		{FTPStorageConfig{Address: "localhost:2000/bar", Username: "foo", Password: "boo"}, "ftp://foo:boo@localhost:2000/bar"},
+		{FTPStorageConfig{Address: "localhost:2000", RootDir: "/bar", Username: "foo", Password: "boo"}, "ftp://foo:boo@localhost:2000/bar"},
 	}
 
 	for _, validCase := range validCases {
@@ -57,6 +57,7 @@ func TestFTPStorageConfigStringCommute(t *testing.T) {
 		"localhost:2000/foo",
 		"ftp://localhost:2000",
 		"ftp://localhost:2000/foo",
+		"ftp://127.0.0.1:2000/foo",
 		"username@localhost:2000",
 		"username@localhost:200/foo0",
 		"ftp://username@localhost:2000/bar/foo",
@@ -67,7 +68,7 @@ func TestFTPStorageConfigStringCommute(t *testing.T) {
 
 	for _, validCase := range validCases {
 		var cfg FTPStorageConfig
-		if !assert.NoError(cfg.Set(validCase)) {
+		if !assert.NoErrorf(cfg.Set(validCase), "input: %v", validCase) {
 			continue
 		}
 
