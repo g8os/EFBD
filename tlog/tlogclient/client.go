@@ -331,11 +331,6 @@ func (c *Client) Recv() <-chan *Result {
 	return reChan
 }
 
-// LastFlushedSequence returns the last flushed sequence of this tlog client.
-func (c *Client) LastFlushedSequence() uint64 {
-	return c.blockBuffer.LastFlushed()
-}
-
 // reconnect from read do re-connect from reading goroutine
 func (c *Client) reconnectFromRead(errCause error) error {
 	closedTime := time.Now()

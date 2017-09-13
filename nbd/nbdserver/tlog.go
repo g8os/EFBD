@@ -57,7 +57,7 @@ func newTlogStorage(ctx context.Context, vdiskID, clusterID string, configSource
 		// TODO: use metadata.LastFlushedSequence to pass it onto the tlogclient,
 		//       after the handshake we should be able to retrieve the actual LastFlushedSequence,
 		//       and assign it to our metadata.LastFlushedSequence after we compared the 2.
-		//       If the one returned by the tlogclient (`client.LastFlushedSequence()`) is greater than ours,
+		//       If the one returned by the tlogclient is greater than ours,
 		//       we know we'll want to sync our storage first with the tlog head of this vdisk.
 		// see: https://github.com/zero-os/0-Disk/issues/230
 		client, err = tlogclient.New(tlogClusterConfig.Servers, vdiskID, 0, true)
@@ -648,7 +648,6 @@ type tlogClient interface {
 	WaitNbdSlaveSync() error
 	ChangeServerAddresses([]string)
 	Recv() <-chan *tlogclient.Result
-	LastFlushedSequence() uint64
 	Close() error
 }
 
