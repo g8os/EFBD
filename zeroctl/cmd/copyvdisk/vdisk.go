@@ -8,6 +8,7 @@ import (
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
+	"github.com/zero-os/0-Disk/nbd/nbdserver/tlog"
 	cmdconfig "github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
 
@@ -92,21 +93,35 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 	// copy the vdisk
 	switch stype := sourceStaticConfig.Type.StorageType(); stype {
 	case config.StorageDeduped:
-		return storage.CopyDeduped(
+		err = storage.CopyDeduped(
 			sourceVdiskID, targetVdiskID,
 			sourceClusterConfig, targetClusterConfig)
 	case config.StorageNonDeduped:
-		return storage.CopyNonDeduped(
+		err = storage.CopyNonDeduped(
 			sourceVdiskID, targetVdiskID,
 			sourceClusterConfig, targetClusterConfig)
 	case config.StorageSemiDeduped:
-		return storage.CopySemiDeduped(
+		err = storage.CopySemiDeduped(
 			sourceVdiskID, targetVdiskID,
 			sourceClusterConfig, targetClusterConfig)
 	default:
-		return fmt.Errorf("vdisk %s has an unknown storage type %d",
+		err = fmt.Errorf("vdisk %s has an unknown storage type %d",
 			sourceVdiskID, stype)
 	}
+
+	if err != nil {
+		return err
+	}
+
+	if !sourceStaticConfig.Type.TlogSupport() {
+		return nil
+	}
+
+	// copy the tlog-specific metadata if both the source and target
+	// support tlog and have enabled it
+	// TODO: only try to do this if both source and target vdiskID have tlog configured
+	// TODO: also fork/copy the actual tlog (meta)data, see https://github.com/zero-os/0-Disk/issues/147
+	return tlog.CopyMetadata(sourceVdiskID, targetVdiskID, sourceClusterConfig, targetClusterConfig)
 }
 
 func init() {

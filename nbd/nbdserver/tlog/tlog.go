@@ -900,30 +900,38 @@ func (dh *dataHistory) Empty() bool {
 // Defauling to nil-values of properties for all properties
 // that weren't defined yet in the ARDB metadata storage.
 func newTlogMetadata(vdiskID string, provider ardb.MetadataConnProvider) (*tlogMetadata, error) {
-	var key string
-	var lastFlushedSequence uint64
+	if provider == nil {
+		// used for testing purposes only
+		return new(tlogMetadata), nil
+	}
 
-	if provider != nil {
-		conn, err := provider.MetadataConnection()
-		if err != nil {
-			// TODO: warn 0-Orchestrator and switch to slave?!
-			return nil, err
-		}
-		defer conn.Close()
+	conn, err := provider.MetadataConnection()
+	if err != nil {
+		// TODO: warn 0-Orchestrator and switch to slave?!
+		return nil, err
+	}
+	defer conn.Close()
 
-		key = MetadataKey(vdiskID)
+	key := MetadataKey(vdiskID)
+	md, err := deserializeTlogMetadata(key, conn)
+	if err != nil {
+		return nil, err
+	}
 
-		lastFlushedSequence, err = redis.Uint64(
-			conn.Do("HGET", key, tlogMetadataLastFlushedSequenceField))
-		if err != nil && err != redis.ErrNil {
-			return nil, err
-		}
+	md.provider = provider
+	return md, nil
+}
+
+func deserializeTlogMetadata(key string, metaConn redis.Conn) (*tlogMetadata, error) {
+	lastFlushedSequence, err := redis.Uint64(
+		metaConn.Do("HGET", key, tlogMetadataLastFlushedSequenceField))
+	if err != nil && err != redis.ErrNil {
+		return nil, err
 	}
 
 	return &tlogMetadata{
 		lastFlushedSequence: lastFlushedSequence,
 		key:                 key,
-		provider:            provider,
 	}, nil
 }
 
@@ -965,7 +973,11 @@ func (md *tlogMetadata) Flush() error {
 	}
 	defer conn.Close()
 
-	_, err = conn.Do("HSET", md.key, tlogMetadataLastFlushedSequenceField, md.lastFlushedSequence)
+	return md.deserialize(conn)
+}
+
+func (md *tlogMetadata) deserialize(conn redis.Conn) error {
+	_, err := conn.Do("HSET", md.key, tlogMetadataLastFlushedSequenceField, md.lastFlushedSequence)
 	return err
 }
 
@@ -974,6 +986,144 @@ func (md *tlogMetadata) Flush() error {
 func MetadataKey(vdiskID string) string {
 	return tlogMetadataKeyPrefix + vdiskID
 }
+
+// DeleteMetadata deletes all metadata of a tlog-enabled storage,
+// from a given metadata server using the given vdiskID.
+func DeleteMetadata(serverCfg config.StorageServerConfig, vdiskIDs ...string) error {
+	// get connection to metadata storage server
+	conn, err := ardb.GetConnection(serverCfg)
+	if err != nil {
+		return fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
+	}
+	defer conn.Close()
+
+	for _, vdiskID := range vdiskIDs {
+		// delete the actual metadata (if it existed)
+		err = conn.Send("DEL", MetadataKey(vdiskID))
+		if err != nil {
+			return fmt.Errorf(
+				"couldn't add %s to the delete tlog metadata batch: %v",
+				vdiskID, err)
+		}
+	}
+
+	err = conn.Flush()
+	if err != nil {
+		return fmt.Errorf(
+			"couldn't flush the delete tlog metadata batch: %v", err)
+	}
+
+	var errors flushErrors
+	for _, vdiskID := range vdiskIDs {
+		_, err = conn.Receive()
+		if err != nil {
+			errors = append(errors, fmt.Errorf(
+				"couldn't delete tlog metadata for %s: %v", vdiskID, err))
+		}
+	}
+
+	if len(errors) > 0 {
+		return errors
+	}
+
+	return nil
+}
+
+// CopyMetadata copies all metadata of a tlog-enabled storage
+// from a sourceID to a targetID, within the same cluster or between different clusters.
+func CopyMetadata(sourceID, targetID string, sourceCluster, targetCluster *config.StorageClusterConfig) error {
+	// validate source cluster
+	if sourceCluster == nil {
+		return errors.New("no source cluster given")
+	}
+	if sourceCluster.MetadataStorage == nil {
+		return errors.New("no metadataServer given for source")
+	}
+
+	// define whether or not we're copying between different servers,
+	// and if the target cluster is given, make sure to validate it.
+	var sameServer bool
+	if targetCluster == nil {
+		sameServer = true
+		if sourceID == targetID {
+			return errors.New(
+				"sourceID and targetID can't be equal when copying within the same cluster")
+		}
+	} else {
+		if targetCluster.MetadataStorage == nil {
+			return errors.New("no metaDataServer given for target")
+		}
+
+		// even if targetCluster is given,
+		// we could still be dealing with a duplicated cluster
+		sameServer = *sourceCluster.MetadataStorage == *targetCluster.MetadataStorage
+	}
+
+	// within same storage server
+	if sameServer {
+		conn, err := ardb.GetConnection(*sourceCluster.MetadataStorage)
+		if err != nil {
+			return fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
+		}
+		defer conn.Close()
+
+		return copyMetadataSameConnection(sourceID, targetID, conn)
+	}
+
+	// between different storage servers
+	conns, err := ardb.GetConnections(
+		*sourceCluster.MetadataStorage, *targetCluster.MetadataStorage)
+	if err != nil {
+		return fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
+	}
+	defer func() {
+		conns[0].Close()
+		conns[1].Close()
+	}()
+	return copyMetadataDifferentConnections(sourceID, targetID, conns[0], conns[1])
+}
+
+func copyMetadataDifferentConnections(sourceID, targetID string, connA, connB redis.Conn) error {
+	sourceKey := MetadataKey(sourceID)
+	metadata, err := deserializeTlogMetadata(sourceKey, connA)
+	if err != nil {
+		return fmt.Errorf(
+			"couldn't deserialize source tlog metadata for %s: %v", sourceID, err)
+	}
+
+	metadata.key = MetadataKey(targetID)
+	err = metadata.deserialize(connB)
+	if err != nil {
+		return fmt.Errorf(
+			"couldn't serialize destination tlog metadata for %s: %v", targetID, err)
+	}
+
+	return nil
+}
+
+func copyMetadataSameConnection(sourceID, targetID string, conn redis.Conn) error {
+	log.Infof("dumping tlog metadata of vdisk %q and restoring it as tlog metadata of vdisk %q",
+		sourceID, targetID)
+
+	sourceKey, targetKey := MetadataKey(sourceID), MetadataKey(targetID)
+	_, err := copyMetadataSameConnScript.Do(conn, sourceKey, targetKey)
+	return err
+}
+
+var copyMetadataSameConnScript = redis.NewScript(0, `
+	local source = ARGV[1]
+	local dest = ARGV[2]
+	
+	if redis.call("EXISTS", source) == 0 then
+		return
+	end
+	
+	if redis.call("EXISTS", dest) == 1 then
+		redis.call("DEL", dest)
+	end
+	
+	redis.call("RESTORE", dest, 0, redis.call("DUMP", source))
+`)
 
 const (
 	tlogMetadataKeyPrefix                = "tlog:"
