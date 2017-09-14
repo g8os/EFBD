@@ -2,13 +2,19 @@ package main
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
+	"github.com/zero-os/0-Disk/nbd/nbdserver/tlog"
 	"github.com/zero-os/0-Disk/redisstub"
+	"github.com/zero-os/0-Disk/tlog/stor"
+	"github.com/zero-os/0-Disk/tlog/stor/embeddedserver"
+	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
+	"github.com/zero-os/0-stor/client/meta/embedserver"
 )
 
 func TestBackendSigtermHandler(t *testing.T) {
@@ -57,7 +63,7 @@ func TestBackendSigtermHandler(t *testing.T) {
 			Servers: []string{tlogrpc},
 		})
 
-		tls, err := newTlogStorage(ctx, vdiskID, "tlogcluster", source, blockSize, storage, provider, nil)
+		tls, err := tlog.Storage(ctx, vdiskID, "tlogcluster", source, blockSize, storage, provider, nil)
 		require.NoError(t, err)
 		require.NotNil(t, tls)
 
@@ -66,6 +72,82 @@ func TestBackendSigtermHandler(t *testing.T) {
 	defer cleanup()
 
 	testBackendSigtermHandler(ctx, t, vdiskID, blockSize, size, tlogStorage)
+}
+
+func newTlogTestServer(ctx context.Context, t *testing.T, vdiskID string) (string, func()) {
+	testConf := &server.Config{
+		DataShards:   4,
+		ParityShards: 2,
+		ListenAddr:   "",
+		FlushSize:    25,
+		FlushTime:    25,
+		PrivKey:      "12345678901234567890123456789012",
+	}
+
+	configSource, _, cleanup := newZeroStorConfig(t, vdiskID, testConf)
+
+	// start the server
+	s, err := server.NewServer(testConf, configSource)
+	require.Nil(t, err)
+
+	go s.Listen(ctx)
+
+	return s.ListenAddr(), cleanup
+}
+
+func newZeroStorConfig(t *testing.T, vdiskID string, tlogConf *server.Config) (*config.StubSource, stor.Config, func()) {
+
+	// stor server
+	storCluster, err := embeddedserver.NewZeroStorCluster(tlogConf.DataShards + tlogConf.ParityShards)
+	require.Nil(t, err)
+
+	var servers []config.ServerConfig
+	for _, addr := range storCluster.Addrs() {
+		servers = append(servers, config.ServerConfig{
+			Address: addr,
+		})
+	}
+
+	// meta server
+	mdServer, err := embedserver.New()
+	require.Nil(t, err)
+
+	storConf := stor.Config{
+		VdiskID:         vdiskID,
+		Organization:    os.Getenv("iyo_organization"),
+		Namespace:       "thedisk",
+		IyoClientID:     os.Getenv("iyo_client_id"),
+		IyoSecret:       os.Getenv("iyo_secret"),
+		ZeroStorShards:  storCluster.Addrs(),
+		MetaShards:      []string{mdServer.ListenAddr()},
+		DataShardsNum:   tlogConf.DataShards,
+		ParityShardsNum: tlogConf.ParityShards,
+		EncryptPrivKey:  tlogConf.PrivKey,
+	}
+
+	clusterID := "zero_stor_cluster_id"
+	stubSource := config.NewStubSource()
+
+	stubSource.SetTlogZeroStorCluster(vdiskID, clusterID, &config.ZeroStorClusterConfig{
+		IYO: config.IYOCredentials{
+			Org:       storConf.Organization,
+			Namespace: storConf.Namespace,
+			ClientID:  storConf.IyoClientID,
+			Secret:    storConf.IyoSecret,
+		},
+		Servers: servers,
+		MetadataServers: []config.ServerConfig{
+			config.ServerConfig{
+				Address: mdServer.ListenAddr(),
+			},
+		},
+	})
+
+	cleanFunc := func() {
+		mdServer.Stop()
+		storCluster.Close()
+	}
+	return stubSource, storConf, cleanFunc
 }
 
 func testBackendSigtermHandler(ctx context.Context, t *testing.T, vdiskID string, blockSize int64, size uint64, storage storage.BlockStorage) {

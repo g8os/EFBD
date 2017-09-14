@@ -1,4 +1,4 @@
-package main
+package tlog
 
 import (
 	"bytes"
@@ -47,7 +47,7 @@ func TestTlogStorageSlow(t *testing.T) {
 	})
 	defer source.Close()
 
-	storage, err := newTlogStorage(
+	storage, err := Storage(
 		ctx, vdiskID, "tlogcluster", source, blockSize, slowStorage, nil, nil)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
