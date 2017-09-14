@@ -1,4 +1,4 @@
-package main
+package tlog
 
 import (
 	"context"
@@ -20,10 +20,10 @@ import (
 	"github.com/garyburd/redigo/redis"
 )
 
-// newTlogStorage creates a tlog storage BlockStorage,
+// Storage creates a tlog storage BlockStorage,
 // wrapping around a given backend storage,
 // using the given tlog client to send its write transactions to the tlog server.
-func newTlogStorage(ctx context.Context, vdiskID, clusterID string, configSource config.Source, blockSize int64, storage storage.BlockStorage, mdProvider ardb.MetadataConnProvider, client tlogClient) (storage.BlockStorage, error) {
+func Storage(ctx context.Context, vdiskID, clusterID string, configSource config.Source, blockSize int64, storage storage.BlockStorage, mdProvider ardb.MetadataConnProvider, client tlogClient) (storage.BlockStorage, error) {
 	if storage == nil {
 		return nil, errors.New("tlogStorage requires a non-nil BlockStorage")
 	}
@@ -242,12 +242,12 @@ func (tls *tlogStorage) Flush() error {
 	var forceFlushNum int
 	for !finished {
 		select {
-		case <-time.After(flushWaitRetry): // retry it
+		case <-time.After(FlushWaitRetry): // retry it
 			tls.tlog.ForceFlushAtSeq(latestSeq)
 
 			forceFlushNum++
 
-			if forceFlushNum >= flushWaitRetryNum {
+			if forceFlushNum >= FlushWaitRetryNum {
 				// if reach max retry number
 				// signal the condition variable anyway
 				// to avoid the goroutine blocked forever
@@ -911,7 +911,7 @@ func newTlogMetadata(vdiskID string, provider ardb.MetadataConnProvider) (*tlogM
 		}
 		defer conn.Close()
 
-		key = TlogMetadataKey(vdiskID)
+		key = MetadataKey(vdiskID)
 
 		lastFlushedSequence, err = redis.Uint64(
 			conn.Do("HGET", key, tlogMetadataLastFlushedSequenceField))
@@ -969,9 +969,9 @@ func (md *tlogMetadata) Flush() error {
 	return err
 }
 
-// TlogMetadataKey returns the key of the ARDB hashmap,
+// MetadataKey returns the key of the ARDB hashmap,
 // which contains all the metadata stored for a tlog storage.
-func TlogMetadataKey(vdiskID string) string {
+func MetadataKey(vdiskID string) string {
 	return tlogMetadataKeyPrefix + vdiskID
 }
 
