@@ -2,7 +2,6 @@ package tlogclient
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
@@ -58,10 +57,10 @@ func newZeroStorConfigFromCluster(t *testing.T, storCluster *embeddedserver.Zero
 
 	storConf := stor.Config{
 		VdiskID:         vdiskID,
-		Organization:    os.Getenv("iyo_organization"),
+		Organization:    "testorg",
 		Namespace:       "thedisk",
-		IyoClientID:     os.Getenv("iyo_client_id"),
-		IyoSecret:       os.Getenv("iyo_secret"),
+		IyoClientID:     "",
+		IyoSecret:       "",
 		ZeroStorShards:  storCluster.Addrs(),
 		MetaShards:      []string{mdServer.ListenAddr()},
 		DataShardsNum:   data,

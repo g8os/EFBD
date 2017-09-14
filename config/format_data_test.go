@@ -330,26 +330,6 @@ servers:
   - address: "1.1.1.1:11"
 metadataServers:
   - address: "3.3.3.3:33"
-`, // missing clienid
-	`
-iyo:
-  org: "foo org"
-  namespace: "foo namespace"
-  secret: "foo secret"
-servers:
-  - address: "1.1.1.1:11"
-metadataServers:
-  - address: "3.3.3.3:33"
-`, // missing secret
-	`
-iyo:
-  org: "foo org"
-  namespace: "foo namespace"
-  clientID: "foo client"
-servers:
-  - address: "1.1.1.1:11"
-metadataServers:
-  - address: "3.3.3.3:33"
 `, // missing server addresses
 	`
 iyo:
