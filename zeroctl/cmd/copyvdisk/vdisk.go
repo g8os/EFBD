@@ -183,9 +183,9 @@ WARNING: when copying nondeduped vdisks,
 		"priv-key", "12345678901234567890123456789012",
 		"private key")
 
-	VdiskCmd.Flags().IntVar(
+	VdiskCmd.Flags().IntVarP(
 		&vdiskCmdCfg.JobCount,
-		"jobs", runtime.NumCPU(),
+		"jobs", "j", runtime.NumCPU(),
 		"the amount of parallel jobs to run the tlog generator")
 
 }
