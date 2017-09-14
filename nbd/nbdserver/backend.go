@@ -14,6 +14,8 @@ import (
 )
 
 func newBackend(vdiskID string, size uint64, blockSize int64, storage storage.BlockStorage, vComp *vdiskCompletion, connProvider ardb.ConnProvider, vdiskStatsLogger statistics.VdiskLogger) *backend {
+	vComp.Add()
+
 	return &backend{
 		vdiskID:          vdiskID,
 		blockSize:        blockSize,
@@ -225,7 +227,6 @@ func (ab *backend) HasFlush(ctx context.Context) bool {
 func (ab *backend) GoBackground(ctx context.Context) {
 	log.Debugf("starting background thread for vdisk %s's backend", ab.vdiskID)
 
-	ab.vComp.Add()
 	defer ab.vComp.Done()
 
 	// wait until some event frees up this goroutine,
@@ -250,7 +251,7 @@ func (ab *backend) GoBackground(ctx context.Context) {
 		// wait for Flush completion or timed out
 		select {
 		case err = <-done:
-			log.Infof("vdisk '%s' finished the flush under SIGTERM handler", ab.vdiskID)
+			log.Infof("vdisk '%s' finished the flush under SIGTERM handler. err = %v", ab.vdiskID, err)
 
 		case <-time.After(tlog.FlushWaitRetry * tlog.FlushWaitRetryNum):
 			// TODO :

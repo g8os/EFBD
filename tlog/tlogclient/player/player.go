@@ -30,10 +30,6 @@ type Player struct {
 // This callback is going to be executed on each block replay.
 type OnReplayCb func(seq uint64) error
 
-func onReplayCbNone(seq uint64) error {
-	return nil
-}
-
 // NewPlayer creates new tlog player
 func NewPlayer(ctx context.Context, source config.Source,
 	vdiskID, privKey string, dataShards, parityShards int) (*Player, error) {
@@ -121,7 +117,7 @@ func (p *Player) Close() error {
 
 // Replay replays the tlog by decoding data from the tlog blockchains.
 func (p *Player) Replay(lmt decoder.Limiter) (uint64, error) {
-	return p.ReplayWithCallback(lmt, onReplayCbNone)
+	return p.ReplayWithCallback(lmt, nil)
 }
 
 // ReplayWithCallback replays
@@ -129,13 +125,14 @@ func (p *Player) Replay(lmt decoder.Limiter) (uint64, error) {
 // It returns last sequence number it replayed.
 func (p *Player) ReplayWithCallback(lmt decoder.Limiter, onReplayCb OnReplayCb) (uint64, error) {
 	var lastSeq uint64
+	var err error
 
 	for wr := range p.storCli.Walk(lmt.FromEpoch(), lmt.ToEpoch()) {
 		if wr.Err != nil {
 			return lastSeq, wr.Err
 		}
 
-		if lastSeq, err := p.ReplayAggregationWithCallback(wr.Agg, lmt, onReplayCb); err != nil {
+		if lastSeq, err = p.ReplayAggregationWithCallback(wr.Agg, lmt, onReplayCb); err != nil {
 			return lastSeq, err
 		}
 	}
@@ -145,7 +142,12 @@ func (p *Player) ReplayWithCallback(lmt decoder.Limiter, onReplayCb OnReplayCb) 
 // ReplayAggregation replays an aggregation.
 // It returns last sequence number it replayed.
 func (p *Player) ReplayAggregation(agg *schema.TlogAggregation, lmt decoder.Limiter) (uint64, error) {
-	return p.ReplayAggregationWithCallback(agg, lmt, onReplayCbNone)
+	n, err := p.ReplayAggregationWithCallback(agg, lmt, nil)
+	if err != nil {
+		return 0, err
+	}
+
+	return n, p.blockStorage.Flush()
 }
 
 // ReplayAggregationWithCallback replays an aggregation with a callback.
@@ -196,8 +198,14 @@ func (p *Player) ReplayAggregationWithCallback(agg *schema.TlogAggregation, lmt 
 				return seq - 1, fmt.Errorf("failed to delete block %v, err=%v", index, err)
 			}
 		}
+
+		if onReplayCb == nil {
+			continue
+		}
+
 		// we flush it per sequence instead of per aggregation to
 		// make sure we have sequence level accuracy about what we've replayed
+		// which might be needed by the callback
 		if err = p.blockStorage.Flush(); err != nil {
 			return seq - 1, err
 		}

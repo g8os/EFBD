@@ -85,8 +85,9 @@ func TestTlogStorageSlow(t *testing.T) {
 			}
 		}(i)
 	}
-
 	wg.Wait()
+
+	storage.Flush()
 }
 
 // slowInMemoryStorage is a wrapper of the inMemoryStorage

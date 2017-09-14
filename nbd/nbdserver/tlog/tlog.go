@@ -283,6 +283,9 @@ func (tls *tlogStorage) Flush() error {
 
 // Close implements BlockStorage.Close
 func (tls *tlogStorage) Close() (err error) {
+	tls.mux.Lock()
+	defer tls.mux.Unlock()
+
 	tls.storageMux.Lock()
 	defer tls.storageMux.Unlock()
 
@@ -298,6 +301,9 @@ func (tls *tlogStorage) Close() (err error) {
 	if err != nil {
 		log.Info("error while closing internal tlog's client: ", err)
 	}
+
+	log.Infof("tlogStorage Closed with lastSequence = %v, cache empty = %v",
+		tls.getLatestSequence(), tls.cache.Empty())
 
 	return
 }
@@ -317,10 +323,10 @@ func (tls *tlogStorage) spawnBackgroundGoroutine(ctx context.Context) error {
 
 		defer func() {
 			log.Infof("GoBackground exited for vdisk: %v", tls.vdiskID)
-			err := tls.tlog.Close()
+			/*err := tls.tlog.Close()
 			if err != nil {
 				log.Info("error while closing tlog client: ", err)
-			}
+			}*/
 		}()
 
 		defer log.Debug("background goroutine exiting for tlogstorage ", tls.vdiskID)
@@ -362,6 +368,7 @@ func (tls *tlogStorage) spawnBackgroundGoroutine(ctx context.Context) error {
 				}
 
 			case <-tls.done:
+				log.Info("tls.done tlogclient receiver should be finished by now")
 				tls.done = nil
 				return
 			}
