@@ -156,6 +156,132 @@ func TestReadNBDStorageConfig(t *testing.T) {
 	}
 }
 
+func TestReadNBDStorageConfigWithTlogSupport(t *testing.T) {
+	assert := assert.New(t)
+
+	// create stub source, with no config, which will trigger errors
+	source := NewStubSource()
+
+	invalidKeyCh := source.InvalidKey()
+	testInvalidKey := func(expected Key) {
+		select {
+		case invalidKey := <-invalidKeyCh:
+			if !assert.Equal(expected, invalidKey) {
+				assert.FailNow("unexpected invalid key", "%v", invalidKey)
+			}
+		case <-time.After(time.Second):
+			assert.FailNow("timed out while waiting for invalid key", "%v", expected)
+		}
+	}
+
+	// even though nonDeduped storages don't have metadata storage,
+	// in case it has tlog support and it actually makes use of it,
+	// we also require a metadata server for primary (and if defined slave) cluster(s).
+	source.SetVdiskConfig("nd", &VdiskStaticConfig{
+		BlockSize: 4096,
+		Size:      10,
+		Type:      VdiskTypeDB,
+	})
+
+	source.SetPrimaryStorageCluster("nd", "mycluster", &StorageClusterConfig{
+		DataStorage: []StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
+	})
+	nbdStorageCfg, err := ReadNBDStorageConfig(source, "nd", nil)
+	if assert.NoError(err, "should be fine, as no tlog hase been configured") {
+		assert.Equal(
+			[]StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
+			nbdStorageCfg.StorageCluster.DataStorage)
+		assert.Nil(nbdStorageCfg.StorageCluster.MetadataStorage)
+		assert.Nil(nbdStorageCfg.SlaveStorageCluster)
+	}
+	// now set a tlog storage cluster ID
+	source.SetTlogServerCluster("nd", "tlogcluster", &TlogClusterConfig{
+		Servers: []string{
+			"localhost:20003",
+		},
+	})
+	_, err = ReadNBDStorageConfig(source, "nd", nil)
+	if assert.Error(err, "should error, as no metadata server is defined even though we have a tlog-storage") {
+		testInvalidKey(Key{ID: "mycluster", Type: KeyClusterStorage})
+	}
+	// Now set the metadata storage for the primary cluster, this should make the read valid
+	source.SetStorageCluster("mycluster", &StorageClusterConfig{
+		DataStorage:     []StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
+		MetadataStorage: &StorageServerConfig{Address: "localhost:16378"},
+	})
+	nbdStorageCfg, err = ReadNBDStorageConfig(source, "nd", nil)
+	if assert.NoError(err, "should be fine, as primary cluster has a metadata storage server defined") {
+		assert.Equal(
+			[]StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
+			nbdStorageCfg.StorageCluster.DataStorage)
+		if assert.NotNil(nbdStorageCfg.StorageCluster.MetadataStorage) {
+			assert.Equal(
+				StorageServerConfig{Address: "localhost:16378"},
+				*nbdStorageCfg.StorageCluster.MetadataStorage)
+		}
+		assert.Nil(nbdStorageCfg.SlaveStorageCluster)
+	}
+
+	// now let's remove the tlog support again and add a slave cluster
+	source.SetTlogServerCluster("nd", "", nil)
+	source.SetSlaveStorageCluster("nd", "slavecluster", &StorageClusterConfig{
+		DataStorage: []StorageServerConfig{StorageServerConfig{Address: "localhost:17379"}},
+	})
+	nbdStorageCfg, err = ReadNBDStorageConfig(source, "nd", nil)
+	if assert.NoError(err, "should be fine, as no tlog cluster is defined") {
+		assert.Equal(
+			[]StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
+			nbdStorageCfg.StorageCluster.DataStorage)
+		if assert.NotNil(nbdStorageCfg.StorageCluster.MetadataStorage) {
+			assert.Equal(
+				StorageServerConfig{Address: "localhost:16378"},
+				*nbdStorageCfg.StorageCluster.MetadataStorage)
+		}
+		if assert.NotNil(nbdStorageCfg.SlaveStorageCluster) {
+			assert.Equal(
+				[]StorageServerConfig{StorageServerConfig{Address: "localhost:17379"}},
+				nbdStorageCfg.SlaveStorageCluster.DataStorage)
+			assert.Nil(nbdStorageCfg.SlaveStorageCluster.MetadataStorage)
+		}
+	}
+
+	source.SetTlogServerCluster("nd", "tlogcluster", nil)
+	// adding the tlogcluster back will make the reading now fail,
+	// as the slave cluster defined for our vdisk does not define a metadata storage cluster,
+	// even though it is required for the tlogStorage's metadata storage
+	_, err = ReadNBDStorageConfig(source, "nd", nil)
+	if assert.Error(err, "should error, as no metadata server is defined for slave cluster even though we have a tlog-storage") {
+		testInvalidKey(Key{ID: "slavecluster", Type: KeyClusterStorage})
+	}
+
+	// Now set the metadata storage for the slave cluster, this should make the read valid
+	source.SetStorageCluster("slavecluster", &StorageClusterConfig{
+		DataStorage:     []StorageServerConfig{StorageServerConfig{Address: "localhost:17379"}},
+		MetadataStorage: &StorageServerConfig{Address: "localhost:17378"},
+	})
+	nbdStorageCfg, err = ReadNBDStorageConfig(source, "nd", nil)
+	if assert.NoError(err, "should be fine, both slave and primary clusters definea  metadata storage server") {
+		assert.Equal(
+			[]StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
+			nbdStorageCfg.StorageCluster.DataStorage)
+		if assert.NotNil(nbdStorageCfg.StorageCluster.MetadataStorage) {
+			assert.Equal(
+				StorageServerConfig{Address: "localhost:16378"},
+				*nbdStorageCfg.StorageCluster.MetadataStorage)
+		}
+		if assert.NotNil(nbdStorageCfg.SlaveStorageCluster) {
+			assert.Equal(
+				[]StorageServerConfig{StorageServerConfig{Address: "localhost:17379"}},
+				nbdStorageCfg.SlaveStorageCluster.DataStorage)
+			if assert.NotNil(nbdStorageCfg.SlaveStorageCluster.MetadataStorage) {
+				assert.Equal(
+					StorageServerConfig{Address: "localhost:17378"},
+					*nbdStorageCfg.SlaveStorageCluster.MetadataStorage)
+			}
+		}
+	}
+}
+
 func TestReadTlogStorageConfig(t *testing.T) {
 	assert := assert.New(t)
 
@@ -508,6 +634,124 @@ func TestWatchNBDStorageConfig_ChangeClusterReference(t *testing.T) {
 			assert.FailNow("channel should have been closed")
 		}
 	}
+}
+
+func TestWatchNBDStorageConfig_WithTlogSupport(t *testing.T) {
+	assert := assert.New(t)
+
+	source := NewStubSource()
+
+	// even though nonDeduped storages don't have metadata storage,
+	// in case it has tlog support and it actually makes use of it,
+	// we also require a metadata server for primary (and if defined slave) cluster(s).
+	source.SetVdiskConfig("nd", &VdiskStaticConfig{
+		BlockSize: 4096,
+		Size:      10,
+		Type:      VdiskTypeDB,
+	})
+
+	primaryStorageCluster := &StorageClusterConfig{
+		DataStorage: []StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
+	}
+	source.SetPrimaryStorageCluster("nd", "mycluster", primaryStorageCluster)
+	source.SetTlogServerCluster("nd", "tlogcluster", &TlogClusterConfig{
+		Servers: []string{"localhost:20003"},
+	})
+
+	var templateStoragecluster *StorageClusterConfig
+	var slaveStoragecluster *StorageClusterConfig
+
+	var ch <-chan NBDStorageConfig
+
+	invalidKeyCh := source.InvalidKey()
+	testInvalidKey := func(expected Key) {
+		select {
+		case invalidKey := <-invalidKeyCh:
+			if !assert.Equal(expected, invalidKey) {
+				assert.FailNow("unexpected invalid key", "%v", invalidKey)
+			}
+		case output := <-ch:
+			assert.FailNow("received unexpected value", "%v", output)
+		case <-time.After(time.Second):
+			assert.FailNow("timed out while waiting for invalid key", "%v", expected)
+		}
+	}
+
+	testValue := func() {
+		select {
+		case output := <-ch:
+			assert.True(output.StorageCluster.Equal(primaryStorageCluster),
+				"unexpected primary cluster: %v", output.StorageCluster)
+			assert.True(output.TemplateStorageCluster.Equal(templateStoragecluster),
+				"unexpected template cluster: %v", output.TemplateStorageCluster)
+			assert.True(output.SlaveStorageCluster.Equal(slaveStoragecluster),
+				"unexpected slave cluster: %v", output.SlaveStorageCluster)
+		case invalidKey := <-invalidKeyCh:
+			assert.FailNow("received unexpected invalid key", "%v", invalidKey)
+		case <-time.After(time.Second):
+			assert.FailNow("timed out while waiting for output or invalid key")
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	_, err := WatchNBDStorageConfig(ctx, source, "nd")
+	if assert.Error(err, "expected error due to no metadata server defined for primary cluster") {
+		testInvalidKey(Key{ID: "mycluster", Type: KeyClusterStorage})
+	}
+
+	// define metadata storage server for the primary cluster to make it valid
+	primaryStorageCluster.MetadataStorage = &StorageServerConfig{Address: "localhost:16378"}
+	source.SetStorageCluster("mycluster", primaryStorageCluster)
+	// now let's start watching, we're ready!
+	ch, err = WatchNBDStorageConfig(ctx, source, "nd")
+	if !assert.NoError(err) {
+		return
+	}
+
+	testValue()
+
+	// now let's try to reload with an invalid slave cluster
+	slaveStoragecluster = &StorageClusterConfig{
+		DataStorage: []StorageServerConfig{
+			StorageServerConfig{Address: "localhost:17379"},
+		},
+	}
+	source.SetSlaveStorageCluster("nd", "slavecluster", slaveStoragecluster)
+	testInvalidKey(Key{ID: "slavecluster", Type: KeyClusterStorage})
+
+	// now add metadata storage server for slave, which should make it possible to use it
+	slaveStoragecluster.MetadataStorage = &StorageServerConfig{Address: "localhost:17378"}
+	source.SetSlaveStorageCluster("nd", "slavecluster", slaveStoragecluster)
+	testValue()
+
+	// remove tlogcluster, should be fine as that just makes metadata cluster to be ignored
+	source.SetTlogServerCluster("nd", "", nil)
+
+	// now update slave cluster by removing metadata server
+	slaveStoragecluster.MetadataStorage = nil
+	source.SetStorageCluster("slavecluster", slaveStoragecluster)
+	testValue()
+
+	// now update primary cluster by removing metadata server
+	primaryStorageCluster.MetadataStorage = nil
+	source.SetStorageCluster("mycluster", primaryStorageCluster)
+	testValue()
+
+	// remove slave cluster
+	slaveStoragecluster = nil
+	source.SetSlaveStorageCluster("nd", "", slaveStoragecluster)
+	testValue()
+
+	// add tlogcluster
+	source.SetTlogServerCluster("nd", "tlogcluster", nil)
+	testInvalidKey(Key{ID: "mycluster", Type: KeyClusterStorage})
+
+	// fix primary cluster, should work again
+	primaryStorageCluster.MetadataStorage = &StorageServerConfig{Address: "localhost:16378"}
+	source.SetStorageCluster("mycluster", primaryStorageCluster)
+	testValue()
 }
 
 func TestWatchTlogStorageConfig_FailAtStartup(t *testing.T) {

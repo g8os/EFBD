@@ -166,8 +166,8 @@ dataStorage:  # at least one server is required
     db: 10 # optional, 0 by default
   - address: 192.123.123.1:2001
     db: 10
-metadataStorage: # not used for nondeduped vdisks and template storage,
-                  # required for all other purposes
+metadataStorage: # not used for cache/temp vdisks' storage and template storage,
+                 # required for all other purposes
   address: 192.168.1.146:2001
   db: 11
 ```

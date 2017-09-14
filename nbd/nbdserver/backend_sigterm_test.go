@@ -57,7 +57,7 @@ func TestBackendSigtermHandler(t *testing.T) {
 			Servers: []string{tlogrpc},
 		})
 
-		tls, err := newTlogStorage(ctx, vdiskID, "tlogcluster", source, blockSize, storage, nil)
+		tls, err := newTlogStorage(ctx, vdiskID, "tlogcluster", source, blockSize, storage, provider, nil)
 		require.NoError(t, err)
 		require.NotNil(t, tls)
 

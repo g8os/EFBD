@@ -48,7 +48,7 @@ func TestTlogStorageSlow(t *testing.T) {
 	defer source.Close()
 
 	storage, err := newTlogStorage(
-		ctx, vdiskID, "tlogcluster", source, blockSize, slowStorage, nil)
+		ctx, vdiskID, "tlogcluster", source, blockSize, slowStorage, nil, nil)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}

@@ -14,6 +14,8 @@ The TLog storage delegates the actual storage work to the [deduped][deduped]- or
 
 Rather than defining actual [block][block] storage logic, the TLog storage has another purpose instead. All write (`SET`, `DELETE`, `MERGE`) operations are send asynchrounsouly to the [TLog Server][tlogserver], using the [TLog Client][tlogclient]. By doing so the [vdisk][vdisk] can be [rolled back][rollback] to an earlier [logged (3)][log] in history. Additionally the [Transaction Log][tlog] can also be used to create a new [vdisk][vdisk] using the [logged (3)][log] transactions of a TLog-supported [vdisk][vdisk].
 
+This storage does have some metadata linked to it, which it stored in the [ardb][ardb] [Metadata][metadata] Storage Server defined in its configuration. An example of such metadata is the "last flushed sequence", as in the sequence of the last block flushed by the [NBD Server][nbdserver]. The last Flushed sequence index is stored, such that we can compare it with the version the tlogserver has for this vdisk, and sync (see: [restore][restore]) with it at startup in case that is needed.
+
 For more information about the data [redundancy][redundant] provided by this storage you can read the [TLog docs][tlog].
 
 ## Possible Failures
@@ -35,6 +37,9 @@ Any read/write operation will fail if the underlying [storage (2)][storage] fail
 [rollback]: /docs/glossary.md#rollback
 [log]: /docs/glossary.md#log
 [redundant]: /docs/glossary.md#redundant
+[ardb]: /docs/glossary.md#ardb
+[metadata]: /docs/glossary.md#metadata
+[restore]: /docs/glossary.md#restore
 
 [config]: /docs/config.md
 
@@ -43,4 +48,6 @@ Any read/write operation will fail if the underlying [storage (2)][storage] fail
 
 [tlog]: /docs/tlog/tlog.md
 [tlogserver]: /docs/tlog/server.md
-[tlogclient]: /docs/nbd/storage/client.md
+[tlogclient]: /docs/tlog/client.md
+
+[nbdserver]: /docs/nbd/nbd.md
