@@ -561,52 +561,6 @@ func notifyFlushError(err error) {
 	}
 }
 
-// number of connected clients to this vdisk
-func (vd *vdisk) numConnectedClient() int {
-	vd.clientsTabLock.Lock()
-	defer vd.clientsTabLock.Unlock()
-	return len(vd.clientsTab)
-}
-
-// add client to the table of connected clients
-func (vd *vdisk) addClient(conn *net.TCPConn) {
-	vd.clientsTabLock.Lock()
-	defer vd.clientsTabLock.Unlock()
-
-	vd.clientsTab[conn.RemoteAddr().String()] = conn
-}
-
-// remove client from the table of connected clients
-func (vd *vdisk) removeClient(conn *net.TCPConn) {
-	vd.clientsTabLock.Lock()
-	defer vd.clientsTabLock.Unlock()
-
-	addr := conn.RemoteAddr().String()
-	if _, ok := vd.clientsTab[addr]; !ok {
-		log.Errorf("vdisk failed to remove client:%v", addr)
-	} else {
-		delete(vd.clientsTab, addr)
-	}
-}
-
-// disconnect all connected clients except the
-// given exceptConn connection
-func (vd *vdisk) disconnectExcept(exceptConn *net.TCPConn) {
-	vd.clientsTabLock.Lock()
-	defer vd.clientsTabLock.Unlock()
-
-	var conns []*net.TCPConn
-	for _, conn := range vd.clientsTab {
-		if conn != exceptConn {
-			conns = append(conns, conn)
-			conn.Close()
-		}
-	}
-	for _, conn := range conns {
-		delete(vd.clientsTab, conn.RemoteAddr().String())
-	}
-}
-
 // the comparator function needed by https://godoc.org/github.com/emirpasic/gods/sets/treeset#NewWith
 func tlogBlockComparator(a, b interface{}) int {
 	tlbA := a.(*schema.TlogBlock)
