@@ -1,8 +1,10 @@
 package copyvdisk
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"runtime"
 
 	"github.com/spf13/cobra"
 	"github.com/zero-os/0-Disk/config"
@@ -18,6 +20,7 @@ var vdiskCmdCfg struct {
 	DataShards              int
 	ParityShards            int
 	PrivKey                 string
+	JobCount                int
 }
 
 // VdiskCmd represents the vdisk copy subcommand
@@ -108,12 +111,13 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 			DataShards:    vdiskCmdCfg.DataShards,
 			ParityShards:  vdiskCmdCfg.ParityShards,
 			PrivKey:       vdiskCmdCfg.PrivKey,
+			JobCount:      vdiskCmdCfg.JobCount,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create tlog generator: %v", err)
 		}
 
-		if err := generator.GenerateFromStorage(); err != nil {
+		if err := generator.GenerateFromStorage(context.Background()); err != nil {
 			return fmt.Errorf("failed to generate tlog data for vdisk `%v` : %v", targetVdiskID, err)
 		}
 	}
@@ -178,5 +182,10 @@ WARNING: when copying nondeduped vdisks,
 		&vdiskCmdCfg.PrivKey,
 		"priv-key", "12345678901234567890123456789012",
 		"private key")
+
+	VdiskCmd.Flags().IntVar(
+		&vdiskCmdCfg.JobCount,
+		"jobs", runtime.NumCPU(),
+		"the amount of parallel jobs to run the tlog generator")
 
 }

@@ -3,7 +3,6 @@ package generator
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"sync"
 
 	"gopkg.in/validator.v2"
@@ -24,6 +23,7 @@ type Config struct {
 	PrivKey       string `validate:"nonzero"`
 	DataShards    int    `validate:"nonzero,min=1"`
 	ParityShards  int    `validate:"nonzero,min=1"`
+	JobCount      int    `validate:"nonzero,min=1"`
 }
 
 // Generator represents a tlog data generator/copier
@@ -31,6 +31,7 @@ type Generator struct {
 	sourceVdiskID string
 	flusher       *flusher.Flusher
 	configSource  config.Source
+	jobCount      int
 }
 
 // New creates new Generator
@@ -47,11 +48,12 @@ func New(configSource config.Source, conf Config) (*Generator, error) {
 		sourceVdiskID: conf.SourceVdiskID,
 		flusher:       flusher,
 		configSource:  configSource,
+		jobCount:      conf.JobCount,
 	}, nil
 }
 
 // GenerateFromStorage generates tlog data from block storage
-func (g *Generator) GenerateFromStorage() error {
+func (g *Generator) GenerateFromStorage(parentCtx context.Context) error {
 	staticConf, err := config.ReadVdiskStaticConfig(g.configSource, g.sourceVdiskID)
 	if err != nil {
 		return err
@@ -89,12 +91,11 @@ func (g *Generator) GenerateFromStorage() error {
 	}
 	var (
 		wg              sync.WaitGroup
-		numProcess      = runtime.NumCPU()
-		indicesCh       = make(chan int64, numProcess)
-		idxContentCh    = make(chan idxContent, numProcess)
+		indicesCh       = make(chan int64, g.jobCount)
+		idxContentCh    = make(chan idxContent, g.jobCount)
 		errCh           = make(chan error)
 		doneCh          = make(chan struct{})
-		ctx, cancelFunc = context.WithCancel(context.Background())
+		ctx, cancelFunc = context.WithCancel(parentCtx)
 	)
 	defer cancelFunc()
 
@@ -113,7 +114,7 @@ func (g *Generator) GenerateFromStorage() error {
 	}()
 
 	// fetch the indices
-	for i := 0; i < numProcess; i++ {
+	for i := 0; i < g.jobCount; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -141,6 +142,7 @@ func (g *Generator) GenerateFromStorage() error {
 	var seq uint64
 	wg.Add(1)
 	go func() {
+		timestamp := tlog.TimeNowTimestamp()
 		defer wg.Done()
 
 		for ic := range idxContentCh {
@@ -148,7 +150,7 @@ func (g *Generator) GenerateFromStorage() error {
 			case <-ctx.Done():
 				return
 			default:
-				err = g.flusher.AddTransaction(schema.OpSet, seq, ic.content, ic.idx, tlog.TimeNowTimestamp())
+				err = g.flusher.AddTransaction(schema.OpSet, seq, ic.content, ic.idx, timestamp)
 				if err != nil {
 					errCh <- err
 					return

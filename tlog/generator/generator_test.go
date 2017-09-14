@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"os"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -120,10 +121,11 @@ func TestGenerate(t *testing.T) {
 		DataShards:    dataShards,
 		ParityShards:  parityShards,
 		PrivKey:       privKey,
+		JobCount:      runtime.NumCPU(),
 	})
 	require.NoError(t, err)
 
-	err = generator.GenerateFromStorage()
+	err = generator.GenerateFromStorage(context.Background())
 	require.NoError(t, err)
 
 	// 3. Use tlog replay to restore data
