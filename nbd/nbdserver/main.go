@@ -179,9 +179,14 @@ func handleSigterm(bf *backendFactory, cancelFunc context.CancelFunc) {
 
 	go func() {
 		<-sigs
+		log.Info("nbd server received SIGTERM")
 
 		errs := bf.StopAndWait()
+		if len(errs) == 0 {
+			log.Info("nbd server SIGTERM handler finished with no error")
+		}
 		for _, err := range errs {
+			log.Infof("sigterm handler got error: %v", err)
 			// TODO : log to stderr properly
 			// depends on : https://github.com/zero-os/0-Disk/issues/300
 			if err != nil {
