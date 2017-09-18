@@ -152,7 +152,7 @@ func TestResendTimeout(t *testing.T) {
 	ds := newDummyServer(unusedServer)
 	go ds.run(t, logsToIgnore)
 
-	client, err := New([]string{unusedServer.ListenAddr()}, vdisk, firstSequence, false)
+	client, err := newClient([]string{unusedServer.ListenAddr()}, vdisk, firstSequence, false)
 	assert.Nil(t, err)
 	defer client.Close()
 
@@ -160,6 +160,8 @@ func TestResendTimeout(t *testing.T) {
 
 	client.bw = ds.reqPipeWriter  // fake client writer
 	client.rd = ds.respPipeReader // fake the reader
+
+	go client.run(client.ctx)
 
 	var wg sync.WaitGroup
 
