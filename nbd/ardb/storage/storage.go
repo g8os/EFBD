@@ -266,10 +266,7 @@ func DeleteMetadata(cfg config.StorageServerConfig, vdisks map[string]config.Vdi
 	var pipeline storageOpPipeline
 
 	for vdiskID, vdiskType := range vdisks {
-		switch vdiskType.StorageType() {
-		case config.StorageDeduped:
-			pipeline.Add(newDeleteDedupedMetadataOp(vdiskID))
-		case config.StorageSemiDeduped:
+		if vdiskType.StorageType() == config.StorageSemiDeduped {
 			pipeline.Add(newDeleteSemiDedupedMetaDataOp(vdiskID))
 		}
 	}
@@ -283,10 +280,13 @@ func DeleteData(cfg config.StorageServerConfig, vdisks map[string]config.VdiskTy
 
 	for vdiskID, vdiskType := range vdisks {
 		switch vdiskType.StorageType() {
+		case config.StorageDeduped:
+			pipeline.Add(newDeleteDedupedMetadataOp(vdiskID))
 		case config.StorageNonDeduped:
 			pipeline.Add(newDeleteNonDedupedDataOp(vdiskID))
 		case config.StorageSemiDeduped:
-			pipeline.Add(newDeleteSemiDedupedDataOp(vdiskID))
+			pipeline.Add(newDeleteDedupedMetadataOp(vdiskID))
+			pipeline.Add(newDeleteNonDedupedDataOp(vdiskID))
 		}
 	}
 

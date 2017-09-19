@@ -9,6 +9,7 @@ import (
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
+	"github.com/zero-os/0-Disk/nbd/nbdserver/tlog"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/player"
 	cmdConf "github.com/zero-os/0-Disk/zeroctl/cmd/config"
@@ -84,7 +85,7 @@ func checkVdiskExists(vdiskID string, configSource config.Source) error {
 		return fmt.Errorf(
 			"cannot read static vdisk config for vdisk %s: %v", vdiskID, err)
 	}
-	nbdStorageConfig, err := config.ReadNBDStorageConfig(configSource, vdiskID, staticConfig)
+	nbdStorageConfig, err := config.ReadNBDStorageConfig(configSource, vdiskID)
 	if err != nil {
 		return fmt.Errorf(
 			"cannot read nbd storage config for vdisk %s: %v", vdiskID, err)
@@ -105,18 +106,27 @@ func checkVdiskExists(vdiskID string, configSource config.Source) error {
 
 	vdisks := map[string]config.VdiskType{vdiskID: staticConfig.Type}
 
-	// delete metadata (if needed)
-	if nbdStorageConfig.StorageCluster.MetadataStorage != nil {
-		cfg := nbdStorageConfig.StorageCluster.MetadataStorage
-		err := storage.DeleteMetadata(*cfg, vdisks)
-		if err != nil {
-			return fmt.Errorf(
-				"couldn't delete metadata for vdisk %s from %s@%d: %v",
-				vdiskID, cfg.Address, cfg.Database, err)
-		}
+	// delete metadata
+	serverConfig, err := nbdStorageConfig.StorageCluster.FirstAvailableServer()
+	if err != nil {
+		return err
+	}
+	err = storage.DeleteMetadata(*serverConfig, vdisks)
+	if err != nil {
+		return fmt.Errorf(
+			"couldn't delete metadata for vdisks from %s@%d: %v",
+			serverConfig.Address, serverConfig.Database, err)
+	}
+	// make this easier
+	// see: https://github.com/zero-os/0-Disk/issues/481
+	err = deleteTlogMetadata(*serverConfig, vdisks)
+	if err != nil {
+		return fmt.Errorf(
+			"couldn't delete tlog metadata for vdisks from %s@%d: %v",
+			serverConfig.Address, serverConfig.Database, err)
 	}
 
-	// delete data (if needed)
+	// delete data
 	for _, serverConfig := range nbdStorageConfig.StorageCluster.DataStorage {
 		err := storage.DeleteData(serverConfig, vdisks)
 		if err != nil {
@@ -128,6 +138,22 @@ func checkVdiskExists(vdiskID string, configSource config.Source) error {
 
 	// vdisk did exist, but we were able to delete all the exiting (meta)data
 	return nil
+}
+
+func deleteTlogMetadata(serverCfg config.StorageServerConfig, vdiskMap map[string]config.VdiskType) error {
+	var vdisks []string
+	for vdiskID, vdiskType := range vdiskMap {
+		if vdiskType.TlogSupport() {
+			vdisks = append(vdisks, vdiskID)
+		}
+	}
+
+	// TODO: ensure that vdisk also have an active tlog configuration,
+	//       as this is still optional even though it might support it type-wise.
+	// TODO: also delete actual tlog meta(data) from 0-Stor cluster for the supported vdisks
+	//       https://github.com/zero-os/0-Disk/issues/147
+
+	return tlog.DeleteMetadata(serverCfg, vdisks...)
 }
 
 func init() {

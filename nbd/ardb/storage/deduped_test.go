@@ -567,9 +567,6 @@ func TestListDedupedBlockIndices(t *testing.T) {
 				Address: address,
 			},
 		},
-		MetadataStorage: &config.StorageServerConfig{
-			Address: address,
-		},
 	}
 
 	storage, err := Deduped(

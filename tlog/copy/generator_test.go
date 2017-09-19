@@ -70,7 +70,6 @@ func TestGenerate(t *testing.T) {
 				Address: redisProvider.PrimaryAddress(),
 			},
 		},
-		MetadataStorage: &config.StorageServerConfig{Address: redisProvider.PrimaryAddress()},
 	}
 
 	confSource.SetPrimaryStorageCluster(sourceVdiskID, nbdClusterID, storageClusterConf)

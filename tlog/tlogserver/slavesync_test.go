@@ -166,9 +166,6 @@ func newZeroStorConfig(t *testing.T, vdiskID, privKey string,
 			config.StorageServerConfig{
 				Address: ardbAddress,
 			}},
-		MetadataStorage: &config.StorageServerConfig{
-			Address: ardbAddress,
-		},
 	}
 
 	stubSource.SetSlaveStorageCluster(vdiskID, storageClusterID, storageCluserConf)

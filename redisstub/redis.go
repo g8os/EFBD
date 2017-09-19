@@ -221,7 +221,7 @@ func newInMemoryRedisPool(dial func() (redis.Conn, error)) *redis.Pool {
 // which uses multiple in-memory ARDB for all its purposes.
 // See documentation for NewMemoryRedis more information.
 // WARNING: should be used for testing/dev purposes only!
-func NewInMemoryRedisProviderMultiServers(dataServers, templateServers int, metaDataServer bool) *InMemoryRedisProviderMultiServers {
+func NewInMemoryRedisProviderMultiServers(dataServers, templateServers int) *InMemoryRedisProviderMultiServers {
 	if dataServers < 1 {
 		panic("no data servers given, while we require at least one")
 	}
@@ -240,15 +240,8 @@ func NewInMemoryRedisProviderMultiServers(dataServers, templateServers int, meta
 		templateMemRedisSlice = append(templateMemRedisSlice, memRedis)
 	}
 
-	var metaMemRedis *MemoryRedis
-	if metaDataServer {
-		metaMemRedis = NewMemoryRedis()
-		go metaMemRedis.Listen()
-	}
-
 	return &InMemoryRedisProviderMultiServers{
 		memRedisSlice:         memRedisSlice,
-		metaMemRedis:          metaMemRedis,
 		templateMemRedisSlice: templateMemRedisSlice,
 	}
 }
@@ -261,7 +254,6 @@ func NewInMemoryRedisProviderMultiServers(dataServers, templateServers int, meta
 type InMemoryRedisProviderMultiServers struct {
 	memRedisSlice         []*MemoryRedis
 	templateMemRedisSlice []*MemoryRedis
-	metaMemRedis          *MemoryRedis
 }
 
 // DataConnection implements ConnProvider.DataConnection
@@ -278,16 +270,15 @@ func (rp *InMemoryRedisProviderMultiServers) DataConnection(index int64) (ardb.C
 
 // MetadataConnection implements ConnProvider.MetadataConnection
 func (rp *InMemoryRedisProviderMultiServers) MetadataConnection() (ardb.Connection, error) {
-	if rp.metaMemRedis == nil {
-		return nil, errors.New("this provider has no metadata server configured")
+	for _, memRedis := range rp.memRedisSlice {
+		addr := memRedis.Address()
+		conn, err := redis.Dial("tcp", addr)
+		if err == nil {
+			return &inMemoryARDBConnection{conn, addr}, nil
+		}
 	}
 
-	addr := rp.metaMemRedis.Address()
-	conn, err := redis.Dial("tcp", addr)
-	if err != nil {
-		return nil, err
-	}
-	return &inMemoryARDBConnection{conn, addr}, nil
+	return nil, errors.New("no storage server available")
 }
 
 // TemplateConnection implements ConnProvider.TemplateConnection
@@ -328,12 +319,6 @@ func (rp *InMemoryRedisProviderMultiServers) MarkTemplateConnectionInvalid(index
 func (rp *InMemoryRedisProviderMultiServers) ClusterConfig() *config.StorageClusterConfig {
 	cluster := new(config.StorageClusterConfig)
 
-	if rp.metaMemRedis != nil {
-		cluster.MetadataStorage = &config.StorageServerConfig{
-			Address: rp.metaMemRedis.Address(),
-		}
-	}
-
 	for _, memRedis := range rp.memRedisSlice {
 		cluster.DataStorage = append(cluster.DataStorage, config.StorageServerConfig{
 			Address: memRedis.Address(),
@@ -347,9 +332,6 @@ func (rp *InMemoryRedisProviderMultiServers) ClusterConfig() *config.StorageClus
 func (rp *InMemoryRedisProviderMultiServers) Close() error {
 	for _, memRedis := range rp.memRedisSlice {
 		memRedis.Close()
-	}
-	if rp.metaMemRedis != nil {
-		rp.metaMemRedis.Close()
 	}
 	for _, memRedis := range rp.templateMemRedisSlice {
 		if memRedis == nil {

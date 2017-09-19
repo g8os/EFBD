@@ -188,23 +188,15 @@ dataStorage:
   - address: 1.1.1.1:11
   - address: 2.2.2.2:22
     db: 2
-metadataStorage:
-  address: 3.3.3.3:33
 `, `
 dataStorage:
   - address: 1.1.1.1:11
-metadataStorage:
-  address: 3.3.3.3:33
 `,
 }
 
 var invalidStorageClusterConfigYAML = []string{
 	"",
-	// dataStorage not given
-	`
-metadataStorage:
-  address: 3.3.3.3:33
-`, // dataStorage given but doesn't contain a single server
+	// dataStorage given but doesn't contain a single server
 	`
 dataStorage:
   foo: bar
@@ -217,12 +209,6 @@ dataStorage:
 	`
 dataStorage:
   address: localhost:16379
-`, // dataStorage given but invalid metadataStorage
-	`
-dataStorage:
-  - address: localhost:16379
-metadataStorage:
-  db: 2
 `, // only disabled data storages given
 	`
 dataStorage:

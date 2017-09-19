@@ -330,33 +330,40 @@ func CopyNonDeduped(sourceID, targetID string, sourceCluster, targetCluster *con
 		}
 	}
 
+	var err error
 	var sourceCfg, targetCfg config.StorageServerConfig
+
 	for i := 0; i < sourceDataServerCount; i++ {
 		sourceCfg = sourceCluster.DataStorage[i]
 		targetCfg = targetCluster.DataStorage[i]
 
-		// within same storage server
-		if sourceCfg == targetCfg {
-			conn, err := ardb.GetConnection(sourceCfg)
-			if err != nil {
-				return fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
-			}
-			defer conn.Close()
+		if sourceCfg.Equal(&targetCfg) {
+			// within same storage server
+			err = func() error {
+				conn, err := ardb.GetConnection(sourceCfg)
+				if err != nil {
+					return fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
+				}
+				defer conn.Close()
 
-			return copyNonDedupedSameConnection(sourceID, targetID, conn)
+				return copyNonDedupedSameConnection(sourceID, targetID, conn)
+			}()
+		} else {
+			// between different storage servers
+			err = func() error {
+				conns, err := ardb.GetConnections(sourceCfg, targetCfg)
+				if err != nil {
+					return fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
+				}
+				defer func() {
+					conns[0].Close()
+					conns[1].Close()
+				}()
+
+				return copyNonDedupedDifferentConnections(sourceID, targetID, conns[0], conns[1])
+			}()
 		}
 
-		// between different storage servers
-		conns, err := ardb.GetConnections(sourceCfg, targetCfg)
-		if err != nil {
-			return fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
-		}
-		defer func() {
-			conns[0].Close()
-			conns[1].Close()
-		}()
-
-		err = copyNonDedupedDifferentConnections(sourceID, targetID, conns[0], conns[1])
 		if err != nil {
 			return err
 		}

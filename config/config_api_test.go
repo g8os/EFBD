@@ -40,8 +40,7 @@ func TestReadNBDVdisksConfig(t *testing.T) {
 
 	source.SetVdiskConfig("a", nil) // delete it first, so we can properly create it by default
 	source.SetPrimaryStorageCluster("a", "mycluster", &StorageClusterConfig{
-		DataStorage:     []StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
-		MetadataStorage: &StorageServerConfig{Address: "localhost:16379"},
+		DataStorage: []StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
 	})
 	vdisksCfg, err := ReadNBDVdisksConfig(source, "foo")
 	if assert.NoError(err, "should return us 'a'") && assert.Len(vdisksCfg.Vdisks, 1) {
@@ -159,7 +158,6 @@ func TestReadStorageClusterConfig(t *testing.T) {
 			StorageServerConfig{Address: "localhost:16379"},
 			StorageServerConfig{Address: "localhost:16379", Database: 42},
 		},
-		MetadataStorage: &StorageServerConfig{Address: "localhost:16381", Database: 2},
 	}
 	source.SetStorageCluster("bar", &inputCfg)
 
@@ -488,7 +486,6 @@ func TestWatchStorageClusterConfig(t *testing.T) {
 			StorageServerConfig{Address: "localhost:16379"},
 			StorageServerConfig{Address: "localhost:16379", Database: 42},
 		},
-		MetadataStorage: &StorageServerConfig{Address: "localhost:16381", Database: 2},
 	}
 	source.SetStorageCluster("foo", &inputCfg)
 
@@ -504,11 +501,6 @@ func TestWatchStorageClusterConfig(t *testing.T) {
 		}
 	}
 
-	testValue(inputCfg)
-
-	// delete meta Data Storage Server
-	inputCfg.MetadataStorage = nil
-	source.SetStorageCluster("foo", &inputCfg)
 	testValue(inputCfg)
 
 	// delete one Data Storage Server

@@ -120,8 +120,13 @@ func getAndSortVdisks(vdiskIDs []string, configSource config.Source) (data vdisk
 	metadata = make(vdisksPerServerMap)
 
 	addVdiskCluster := func(cfg config.StorageClusterConfig, vdiskID string, vdiskType config.VdiskType) {
-		if cfg.MetadataStorage != nil {
-			metadata.AddVdisk(*cfg.MetadataStorage, vdiskID, vdiskType)
+		if vdiskType.TlogSupport() || vdiskType.StorageType() == config.StorageSemiDeduped {
+			storageServerCfg, err := cfg.FirstAvailableServer()
+			// TODO: fix this properly
+			// see https://github.com/zero-os/0-Disk/issues/481
+			if err != nil {
+				metadata.AddVdisk(*storageServerCfg, vdiskID, vdiskType)
+			}
 		}
 
 		for _, serverCfg := range cfg.DataStorage {
@@ -139,7 +144,7 @@ func getAndSortVdisks(vdiskIDs []string, configSource config.Source) (data vdisk
 			log.Errorf("no static vdisk config could be retrieved for %s: %v", vdiskID, err)
 			continue
 		}
-		nbdConfig, err = config.ReadNBDStorageConfig(configSource, vdiskID, vdiskConfig)
+		nbdConfig, err = config.ReadNBDStorageConfig(configSource, vdiskID)
 		if err != nil {
 			log.Errorf("no nbd config could be retrieved for %s: %v", vdiskID, err)
 			continue

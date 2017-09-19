@@ -229,97 +229,125 @@ func CopySemiDeduped(sourceID, targetID string, sourceCluster, targetCluster *co
 	if sourceCluster == nil {
 		return errors.New("no source cluster given")
 	}
-	if sourceCluster.MetadataStorage == nil {
-		return errors.New("no metaDataServer given for source")
+	sourceDataServerCount := len(sourceCluster.DataStorage)
+	if sourceDataServerCount == 0 {
+		return errors.New("no data server configs given for source")
 	}
 
-	// define whether or not we're copying between different servers,
+	// define whether or not we're copying between different clusters,
 	// and if the target cluster is given, make sure to validate it.
-	var sameMetadataServer bool
 	if targetCluster == nil {
-		sameMetadataServer = true
-		if sourceID == targetID {
-			return errors.New(
-				"sourceID and targetID can't be equal when copying within the same cluster")
-		}
+		targetCluster = sourceCluster
 	} else {
-		if targetCluster.MetadataStorage == nil {
-			return errors.New("no metaDataServer given for target")
+		targetDataServerCount := len(targetCluster.DataStorage)
+		// [TODO]
+		// Currently the result will be WRONG in case targetDataServerCount != sourceDataServerCount,
+		// as the storage data spread will not be the same,
+		// to what the nbdserver read calls will expect.
+		// See open issue for more information:
+		// https://github.com/zero-os/0-Disk/issues/206
+		if targetDataServerCount != sourceDataServerCount {
+			return errors.New("target data server count has to equal the source data server count")
 		}
+	}
 
-		// even if targetCluster is given,
-		// we could still be dealing with a duplicated cluster
-		sameMetadataServer = *sourceCluster.MetadataStorage == *targetCluster.MetadataStorage
+	metaSourceCfg, err := sourceCluster.FirstAvailableServer()
+	if err != nil {
+		return err
+	}
+	metaTargetCfg, err := targetCluster.FirstAvailableServer()
+	if err != nil {
+		return err
 	}
 
 	var hasBitMask bool
-	var err error
-
-	// within same meta storage server
-	if sameMetadataServer {
-		// copy metadata from the same storage server
-		hasBitMask, err = func() (hasBitMask bool, err error) {
-			conn, err := ardb.GetConnection(*sourceCluster.MetadataStorage)
+	if metaSourceCfg.Equal(metaTargetCfg) {
+		hasBitMask, err = func() (bool, error) {
+			conn, err := ardb.GetConnection(*metaSourceCfg)
 			if err != nil {
-				err = fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
-				return
+				return false, fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
 			}
 			defer conn.Close()
 
-			// copy metadata of deduped metadata
-			err = copyDedupedSameConnection(sourceID, targetID, conn)
-			if err != nil {
-				err = fmt.Errorf("couldn't copy deduped metadata: %s", err.Error())
-				return
-			}
-
-			// copy bitmask
-			hasBitMask, err = copySemiDedupedSameConnection(sourceID, targetID, conn)
-			return
+			return copySemiDedupedSameConnection(sourceID, targetID, conn)
 		}()
 	} else {
-		// copy metadata from different storage servers
-		hasBitMask, err = func() (hasBitMask bool, err error) {
-			conns, err := ardb.GetConnections(*sourceCluster.MetadataStorage, *targetCluster.MetadataStorage)
+		hasBitMask, err = func() (bool, error) {
+			conns, err := ardb.GetConnections(*metaSourceCfg, *metaTargetCfg)
 			if err != nil {
-				err = fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
-				return
+				return false, fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
 			}
 			defer func() {
 				conns[0].Close()
 				conns[1].Close()
 			}()
 
-			// copy metadata of deduped metadata
-			err = copyDedupedDifferentConnections(sourceID, targetID, conns[0], conns[1])
-			if err != nil {
-				err = fmt.Errorf("couldn't copy deduped metadata: %s", err.Error())
-				return
-			}
-
-			// copy bitmask
-			hasBitMask, err = copySemiDedupedDifferentConnections(sourceID, targetID, conns[0], conns[1])
-			return
+			return copySemiDedupedDifferentConnections(sourceID, targetID, conns[0], conns[1])
 		}()
 	}
 
-	if err != nil {
-		return fmt.Errorf("couldn't copy bitmask: %v", err)
-	}
-	if !hasBitMask {
-		// no bitmask == no nondeduped content,
-		// which means this is an untouched semideduped storage
-		return nil // nothing to do, early return
+	var sourceCfg, targetCfg config.StorageServerConfig
+
+	for i := 0; i < sourceDataServerCount; i++ {
+		sourceCfg = sourceCluster.DataStorage[i]
+		targetCfg = targetCluster.DataStorage[i]
+
+		if sourceCfg.Equal(&targetCfg) {
+			// within same storage server
+			err = func() error {
+				conn, err := ardb.GetConnection(sourceCfg)
+				if err != nil {
+					return fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
+				}
+				defer conn.Close()
+
+				err = copyDedupedSameConnection(sourceID, targetID, conn)
+				if err != nil {
+					return fmt.Errorf("couldn't copy deduped data on same connection: %v", err)
+				}
+
+				if hasBitMask {
+					err = copyNonDedupedSameConnection(sourceID, targetID, conn)
+					if err != nil {
+						return fmt.Errorf("couldn't copy non-deduped (meta)data on same connection: %v", err)
+					}
+				}
+
+				return nil
+			}()
+		} else {
+			// between different storage servers
+			err = func() error {
+				conns, err := ardb.GetConnections(sourceCfg, targetCfg)
+				if err != nil {
+					return fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
+				}
+				defer func() {
+					conns[0].Close()
+					conns[1].Close()
+				}()
+
+				err = copyDedupedDifferentConnections(sourceID, targetID, conns[0], conns[1])
+				if err != nil {
+					return fmt.Errorf("couldn't copy deduped data between connections: %v", err)
+				}
+
+				if hasBitMask {
+					err = copyNonDedupedDifferentConnections(sourceID, targetID, conns[0], conns[1])
+					if err != nil {
+						return fmt.Errorf("couldn't copy non-deduped (meta)data between connections: %v", err)
+					}
+				}
+
+				return nil
+			}()
+		}
+
+		if err != nil {
+			return err
+		}
 	}
 
-	// dispatch the rest of the work to the CopyNonDeduped func,
-	// to copy all the user (nondeduped) data
-	err = CopyNonDeduped(sourceID, targetID, sourceCluster, targetCluster)
-	if err != nil {
-		return fmt.Errorf("couldn't copy nondeduped content: %v", err)
-	}
-
-	// copy went ALL-OK!
 	return nil
 }
 
@@ -380,48 +408,24 @@ func copySemiDedupedDifferentConnections(sourceID, targetID string, connA, connB
 	return
 }
 
-func newDeleteSemiDedupedDataOp(vdiskID string) storageOp {
-	return &deleteSemiDedupedDataOp{deleteNonDedupedDataOp{vdiskID}}
-}
-
-type deleteSemiDedupedDataOp struct {
-	deleteNonDedupedDataOp
-}
-
-func (op *deleteSemiDedupedDataOp) Label() string {
-	return "delete semideduped data of " + op.vdiskID
-}
-
 func newDeleteSemiDedupedMetaDataOp(vdiskID string) storageOp {
 	return &deleteSemiDedupedMetaDataOp{
-		vdiskID:         vdiskID,
-		dedupedMetaData: newDeleteDedupedMetadataOp(vdiskID),
+		vdiskID: vdiskID,
 	}
 }
 
 type deleteSemiDedupedMetaDataOp struct {
-	vdiskID         string
-	dedupedMetaData storageOp
+	vdiskID string
 }
 
 func (op *deleteSemiDedupedMetaDataOp) Send(sender storageOpSender) error {
 	log.Debugf("batch deletion of semideduped metadata for: %v", op.vdiskID)
-	err := sender.Send("DEL", semiDedupBitMapKey(op.vdiskID))
-	if err != nil {
-		return err
-	}
-
-	return op.dedupedMetaData.Send(sender)
+	return sender.Send("DEL", semiDedupBitMapKey(op.vdiskID))
 }
 
 func (op *deleteSemiDedupedMetaDataOp) Receive(receiver storageOpReceiver) error {
-	var errs pipelineErrors
-
-	_, errA := receiver.Receive()
-	errs.AddError(errA)
-	errs.AddError(op.dedupedMetaData.Receive(receiver))
-
-	return errs
+	_, err := receiver.Receive()
+	return err
 }
 
 func (op *deleteSemiDedupedMetaDataOp) Label() string {

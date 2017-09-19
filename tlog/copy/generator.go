@@ -45,7 +45,7 @@ func (g *generator) GenerateFromStorage(parentCtx context.Context) error {
 		return err
 	}
 
-	storageConf, err := config.ReadNBDStorageConfig(g.configSource, g.sourceVdiskID, staticConf)
+	storageConf, err := config.ReadNBDStorageConfig(g.configSource, g.sourceVdiskID)
 	if err != nil {
 		return fmt.Errorf("failed to ReadNBDStorageConfig: %v", err)
 	}

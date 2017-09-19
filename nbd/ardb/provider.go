@@ -130,9 +130,6 @@ type staticRedisProvider struct {
 	// used for getting template data from a template server
 	templateDataConnectionConfigs []config.StorageServerConfig
 	numberOfTemplateServers       int64 //Keep it as a seperate variable since this is constantly needed
-
-	// used to store meta data
-	metaConnectionConfig *config.StorageServerConfig
 }
 
 // DataConnection implements DataConnProvider.DataConnection
@@ -208,9 +205,14 @@ func (rp *staticRedisProvider) MarkTemplateConnectionInvalid(index int64) {
 
 // MetadataConnection implements MetadataConnProvider.MetaConnection
 func (rp *staticRedisProvider) MetadataConnection() (conn Connection, err error) {
-	connConfig := rp.metaConnectionConfig
-	conn, err = newConnection(rp.redisPool, *connConfig)
-	return
+	for _, connConfig := range rp.dataConnectionConfigs {
+		conn, err = newConnection(rp.redisPool, connConfig)
+		if err == nil {
+			return
+		}
+	}
+
+	return nil, errNoStorageServerAvailable
 }
 
 // Close implements ConnProvider.Close
@@ -222,8 +224,6 @@ func (rp *staticRedisProvider) Close() error {
 func (rp *staticRedisProvider) setConfig(cfg *config.NBDStorageConfig) {
 	rp.dataConnectionConfigs = cfg.StorageCluster.DataStorage
 	rp.numberOfServers = int64(len(rp.dataConnectionConfigs))
-
-	rp.metaConnectionConfig = cfg.StorageCluster.MetadataStorage
 
 	if cfg.TemplateStorageCluster == nil {
 		rp.templateDataConnectionConfigs = nil
@@ -331,5 +331,6 @@ func (rp *redisProvider) Close() error {
 }
 
 var (
-	errDisabledStorageServer = errors.New("storage server is disabled")
+	errDisabledStorageServer    = errors.New("storage server is disabled")
+	errNoStorageServerAvailable = errors.New("no storage server available")
 )

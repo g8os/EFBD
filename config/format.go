@@ -209,8 +209,7 @@ func NewStorageClusterConfig(data []byte) (*StorageClusterConfig, error) {
 // A storage cluster is composed out of multiple data storage servers,
 // and a single (optional) metadata storage.
 type StorageClusterConfig struct {
-	DataStorage     []StorageServerConfig `yaml:"dataStorage" valid:"required"`
-	MetadataStorage *StorageServerConfig  `yaml:"metadataStorage" valid:"optional"`
+	DataStorage []StorageServerConfig `yaml:"dataStorage" valid:"required"`
 }
 
 // Validate implements FormatValidator.Validate.
@@ -240,33 +239,6 @@ func (cfg *StorageClusterConfig) Validate() error {
 		return errNoDataServersAvailable
 	}
 
-	// validate the metadata server config (if defined)
-	err = cfg.MetadataStorage.Validate()
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// ValidateStorageType is an extra validation method,
-// allowing you to check if this cluster is valid for a certain storage type.
-func (cfg *StorageClusterConfig) ValidateStorageType(t StorageType) error {
-	if cfg == nil || t == StorageNonDeduped {
-		return nil // nothing to do
-	}
-
-	return cfg.ValidateRequiredMetadataStorage()
-}
-
-// ValidateRequiredMetadataStorage allows you to ensure that this storage cluster
-// defines a valid Metadata Storage.
-func (cfg *StorageClusterConfig) ValidateRequiredMetadataStorage() error {
-	if cfg != nil && cfg.MetadataStorage == nil {
-		return errors.New("invalid StorageClusterConfig: require a storage server for metadata")
-	}
-
-	// composed config is valid
 	return nil
 }
 
@@ -279,11 +251,6 @@ func (cfg *StorageClusterConfig) Clone() StorageClusterConfig {
 
 	clone.DataStorage = make([]StorageServerConfig, len(cfg.DataStorage))
 	copy(clone.DataStorage, cfg.DataStorage)
-
-	if cfg.MetadataStorage != nil {
-		storage := *cfg.MetadataStorage
-		clone.MetadataStorage = &storage
-	}
 
 	return clone
 }
@@ -314,10 +281,19 @@ func (cfg *StorageClusterConfig) Equal(other *StorageClusterConfig) bool {
 		}
 	}
 
-	// all data storages are equal,
-	// if their metadata storage is equal as well,
-	// than we are dealing with the same storage cluster
-	return cfg.MetadataStorage.Equal(other.MetadataStorage)
+	// all data storages are equal
+	return true
+}
+
+// FirstAvailableServer returns the first available server.
+func (cfg *StorageClusterConfig) FirstAvailableServer() (*StorageServerConfig, error) {
+	for _, serverCfg := range cfg.DataStorage {
+		if !serverCfg.Disabled {
+			return &serverCfg, nil
+		}
+	}
+
+	return nil, errNoDataServersAvailable
 }
 
 // NewZeroStorClusterConfig creates a new ZeroStorClusterConfig from a given YAML slice.
