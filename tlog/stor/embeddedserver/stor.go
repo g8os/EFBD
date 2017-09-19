@@ -6,13 +6,13 @@ import (
 	"path/filepath"
 
 	badgerkv "github.com/dgraph-io/badger"
+	"github.com/zero-os/0-stor/server"
 	"github.com/zero-os/0-stor/server/db/badger"
-	"github.com/zero-os/0-stor/server/storserver"
 )
 
 type zeroStorServer struct {
 	dir    string
-	server storserver.StoreServer
+	server server.StoreServer
 }
 
 func newZeroStorServer() (*zeroStorServer, error) {
@@ -28,7 +28,7 @@ func newZeroStorServer() (*zeroStorServer, error) {
 		return nil, err
 	}
 
-	server, err := storserver.NewGRPCWithDB(db)
+	server, err := server.NewWithDB(db, false)
 	if err != nil {
 		return nil, err
 	}

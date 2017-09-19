@@ -1,11 +1,9 @@
-package generator
+package copy
 
 import (
 	"context"
 	"fmt"
 	"sync"
-
-	"gopkg.in/validator.v2"
 
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
@@ -16,36 +14,24 @@ import (
 	"github.com/zero-os/0-Disk/tlog/schema"
 )
 
-// Config represent generator config
-type Config struct {
-	SourceVdiskID string `validate:"nonzero"`
-	TargetVdiskID string `validate:"nonzero"`
-	PrivKey       string `validate:"nonzero"`
-	DataShards    int    `validate:"nonzero,min=1"`
-	ParityShards  int    `validate:"nonzero,min=1"`
-	JobCount      int    `validate:"nonzero,min=1"`
-}
-
-// Generator represents a tlog data generator/copier
-type Generator struct {
+// generator represents a tlog data generator/copier
+type generator struct {
 	sourceVdiskID string
+	targetVdiskID string
 	flusher       *flusher.Flusher
 	configSource  config.Source
 	jobCount      int
 }
 
-// New creates new Generator
-func New(configSource config.Source, conf Config) (*Generator, error) {
-	if err := validator.Validate(conf); err != nil {
-		return nil, err
-	}
-
+// New creates new generator
+func newGenerator(configSource config.Source, conf Config) (*generator, error) {
 	flusher, err := flusher.New(configSource, conf.DataShards, conf.ParityShards, conf.TargetVdiskID, conf.PrivKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create flusher: %v", err)
 	}
-	return &Generator{
+	return &generator{
 		sourceVdiskID: conf.SourceVdiskID,
+		targetVdiskID: conf.TargetVdiskID,
 		flusher:       flusher,
 		configSource:  configSource,
 		jobCount:      conf.JobCount,
@@ -53,7 +39,7 @@ func New(configSource config.Source, conf Config) (*Generator, error) {
 }
 
 // GenerateFromStorage generates tlog data from block storage
-func (g *Generator) GenerateFromStorage(parentCtx context.Context) error {
+func (g *generator) GenerateFromStorage(parentCtx context.Context) error {
 	staticConf, err := config.ReadVdiskStaticConfig(g.configSource, g.sourceVdiskID)
 	if err != nil {
 		return err
@@ -178,9 +164,4 @@ func (g *Generator) GenerateFromStorage(parentCtx context.Context) error {
 	_, err = g.flusher.Flush()
 	log.Infof("GenerateFromStorage generates `%v` tlog data with err = %v", len(indices), err)
 	return err
-}
-
-// CopyTlogData copy/fork tlog data
-func (g *Generator) CopyTlogData() error {
-	return nil
 }
