@@ -41,8 +41,20 @@ func Example() {
 	var item badger.KVItem
 	if err := kv.Get(key, &item); err != nil {
 		fmt.Printf("Error while getting key: %q", key)
+		return
 	}
-	fmt.Printf("GET %s %s\n", key, item.Value())
+	var val []byte
+	err := item.Value(func(v []byte) error {
+		val = make([]byte, len(v))
+		copy(val, v)
+		return nil
+	})
+	if err != nil {
+		fmt.Printf("Error while getting value for key: %q", key)
+		return
+	}
+
+	fmt.Printf("GET %s %s\n", key, val)
 
 	if err := kv.CompareAndSet(key, []byte("venus"), 100); err != nil {
 		fmt.Println("CAS counter mismatch")
@@ -50,7 +62,19 @@ func Example() {
 		if err = kv.Get(key, &item); err != nil {
 			fmt.Printf("Error while getting key: %q", key)
 		}
-		fmt.Printf("Set to %s\n", item.Value())
+
+		err := item.Value(func(v []byte) error {
+			val = make([]byte, len(v))
+			copy(val, v)
+			return nil
+		})
+
+		if err != nil {
+			fmt.Printf("Error while getting value for key: %q", key)
+			return
+		}
+
+		fmt.Printf("Set to %s\n", val)
 	}
 	if err := kv.CompareAndSet(key, []byte("mars"), item.Counter()); err == nil {
 		fmt.Println("Set to mars")
@@ -72,14 +96,18 @@ func Example() {
 
 // 	itrOpt := IteratorOptions{
 // 		PrefetchSize: 1000,
-// 		FetchValues:  true,
+// 		PrefetchValues:  true,
 // 		Reverse:      false,
 // 	}
 // 	itr := kv.NewIterator(itrOpt)
 // 	for itr.Rewind(); itr.Valid(); itr.Next() {
 // 		item := itr.Item()
 // 		item.Key()
-// 		item.Value()
+// 		var val []byte
+// 		err = item.Value(func(v []byte) {
+// 			val = make([]byte, len(v))
+// 			copy(val, v)
+// 		})
 // 	}
 // }
 

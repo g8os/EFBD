@@ -60,11 +60,10 @@ func testWalk(t *testing.T, forward bool) {
 	policy := Policy{
 		Organization: "testorg",
 		Namespace:    "thedisk",
-		Protocol:     "grpc",
 		DataShards:   dataShards,
 		MetaShards:   []string{etcd.ListenAddr()},
-		IYOAppID:     "id",
-		IYOSecret:    "secret",
+		IYOAppID:     "",
+		IYOSecret:    "",
 	}
 
 	cli, err := getTestClient(policy)
@@ -97,7 +96,7 @@ func testWalk(t *testing.T, forward bool) {
 	var firstKey []byte
 
 	for i, key := range keys {
-		prevMd, err = cli.WriteWithMeta(key, vals[i], prevKey, prevMd, nil)
+		prevMd, err = cli.WriteWithMeta(key, vals[i], prevKey, prevMd, nil, nil)
 		require.NoError(t, err)
 		prevKey = key
 		if len(firstKey) == 0 {

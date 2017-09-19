@@ -11,17 +11,17 @@ import (
 
 	"github.com/zero-os/0-stor/client/lib"
 
-	"github.com/minio/blake2b-simd"
-	"github.com/zero-os/0-stor/client/lib/distribution"
-	"github.com/zero-os/0-stor/client/lib/encrypt"
-	"github.com/zero-os/0-stor/client/stor"
-
-	"github.com/golang/snappy"
 	"github.com/zero-os/0-stor/client/itsyouonline"
 	"github.com/zero-os/0-stor/client/lib/chunker"
+	"github.com/zero-os/0-stor/client/lib/distribution"
+	"github.com/zero-os/0-stor/client/lib/encrypt"
 	"github.com/zero-os/0-stor/client/meta"
+	"github.com/zero-os/0-stor/client/stor"
+	pb "github.com/zero-os/0-stor/grpc_store"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/golang/snappy"
+	"github.com/minio/blake2b-simd"
 )
 
 var (
@@ -46,20 +46,29 @@ type Client struct {
 
 // New creates new client from the given config
 func New(policy Policy) (*Client, error) {
-
-	iyoCl := itsyouonline.NewClient(policy.Organization, policy.IYOAppID, policy.IYOSecret)
+	var iyoCl itsyouonline.IYOClient
+	if policy.Organization != "" && policy.IYOAppID != "" && policy.IYOSecret != "" {
+		iyoCl = itsyouonline.NewClient(policy.Organization, policy.IYOAppID, policy.IYOSecret)
+	}
 
 	return newClient(policy, iyoCl)
 }
 
 func newClient(policy Policy, iyoCl itsyouonline.IYOClient) (*Client, error) {
-	iyoToken, err := iyoCl.CreateJWT(policy.Namespace, itsyouonline.Permission{
-		Write: true,
-		Read:  true,
-	})
-	if err != nil {
-		log.Error(err.Error())
-		return nil, err
+	var (
+		iyoToken string
+		err      error
+	)
+
+	if iyoCl != nil {
+		iyoToken, err = iyoCl.CreateJWT(policy.Namespace, itsyouonline.Permission{
+			Write: true,
+			Read:  true,
+		})
+		if err != nil {
+			log.Error(err.Error())
+			return nil, err
+		}
 	}
 
 	client := Client{
@@ -71,16 +80,11 @@ func newClient(policy Policy, iyoCl itsyouonline.IYOClient) (*Client, error) {
 
 	// instanciate stor client for each shards.
 	for _, shard := range policy.DataShards {
-		cl, err := stor.NewClientWithToken(&stor.Config{
-			IyoClientID: policy.IYOAppID,
-			IyoSecret:   policy.IYOSecret,
-			Protocol:    policy.Protocol,
-			Shard:       shard,
-		}, policy.Organization, policy.Namespace, iyoToken)
+		// getStor keep the created stor in a map
+		_, err := client.getStor(shard)
 		if err != nil {
 			return nil, err
 		}
-		client.storClients[shard] = cl
 	}
 
 	// instanciate meta client
@@ -114,12 +118,12 @@ func (c *Client) Close() error {
 }
 
 // Write write the value to the the 0-stors configured by the client policy
-func (c *Client) Write(key, value []byte) (*meta.Meta, error) {
-	return c.WriteWithMeta(key, value, nil, nil, nil)
+func (c *Client) Write(key, value []byte, refList []string) (*meta.Meta, error) {
+	return c.WriteWithMeta(key, value, nil, nil, nil, refList)
 }
 
-func (c *Client) WriteF(key []byte, r io.Reader) (*meta.Meta, error) {
-	return c.writeFWithMeta(key, r, nil, nil, nil)
+func (c *Client) WriteF(key []byte, r io.Reader, refList []string) (*meta.Meta, error) {
+	return c.writeFWithMeta(key, r, nil, nil, nil, refList)
 }
 
 // WriteWithMeta writes the key-value to the configured pipes.
@@ -128,16 +132,16 @@ func (c *Client) WriteF(key []byte, r io.Reader) (*meta.Meta, error) {
 // So the client won't need to fetch it back from the metadata server.
 // prevKey still need to be set it prevMeta is set
 // initialMeta is optional metadata, if user want to set his own initial metadata for example set own epoch
-func (c *Client) WriteWithMeta(key, val []byte, prevKey []byte, prevMeta, md *meta.Meta) (*meta.Meta, error) {
+func (c *Client) WriteWithMeta(key, val []byte, prevKey []byte, prevMeta, md *meta.Meta, refList []string) (*meta.Meta, error) {
 	r := bytes.NewReader(val)
-	return c.writeFWithMeta(key, r, prevKey, prevMeta, md)
+	return c.writeFWithMeta(key, r, prevKey, prevMeta, md, refList)
 }
 
-func (c *Client) WriteFWithMeta(key []byte, r io.Reader, prevKey []byte, prevMeta, md *meta.Meta) (*meta.Meta, error) {
-	return c.writeFWithMeta(key, r, prevKey, prevMeta, md)
+func (c *Client) WriteFWithMeta(key []byte, r io.Reader, prevKey []byte, prevMeta, md *meta.Meta, refList []string) (*meta.Meta, error) {
+	return c.writeFWithMeta(key, r, prevKey, prevMeta, md, refList)
 }
 
-func (c *Client) writeFWithMeta(key []byte, r io.Reader, prevKey []byte, prevMeta, md *meta.Meta) (*meta.Meta, error) {
+func (c *Client) writeFWithMeta(key []byte, r io.Reader, prevKey []byte, prevMeta, md *meta.Meta, refList []string) (*meta.Meta, error) {
 	var (
 		blockSize int
 		err       error
@@ -207,28 +211,26 @@ func (c *Client) writeFWithMeta(key []byte, r io.Reader, prevKey []byte, prevMet
 			chunk.Size = uint64(len(block))
 		}
 
-		if c.policy.ReplicationMaxSize > 0 && len(block) <= c.policy.ReplicationMaxSize {
-			usedShards, err = c.replicateWrite(chunkKey, block, []string{})
+		switch {
+		case c.policy.ReplicationEnabled(len(block)):
+			usedShards, err = c.replicateWrite(chunkKey, block, refList)
 			if err != nil {
 				return nil, err
 			}
-			chunk.Size = uint64(len(block))
-
-		} else if c.policy.DistributionNr > 0 && c.policy.DistributionRedundancy > 0 {
-			usedShards, _, err = c.distributeWrite(chunkKey, block, []string{})
+		case c.policy.DistributionEnabled():
+			usedShards, _, err = c.distributeWrite(chunkKey, block, refList)
 			if err != nil {
 				return nil, err
 			}
-			chunk.Size = uint64(len(block))
-		} else {
-			shard, err := c.writeRandom(chunkKey, block, []string{})
+		default:
+			shard, err := c.writeRandom(chunkKey, block, refList)
 			if err != nil {
 				return nil, err
 			}
 			usedShards = []string{shard}
-			chunk.Size = uint64(len(block))
 		}
 
+		chunk.Size = uint64(len(block))
 		chunk.Shards = usedShards
 		md.Chunks = append(md.Chunks, chunk)
 	}
@@ -242,104 +244,106 @@ func (c *Client) writeFWithMeta(key []byte, r io.Reader, prevKey []byte, prevMet
 }
 
 // Read reads value with given key from the 0-stors configured by the client policy
-// it will first try to get the metadata associated with key from the Metadata servers
-func (c *Client) Read(key []byte) ([]byte, error) {
+// it will first try to get the metadata associated with key from the Metadata servers.
+// It returns the value and it's reference list
+func (c *Client) Read(key []byte) ([]byte, []string, error) {
 	md, err := c.metaCli.Get(string(key))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	w := &bytes.Buffer{}
-	err = c.readFWithMeta(md, w)
+	refList, err := c.readFWithMeta(md, w)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return w.Bytes(), nil
+	return w.Bytes(), refList, nil
 }
 
 // ReadF similar as Read but write the data to w instead of returning a slice of bytes
-func (c *Client) ReadF(key []byte, w io.Writer) error {
+func (c *Client) ReadF(key []byte, w io.Writer) ([]string, error) {
 	md, err := c.metaCli.Get(string(key))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	return c.readFWithMeta(md, w)
 
 }
 
 // ReadWithMeta reads the value described by md
-func (c *Client) ReadWithMeta(md *meta.Meta) ([]byte, error) {
+func (c *Client) ReadWithMeta(md *meta.Meta) ([]byte, []string, error) {
 	w := &bytes.Buffer{}
-	err := c.readFWithMeta(md, w)
+	refList, err := c.readFWithMeta(md, w)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return w.Bytes(), nil
+	return w.Bytes(), refList, nil
 }
 
-func (c *Client) readFWithMeta(md *meta.Meta, w io.Writer) error {
+func (c *Client) readFWithMeta(md *meta.Meta, w io.Writer) (refList []string, err error) {
 	var (
 		aesgm encrypt.EncrypterDecrypter
 		block []byte
-		err   error
+		obj   *pb.Object
 	)
 
 	if c.policy.Encrypt {
 		aesgm, err = encrypt.NewEncrypterDecrypter(encrypt.Config{PrivKey: c.policy.EncryptKey, Type: encrypt.TypeAESGCM})
 		if err != nil {
-			return err
+			return
 		}
 	}
 
 	for _, chunk := range md.Chunks {
 
-		if c.policy.ReplicationMaxSize > 0 && chunk.Size <= uint64(c.policy.ReplicationMaxSize) {
-			block, err = c.replicateRead(chunk.Key, chunk.Shards)
+		switch {
+		case c.policy.ReplicationEnabled(int(chunk.Size)):
+			obj, err = c.replicateRead(chunk.Key, chunk.Shards)
 			if err != nil {
-				return err
+				return
+			}
+		case c.policy.DistributionEnabled():
+			obj, err = c.distributeRead(chunk.Key, int(chunk.Size), chunk.Shards)
+			if err != nil {
+				return
+			}
+		default:
+			if len(chunk.Shards) <= 0 {
+				err = fmt.Errorf("metadata corrupted, can't have a chunk without shard")
+				return
 			}
 
-		} else if c.policy.DistributionNr > 0 && c.policy.DistributionRedundancy > 0 {
-			block, err = c.distributeRead(chunk.Key, int(chunk.Size), chunk.Shards)
+			obj, err = c.read(chunk.Key, chunk.Shards[0])
 			if err != nil {
-				return err
-			}
-		} else {
-			if len(chunk.Shards) <= 0 {
-				panic("metadata corrupted, can't have a chunk without shard")
-			}
-			block, err = c.read(chunk.Key, chunk.Shards[0])
-			if err != nil {
-				return err
+				return
 			}
 		}
+		block = obj.Value
+		refList = obj.ReferenceList
 
 		if c.policy.Compress {
 			block, err = snappy.Decode(nil, block)
 			if err != nil {
-				return err
+				return
 			}
 		}
 
 		if c.policy.Encrypt {
 			block, err = aesgm.Decrypt(block)
 			if err != nil {
-				return err
+				return
 			}
 		}
 
-		n, err := w.Write(block)
+		_, err = w.Write(block)
 		if err != nil {
-			return err
-		}
-		if n != len(block) {
-			panic("couldn't write to Writer")
+			return
 		}
 	}
 
-	return nil
+	return
 }
 
 func (c *Client) replicateWrite(key, value []byte, referenceList []string) ([]string, error) {
@@ -372,7 +376,7 @@ func (c *Client) replicateWrite(key, value []byte, referenceList []string) ([]st
 			go func(job *Job) {
 				defer wg.Done()
 
-				_, err := job.client.ObjectCreate(key, value, referenceList)
+				err := job.client.ObjectCreate(key, value, referenceList)
 				if err != nil {
 					log.Errorf("replication write: error writing to store %s: %v", job.shard, err)
 					shardErr.Add([]string{job.shard}, lib.ShardType0Stor, err, 0)
@@ -413,7 +417,7 @@ func (c *Client) replicateWrite(key, value []byte, referenceList []string) ([]st
 				return nil, err
 			}
 
-			_, err = cl.ObjectCreate(key, value, referenceList)
+			err = cl.ObjectCreate(key, value, referenceList)
 			if err != nil {
 				log.Errorf("replication write: error writing to store %s: %v", shard, err)
 				shardErr.Add([]string{shard}, lib.ShardType0Stor, err, 0)
@@ -434,9 +438,9 @@ func (c *Client) replicateWrite(key, value []byte, referenceList []string) ([]st
 	return usedShards, nil
 }
 
-func (c *Client) replicateRead(key []byte, shards []string) ([]byte, error) {
+func (c *Client) replicateRead(key []byte, shards []string) (*pb.Object, error) {
 	wg := sync.WaitGroup{}
-	cVal := make(chan []byte)
+	cVal := make(chan *pb.Object)
 	cAllDone := make(chan struct{})
 	cQuit := make(chan struct{})
 
@@ -453,18 +457,17 @@ func (c *Client) replicateRead(key []byte, shards []string) ([]byte, error) {
 				log.Warningf("replication read, error getting client for %s: %v", shard, err)
 				return
 			}
+			obj, err := cl.ObjectGet(key)
+			if err != nil {
+				log.Warningf("replication read, error reading from %s: %v", shard, err)
+				return
+			}
 
 			select {
 			case <-cQuit:
-				return
-			default:
-				obj, err := cl.ObjectGet(key)
-				if err != nil {
-					log.Warningf("replication read, error reading from %s: %v", shard, err)
-					return
-				}
-				cVal <- obj.Value
+			case cVal <- obj:
 			}
+			return
 		}(shard)
 	}
 
@@ -483,6 +486,7 @@ func (c *Client) replicateRead(key []byte, shards []string) ([]byte, error) {
 	case val := <-cVal:
 		close(cQuit)
 		return val, nil
+
 	}
 }
 
@@ -522,7 +526,7 @@ func (c *Client) distributeWrite(key, value []byte, referenceList []string) ([]s
 
 			go func(job *Job) {
 				defer wg.Done()
-				_, err := job.client.ObjectCreate(key, job.part, referenceList)
+				err := job.client.ObjectCreate(key, job.part, referenceList)
 				if err != nil {
 					log.Errorf("error writing to stor: %v", err)
 					shardErr.Add([]string{job.shard}, lib.ShardType0Stor, err, 0)
@@ -565,8 +569,7 @@ func (c *Client) distributeWrite(key, value []byte, referenceList []string) ([]s
 	return usedShards, size, nil
 }
 
-func (c *Client) distributeRead(key []byte, originalSize int, shards []string) ([]byte, error) {
-	parts := make([][]byte, len(shards))
+func (c *Client) distributeRead(key []byte, originalSize int, shards []string) (*pb.Object, error) {
 
 	dec, err := distribution.NewDecoder(c.policy.DistributionNr, c.policy.DistributionRedundancy)
 	if err != nil {
@@ -574,8 +577,10 @@ func (c *Client) distributeRead(key []byte, originalSize int, shards []string) (
 	}
 
 	var (
-		wg       = sync.WaitGroup{}
-		shardErr = &lib.ShardError{}
+		wg           = sync.WaitGroup{}
+		shardErr     = &lib.ShardError{}
+		parts        = make([][]byte, len(shards))
+		refListSlice = make([][]string, len(shards))
 	)
 
 	wg.Add(len(shards))
@@ -596,6 +601,7 @@ func (c *Client) distributeRead(key []byte, originalSize int, shards []string) (
 				return
 			}
 			parts[i] = obj.Value
+			refListSlice[i] = obj.ReferenceList
 		}(i, shard)
 	}
 
@@ -605,7 +611,26 @@ func (c *Client) distributeRead(key []byte, originalSize int, shards []string) (
 		return nil, shardErr
 	}
 
-	return dec.Decode(parts, originalSize)
+	decoded, err := dec.Decode(parts, originalSize)
+	if err != nil {
+		return nil, err
+	}
+
+	// get non empty refList
+	// empty refList could be caused by shard error
+	var refList []string
+	for _, rl := range refListSlice {
+		if len(rl) > 0 {
+			refList = rl
+			break
+		}
+	}
+
+	return &pb.Object{
+		Key:           key,
+		Value:         decoded,
+		ReferenceList: refList,
+	}, nil
 }
 
 func (c *Client) writeRandom(key, value []byte, referenceList []string) (string, error) {
@@ -619,7 +644,7 @@ func (c *Client) writeRandom(key, value []byte, referenceList []string) (string,
 
 		triedShards = append(triedShards, shard)
 
-		_, err = cl.ObjectCreate(key, value, referenceList)
+		err = cl.ObjectCreate(key, value, referenceList)
 		if err == nil {
 			return shard, nil
 		}
@@ -627,7 +652,7 @@ func (c *Client) writeRandom(key, value []byte, referenceList []string) (string,
 	}
 }
 
-func (c *Client) read(key []byte, shard string) ([]byte, error) {
+func (c *Client) read(key []byte, shard string) (*pb.Object, error) {
 	cl, err := c.getStor(shard)
 	if err != nil {
 		return nil, err
@@ -637,7 +662,7 @@ func (c *Client) read(key []byte, shard string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return obj.Value, nil
+	return obj, nil
 }
 
 func (c *Client) linkMeta(curMd, prevMd *meta.Meta, curKey, prevKey []byte) error {
@@ -670,9 +695,6 @@ func (c *Client) getRandomStor(except []string) (stor.Client, string, error) {
 		return false
 	}
 
-	c.muStorClients.Lock()
-	defer c.muStorClients.Unlock()
-
 	possibleShards := []string{}
 	for _, shard := range c.policy.DataShards {
 		if !isIn(shard, except) {
@@ -691,24 +713,7 @@ func (c *Client) getRandomStor(except []string) (stor.Client, string, error) {
 
 	// TODO: find a way to invalidate some client if an error occurs with it
 
-	// first check if we don't already have a client to this shard loaded
-	cl, ok := c.storClients[shard]
-	if ok {
-		return cl, shard, nil
-	}
-
-	// if not create the client and put in cache
-	cl, err := stor.NewClientWithToken(&stor.Config{
-		IyoClientID: c.policy.IYOAppID,
-		IyoSecret:   c.policy.IYOSecret,
-		Protocol:    c.policy.Protocol,
-		Shard:       shard,
-	}, c.policy.Organization, c.policy.Namespace, c.iyoToken)
-	if err != nil {
-		return nil, shard, err
-	}
-	c.storClients[shard] = cl
-
+	cl, err := c.getStor(shard)
 	return cl, shard, err
 }
 
@@ -723,18 +728,14 @@ func (c *Client) getStor(shard string) (stor.Client, error) {
 	}
 
 	// if not create the client and put in cache
-	cl, err := stor.NewClientWithToken(&stor.Config{
-		IyoClientID: c.policy.IYOAppID,
-		IyoSecret:   c.policy.IYOSecret,
-		Protocol:    c.policy.Protocol,
-		Shard:       shard,
-	}, c.policy.Organization, c.policy.Namespace, c.iyoToken)
+	namespace := fmt.Sprintf("%s_0stor_%s", c.policy.Organization, c.policy.Namespace)
+	cl, err := stor.NewClient(shard, namespace, c.iyoToken)
 	if err != nil {
 		return nil, err
 	}
 	c.storClients[shard] = cl
 
-	return cl, err
+	return cl, nil
 }
 
 func (c *Client) CreateJWT(namespace string, perm itsyouonline.Permission) (string, error) {

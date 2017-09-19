@@ -21,10 +21,11 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"os"
-	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/dgraph-io/badger/y"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -59,11 +60,20 @@ func TestValueBasic(t *testing.T) {
 	require.Len(t, b.Ptrs, 2)
 	fmt.Printf("Pointer written: %+v %+v\n", b.Ptrs[0], b.Ptrs[1])
 
-	e, err := log.Read(b.Ptrs[0], nil)
-	e2, err := log.Read(b.Ptrs[1], nil)
+	var buf1, buf2 []byte
+	var err1, err2 error
+	err1 = log.readValueBytes(b.Ptrs[0], func(val []byte) error {
+		buf1 = y.Safecopy(nil, val)
+		return nil
+	})
+	err2 = log.readValueBytes(b.Ptrs[1], func(val []byte) error {
+		buf2 = y.Safecopy(nil, val)
+		return nil
+	})
 
-	require.NoError(t, err)
-	readEntries := []Entry{e, e2}
+	require.NoError(t, err1)
+	require.NoError(t, err2)
+	readEntries := []Entry{valueBytesToEntry(buf1), valueBytesToEntry(buf2)}
 	require.EqualValues(t, []Entry{
 		{
 			Key:             []byte("samplekey"),
@@ -111,9 +121,9 @@ func TestValueGC(t *testing.T) {
 		kv.Delete([]byte(fmt.Sprintf("key%d", i)))
 	}
 
-	kv.vlog.RLock()
-	lf := kv.vlog.files[0]
-	kv.vlog.RUnlock()
+	kv.vlog.filesLock.RLock()
+	lf := kv.vlog.filesMap[kv.vlog.sortedFids()[0]]
+	kv.vlog.filesLock.RUnlock()
 
 	//	lf.iterate(0, func(e Entry) bool {
 	//		e.print("lf")
@@ -127,7 +137,7 @@ func TestValueGC(t *testing.T) {
 		if err := kv.Get(key, &item); err != nil {
 			t.Error(err)
 		}
-		val := item.Value()
+		val := getItemValue(t, &item)
 		require.NotNil(t, val)
 		require.True(t, len(val) == sz, "Size found: %d", len(val))
 	}
@@ -148,10 +158,15 @@ func TestValueGC2(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		v := make([]byte, sz)
 		rand.Read(v[:rand.Intn(sz)])
-		entries = append(entries, &Entry{
+		entry := &Entry{
 			Key:   []byte(fmt.Sprintf("key%d", i)),
 			Value: v,
-		})
+		}
+		entries = append(entries, entry)
+		// We don't overwrite these values later in the test
+		if i == 10 || i == 11 {
+			entry.Meta = BitSetIfAbsent
+		}
 	}
 	kv.BatchSet(entries)
 	for _, e := range entries {
@@ -175,9 +190,9 @@ func TestValueGC2(t *testing.T) {
 		require.NoError(t, e.Error, "entry with error: %+v", e)
 	}
 
-	kv.vlog.RLock()
-	lf := kv.vlog.files[0]
-	kv.vlog.RUnlock()
+	kv.vlog.filesLock.RLock()
+	lf := kv.vlog.filesMap[kv.vlog.sortedFids()[0]]
+	kv.vlog.filesLock.RUnlock()
 
 	//	lf.iterate(0, func(e Entry) bool {
 	//		e.print("lf")
@@ -191,7 +206,7 @@ func TestValueGC2(t *testing.T) {
 		if err := kv.Get(key, &item); err != nil {
 			t.Error(err)
 		}
-		val := item.Value()
+		val := getItemValue(t, &item)
 		require.True(t, len(val) == 0, "Size found: %d", len(val))
 	}
 	for i := 5; i < 10; i++ {
@@ -199,7 +214,7 @@ func TestValueGC2(t *testing.T) {
 		if err := kv.Get(key, &item); err != nil {
 			t.Error(err)
 		}
-		val := item.Value()
+		val := getItemValue(t, &item)
 		require.NotNil(t, val)
 		require.Equal(t, string(val), fmt.Sprintf("value%d", i))
 	}
@@ -208,10 +223,88 @@ func TestValueGC2(t *testing.T) {
 		if err := kv.Get(key, &item); err != nil {
 			t.Error(err)
 		}
-		val := item.Value()
+		val := getItemValue(t, &item)
 		require.NotNil(t, val)
 		require.True(t, len(val) == sz, "Size found: %d", len(val))
 	}
+}
+
+func TestValueGC3(t *testing.T) {
+	dir, err := ioutil.TempDir("", "badger")
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+	opt := getTestOptions(dir)
+	opt.ValueLogFileSize = 1 << 20
+
+	kv, err := NewKV(opt)
+	require.NoError(t, err)
+	defer kv.Close()
+
+	// We want to test whether an iterator can continue through a value log GC.
+
+	valueSize := 32 << 10
+
+	var value3 []byte
+	var entries []*Entry
+	for i := 0; i < 100; i++ {
+		v := make([]byte, valueSize) // 32K * 100 will take >=3'276'800 B.
+		if i == 3 {
+			value3 = v
+		}
+		rand.Read(v[:])
+		// Keys key000, key001, key002, such that sorted order matches insertion order
+		entry := &Entry{
+			Key:   []byte(fmt.Sprintf("key%03d", i)),
+			Value: v,
+		}
+		entries = append(entries, entry)
+	}
+	err = kv.BatchSet(entries)
+	require.NoError(t, err)
+	for _, e := range entries {
+		require.NoError(t, e.Error)
+	}
+
+	// Start an iterator to keys in the first value log file
+	itOpt := IteratorOptions{
+		PrefetchValues: false,
+		PrefetchSize:   0,
+		Reverse:        false,
+	}
+
+	it := kv.NewIterator(itOpt)
+	defer it.Close()
+	// Walk a few keys
+	it.Rewind()
+	require.True(t, it.Valid())
+	item := it.Item()
+	require.Equal(t, []byte("key000"), item.Key())
+	it.Next()
+	require.True(t, it.Valid())
+	item = it.Item()
+	require.Equal(t, []byte("key001"), item.Key())
+	it.Next()
+	require.True(t, it.Valid())
+	item = it.Item()
+	require.Equal(t, []byte("key002"), item.Key())
+
+	// Like other tests, we pull out a logFile to rewrite it directly
+
+	kv.vlog.filesLock.RLock()
+	logFile := kv.vlog.filesMap[kv.vlog.sortedFids()[0]]
+	kv.vlog.filesLock.RUnlock()
+
+	kv.vlog.rewrite(logFile)
+	it.Next()
+	require.True(t, it.Valid())
+	item = it.Item()
+	require.Equal(t, []byte("key003"), item.Key())
+	var v3 []byte
+	var wg sync.WaitGroup
+	wg.Add(1)
+	item.Value(func(x []byte) error { v3 = x; wg.Done(); return nil })
+	wg.Wait()
+	require.Equal(t, value3, v3)
 }
 
 var (
@@ -236,18 +329,18 @@ func TestChecksums(t *testing.T) {
 
 	// Use a vlog with K1=V1 and a (corrupted) K2=V2
 	buf := createVlog(t, []*Entry{
-		&Entry{Key: k1, Value: v1},
-		&Entry{Key: k2, Value: v2},
+		{Key: k1, Value: v1},
+		{Key: k2, Value: v2},
 	})
 	buf[len(buf)-1]++ // Corrupt last byte
-	require.NoError(t, ioutil.WriteFile(filepath.Join(dir, "000000.vlog"), buf, 0777))
+	require.NoError(t, ioutil.WriteFile(vlogFilePath(dir, 0), buf, 0777))
 
 	// K1 should exist, but K2 shouldn't.
 	kv, err = NewKV(getTestOptions(dir))
 	require.NoError(t, err)
 	var item KVItem
 	require.NoError(t, kv.Get(k1, &item))
-	require.Equal(t, item.Value(), v1)
+	require.Equal(t, getItemValue(t, &item), v1)
 	ok, err := kv.Exists(k2)
 	require.NoError(t, err)
 	require.False(t, ok)
@@ -259,17 +352,17 @@ func TestChecksums(t *testing.T) {
 	// last due to checksum failure).
 	kv, err = NewKV(getTestOptions(dir))
 	require.NoError(t, err)
-	iter := kv.NewIterator(IteratorOptions{FetchValues: true})
+	iter := kv.NewIterator(DefaultIteratorOptions)
 	iter.Seek(k1)
 	require.True(t, iter.Valid())
 	it := iter.Item()
 	require.Equal(t, it.Key(), k1)
-	require.Equal(t, it.Value(), v1)
+	require.Equal(t, getItemValue(t, it), v1)
 	iter.Next()
 	require.True(t, iter.Valid())
 	it = iter.Item()
 	require.Equal(t, it.Key(), k3)
-	require.Equal(t, it.Value(), v3)
+	require.Equal(t, getItemValue(t, it), v3)
 	iter.Close()
 	require.NoError(t, kv.Close())
 }
@@ -286,11 +379,11 @@ func TestPartialAppendToValueLog(t *testing.T) {
 
 	// Create truncated vlog to simulate a partial append.
 	buf := createVlog(t, []*Entry{
-		&Entry{Key: k1, Value: v1},
-		&Entry{Key: k2, Value: v2},
+		{Key: k1, Value: v1},
+		{Key: k2, Value: v2},
 	})
 	buf = buf[:len(buf)-6]
-	require.NoError(t, ioutil.WriteFile(filepath.Join(dir, "000000.vlog"), buf, 0777))
+	require.NoError(t, ioutil.WriteFile(vlogFilePath(dir, 0), buf, 0777))
 
 	// Badger should now start up, but with only K1.
 	kv, err = NewKV(getTestOptions(dir))
@@ -301,7 +394,7 @@ func TestPartialAppendToValueLog(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, ok)
 	require.Equal(t, item.Key(), k1)
-	require.Equal(t, item.Value(), v1)
+	require.Equal(t, getItemValue(t, &item), v1)
 
 	// When K3 is set, it should be persisted after a restart.
 	require.NoError(t, kv.Set(k3, v3, 0))
@@ -310,6 +403,55 @@ func TestPartialAppendToValueLog(t *testing.T) {
 	require.NoError(t, err)
 	checkKeys(t, kv, [][]byte{k1, k3})
 	require.NoError(t, kv.Close())
+}
+
+func TestValueLogTrigger(t *testing.T) {
+	dir, err := ioutil.TempDir("", "badger")
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	opt := getTestOptions(dir)
+	opt.ValueLogFileSize = 1 << 20
+	kv, err := NewKV(opt)
+	require.NoError(t, err)
+
+	// Write a lot of data, so it creates some work for valug log GC.
+	sz := 32 << 10
+	var entries []*Entry
+	for i := 0; i < 100; i++ {
+		v := make([]byte, sz)
+		rand.Read(v[:rand.Intn(sz)])
+		entries = append(entries, &Entry{
+			Key:   []byte(fmt.Sprintf("key%d", i)),
+			Value: v,
+		})
+	}
+	kv.BatchSet(entries)
+	for _, e := range entries {
+		require.NoError(t, e.Error, "entry with error: %+v", e)
+	}
+
+	for i := 0; i < 45; i++ {
+		kv.Delete([]byte(fmt.Sprintf("key%d", i)))
+	}
+
+	// Now attempt to run 5 value log GCs simultaneously.
+	errCh := make(chan error, 5)
+	for i := 0; i < 5; i++ {
+		go func() { errCh <- kv.RunValueLogGC(0.5) }()
+	}
+	var numRejected int
+	for i := 0; i < 5; i++ {
+		err := <-errCh
+		if err == ErrRejected {
+			numRejected++
+		}
+	}
+	require.True(t, numRejected > 0, "Should have found at least one value log GC request rejected.")
+	require.NoError(t, kv.Close())
+
+	err = kv.RunValueLogGC(0.5)
+	require.Equal(t, ErrRejected, err, "Error should be returned after closing KV.")
 }
 
 func createVlog(t *testing.T, entries []*Entry) []byte {
@@ -322,7 +464,7 @@ func createVlog(t *testing.T, entries []*Entry) []byte {
 	require.NoError(t, kv.BatchSet(entries))
 	require.NoError(t, kv.Close())
 
-	filename := filepath.Join(dir, "000000.vlog")
+	filename := vlogFilePath(dir, 0)
 	buf, err := ioutil.ReadFile(filename)
 	require.NoError(t, err)
 	return buf
@@ -381,15 +523,18 @@ func BenchmarkReadWrite(b *testing.B) {
 							b.Fatalf("Zero length of ptrs")
 						}
 						idx := rand.Intn(ln)
-						e, err := vl.Read(ptrs[idx], nil)
+						err := vl.readValueBytes(ptrs[idx], func(buf []byte) error {
+							e := valueBytesToEntry(buf)
+							if len(e.Key) != 16 {
+								return errors.New("Key is invalid")
+							}
+							if len(e.Value) != vsz {
+								return errors.New("Value is invalid")
+							}
+							return nil
+						})
 						if err != nil {
 							b.Fatalf("Benchmark Read: %v", err)
-						}
-						if len(e.Key) != 16 {
-							b.Fatalf("Key is invalid")
-						}
-						if len(e.Value) != vsz {
-							b.Fatalf("Value is invalid")
 						}
 					}
 				}

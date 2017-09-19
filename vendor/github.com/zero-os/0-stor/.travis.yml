@@ -29,23 +29,3 @@ matrix:
       go: 1.9
       install: skip
       script: make testclientrace
-
-    - language: go
-      sudo: true
-      dist: trusty
-      go: 1.9
-      install:
-        - go get -u github.com/Jumpscale/go-raml
-      script:
-          - go-raml server -l go --api-file-per-method --dir servertmp --ramlfile specs/raml/sdstor.raml --lib-root-urls https://raw.githubusercontent.com/Jumpscale-Cockpit/raml-definitions/master/ #validate raml server generation
-          - go-raml client -l python --ramlfile specs/raml/sdstor.raml --dir clienttmp # validate client generation
-
-    - language: go
-      sudo: true
-      dist: trusty
-      before_install:
-          - sudo apt-get -qq update
-          - sudo apt-get install -y npm
-          - sudo npm install -g raml2html
-      script:
-          - cd specs/raml raml2html -p sdstor.raml > sdstor.html
