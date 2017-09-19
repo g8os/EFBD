@@ -11,31 +11,15 @@ import (
 	"testing"
 	"time"
 
-	jwtgo "github.com/dgrijalva/jwt-go"
 	"github.com/zero-os/0-stor/client/meta/embedserver"
-	"github.com/zero-os/0-stor/stubs"
+	"github.com/zero-os/0-stor/server"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/zero-os/0-stor/server/jwt"
-	"github.com/zero-os/0-stor/server/storserver"
 )
 
-func TestMain(m *testing.M) {
-	// configure the test jwt key
-	pubKey, err := ioutil.ReadFile("../devcert/jwt_pub.pem")
-	if err != nil {
-		panic(err)
-	}
-	jwt.SetJWTPublicKey(string(pubKey))
-
-	log.SetLevel(log.DebugLevel)
-	os.Exit(m.Run())
-}
-
-func testGRPCServer(t testing.TB, n int) ([]storserver.StoreServer, func()) {
-	servers := make([]storserver.StoreServer, n)
+func testGRPCServer(t testing.TB, n int) ([]server.StoreServer, func()) {
+	servers := make([]server.StoreServer, n)
 	dirs := make([]string, n)
 
 	for i := 0; i < n; i++ {
@@ -44,7 +28,7 @@ func testGRPCServer(t testing.TB, n int) ([]storserver.StoreServer, func()) {
 		require.NoError(t, err)
 		dirs[i] = tmpDir
 
-		server, err := storserver.NewGRPC(path.Join(tmpDir, "data"), path.Join(tmpDir, "meta"))
+		server, err := server.New(path.Join(tmpDir, "data"), path.Join(tmpDir, "meta"), false)
 		require.NoError(t, err)
 
 		_, err = server.Listen("localhost:0")
@@ -66,23 +50,7 @@ func testGRPCServer(t testing.TB, n int) ([]storserver.StoreServer, func()) {
 }
 
 func getTestClient(policy Policy) (*Client, error) {
-
-	b, err := ioutil.ReadFile("../devcert/jwt_key.pem")
-	if err != nil {
-		panic(err)
-	}
-
-	key, err := jwtgo.ParseECPrivateKeyFromPEM(b)
-	if err != nil {
-		panic(err)
-	}
-
-	iyoCl, err := stubs.NewStubIYOClient("testorg", key)
-	if err != nil {
-		panic(err)
-	}
-
-	return newClient(policy, iyoCl)
+	return newClient(policy, nil)
 }
 
 func TestRoundTripGRPC(t *testing.T) {
@@ -101,7 +69,6 @@ func TestRoundTripGRPC(t *testing.T) {
 	policy := Policy{
 		Organization: "testorg",
 		Namespace:    "namespace1",
-		Protocol:     "grpc",
 		DataShards:   shards,
 		MetaShards:   []string{etcd.ListenAddr()},
 		IYOAppID:     "id",
@@ -222,14 +189,14 @@ func TestRoundTripGRPC(t *testing.T) {
 			c, err := getTestClient(policy)
 			require.NoError(t, err, "fail to create client")
 
-			// data := []byte("1234567890")
 			data := make([]byte, 1024*4)
 			_, err = rand.Read(data)
+			refList := []string{"vdisk-1"}
 			require.NoError(t, err, "fail to read random data")
 
 			// write data to the store
 			key := []byte("testkey")
-			meta, err := c.Write(key, data)
+			meta, err := c.Write(key, data, refList)
 			require.NoError(t, err, "fail to write data to the store")
 
 			// validate metadata
@@ -246,13 +213,13 @@ func TestRoundTripGRPC(t *testing.T) {
 			// fmt.Println(string(b))
 
 			// read data back
-			dataRead, err := c.Read(key)
+			dataRead, refListRead, err := c.Read(key)
 			require.NoError(t, err, "fail to read data from the store")
 			if bytes.Compare(data, dataRead) != 0 {
 				t.Errorf("data read from store is not the same as original data")
 				t.Errorf("len original: %d len actual %d", len(data), len(dataRead))
 			}
-			// assert.Equal(t, data, dataRead)
+			require.Equal(t, refList, refListRead)
 		})
 	}
 }
@@ -276,11 +243,10 @@ func TestMultipleDownload(t *testing.T) {
 	policy := Policy{
 		Organization:           "testorg",
 		Namespace:              "namespace1",
-		Protocol:               "grpc",
 		DataShards:             shards,
 		MetaShards:             []string{etcd.ListenAddr()},
-		IYOAppID:               "id",
-		IYOSecret:              "secret",
+		IYOAppID:               "",
+		IYOSecret:              "",
 		BlockSize:              1024000,
 		Compress:               true,
 		Encrypt:                true,
@@ -300,14 +266,16 @@ func TestMultipleDownload(t *testing.T) {
 	_, err = rand.Read(data)
 	require.NoError(t, err, "fail to read random data")
 	key := []byte("testkey")
+	refList := []string{"vdisk-1"}
 
-	_, err = c.Write(key, data)
+	_, err = c.Write(key, data, refList)
 	require.NoError(t, err, "fail write data")
 
 	for i := 0; i < 100; i++ {
-		result, err := c.Read(key)
+		result, refListRead, err := c.Read(key)
 		require.NoError(t, err, "fail read data")
 		assert.Equal(t, data, result)
+		require.Equal(t, refList, refListRead)
 	}
 }
 
@@ -329,11 +297,10 @@ func TestConcurentWriteRead(t *testing.T) {
 	policy := Policy{
 		Organization:           "testorg",
 		Namespace:              "namespace1",
-		Protocol:               "grpc",
 		DataShards:             shards,
 		MetaShards:             []string{etcd.ListenAddr()},
-		IYOAppID:               "id",
-		IYOSecret:              "secret",
+		IYOAppID:               "",
+		IYOSecret:              "",
 		BlockSize:              1024 * 64,
 		Compress:               true,
 		Encrypt:                true,
@@ -353,13 +320,15 @@ func TestConcurentWriteRead(t *testing.T) {
 		_, err = rand.Read(data)
 		require.NoError(t, err, "fail to read random data")
 		key := []byte(fmt.Sprintf("testkey-%d", i))
+		refList := []string{fmt.Sprintf("reflist-%d", i)}
 
-		_, err = c.Write(key, data)
+		_, err = c.Write(key, data, refList)
 		require.NoError(t, err, "fail write data")
 
-		result, err := c.Read(key)
+		result, refListResult, err := c.Read(key)
 		require.NoError(t, err, "fail read data")
-		assert.Equal(t, data, result, "data read is not same as data written")
+		require.Equal(t, data, result, "data read is not same as data written")
+		require.Equal(t, refList, refListResult, "refList read is not same as refList written")
 	}
 
 	// Seems we can't increased the number of concurent write more then around 32
@@ -401,11 +370,10 @@ func BenchmarkWriteFilesSizes(b *testing.B) {
 	policy := Policy{
 		Organization:           "testorg",
 		Namespace:              "namespace1",
-		Protocol:               "grpc",
 		DataShards:             shards,
 		MetaShards:             []string{etcd.ListenAddr()},
-		IYOAppID:               "id",
-		IYOSecret:              "secret",
+		IYOAppID:               "",
+		IYOSecret:              "",
 		BlockSize:              1024 * 1024, // 1MiB
 		Compress:               true,
 		Encrypt:                true,
@@ -446,7 +414,7 @@ func BenchmarkWriteFilesSizes(b *testing.B) {
 
 			for i := 0; i < b.N; i++ {
 				// write data to the store
-				_, err := c.Write(key, data)
+				_, err := c.Write(key, data, nil)
 				require.NoError(b, err, "fail to write data to the store")
 			}
 
@@ -477,7 +445,7 @@ func BenchmarkWriteFilesSizes(b *testing.B) {
 // 	conf := config.Config{
 // 		Organization: "testorg",
 // 		Namespace:    "testnamespace",
-// 		Protocol:     "grpc",
+//
 // 		Shards:       shards,
 // 		MetaShards:   []string{etcd.ListenAddr()},
 // 		IYOAppID:     "id",
@@ -486,7 +454,6 @@ func BenchmarkWriteFilesSizes(b *testing.B) {
 
 // 	for _, proto := range []string{"rest", "grpc"} {
 // 		b.Run(proto, func(b *testing.B) {
-// 			conf.Protocol = proto
 // 			c, err := getTestClient(&conf)
 // 			require.NoError(b, err, "fail to create client")
 

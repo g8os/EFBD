@@ -21,6 +21,9 @@ type WalkResult struct {
 	// Raw data stored in 0-stor server
 	Data []byte
 
+	// Reference list
+	RefList []string
+
 	// Error object if exist.
 	// If not nil, all other fields shouldn't be used
 	Error error
@@ -129,13 +132,14 @@ func (c *Client) walk(startKey []byte, fromEpoch, toEpoch int64, next nextFunc,
 			}
 
 			// get the object from 0-stor server
-			data, err := c.Read(key)
+			data, refList, err := c.Read(key)
 			if err != nil {
 				wr.Error = err
 				wrCh <- wr
 				return
 			}
 			wr.Data = data
+			wr.RefList = refList
 
 			// go to next key
 			nextKey, err = next(md)

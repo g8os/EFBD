@@ -6,8 +6,7 @@ API documentation : [https://godoc.org/github.com/zero-os/0-stor/client](https:/
 
 ## Supported protocols
 
-- REST (incomplete) : storing and retrieving data already supported
-- GRPC (todo)
+- GRPC
 
 ## Motivation
 
@@ -137,7 +136,6 @@ func main() {
 	policy := client.Policy{
 		Organization:           "labhijau",
 		Namespace:              "thedisk",
-		Protocol:               "rest",
 		DataShards:             []string{"http://127.0.0.1:12345", "http://127.0.0.1:12346", "http://127.0.0.1:12347"},
 		MetaShards:             []string{"http://127.0.0.1:2379"},
 		IYOAppID:               "the_id",
@@ -205,15 +203,16 @@ func main() {
 
 	data := []byte("hello 0-stor")
 	key := []byte("hello")
+	refList := []string("ref-1")
 
 	// stor to 0-stor
-	_, err = client.Write(key, data)
+	_, err = client.Write(key, data, refList)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// read data
-	stored, err := client.Read(key)
+	stored, storedRefList, err := client.Read(key)
 	if err != nil {
 		log.Fatal(err)
 	}

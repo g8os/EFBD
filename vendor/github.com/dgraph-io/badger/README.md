@@ -1,6 +1,6 @@
-# Badger [![GoDoc](https://godoc.org/github.com/dgraph-io/badger?status.svg)](https://godoc.org/github.com/dgraph-io/badger) [![Go Report Card](https://goreportcard.com/badge/github.com/dgraph-io/badger)](https://goreportcard.com/report/github.com/dgraph-io/badger) [![Build Status](https://travis-ci.org/dgraph-io/badger.svg?branch=master)](https://travis-ci.org/dgraph-io/badger) ![Appveyor](https://ci.appveyor.com/api/projects/status/github/dgraph-io/badger?branch=master&svg=true)
+# Badger [![GoDoc](https://godoc.org/github.com/dgraph-io/badger?status.svg)](https://godoc.org/github.com/dgraph-io/badger) [![Go Report Card](https://goreportcard.com/badge/github.com/dgraph-io/badger)](https://goreportcard.com/report/github.com/dgraph-io/badger) [![Build Status](https://travis-ci.org/dgraph-io/badger.svg?branch=master)](https://travis-ci.org/dgraph-io/badger) ![Appveyor](https://ci.appveyor.com/api/projects/status/github/dgraph-io/badger?branch=master&svg=true) [![Coverage Status](https://coveralls.io/repos/github/dgraph-io/badger/badge.svg?branch=master)](https://coveralls.io/github/dgraph-io/badger?branch=master)
 
-An embeddable, persistent, simple and fast key-value (KV) store, written purely in Go. It's meant to be an alternative to [RocksDB](https://github.com/facebook/rocksdb).
+An embeddable, persistent, simple and fast key-value (KV) store, written purely in Go. It's meant to be a performant alternative to non Go based key-value stores like [RocksDB](https://github.com/facebook/rocksdb).
 
 ![Badger sketch](/images/sketch.jpg)
 
@@ -14,6 +14,10 @@ Badger aims to provide an equal or better speed compared to industry leading KV 
 1. [Introducing Badger: A fast key-value store written natively in Go](https://open.dgraph.io/post/badger/)
 2. [Make Badger crash resilient with ALICE](https://blog.dgraph.io/post/alice/)
 
+## Video Tutorials
+
+- [Getting Started](https://www.youtube.com/watch?v=XBKq39caRZ8) by [1lann](https://github.com/1lann)
+
 ## Installation and Usage
 
 `go get -v github.com/dgraph-io/badger`
@@ -23,6 +27,10 @@ If you want to run tests, also get testing dependencies by passing in `-t` flag.
 `go get -t -v github.com/dgraph-io/badger`
 
 From here, follow [docs](https://godoc.org/github.com/dgraph-io/badger) for usage.
+
+## Documentation
+
+Badger documentation is located at [godoc.org](https://godoc.org/github.com/dgraph-io/badger).
 
 ## Design Goals
 
@@ -36,10 +44,6 @@ Badger has these design goals in mind:
 ### Non-Goals
 
 - Try to be a database.
-
-## Video Tutorials
-
-- **[Getting Started - Opening your first database, and basic setting and getting](https://www.youtube.com/watch?v=XBKq39caRZ8)** by [1lann](https://github.com/1lann)
 
 ## Users
 
@@ -94,6 +98,12 @@ This improves random get performance significantly compared to traditional LSM t
 <sup>2</sup> RocksDB is an SSD optimized version of LevelDB, which was designed specifically for rotating disks.
 As such RocksDB's design isn't aimed at SSDs.
 
+## Benchmarks
+
+### RocksDB ([Link to blog post](https://blog.dgraph.io/post/badger/))
+
+![RocksDB Benchmarks](/images/benchmarks-rocksdb.png)
+
 ## Crash Consistency
 
 Badger is crash resilient. Any update which was applied successfully before a crash, would be available after the crash.
@@ -137,7 +147,7 @@ it to 128. For more details, [see this
 thread](https://groups.google.com/d/topic/golang-nuts/jPb_h3TvlKE/discussion).
 
 ## Contact
-- Please use [discuss.dgraph.io](https://discuss.dgraph.io) for documentation, questions, feature requests and discussions.
+- Please use [discuss.dgraph.io](https://discuss.dgraph.io) for questions, feature requests and discussions.
 - Please use [Github issue tracker](https://github.com/dgraph-io/badger/issues) for filing bugs or feature requests.
 - Join [![Slack Status](http://slack.dgraph.io/badge.svg)](http://slack.dgraph.io).
 - Follow us on Twitter [@dgraphlabs](https://twitter.com/dgraphlabs).

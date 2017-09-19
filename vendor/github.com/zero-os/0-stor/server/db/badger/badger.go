@@ -79,13 +79,21 @@ func (b BadgerDB) Get(key []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	v := item.Value()
+	var val []byte
+	err = item.Value(func(v []byte) error {
+		val = make([]byte, len(v))
+		copy(val, v)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
 
-	if len(v) == 0 {
+	if len(val) == 0 {
 		err = db.ErrNotFound
 	}
 
-	return v, err
+	return val, err
 }
 
 func (b BadgerDB) Exists(key []byte) (bool, error) {
@@ -103,7 +111,7 @@ func (b BadgerDB) Filter(prefix []byte, start int, count int) ([][]byte, error) 
 	it := b.KV.NewIterator(opt)
 	defer it.Close()
 
-	result := [][]byte{}
+	result := make([][]byte, 0, count)
 
 	counter := 0 // Number of namespaces encountered
 
@@ -118,8 +126,17 @@ func (b BadgerDB) Filter(prefix []byte, start int, count int) ([][]byte, error) 
 		}
 
 		item := it.Item()
-		value := item.Value()
-		result = append(result, value)
+
+		var val []byte
+		err := item.Value(func(v []byte) error {
+			val = make([]byte, len(v))
+			copy(val, v)
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, val)
 
 		if count > 0 && len(result) == count {
 			break
@@ -132,7 +149,7 @@ func (b BadgerDB) Filter(prefix []byte, start int, count int) ([][]byte, error) 
 func (b BadgerDB) List(prefix []byte) ([][]byte, error) {
 
 	opt := badgerkv.DefaultIteratorOptions
-	opt.FetchValues = false
+	opt.PrefetchValues = false
 
 	it := b.KV.NewIterator(opt)
 	defer it.Close()
@@ -141,7 +158,9 @@ func (b BadgerDB) List(prefix []byte) ([][]byte, error) {
 
 	for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 		item := it.Item()
-		key := item.Key()[:]
+
+		key := make([]byte, len(item.Key()))
+		copy(key, item.Key())
 		result = append(result, key)
 	}
 

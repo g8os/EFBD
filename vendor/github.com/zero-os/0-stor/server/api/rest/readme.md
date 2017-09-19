@@ -1,2 +1,0 @@
-- this directory is all generated code
-- edit the api_... files that is where the logic needs to be
