@@ -2,7 +2,6 @@ package stor
 
 import (
 	"crypto/rand"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -30,10 +29,10 @@ func TestRoundTrip(t *testing.T) {
 
 	conf := Config{
 		VdiskID:         vdiskID,
-		Organization:    os.Getenv("iyo_organization"),
+		Organization:    "testorg",
 		Namespace:       "thedisk",
-		IyoClientID:     os.Getenv("iyo_client_id"),
-		IyoSecret:       os.Getenv("iyo_secret"),
+		IyoClientID:     "",
+		IyoSecret:       "",
 		ZeroStorShards:  storCluster.Addrs(),
 		MetaShards:      []string{mdServer.ListenAddr()},
 		DataShardsNum:   1,

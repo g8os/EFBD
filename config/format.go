@@ -420,8 +420,8 @@ func (cfg *ZeroStorClusterConfig) Equal(other *ZeroStorClusterConfig) bool {
 type IYOCredentials struct {
 	Org       string `yaml:"org" valid:"required"`
 	Namespace string `yaml:"namespace" valid:"required"`
-	ClientID  string `yaml:"clientID" valid:"required"`
-	Secret    string `yaml:"secret" valid:"required"`
+	ClientID  string `yaml:"clientID" valid:"optional"`
+	Secret    string `yaml:"secret" valid:"optional"`
 }
 
 // NewTlogClusterConfig creates a new TlogClusterConfig from a given YAML slice.

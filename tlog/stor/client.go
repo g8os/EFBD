@@ -147,8 +147,7 @@ func (c *Client) ProcessStore(blocks []*schema.TlogBlock) ([]byte, error) {
 	initialMeta.Epoch = timestamp
 
 	// stor to 0-stor
-	lastMd, err := c.storClient.WriteWithMeta(key, data, c.lastMetaKey, c.lastMd, initialMeta,
-		c.refList)
+	lastMd, err := c.storClient.WriteWithMeta(key, data, c.lastMetaKey, c.lastMd, initialMeta, c.refList)
 	if err != nil {
 		return nil, err
 	}
