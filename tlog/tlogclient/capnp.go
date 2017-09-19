@@ -32,8 +32,8 @@ func (c *Client) encodeHandshakeCapnp(firstSequence uint64, resetFirstSeq bool) 
 	return capnp.NewEncoder(c.bw).Encode(msg)
 }
 
-func (c *Client) encodeBlockCapnp(w io.Writer, op uint8, seq uint64, index int64, hash []byte, timestamp int64, data []byte) (*schema.TlogBlock, error) {
-	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(c.capnpSegmentBuf))
+func encodeBlockCapnp(w io.Writer, op uint8, seq uint64, index int64, hash []byte, timestamp int64, data, segmentBuf []byte) (*schema.TlogBlock, error) {
+	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(segmentBuf))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build build (block) capnp: %s", err.Error())
 	}
@@ -68,7 +68,7 @@ func (c *Client) encodeBlockCapnp(w io.Writer, op uint8, seq uint64, index int64
 }
 
 // encode and send ForceFlushAtSeq command
-func (c *Client) encodeForceFlushAtSeq(w io.Writer, seq uint64) error {
+func encodeForceFlushAtSeq(w io.Writer, seq uint64) error {
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
 	if err != nil {
 		return err
@@ -83,7 +83,7 @@ func (c *Client) encodeForceFlushAtSeq(w io.Writer, seq uint64) error {
 }
 
 // encode and send WaitNBDSlaveSync command
-func (c *Client) encodeWaitNBDSlaveSync(w io.Writer) error {
+func encodeWaitNBDSlaveSync(w io.Writer) error {
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
 	if err != nil {
 		return err

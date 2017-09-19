@@ -21,6 +21,10 @@ type NBDStorageConfig struct {
 // Validate all properties of this config,
 // using the Storage Type information for the optional properties.
 func (cfg *NBDStorageConfig) Validate(storageType StorageType) error {
+	if cfg == nil {
+		return nil
+	}
+
 	// validate primary storage cluster
 	err := cfg.StorageCluster.Validate()
 	if err != nil {
@@ -81,16 +85,22 @@ func (cfg *NBDStorageConfig) ValidateOptional(storageType StorageType) error {
 		return nil
 	}
 
+	return cfg.ValidateRequiredMetadataStorage()
+}
+
+// ValidateRequiredMetadataStorage allows you to ensure that the (slave) storage cluster
+// defines a valid Metadata Storage.
+func (cfg *NBDStorageConfig) ValidateRequiredMetadataStorage() error {
+	if cfg == nil {
+		return nil
+	}
+
 	if cfg.StorageCluster.MetadataStorage == nil {
-		return fmt.Errorf(
-			"invalid NBDStorageConfig: storage type %s requires a storage server for (primary) metadata",
-			storageType)
+		return errors.New("invalid NBDStorageConfig: require a storage server for (primary) metadata")
 	}
 
 	if cfg.SlaveStorageCluster != nil && cfg.SlaveStorageCluster.MetadataStorage == nil {
-		return fmt.Errorf(
-			"invalid NBDStorageConfig: storage type %s requires a storage server for (slave) metadata",
-			storageType)
+		return errors.New("invalid NBDStorageConfig: require a storage server for (slave) metadata")
 	}
 
 	// composed config is valid
@@ -129,6 +139,10 @@ type TlogStorageConfig struct {
 // Validate the required properties of this config,
 // using the VdiskType information.
 func (cfg *TlogStorageConfig) Validate(storageType StorageType) error {
+	if cfg == nil {
+		return nil
+	}
+
 	// validate primary storage cluster
 	err := cfg.ZeroStorCluster.Validate()
 	if err != nil {

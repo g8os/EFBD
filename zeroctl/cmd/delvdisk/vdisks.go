@@ -7,6 +7,7 @@ import (
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
+	"github.com/zero-os/0-Disk/nbd/nbdserver/tlog"
 	cmdconfig "github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
 
@@ -53,6 +54,13 @@ func deleteVdisks(cmd *cobra.Command, args []string) error {
 			log.Error(err)
 			errs = append(errs, err)
 		}
+
+		// delete tlog-specific metadata of tlog-enabled vdisks
+		err = deleteTlogMetadata(serverCfg, vdisks)
+		if err != nil {
+			log.Error(err)
+			errs = append(errs, err)
+		}
 	}
 
 	for serverCfg, vdisks := range data {
@@ -73,6 +81,22 @@ func deleteVdisks(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func deleteTlogMetadata(serverCfg config.StorageServerConfig, vdiskMap map[string]config.VdiskType) error {
+	var vdisks []string
+	for vdiskID, vdiskType := range vdiskMap {
+		if vdiskType.TlogSupport() {
+			vdisks = append(vdisks, vdiskID)
+		}
+	}
+
+	// TODO: ensure that vdisk also have an active tlog configuration,
+	//       as this is still optional even though it might support it type-wise.
+	// TODO: also delete actual tlog meta(data) from 0-Stor cluster for the supported vdisks
+	//       https://github.com/zero-os/0-Disk/issues/147
+
+	return tlog.DeleteMetadata(serverCfg, vdisks...)
 }
 
 type vdisksPerServerMap map[config.StorageServerConfig]map[string]config.VdiskType

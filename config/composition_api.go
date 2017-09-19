@@ -69,13 +69,27 @@ func ReadNBDStorageConfig(source Source, vdiskID string, staticConfig *VdiskStat
 			return nil, err
 		}
 	}
-	err = nbdStorageConfig.ValidateOptional(staticConfig.Type.StorageType())
-	if err != nil {
-		log.Debugf("ReadNBDStorageConfig failed: %v", err)
-		source.MarkInvalidKey(
-			Key{ID: nbdConfig.SlaveStorageClusterID, Type: KeyClusterStorage},
-			vdiskID)
-		return nil, NewInvalidConfigError(err)
+
+	st := staticConfig.Type.StorageType()
+	// if primary storage is required to have a metadata server, ensure it has one defined
+	if st != StorageNonDeduped || (staticConfig.Type.TlogSupport() && nbdConfig.TlogServerClusterID != "") {
+		err = nbdStorageConfig.StorageCluster.ValidateRequiredMetadataStorage()
+		if err != nil {
+			log.Debugf("ReadNBDStorageConfig failed: %v", err)
+			source.MarkInvalidKey(
+				Key{ID: nbdConfig.StorageClusterID, Type: KeyClusterStorage},
+				vdiskID)
+			return nil, NewInvalidConfigError(err)
+		}
+
+		err = nbdStorageConfig.SlaveStorageCluster.ValidateRequiredMetadataStorage()
+		if err != nil {
+			log.Debugf("ReadNBDStorageConfig failed: %v", err)
+			source.MarkInvalidKey(
+				Key{ID: nbdConfig.SlaveStorageClusterID, Type: KeyClusterStorage},
+				vdiskID)
+			return nil, NewInvalidConfigError(err)
+		}
 	}
 
 	return nbdStorageConfig, nil
@@ -516,6 +530,8 @@ type nbdStorageConfigWatcher struct {
 
 	// cluster(s) info
 	primaryClusterID, templateClusterID, slaveClusterID string
+	// only used for validation
+	tlogClusterID string
 
 	// local master ctx used
 	ctx context.Context
@@ -719,10 +735,19 @@ func (w *nbdStorageConfigWatcher) sendOutput() error {
 }
 
 func (w *nbdStorageConfigWatcher) applyClusterInfo(info VdiskNBDConfig) (bool, error) {
+	metadataRequired := w.vdiskType.StorageType() != StorageNonDeduped || // is required if storage isn't nonDeduped ...
+		(w.vdiskType.TlogSupport() && info.TlogServerClusterID != "") // ... and/or if vdisk has tlogsupport and makes use of it
+
+	var tlogClusterIDChanged bool
+	if w.tlogClusterID != info.TlogServerClusterID {
+		tlogClusterIDChanged = true
+		w.tlogClusterID = info.TlogServerClusterID
+	}
+
 	log.Debugf(
 		"nbdStorageConfigWatcher (%s) loading primary storage cluster: %s",
 		w.vdiskID, info.StorageClusterID)
-	primaryChanged, err := w.loadPrimaryChan(info.StorageClusterID)
+	primaryChanged, err := w.loadPrimaryChan(info.StorageClusterID, metadataRequired, tlogClusterIDChanged)
 	if err != nil {
 		return false, err
 	}
@@ -739,7 +764,7 @@ func (w *nbdStorageConfigWatcher) applyClusterInfo(info VdiskNBDConfig) (bool, e
 	log.Debugf(
 		"nbdStorageConfigWatcher (%s) loading slave storage cluster: %s",
 		w.vdiskID, info.SlaveStorageClusterID)
-	slaveClusterChanged, err := w.loadSlaveChan(info.SlaveStorageClusterID)
+	slaveClusterChanged, err := w.loadSlaveChan(info.SlaveStorageClusterID, metadataRequired, tlogClusterIDChanged)
 	if err != nil {
 		log.Errorf("error occured in nbdStorageConfigWatcher, slave is invalid: %v", err)
 		return primaryChanged || templateClusterChanged, nil
@@ -749,8 +774,18 @@ func (w *nbdStorageConfigWatcher) applyClusterInfo(info VdiskNBDConfig) (bool, e
 	return changed, nil
 }
 
-func (w *nbdStorageConfigWatcher) loadPrimaryChan(clusterID string) (bool, error) {
+func (w *nbdStorageConfigWatcher) loadPrimaryChan(clusterID string, metadataRequired, tlogClusterIDChanged bool) (bool, error) {
 	if w.primaryClusterID == clusterID {
+		if tlogClusterIDChanged && metadataRequired {
+			// if tlog cluster changed and
+			// ensure that the primary cluster still validates
+			err := w.primaryCluster.ValidateRequiredMetadataStorage()
+			if err != nil {
+				w.source.MarkInvalidKey(Key{ID: w.primaryClusterID, Type: KeyClusterStorage}, w.vdiskID)
+				return false, NewInvalidConfigError(err)
+			}
+		}
+
 		log.Debugf(
 			"nbdStorageConfigWatcher (%s) already watches primary cluster: %s",
 			w.vdiskID, clusterID)
@@ -780,12 +815,14 @@ func (w *nbdStorageConfigWatcher) loadPrimaryChan(clusterID string) (bool, error
 	case config = <-ch:
 	}
 
-	// validate primary storage cluster
-	err = config.ValidateStorageType(w.vdiskType.StorageType())
-	if err != nil {
-		cancel()
-		w.source.MarkInvalidKey(Key{ID: clusterID, Type: KeyClusterStorage}, w.vdiskID)
-		return false, NewInvalidConfigError(err)
+	// validate if metadata is defined if required
+	if metadataRequired {
+		err = config.ValidateRequiredMetadataStorage()
+		if err != nil {
+			cancel()
+			w.source.MarkInvalidKey(Key{ID: clusterID, Type: KeyClusterStorage}, w.vdiskID)
+			return false, NewInvalidConfigError(err)
+		}
 	}
 
 	// primary cluster has been switched successfully
@@ -857,8 +894,18 @@ func (w *nbdStorageConfigWatcher) loadTemplateChan(clusterID string) (bool, erro
 	return true, nil
 }
 
-func (w *nbdStorageConfigWatcher) loadSlaveChan(clusterID string) (bool, error) {
+func (w *nbdStorageConfigWatcher) loadSlaveChan(clusterID string, metadataRequired, tlogClusterIDChanged bool) (bool, error) {
 	if w.slaveClusterID == clusterID {
+		if tlogClusterIDChanged && w.slaveClusterID != "" && metadataRequired {
+			// if tlog cluster changed and slave cluster was defined previously,
+			// ensure that the slave cluster still validates
+			err := w.slaveCluster.ValidateRequiredMetadataStorage()
+			if err != nil {
+				w.source.MarkInvalidKey(Key{ID: w.slaveClusterID, Type: KeyClusterStorage}, w.vdiskID)
+				return false, NewInvalidConfigError(err)
+			}
+		}
+
 		log.Debugf(
 			"nbdStorageConfigWatcher (%s) already watches slave cluster: %s",
 			w.vdiskID, clusterID)
@@ -896,12 +943,14 @@ func (w *nbdStorageConfigWatcher) loadSlaveChan(clusterID string) (bool, error) 
 	case config = <-ch:
 	}
 
-	// validate slave storage cluster
-	err = config.ValidateStorageType(w.vdiskType.StorageType())
-	if err != nil {
-		cancel()
-		w.source.MarkInvalidKey(Key{ID: clusterID, Type: KeyClusterStorage}, w.vdiskID)
-		return false, NewInvalidConfigError(err)
+	// validate if metadata is defined if required
+	if metadataRequired {
+		err = config.ValidateRequiredMetadataStorage()
+		if err != nil {
+			cancel()
+			w.source.MarkInvalidKey(Key{ID: clusterID, Type: KeyClusterStorage}, w.vdiskID)
+			return false, NewInvalidConfigError(err)
+		}
 	}
 
 	// slave cluster has been switched successfully

@@ -1,4 +1,4 @@
-package main
+package tlog
 
 import (
 	"bytes"
@@ -47,8 +47,8 @@ func TestTlogStorageSlow(t *testing.T) {
 	})
 	defer source.Close()
 
-	storage, err := newTlogStorage(
-		ctx, vdiskID, "tlogcluster", source, blockSize, slowStorage, nil)
+	storage, err := Storage(
+		ctx, vdiskID, "tlogcluster", source, blockSize, slowStorage, nil, nil)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}
@@ -85,8 +85,9 @@ func TestTlogStorageSlow(t *testing.T) {
 			}
 		}(i)
 	}
-
 	wg.Wait()
+
+	storage.Flush()
 }
 
 // slowInMemoryStorage is a wrapper of the inMemoryStorage

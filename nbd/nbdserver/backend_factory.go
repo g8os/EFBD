@@ -10,6 +10,7 @@ import (
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/nbd/gonbdserver/nbd"
 	"github.com/zero-os/0-Disk/nbd/nbdserver/statistics"
+	"github.com/zero-os/0-Disk/nbd/nbdserver/tlog"
 )
 
 // backendFactoryConfig is used to create a new BackendFactory
@@ -113,9 +114,9 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 		vdiskNBDConfig, err := config.ReadVdiskNBDConfig(f.configSource, vdiskID)
 		if err == nil && vdiskNBDConfig.TlogServerClusterID != "" {
 			log.Debugf("creating tlogStorage for backend %v (%v)", vdiskID, staticConfig.Type)
-			blockStorage, err = newTlogStorage(ctx,
+			blockStorage, err = tlog.Storage(ctx,
 				vdiskID, vdiskNBDConfig.TlogServerClusterID,
-				f.configSource, blockSize, blockStorage, nil)
+				f.configSource, blockSize, blockStorage, redisProvider, nil)
 			if err != nil {
 				blockStorage.Close()
 				redisProvider.Close()

@@ -10,24 +10,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
-	"github.com/zero-os/0-Disk/tlog/schema"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/blockbuffer"
 )
 
 const (
-	sendRetryNum         = 5
-	sendSleepTime        = 500 * time.Millisecond // sleep duration before retrying the Send
-	resendTimeoutDur     = 2 * time.Second        // duration to wait before re-send the tlog.
 	readTimeout          = 2 * time.Second
+	resendTimeoutDur     = 2 * time.Second // duration to wait before re-send the tlog.
 	failedFlushSleepTime = 10 * time.Second
 )
 
 var (
-	errMaxSendRetry = errors.New("max send retry reached")
-
 	// ErrClientClosed returned when client do something when
 	// it already closed
 	ErrClientClosed = errors.New("client already closed")
@@ -65,18 +59,14 @@ type Client struct {
 	blockBuffer     *blockbuffer.Buffer
 	capnpSegmentBuf []byte
 
-	// write lock, to protect against parallel Send
-	// which is not goroutine safe yet
-	wLock sync.Mutex
+	commandCh      chan command
+	retryCommandCh chan command
+	respCh         chan *Result
 
-	// read lock, to protect it from race condition
-	// caused by 'handshake' and recvOne
-	rLock      sync.Mutex
 	ctx        context.Context
 	cancelFunc context.CancelFunc
 
-	lastConnected time.Time
-	stopped       bool
+	stopped bool
 
 	waitSlaveSyncCond *sync.Cond
 
@@ -92,6 +82,14 @@ type Client struct {
 // Set 'resetFirstSeq' to true to force reset the vdisk first/expected sequence.
 // The client is not goroutine safe.
 func New(servers []string, vdiskID string, firstSequence uint64, resetFirstSeq bool) (*Client, error) {
+	client, err := newClient(servers, vdiskID, firstSequence, resetFirstSeq)
+	if err != nil {
+		return nil, err
+	}
+	go client.run(client.ctx)
+	return client, nil
+}
+func newClient(servers []string, vdiskID string, firstSequence uint64, resetFirstSeq bool) (*Client, error) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	client := &Client{
 		servers:           servers,
@@ -100,14 +98,165 @@ func New(servers []string, vdiskID string, firstSequence uint64, resetFirstSeq b
 		ctx:               ctx,
 		cancelFunc:        cancelFunc,
 		waitSlaveSyncCond: sync.NewCond(&sync.Mutex{}),
+
+		// channel for command
+		commandCh: make(chan command),
+
+		// channel for retried command
+		retryCommandCh: make(chan command, 2),
+
+		// three is big enough size:
+		// - one waiting to be fetched by application/user
+		// - one for the response we just received
+		// - one for (hopefully) optimization, so we can read from network
+		//	 before needed and then put it to this channel.
+		respCh: make(chan *Result, 3),
 	}
 
-	if err := client.connect(firstSequence, resetFirstSeq); err != nil {
-		return nil, err
+	return client, client.connect(firstSequence, resetFirstSeq)
+}
+
+func (c *Client) run(ctx context.Context) {
+	go c.resender()
+	for {
+		curCtx, cancelFunc := context.WithCancel(ctx)
+		// run receiver and sender
+		sendDoneCh := c.runSender(curCtx, cancelFunc)
+		recvDoneCh := c.runReceiver(curCtx, cancelFunc)
+
+		// wait for receiver and sender to be finished
+		<-sendDoneCh
+		<-recvDoneCh
+
+		// reconnect
+		reconnected := false
+		for !reconnected {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				err := c.reconnect(time.Now())
+				if err != nil {
+					log.Errorf("reconnect failed : %v", err)
+				} else {
+					reconnected = true
+				}
+			}
+		}
+	}
+}
+
+func (c *Client) sendCmd(cmd command) error {
+	block, err := cmd.encodeSend(c.bw)
+	if err != nil {
+		return err
+	}
+	if err := c.bw.Flush(); err != nil {
+		return err
 	}
 
-	go client.resender()
-	return client, nil
+	if block != nil {
+		c.blockBuffer.Add(block)
+	}
+	return nil
+}
+func (c *Client) runSender(ctx context.Context, cancelFunc context.CancelFunc) <-chan struct{} {
+	doneCh := make(chan struct{})
+	go func() {
+		defer func() {
+			c.conn.CloseRead()
+			cancelFunc()
+			doneCh <- struct{}{}
+		}()
+
+		// retry command from previous run loop
+		numCmdRetry := len(c.retryCommandCh)
+		for i := 0; i < numCmdRetry; i++ {
+			cmd := <-c.retryCommandCh
+			if err := c.sendCmd(cmd); err != nil {
+				log.Infof("Failed when retyr command = %v", err)
+				c.retryCommandCh <- cmd
+				return
+			}
+		}
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case cmd := <-c.commandCh:
+				if err := c.sendCmd(cmd); err != nil {
+					log.Infof("Failed to send command = %v", err)
+					c.retryCommandCh <- cmd
+					return
+				}
+
+			}
+		}
+	}()
+	return doneCh
+}
+
+func (c *Client) runReceiver(ctx context.Context, cancelFunc context.CancelFunc) <-chan struct{} {
+	doneCh := make(chan struct{})
+	go func() {
+		defer func() {
+			c.conn.CloseWrite()
+			cancelFunc()
+			doneCh <- struct{}{}
+		}()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				tr, err := c.recvOne()
+
+				nerr, isNetErr := err.(net.Error)
+
+				// it is timeout error
+				// client can't really read something
+				if isNetErr && nerr.Timeout() {
+					continue
+				}
+
+				// EOF and other network error triggers reconnection
+				if isNetErr || err == io.EOF {
+					log.Errorf("error while reading: %v", err)
+					return
+				}
+
+				if tr == nil {
+					c.respCh <- &Result{
+						Err: err,
+					}
+					continue
+				}
+
+				switch tr.Status {
+				case tlog.BlockStatusRecvOK:
+					if len(tr.Sequences) > 0 { // should always be true, but we anticipate.
+						c.blockBuffer.SetSent(tr.Sequences[0])
+					}
+				case tlog.BlockStatusFlushOK:
+					c.blockBuffer.SetFlushed(tr.Sequences)
+				case tlog.BlockStatusWaitNbdSlaveSyncReceived:
+					log.Info("tlog client receive BlockStatusWaitNbdSlaveSyncReceived")
+					c.signalCond(c.waitSlaveSyncCond)
+				case tlog.BlockStatusFlushFailed:
+					log.Errorf("tlogclient receive BlockStatusFlushFailed for vdisk: %v", c.vdiskID)
+					c.setCurServerFailedFlushStatus(true)
+				}
+
+				c.respCh <- &Result{
+					Resp: tr,
+					Err:  err,
+				}
+			}
+		}
+	}()
+	return doneCh
 }
 
 // ChangeServerAddresses change servers to the given servers
@@ -170,16 +319,11 @@ func (c *Client) getCurServerFailedFlushStatus() bool {
 }
 
 // reconnect to server
-// it must be called under wLock
 func (c *Client) reconnect(closedTime time.Time) error {
 	var err error
 
 	if c.stopped {
 		return ErrClientClosed
-	}
-
-	if c.lastConnected.After(closedTime) { // another goroutine made the connection work again
-		return nil
 	}
 
 	log.Info("tlogclient reconnect")
@@ -189,8 +333,6 @@ func (c *Client) reconnect(closedTime time.Time) error {
 		c.shiftServer()
 
 		if err = c.connect(c.blockBuffer.LastFlushed()+1, false); err == nil {
-			c.lastConnected = time.Now()
-
 			// if reconnect success, sent all unflushed blocks
 			// because we don't know what happens in servers.
 			// it might crashed
@@ -207,9 +349,6 @@ func (c *Client) connect(firstSequence uint64, resetFirstSeq bool) (err error) {
 		c.conn.CloseRead() // interrupt the receiver
 	}
 
-	c.rLock.Lock()
-	defer c.rLock.Unlock()
-
 	if c.getCurServerFailedFlushStatus() {
 		// sleep for a while
 		// in case of failed flush
@@ -218,12 +357,6 @@ func (c *Client) connect(firstSequence uint64, resetFirstSeq bool) (err error) {
 	}
 
 	c.setCurServerFailedFlushStatus(false)
-
-	defer func() {
-		if err == nil {
-			c.lastConnected = time.Now()
-		}
-	}()
 
 	if err = c.createConn(); err != nil {
 		return fmt.Errorf("client couldn't be created: %s", err.Error())
@@ -297,88 +430,11 @@ func (c *Client) handshake(firstSequence uint64, resetFirstSeq bool) error {
 
 // Recv get channel of responses and errors (Result)
 func (c *Client) Recv() <-chan *Result {
-	// response channel
-	// three is big enough size:
-	// - one waiting to be fetched by application/user
-	// - one for the response we just received
-	// - one for (hopefully) optimization, so we can read from network
-	//	 before needed and then put it to this channel.
-	reChan := make(chan *Result, 3)
-
-	go func() {
-		for {
-			select {
-			case <-c.ctx.Done():
-				return
-			default:
-				tr, err := c.recvOne()
-
-				nerr, isNetErr := err.(net.Error)
-
-				// it is timeout error
-				// client can't really read something
-				if isNetErr && nerr.Timeout() {
-					continue
-				}
-
-				// EOF and other network error triggers reconnection
-				if isNetErr || err == io.EOF {
-					c.reconnectFromRead(err)
-					continue
-				}
-
-				if tr != nil {
-					switch tr.Status {
-					case tlog.BlockStatusRecvOK:
-						if len(tr.Sequences) > 0 { // should always be true, but we anticipate.
-							c.blockBuffer.SetSent(tr.Sequences[0])
-						}
-					case tlog.BlockStatusFlushOK:
-						c.blockBuffer.SetFlushed(tr.Sequences)
-					case tlog.BlockStatusWaitNbdSlaveSyncReceived:
-						log.Info("tlog client receive BlockStatusWaitNbdSlaveSyncReceived")
-						c.signalCond(c.waitSlaveSyncCond)
-					case tlog.BlockStatusFlushFailed:
-						log.Errorf("tlogclient receive BlockStatusFlushFailed for vdisk: %v", c.vdiskID)
-						c.setCurServerFailedFlushStatus(true)
-						if err := c.reconnectFromRead(ErrFlushFailed); err != nil {
-							reChan <- &Result{
-								Err: ErrFlushFailed,
-							}
-						}
-					}
-				}
-
-				reChan <- &Result{
-					Resp: tr,
-					Err:  err,
-				}
-			}
-		}
-	}()
-	return reChan
-}
-
-// reconnect from read do re-connect from reading goroutine
-func (c *Client) reconnectFromRead(errCause error) error {
-	closedTime := time.Now()
-	log.Infof("tlogclient : reconnect from read because of : %v", errCause)
-
-	c.wLock.Lock()
-	defer c.wLock.Unlock()
-
-	if err := c.reconnect(closedTime); err != nil {
-		log.Infof("tlogclient: reconnect because `%v` failed: %v", errCause, err)
-		return err
-	}
-	return nil
+	return c.respCh
 }
 
 // recvOne receive one response
 func (c *Client) recvOne() (*Response, error) {
-	c.rLock.Lock()
-	defer c.rLock.Unlock()
-
 	// decode capnp and build response
 	tr, err := c.decodeTlogResponse(c.rd)
 	if err != nil {
@@ -415,42 +471,19 @@ func (c *Client) createConn() error {
 }
 
 // ForceFlushAtSeq force flush at given sequence
-// NOTE : this func doesn't have retry logic, user need to
-// add it
 func (c *Client) ForceFlushAtSeq(seq uint64) error {
-	c.wLock.Lock()
-	defer c.wLock.Unlock()
-
-	sender := func() (interface{}, error) {
-		if err := c.encodeForceFlushAtSeq(c.bw, seq); err != nil {
-			return nil, err
-		}
-		return nil, c.bw.Flush()
-	}
-
-	_, err := c.sendReconnect(sender)
-	return err
+	c.commandCh <- cmdForceFlushAtSeq{seq: seq}
+	return nil
 }
 
 // WaitNbdSlaveSync commands tlog server to wait
 // for nbd slave to be fully synced
 func (c *Client) WaitNbdSlaveSync() error {
-	c.wLock.Lock()
-	defer c.wLock.Unlock()
-
-	sender := func() (interface{}, error) {
-		if err := c.encodeWaitNBDSlaveSync(c.bw); err != nil {
-			return nil, err
-		}
-		return nil, c.bw.Flush()
-	}
-
 	// start the waiter now, so we don't miss the reply
 	doneCh := c.waitCond(c.waitSlaveSyncCond)
 
-	if _, err := c.sendReconnect(sender); err != nil {
-		return err
-	}
+	// send it
+	c.commandCh <- cmdWaitNbdSlaveSync{}
 
 	// the actual wait
 	for {
@@ -494,86 +527,22 @@ func (c *Client) signalCond(cond *sync.Cond) {
 // - failed to encode the capnp.
 // - failed to recover from broken network connection.
 func (c *Client) Send(op uint8, seq uint64, index int64, timestamp int64, data []byte) error {
-	c.wLock.Lock()
-	defer c.wLock.Unlock()
-
-	block, err := c.send(op, seq, index, timestamp, data)
-	if err == nil && block != nil {
-		c.blockBuffer.Add(block)
+	cmd := cmdBlock{
+		op:         op,
+		seq:        seq,
+		index:      index,
+		timestamp:  timestamp,
+		data:       data,
+		segmentBuf: c.capnpSegmentBuf,
 	}
-	return err
-}
-
-// send tlog block to server
-func (c *Client) send(op uint8, seq uint64, index int64, timestamp int64, data []byte) (*schema.TlogBlock, error) {
-	hash := zerodisk.HashBytes(data)
-
-	sender := func() (interface{}, error) {
-		block, err := c.encodeBlockCapnp(c.bw, op, seq, index, hash[:], timestamp, data)
-		if err != nil {
-			return block, err
-		}
-
-		return block, c.bw.Flush()
-	}
-
-	// send it
-	blockIf, err := c.sendReconnect(sender)
-	if err != nil {
-		return nil, err
-	}
-
-	// convert the return value
-	block, ok := blockIf.(*schema.TlogBlock)
-	if !ok {
-		return nil, fmt.Errorf("can't convert from interface{} to block")
-	}
-
-	return block, nil
-}
-
-// generic funct that execute a sender and do connection reconnect if needed
-func (c *Client) sendReconnect(sender func() (interface{}, error)) (interface{}, error) {
-	var err error
-	var ret interface{}
-
-	for i := 0; i < sendRetryNum+1; i++ {
-		if err != nil {
-			if _, ok := err.(net.Error); !ok {
-				return nil, err // no need to rety if it is not network error.
-			}
-
-			closedTime := time.Now()
-
-			// First sleep = 0 second,
-			// so we don't need to sleep in case of simple closed connection.
-			// We sleep in next iteration because there might be something error in
-			// the network connection or the tlog server that need time to be recovered.
-			time.Sleep(time.Duration(i-1) * sendSleepTime)
-
-			if err = c.reconnect(closedTime); err != nil {
-				log.Infof("tlog client : reconnect from send attemp(%v) failed:%v", i, err)
-				continue
-			}
-		}
-
-		ret, err = sender()
-		if err == nil {
-			return ret, nil
-		}
-		log.Errorf("tlogclient failed to send: %v", err)
-
-	}
-	return nil, errMaxSendRetry
+	c.commandCh <- cmd
+	return nil
 }
 
 // Close the open connection, making this client invalid.
 // It is user responsibility to call this function.
 func (c *Client) Close() error {
 	c.cancelFunc()
-
-	c.wLock.Lock()
-	defer c.wLock.Unlock()
 
 	c.stopped = true
 
@@ -588,8 +557,5 @@ func (c *Client) Close() error {
 // It is on progress func which can only be used in unit test
 // See https://github.com/zero-os/0-Disk/issues/426 for the progress
 func (c *Client) Disconnect() error {
-	c.wLock.Lock()
-	defer c.wLock.Unlock()
-
 	return c.encodeDisconnect(c.conn)
 }

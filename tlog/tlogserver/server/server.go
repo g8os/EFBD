@@ -234,3 +234,18 @@ func (s *Server) readDecodeHandshakeRequest(r io.Reader) (*schema.HandshakeReque
 
 	return &resp, nil
 }
+
+// ReadDecodeClientMessage reads and decodes tlog message from client
+func (s *Server) ReadDecodeClientMessage(r io.Reader) (*schema.TlogClientMessage, error) {
+	msg, err := capnp.NewDecoder(r).Decode()
+	if err != nil {
+		return nil, err
+	}
+
+	cmd, err := schema.ReadRootTlogClientMessage(msg)
+	if err != nil {
+		return nil, err
+	}
+
+	return &cmd, nil
+}

@@ -17,7 +17,6 @@ import (
 )
 
 func (vd *vdisk) handle(conn *net.TCPConn, br *bufio.Reader, respSegmentBufLen int) error {
-
 	ctx, cancelFunc := context.WithCancel(vd.ctx)
 	defer func() {
 		vd.removeConn(conn)
@@ -43,6 +42,7 @@ func (vd *vdisk) handle(conn *net.TCPConn, br *bufio.Reader, respSegmentBufLen i
 		}
 
 		// handle message according to it's typ
+
 		switch which := cmd.Which(); which {
 		case schema.TlogClientMessage_Which_block:
 			block, bErr := cmd.Block()
@@ -81,7 +81,7 @@ func (vd *vdisk) sendResp(ctx context.Context, conn *net.TCPConn, respSegmentBuf
 	for {
 		select {
 		case resp := <-vd.respChan:
-			if err := resp.Write(conn, segmentBuf); err != nil {
+			if err := resp.Write(conn, segmentBuf); err != nil && resp != nil {
 				log.Infof("failed to send resp to :%v, err:%v", vd.id, err)
 				return
 			}
@@ -189,4 +189,5 @@ func (vd *vdisk) removeConn(conn *net.TCPConn) error {
 	}
 	vd.clientConn = nil
 	return nil
+
 }

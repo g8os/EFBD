@@ -1,4 +1,4 @@
-package main
+package tlog
 
 import (
 	"bytes"
@@ -151,8 +151,8 @@ func testTlogStorage(ctx context.Context, t *testing.T, vdiskID string, blockSiz
 	})
 	defer source.Close()
 
-	storage, err := newTlogStorage(
-		ctx, vdiskID, "tlogcluster", source, blockSize, storage, nil)
+	storage, err := Storage(
+		ctx, vdiskID, "tlogcluster", source, blockSize, storage, nil, nil)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}
@@ -173,8 +173,8 @@ func testTlogStorageForceFlush(ctx context.Context, t *testing.T, vdiskID string
 	})
 	defer source.Close()
 
-	storage, err := newTlogStorage(
-		ctx, vdiskID, "tlogcluster", source, blockSize, storage, nil)
+	storage, err := Storage(
+		ctx, vdiskID, "tlogcluster", source, blockSize, storage, nil, nil)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}
@@ -301,8 +301,8 @@ func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
 	})
 	defer source.Close()
 
-	storage, err := newTlogStorage(
-		ctx, vdiskID, "tlogcluster", source, blockSize, internalStorage, nil)
+	storage, err := Storage(
+		ctx, vdiskID, "tlogcluster", source, blockSize, internalStorage, nil, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
