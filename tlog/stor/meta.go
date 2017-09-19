@@ -11,10 +11,12 @@ const (
 	metaOpTimeout = 10 * time.Second
 )
 
+// MetaClient represents metadata client for this tlog stor wrapper
 type MetaClient struct {
 	cli *clientv3.Client
 }
 
+// NewMetaClient creates new meta client
 func NewMetaClient(endpoints []string) (*MetaClient, error) {
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   endpoints,
@@ -30,10 +32,12 @@ func NewMetaClient(endpoints []string) (*MetaClient, error) {
 	}, nil
 }
 
+// Close closes meta client
 func (cli *MetaClient) Close() error {
 	return cli.cli.Close()
 }
 
+// GetMeta get metadata from metadata server
 func (cli *MetaClient) GetMeta(key []byte) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), metaOpTimeout)
 	defer cancel()
@@ -50,6 +54,7 @@ func (cli *MetaClient) GetMeta(key []byte) ([]byte, error) {
 
 }
 
+// SaveMeta stores metadata to the given metadata server
 func (cli *MetaClient) SaveMeta(key, val []byte) error {
 	ctx, cancel := context.WithTimeout(context.Background(), metaOpTimeout)
 	defer cancel()
@@ -62,6 +67,7 @@ func (c *Client) getFirstMetaKey() ([]byte, error) {
 	return c.metaCli.GetMeta(c.firstMetaEtcdKey)
 }
 
+// SaveFirstMetaKey save key of the first metadata
 func (c *Client) saveFirstMetaKey() error {
 	return c.metaCli.SaveMeta(c.firstMetaEtcdKey, c.firstMetaKey)
 }

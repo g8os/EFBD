@@ -1,4 +1,4 @@
-package generator
+package copy
 
 import (
 	"context"
@@ -115,7 +115,7 @@ func TestGenerate(t *testing.T) {
 	require.NoError(t, err)
 
 	// 2. Generate tlog data
-	generator, err := New(confSource, Config{
+	generator, err := newGenerator(confSource, Config{
 		SourceVdiskID: sourceVdiskID,
 		TargetVdiskID: targetVdiskID,
 		DataShards:    dataShards,
