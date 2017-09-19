@@ -7,6 +7,7 @@ import (
 	"gopkg.in/validator.v2"
 
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/log"
 )
 
 // Config represents config for copy operation
@@ -37,6 +38,18 @@ func Copy(ctx context.Context, confSource config.Source, conf Config) error {
 		return nil
 	}
 
+	targetVdiskNBDConfig, err := config.ReadVdiskNBDConfig(confSource, conf.TargetVdiskID)
+	if err != nil {
+		return fmt.Errorf(
+			"couldn't read target vdisk %s's storage config: %v", conf.TargetVdiskID, err)
+	}
+
+	// it has no tlog cluster
+	// do nothing
+	if targetVdiskNBDConfig.TlogServerClusterID == "" {
+		return nil
+	}
+
 	if err := validator.Validate(conf); err != nil {
 		return err
 	}
@@ -47,8 +60,14 @@ func Copy(ctx context.Context, confSource config.Source, conf Config) error {
 			"couldn't read source vdisk %s's static config: %v", conf.SourceVdiskID, err)
 	}
 
+	sourceVdiskNBDConfig, err := config.ReadVdiskNBDConfig(confSource, conf.SourceVdiskID)
+	if err != nil {
+		return fmt.Errorf(
+			"couldn't read source vdisk %s's storage config: %v", conf.SourceVdiskID, err)
+	}
 	// if source vdisk has no tlog, generate it
-	if !sourceStaticConf.Type.TlogSupport() {
+	if !sourceStaticConf.Type.TlogSupport() || sourceVdiskNBDConfig.TlogServerClusterID == "" {
+		log.Infof("generating tlog data for vdisk `%v`", conf.TargetVdiskID)
 		generator, err := newGenerator(confSource, conf)
 		if err != nil {
 			return err
@@ -56,6 +75,7 @@ func Copy(ctx context.Context, confSource config.Source, conf Config) error {
 		return generator.GenerateFromStorage(ctx)
 	}
 
+	log.Infof("copying tlog data for vdisk `%v`", conf.TargetVdiskID)
 	// copy tlog data
 	copier, err := newCopier(confSource, conf)
 	if err != nil {
