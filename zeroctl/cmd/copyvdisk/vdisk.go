@@ -104,21 +104,29 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 	}
 
 	if targetStaticConfig.Type.TlogSupport() {
-		log.Infof("generating tlog data for target vdisk `%v`", targetVdiskID)
-		generator, err := generator.New(configSource, generator.Config{
-			SourceVdiskID: sourceVdiskID,
-			TargetVdiskID: targetVdiskID,
-			DataShards:    vdiskCmdCfg.DataShards,
-			ParityShards:  vdiskCmdCfg.ParityShards,
-			PrivKey:       vdiskCmdCfg.PrivKey,
-			JobCount:      vdiskCmdCfg.JobCount,
-		})
+		targetVdiskNBDConfig, err := config.ReadVdiskNBDConfig(configSource, targetVdiskID)
 		if err != nil {
-			return fmt.Errorf("failed to create tlog generator: %v", err)
+			return fmt.Errorf(
+				"couldn't read target vdisk %s's storage config: %v", targetVdiskID, err)
 		}
 
-		if err := generator.GenerateFromStorage(context.Background()); err != nil {
-			return fmt.Errorf("failed to generate tlog data for vdisk `%v` : %v", targetVdiskID, err)
+		if targetVdiskNBDConfig.TlogServerClusterID != "" {
+			log.Infof("generating tlog data for target vdisk `%v`", targetVdiskID)
+			generator, err := generator.New(configSource, generator.Config{
+				SourceVdiskID: sourceVdiskID,
+				TargetVdiskID: targetVdiskID,
+				DataShards:    vdiskCmdCfg.DataShards,
+				ParityShards:  vdiskCmdCfg.ParityShards,
+				PrivKey:       vdiskCmdCfg.PrivKey,
+				JobCount:      vdiskCmdCfg.JobCount,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to create tlog generator: %v", err)
+			}
+
+			if err := generator.GenerateFromStorage(context.Background()); err != nil {
+				return fmt.Errorf("failed to generate tlog data for vdisk `%v` : %v", targetVdiskID, err)
+			}
 		}
 	}
 
