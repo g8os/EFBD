@@ -57,6 +57,7 @@ const (
 	BlockStatusFlushOK                  BlockStatus = 2
 	BlockStatusForceFlushReceived       BlockStatus = 3
 	BlockStatusWaitNbdSlaveSyncReceived BlockStatus = 4
+	BlockStatusDisconnected             BlockStatus = 5
 )
 
 // HandshakeStatus is returned by the Tlog server

@@ -97,7 +97,7 @@ func encodeWaitNBDSlaveSync(w io.Writer) error {
 	return capnp.NewEncoder(w).Encode(msg)
 }
 
-func (c *Client) encodeDisconnect(w io.Writer) error {
+func encodeDisconnect(w io.Writer) error {
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
 	if err != nil {
 		return err

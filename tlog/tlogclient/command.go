@@ -40,3 +40,10 @@ type cmdWaitNbdSlaveSync struct {
 func (cmd cmdWaitNbdSlaveSync) encodeSend(w io.Writer) (*schema.TlogBlock, error) {
 	return nil, encodeWaitNBDSlaveSync(w)
 }
+
+type cmdDisconnect struct {
+}
+
+func (cmd cmdDisconnect) encodeSend(w io.Writer) (*schema.TlogBlock, error) {
+	return nil, encodeDisconnect(w)
+}

@@ -21,6 +21,7 @@ func (vd *vdisk) handle(conn *net.TCPConn, br *bufio.Reader, respSegmentBufLen i
 	defer func() {
 		vd.removeConn(conn)
 		cancelFunc()
+		log.Infof("vdisk `%v` connection handler exited", vd.id)
 	}()
 
 	// start response sender
@@ -58,6 +59,7 @@ func (vd *vdisk) handle(conn *net.TCPConn, br *bufio.Reader, respSegmentBufLen i
 		case schema.TlogClientMessage_Which_waitNBDSlaveSync:
 			err = vd.handleWaitNBDSlaveSync()
 		case schema.TlogClientMessage_Which_disconnect:
+			log.Infof("vdisk `%v` receive disconnect command", vd.id)
 			return nil
 		default:
 			err = fmt.Errorf("%v is not a supported client message type", which)
@@ -72,12 +74,20 @@ func (vd *vdisk) handle(conn *net.TCPConn, br *bufio.Reader, respSegmentBufLen i
 
 // response sender for a vdisk
 func (vd *vdisk) sendResp(ctx context.Context, conn *net.TCPConn, respSegmentBufLen int) {
+	segmentBuf := make([]byte, 0, respSegmentBufLen)
+
 	defer func() {
 		log.Infof("sendResp cleanup for vdisk %v", vd.id)
+		resp := BlockResponse{
+			Status: tlog.BlockStatusDisconnected.Int8(),
+		}
+		if err := resp.Write(conn, segmentBuf); err != nil {
+			log.Errorf("failed to send disconnect command: %v", err)
+		}
+
 		conn.Close() // it will also close the receiver
 	}()
 
-	segmentBuf := make([]byte, 0, respSegmentBufLen)
 	for {
 		select {
 		case resp := <-vd.respChan:
@@ -184,9 +194,6 @@ func (vd *vdisk) removeConn(conn *net.TCPConn) error {
 	vd.clientConnLock.Lock()
 	defer vd.clientConnLock.Unlock()
 
-	if vd.clientConn != conn {
-		return fmt.Errorf("invalid connection")
-	}
 	vd.clientConn = nil
 	return nil
 
