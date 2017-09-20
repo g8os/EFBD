@@ -3,7 +3,6 @@ package copy
 import (
 	"context"
 	"crypto/rand"
-	"os"
 	"runtime"
 	"testing"
 
@@ -79,10 +78,8 @@ func TestGenerate(t *testing.T) {
 
 	confSource.SetTlogZeroStorCluster(targetVdiskID, zeroStorClusterID, &config.ZeroStorClusterConfig{
 		IYO: config.IYOCredentials{
-			Org:       os.Getenv("iyo_organization"),
+			Org:       "testorg",
 			Namespace: "thedisk",
-			ClientID:  os.Getenv("iyo_client_id"),
-			Secret:    os.Getenv("iyo_secret"),
 		},
 		Servers: serverConf,
 		MetadataServers: []config.ServerConfig{

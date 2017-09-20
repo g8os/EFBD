@@ -2,7 +2,6 @@ package copy
 
 import (
 	"crypto/rand"
-	"os"
 	"runtime"
 	"sync"
 	"testing"
@@ -74,10 +73,8 @@ func TestCopyDiffCluster(t *testing.T) {
 	// configure tlog cluster
 	zeroStorClusterConfSource := &config.ZeroStorClusterConfig{
 		IYO: config.IYOCredentials{
-			Org:       os.Getenv("iyo_organization"),
+			Org:       "testorg",
 			Namespace: "thedisk",
-			ClientID:  os.Getenv("iyo_client_id"),
-			Secret:    os.Getenv("iyo_secret"),
 		},
 		Servers: serverConfSource,
 		MetadataServers: []config.ServerConfig{
@@ -89,10 +86,8 @@ func TestCopyDiffCluster(t *testing.T) {
 
 	zeroStorClusterConfTarget := &config.ZeroStorClusterConfig{
 		IYO: config.IYOCredentials{
-			Org:       os.Getenv("iyo_organization"),
+			Org:       "testorg",
 			Namespace: "thedisk",
-			ClientID:  os.Getenv("iyo_client_id"),
-			Secret:    os.Getenv("iyo_secret"),
 		},
 		Servers: serverConfTarget,
 		MetadataServers: []config.ServerConfig{
@@ -152,10 +147,8 @@ func TestCopySameCluster(t *testing.T) {
 	// configure tlog cluster
 	zeroStorClusterConf := &config.ZeroStorClusterConfig{
 		IYO: config.IYOCredentials{
-			Org:       os.Getenv("iyo_organization"),
+			Org:       "testorg",
 			Namespace: "thedisk",
-			ClientID:  os.Getenv("iyo_client_id"),
-			Secret:    os.Getenv("iyo_secret"),
 		},
 		Servers: serverConf,
 		MetadataServers: []config.ServerConfig{
