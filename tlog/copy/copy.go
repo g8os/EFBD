@@ -36,6 +36,14 @@ func Copy(ctx context.Context, confSource config.Source, conf Config) error {
 	if !targetStaticConf.Type.TlogSupport() {
 		return nil
 	}
+	targetNBDConf, err := config.ReadVdiskNBDConfig(confSource, conf.TargetVdiskID)
+	if err != nil {
+		return fmt.Errorf(
+			"couldn't read target vdisk %s's NBD vdisk config: %v", conf.TargetVdiskID, err)
+	}
+	if targetNBDConf.TlogServerClusterID == "" {
+		return nil // nothing to do, no target tlog server cluster defined
+	}
 
 	if err := validator.Validate(conf); err != nil {
 		return err
@@ -47,19 +55,27 @@ func Copy(ctx context.Context, confSource config.Source, conf Config) error {
 			"couldn't read source vdisk %s's static config: %v", conf.SourceVdiskID, err)
 	}
 
-	// if source vdisk has no tlog, generate it
-	if !sourceStaticConf.Type.TlogSupport() {
-		generator, err := newGenerator(confSource, conf)
+	if sourceStaticConf.Type.TlogSupport() {
+		sourceNBDConf, err := config.ReadVdiskNBDConfig(confSource, conf.SourceVdiskID)
 		if err != nil {
-			return err
+			return fmt.Errorf(
+				"couldn't read source vdisk %s's NBD vdisk config: %v", conf.SourceVdiskID, err)
 		}
-		return generator.GenerateFromStorage(ctx)
+		if sourceNBDConf.TlogServerClusterID != "" {
+			// copy tlog data
+			copier, err := newCopier(confSource, conf)
+			if err != nil {
+				return err
+			}
+			return copier.Copy()
+		}
 	}
 
-	// copy tlog data
-	copier, err := newCopier(confSource, conf)
+	// source vdisk has no tlog, generate it
+	generator, err := newGenerator(confSource, conf)
 	if err != nil {
 		return err
 	}
-	return copier.Copy()
+	return generator.GenerateFromStorage(ctx)
+
 }
