@@ -71,7 +71,7 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 			"couldn't read source vdisk %s's static config: %v", sourceVdiskID, err)
 	}
 	sourceStorageConfig, err := config.ReadNBDStorageConfig(
-		configSource, sourceVdiskID, sourceStaticConfig)
+		configSource, sourceVdiskID)
 	if err != nil {
 		return fmt.Errorf(
 			"couldn't read source vdisk %s's storage config: %v", sourceVdiskID, err)

@@ -419,7 +419,7 @@ func TestListNonDedupedBlockIndices(t *testing.T) {
 		blockCount = 16
 	)
 
-	redisProvider := redisstub.NewInMemoryRedisProviderMultiServers(4, 0, false)
+	redisProvider := redisstub.NewInMemoryRedisProviderMultiServers(4, 0)
 	defer redisProvider.Close()
 	clusterConfig := redisProvider.ClusterConfig()
 

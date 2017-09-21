@@ -562,13 +562,10 @@ func TestListDedupedBlockIndices(t *testing.T) {
 	redisProvider := redisstub.NewInMemoryRedisProvider(nil)
 	address := redisProvider.PrimaryAddress()
 	clusterConfig := config.StorageClusterConfig{
-		DataStorage: []config.StorageServerConfig{
+		Servers: []config.StorageServerConfig{
 			config.StorageServerConfig{
 				Address: address,
 			},
-		},
-		MetadataStorage: &config.StorageServerConfig{
-			Address: address,
 		},
 	}
 

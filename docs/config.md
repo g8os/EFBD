@@ -155,24 +155,19 @@ See the [VdiskTlogConfig Godoc][VdiskTlogConfigGodoc] for more information.
 
 Stores [storage(1)][storage] cluster information, referenced by one or multiple [vdisks][vdisk]:
 
-* dataStorage: data ([ARDB][ardb]) servers used to store vdisk and tlog data;
-* metaDataStorage: a single ([ARDB][ardb]) server used to store vdisk [metadata][metadata] (not used by [nondeduped vdisks][nondeduped]);
+* servers: ([ARDB][ardb]) servers used to store vdisk ([meta][metadata])[data][data];
 
 Example Config:
 
 ```yaml
-dataStorage:  # at least one server is required
+servers:  # at least one server is required
   - address: 192.168.1.146:2000 # has to be a valid dial string
     db: 10 # optional, 0 by default
   - address: 192.123.123.1:2001
     db: 10
-metadataStorage: # not used for cache/temp vdisks' storage and template storage,
-                 # required for all other purposes
-  address: 192.168.1.146:2001
-  db: 11
 ```
 
-Used by the [NBD Server][nbdServerConfig].
+Used by the [NBD Server][nbdServerConfig] and [TLog Server][tlogServerConfig] (slave sync).
 
 See the [StorageClusterConfig Godoc][StorageClusterConfigGodoc] for more information.
 
@@ -300,9 +295,6 @@ storageClusters:
       - address: localhost:16379
       - address: localhost:16380
       - address: localhost:16381
-    metadataStorage:
-      address: localhost:16379
-      db: 2
   mastercluster:
     dataStorage:
       - address: localhost:10122
@@ -313,9 +305,6 @@ storageClusters:
       - address: localhost:20122
       - address: localhost:20123
       - address: localhost:20124
-    metadataStorage:
-      address: localhost:16312
-      db: 1
 zeroStorClusters:
   zerostorcluster:
     iyo:

@@ -39,7 +39,7 @@ func NewPlayer(ctx context.Context, source config.Source,
 	if err != nil {
 		return nil, err
 	}
-	nbdCfg, err := config.ReadNBDStorageConfig(source, vdiskID, vdiskCfg)
+	nbdCfg, err := config.ReadNBDStorageConfig(source, vdiskID)
 	if err != nil {
 		return nil, err
 	}

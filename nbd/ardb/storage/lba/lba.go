@@ -24,7 +24,7 @@ func StorageKey(vdiskID string) string {
 }
 
 // NewLBA creates a new LBA
-func NewLBA(vdiskID string, cacheLimitInBytes int64, provider ardb.MetadataConnProvider) (lba *LBA, err error) {
+func NewLBA(vdiskID string, cacheLimitInBytes int64, provider ardb.DataConnProvider) (lba *LBA, err error) {
 	if vdiskID == "" {
 		return nil, errors.New("NewLBA requires non-empty vdiskID")
 	}
@@ -99,7 +99,7 @@ func (lba *LBA) Get(blockIndex int64) (zerodisk.Hash, error) {
 	return bucket.GetHash(blockIndex)
 }
 
-// Flush stores all dirty sectors to the external metadaserver
+// Flush stores all dirty sectors to the external storage
 func (lba *LBA) Flush() error {
 	var wg sync.WaitGroup
 	var errors flushError

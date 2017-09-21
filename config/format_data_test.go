@@ -151,81 +151,61 @@ slaveStorageClusterID: bar
 var validStorageClusterConfigYAML = []string{
 	// complete example
 	`
-dataStorage:
+servers:
   - address: 1.1.1.1:11
     db: 1
   - address: 2.2.2.2:22
     db: 2
-metadataStorage:
-  address: 3.3.3.3:33
-  db: 3
 `, // similar example from above, but using ipv6
 	`
-dataStorage:
+servers:
   - address: "[2001:db8:0:1:1:1:1:1]:11"
     db: 1
   - address: "[2001:db8:0:2:2:2:2:2]:22"
     db: 2
-metadataStorage:
-  address: "[2001:db8:0:3:3:3:3:3]:33"
-  db: 3
 `, // most minimal version of 1 example
 	`
-dataStorage:
+servers:
   - address: 1.1.1.1:11
 `, // most minimal (local) version of 1 example
 	`
-dataStorage:
+servers:
   - address: localhost:16379
 `, // other variations of first example...
 	`
-dataStorage:
+servers:
   - address: 1.1.1.1:11
     db: 1
   - address: 2.2.2.2:22
 `, `
-dataStorage:
+servers:
   - address: 1.1.1.1:11
   - address: 2.2.2.2:22
     db: 2
-metadataStorage:
-  address: 3.3.3.3:33
 `, `
-dataStorage:
+servers:
   - address: 1.1.1.1:11
-metadataStorage:
-  address: 3.3.3.3:33
 `,
 }
 
 var invalidStorageClusterConfigYAML = []string{
 	"",
-	// dataStorage not given
+	// dataStorage given but doesn't contain a single server
 	`
-metadataStorage:
-  address: 3.3.3.3:33
-`, // dataStorage given but doesn't contain a single server
-	`
-dataStorage:
+servers:
   foo: bar
 `, // dataStorage given but doesn't define the dial string
 	`
-dataStorage:
+servers:
   - db: 2
 `, // dataStorage given but wrong type, requires array of storage servers,
 	// instead a single storage server is given directly
 	`
-dataStorage:
+servers:
   address: localhost:16379
-`, // dataStorage given but invalid metadataStorage
-	`
-dataStorage:
-  - address: localhost:16379
-metadataStorage:
-  db: 2
 `, // only disabled data storages given
 	`
-dataStorage:
+servers:
   - address: localhost:16379
     disabled: true
   - disabled: true
