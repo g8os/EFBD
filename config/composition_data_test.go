@@ -4,7 +4,7 @@ var validNBDStorageConfigs = []NBDStorageConfig{
 	// complete example
 	NBDStorageConfig{
 		StorageCluster: StorageClusterConfig{
-			DataStorage: []StorageServerConfig{
+			Servers: []StorageServerConfig{
 				StorageServerConfig{
 					Address:  "localhost:16379",
 					Database: 1,
@@ -16,7 +16,7 @@ var validNBDStorageConfigs = []NBDStorageConfig{
 			},
 		},
 		TemplateStorageCluster: &StorageClusterConfig{
-			DataStorage: []StorageServerConfig{
+			Servers: []StorageServerConfig{
 				StorageServerConfig{
 					Address:  "123.123.123.123:300",
 					Database: 4,
@@ -28,7 +28,7 @@ var validNBDStorageConfigs = []NBDStorageConfig{
 			},
 		},
 		SlaveStorageCluster: &StorageClusterConfig{
-			DataStorage: []StorageServerConfig{
+			Servers: []StorageServerConfig{
 				StorageServerConfig{
 					Address:  "foo:16320",
 					Database: 4,
@@ -43,7 +43,7 @@ var validNBDStorageConfigs = []NBDStorageConfig{
 	// example to show that there can be more data slave servers than required
 	NBDStorageConfig{
 		StorageCluster: StorageClusterConfig{
-			DataStorage: []StorageServerConfig{
+			Servers: []StorageServerConfig{
 				StorageServerConfig{
 					Address:  "localhost:16379",
 					Database: 1,
@@ -51,7 +51,7 @@ var validNBDStorageConfigs = []NBDStorageConfig{
 			},
 		},
 		SlaveStorageCluster: &StorageClusterConfig{
-			DataStorage: []StorageServerConfig{
+			Servers: []StorageServerConfig{
 				StorageServerConfig{
 					Address:  "foo:16320",
 					Database: 4,
@@ -66,7 +66,7 @@ var validNBDStorageConfigs = []NBDStorageConfig{
 	// minimal example
 	NBDStorageConfig{
 		StorageCluster: StorageClusterConfig{
-			DataStorage: []StorageServerConfig{
+			Servers: []StorageServerConfig{
 				StorageServerConfig{
 					Address: "localhost:16379",
 				},
@@ -85,7 +85,7 @@ var invalidNBDStorageConfigs = []NBDStorageConfig{
 	// template storage given, but is invalid
 	NBDStorageConfig{
 		StorageCluster: StorageClusterConfig{
-			DataStorage: []StorageServerConfig{
+			Servers: []StorageServerConfig{
 				StorageServerConfig{Address: "localhost:16381"},
 			},
 		},
@@ -94,7 +94,7 @@ var invalidNBDStorageConfigs = []NBDStorageConfig{
 	// slave storage given, but is invalid (no data servers given)
 	NBDStorageConfig{
 		StorageCluster: StorageClusterConfig{
-			DataStorage: []StorageServerConfig{
+			Servers: []StorageServerConfig{
 				StorageServerConfig{Address: "localhost:16381"},
 			},
 		},
@@ -103,13 +103,13 @@ var invalidNBDStorageConfigs = []NBDStorageConfig{
 	// slave storage given, but is invalid (not enough data servers given)
 	NBDStorageConfig{
 		StorageCluster: StorageClusterConfig{
-			DataStorage: []StorageServerConfig{
+			Servers: []StorageServerConfig{
 				StorageServerConfig{Address: "localhost:16381"},
 				StorageServerConfig{Address: "localhost:16382"},
 			},
 		},
 		SlaveStorageCluster: &StorageClusterConfig{
-			DataStorage: []StorageServerConfig{
+			Servers: []StorageServerConfig{
 				StorageServerConfig{Address: "localhost:16383"},
 			},
 		},
@@ -120,7 +120,7 @@ var validTlogStorageConfigs = []TlogStorageConfig{
 	// complete example
 	TlogStorageConfig{
 		SlaveStorageCluster: &StorageClusterConfig{
-			DataStorage: []StorageServerConfig{
+			Servers: []StorageServerConfig{
 				StorageServerConfig{
 					Address:  "localhost:16379",
 					Database: 1,
@@ -224,7 +224,7 @@ var invalidTlogStorageConfigsDeduped = append(invalidTlogStorageConfigs,
 			},
 		},
 		SlaveStorageCluster: &StorageClusterConfig{
-			DataStorage: []StorageServerConfig{
+			Servers: []StorageServerConfig{
 				StorageServerConfig{
 					Address: "localhost:16379",
 				},

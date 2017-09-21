@@ -222,14 +222,14 @@ func (rp *staticRedisProvider) Close() error {
 }
 
 func (rp *staticRedisProvider) setConfig(cfg *config.NBDStorageConfig) {
-	rp.dataConnectionConfigs = cfg.StorageCluster.DataStorage
+	rp.dataConnectionConfigs = cfg.StorageCluster.Servers
 	rp.numberOfServers = int64(len(rp.dataConnectionConfigs))
 
 	if cfg.TemplateStorageCluster == nil {
 		rp.templateDataConnectionConfigs = nil
 		rp.numberOfTemplateServers = 0
 	} else {
-		rp.templateDataConnectionConfigs = cfg.TemplateStorageCluster.DataStorage
+		rp.templateDataConnectionConfigs = cfg.TemplateStorageCluster.Servers
 		rp.numberOfTemplateServers = int64(len(rp.templateDataConnectionConfigs))
 	}
 }

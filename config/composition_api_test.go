@@ -50,17 +50,17 @@ func TestReadNBDStorageConfig(t *testing.T) {
 	testInvalidKey(Key{ID: "mycluster", Type: KeyClusterStorage})
 
 	source.SetStorageCluster("mycluster", &StorageClusterConfig{
-		DataStorage: []StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
+		Servers: []StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
 	})
 	nbdStorageCfg, err := ReadNBDStorageConfig(source, "a")
 	if assert.NoError(err, "should be fine as both the vdisk and storage are properly configured") {
 		assert.Equal(
 			[]StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
-			nbdStorageCfg.StorageCluster.DataStorage)
+			nbdStorageCfg.StorageCluster.Servers)
 	}
 
 	source.SetTemplateStorageCluster("a", "templateCluster", &StorageClusterConfig{
-		DataStorage: []StorageServerConfig{
+		Servers: []StorageServerConfig{
 			StorageServerConfig{Address: "localhost:16380"},
 			StorageServerConfig{Address: "localhost:16381"},
 			StorageServerConfig{Address: "localhost:16382"},
@@ -70,7 +70,7 @@ func TestReadNBDStorageConfig(t *testing.T) {
 	if assert.NoError(err, "should be fine as both the vdisk and storage are properly configured") {
 		assert.Equal(
 			[]StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
-			nbdStorageCfg.StorageCluster.DataStorage)
+			nbdStorageCfg.StorageCluster.Servers)
 		if assert.NotNil(nbdStorageCfg.TemplateStorageCluster) {
 			assert.Equal(
 				[]StorageServerConfig{
@@ -78,7 +78,7 @@ func TestReadNBDStorageConfig(t *testing.T) {
 					StorageServerConfig{Address: "localhost:16381"},
 					StorageServerConfig{Address: "localhost:16382"},
 				},
-				nbdStorageCfg.TemplateStorageCluster.DataStorage)
+				nbdStorageCfg.TemplateStorageCluster.Servers)
 		}
 	}
 
@@ -93,7 +93,7 @@ func TestReadNBDStorageConfig(t *testing.T) {
 	testInvalidKey(Key{ID: "slaveCluster", Type: KeyClusterStorage})
 
 	source.SetSlaveStorageCluster("a", "slaveCluster", &StorageClusterConfig{
-		DataStorage: []StorageServerConfig{
+		Servers: []StorageServerConfig{
 			StorageServerConfig{Address: "localhost:16379"},
 			StorageServerConfig{Address: "localhost:16380"},
 		},
@@ -103,7 +103,7 @@ func TestReadNBDStorageConfig(t *testing.T) {
 	if assert.NoError(err, "should be fine as both the vdisk and storage are properly configured") {
 		assert.Equal(
 			[]StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
-			nbdStorageCfg.StorageCluster.DataStorage)
+			nbdStorageCfg.StorageCluster.Servers)
 		if assert.NotNil(nbdStorageCfg.TemplateStorageCluster) {
 			assert.Equal(
 				[]StorageServerConfig{
@@ -111,7 +111,7 @@ func TestReadNBDStorageConfig(t *testing.T) {
 					StorageServerConfig{Address: "localhost:16381"},
 					StorageServerConfig{Address: "localhost:16382"},
 				},
-				nbdStorageCfg.TemplateStorageCluster.DataStorage)
+				nbdStorageCfg.TemplateStorageCluster.Servers)
 		}
 		if assert.NotNil(nbdStorageCfg.SlaveStorageCluster) {
 			assert.Equal(
@@ -119,7 +119,7 @@ func TestReadNBDStorageConfig(t *testing.T) {
 					StorageServerConfig{Address: "localhost:16379"},
 					StorageServerConfig{Address: "localhost:16380"},
 				},
-				nbdStorageCfg.SlaveStorageCluster.DataStorage)
+				nbdStorageCfg.SlaveStorageCluster.Servers)
 		}
 	}
 }
@@ -186,7 +186,7 @@ func TestReadTlogStorageConfig(t *testing.T) {
 
 	// add slave cluster
 	slaveClusterCfg := StorageClusterConfig{
-		DataStorage: []StorageServerConfig{
+		Servers: []StorageServerConfig{
 			StorageServerConfig{Address: "localhost:3000"},
 			StorageServerConfig{Address: "localhost:3002", Database: 42},
 		},
@@ -236,7 +236,7 @@ func TestWatchNBDStorageConfig_FailAtStartup(t *testing.T) {
 
 	// last one is golden
 	source.SetStorageCluster("mycluster", &StorageClusterConfig{
-		DataStorage: []StorageServerConfig{
+		Servers: []StorageServerConfig{
 			StorageServerConfig{Address: "localhost:16379"},
 		},
 	})
@@ -253,7 +253,7 @@ func TestWatchNBDStorageConfig_FailAfterSuccess(t *testing.T) {
 	source := NewStubSource()
 
 	source.SetPrimaryStorageCluster("a", "mycluster", &StorageClusterConfig{
-		DataStorage: []StorageServerConfig{
+		Servers: []StorageServerConfig{
 			StorageServerConfig{Address: "localhost:16379"},
 		},
 	})
@@ -276,10 +276,10 @@ func TestWatchNBDStorageConfig_FailAfterSuccess(t *testing.T) {
 
 	output := <-ch
 	assert.Nil(output.TemplateStorageCluster)
-	if assert.Len(output.StorageCluster.DataStorage, 1) {
+	if assert.Len(output.StorageCluster.Servers, 1) {
 		assert.Equal(
 			StorageServerConfig{Address: "localhost:16379"},
-			output.StorageCluster.DataStorage[0])
+			output.StorageCluster.Servers[0])
 	}
 
 	// now let's break it
@@ -288,7 +288,7 @@ func TestWatchNBDStorageConfig_FailAfterSuccess(t *testing.T) {
 
 	// now let's fix it again
 	source.SetStorageCluster("mycluster", &StorageClusterConfig{
-		DataStorage: []StorageServerConfig{
+		Servers: []StorageServerConfig{
 			StorageServerConfig{Address: "localhost:16380"},
 		},
 	})
@@ -296,10 +296,10 @@ func TestWatchNBDStorageConfig_FailAfterSuccess(t *testing.T) {
 	// trigger reload (even though it was broken before)
 	output = <-ch
 	assert.Nil(output.TemplateStorageCluster)
-	if assert.Len(output.StorageCluster.DataStorage, 1) {
+	if assert.Len(output.StorageCluster.Servers, 1) {
 		assert.Equal(
 			StorageServerConfig{Address: "localhost:16380"},
-			output.StorageCluster.DataStorage[0])
+			output.StorageCluster.Servers[0])
 	}
 }
 
@@ -309,7 +309,7 @@ func TestWatchNBDStorageConfig_ChangeClusterReference(t *testing.T) {
 	source := NewStubSource()
 
 	primaryStorageCluster := &StorageClusterConfig{
-		DataStorage: []StorageServerConfig{
+		Servers: []StorageServerConfig{
 			StorageServerConfig{Address: "localhost:16379"},
 		},
 	}
@@ -360,7 +360,7 @@ func TestWatchNBDStorageConfig_ChangeClusterReference(t *testing.T) {
 	testInvalidKey(Key{ID: "foocluster", Type: KeyClusterStorage}) // error value should not be updated
 
 	primaryStorageCluster = &StorageClusterConfig{
-		DataStorage: []StorageServerConfig{
+		Servers: []StorageServerConfig{
 			StorageServerConfig{Address: "localhost:16381"},
 		},
 	}
@@ -371,7 +371,7 @@ func TestWatchNBDStorageConfig_ChangeClusterReference(t *testing.T) {
 
 	// now let's set template cluster
 	templateStoragecluster = &StorageClusterConfig{
-		DataStorage: []StorageServerConfig{
+		Servers: []StorageServerConfig{
 			StorageServerConfig{Address: "231.201.201.200:2000"},
 			StorageServerConfig{Address: "231.201.201.200:2020"},
 		},
@@ -381,7 +381,7 @@ func TestWatchNBDStorageConfig_ChangeClusterReference(t *testing.T) {
 
 	// now let's set slave cluster
 	slaveStoragecluster = &StorageClusterConfig{
-		DataStorage: []StorageServerConfig{
+		Servers: []StorageServerConfig{
 			StorageServerConfig{Address: "slave:200"},
 			StorageServerConfig{Address: "slave:201"},
 		},
@@ -394,7 +394,7 @@ func TestWatchNBDStorageConfig_ChangeClusterReference(t *testing.T) {
 	// trigger reload
 	testInvalidKey(Key{ID: "primary", Type: KeyClusterStorage}) // error value should not be updated
 
-	primaryStorageCluster.DataStorage[0].Database = 3
+	primaryStorageCluster.Servers[0].Database = 3
 	source.SetStorageCluster("primary", primaryStorageCluster)
 	testValue() // updating a storage cluster should be ok
 
@@ -601,7 +601,7 @@ func TestWatchTlogStorageConfig_ChangeClusterReference(t *testing.T) {
 
 	// now let's set template cluster
 	slaveStoragecluster = &StorageClusterConfig{
-		DataStorage: []StorageServerConfig{
+		Servers: []StorageServerConfig{
 			StorageServerConfig{Address: "231.201.201.200:2000"},
 			StorageServerConfig{Address: "231.201.201.200:2020"},
 		},

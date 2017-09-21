@@ -49,8 +49,8 @@ func (cfg *NBDStorageConfig) Validate() error {
 		}
 
 		// ensure that the slave cluster defines enough data (storage) servers
-		slaveDataShardCount := len(cfg.SlaveStorageCluster.DataStorage)
-		primaryDataShardCount := len(cfg.StorageCluster.DataStorage)
+		slaveDataShardCount := len(cfg.SlaveStorageCluster.Servers)
+		primaryDataShardCount := len(cfg.StorageCluster.Servers)
 		if slaveDataShardCount < primaryDataShardCount {
 			return errInsufficientSlaveDataShards
 		}

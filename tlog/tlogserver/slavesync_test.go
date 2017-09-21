@@ -162,7 +162,7 @@ func newZeroStorConfig(t *testing.T, vdiskID, privKey string,
 
 	storageClusterID := "cluster_id_for_slave"
 	storageCluserConf := &config.StorageClusterConfig{
-		DataStorage: []config.StorageServerConfig{
+		Servers: []config.StorageServerConfig{
 			config.StorageServerConfig{
 				Address: ardbAddress,
 			}},

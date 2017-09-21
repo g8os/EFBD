@@ -320,7 +320,7 @@ func (rp *InMemoryRedisProviderMultiServers) ClusterConfig() *config.StorageClus
 	cluster := new(config.StorageClusterConfig)
 
 	for _, memRedis := range rp.memRedisSlice {
-		cluster.DataStorage = append(cluster.DataStorage, config.StorageServerConfig{
+		cluster.Servers = append(cluster.Servers, config.StorageServerConfig{
 			Address: memRedis.Address(),
 		})
 	}

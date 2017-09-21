@@ -65,7 +65,7 @@ func TestGenerate(t *testing.T) {
 	confSource.SetVdiskConfig(targetVdiskID, &staticConf)
 
 	storageClusterConf := &config.StorageClusterConfig{
-		DataStorage: []config.StorageServerConfig{
+		Servers: []config.StorageServerConfig{
 			config.StorageServerConfig{
 				Address: redisProvider.PrimaryAddress(),
 			},

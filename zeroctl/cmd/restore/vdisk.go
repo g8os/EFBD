@@ -127,7 +127,7 @@ func checkVdiskExists(vdiskID string, configSource config.Source) error {
 	}
 
 	// delete data
-	for _, serverConfig := range nbdStorageConfig.StorageCluster.DataStorage {
+	for _, serverConfig := range nbdStorageConfig.StorageCluster.Servers {
 		err := storage.DeleteData(serverConfig, vdisks)
 		if err != nil {
 			return fmt.Errorf(

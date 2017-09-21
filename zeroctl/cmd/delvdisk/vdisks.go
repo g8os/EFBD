@@ -129,7 +129,7 @@ func getAndSortVdisks(vdiskIDs []string, configSource config.Source) (data vdisk
 			}
 		}
 
-		for _, serverCfg := range cfg.DataStorage {
+		for _, serverCfg := range cfg.Servers {
 			data.AddVdisk(serverCfg, vdiskID, vdiskType)
 		}
 	}

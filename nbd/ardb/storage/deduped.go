@@ -279,7 +279,7 @@ func DedupedVdiskExists(vdiskID string, cluster *config.StorageClusterConfig) (b
 	// go through each server to check if the vdisKID exists there
 	// the first vdisk which has data for this vdisk,
 	// we'll take as a sign that the vdisk exists
-	for _, serverConfig := range cluster.DataStorage {
+	for _, serverConfig := range cluster.Servers {
 		exists, err := dedupedVdiskExistsOnServer(key, serverConfig)
 		if exists || err != nil {
 			return exists, err
@@ -315,7 +315,7 @@ func ListDedupedBlockIndices(vdiskID string, cluster *config.StorageClusterConfi
 	// from all the different data servers which make up the given storage cluster.
 	var err error
 	var serverIndices []int64
-	for _, server := range cluster.DataStorage {
+	for _, server := range cluster.Servers {
 		serverIndices, err = listDedupedBlockIndices(key, server)
 		if err != nil {
 			if err == redis.ErrNil {
@@ -356,7 +356,7 @@ func CopyDeduped(sourceID, targetID string, sourceCluster, targetCluster *config
 	if sourceCluster == nil {
 		return errors.New("no source cluster given")
 	}
-	sourceDataServerCount := len(sourceCluster.DataStorage)
+	sourceDataServerCount := len(sourceCluster.Servers)
 	if sourceDataServerCount == 0 {
 		return errors.New("no data server configs given for source")
 	}
@@ -366,7 +366,7 @@ func CopyDeduped(sourceID, targetID string, sourceCluster, targetCluster *config
 	if targetCluster == nil {
 		targetCluster = sourceCluster
 	} else {
-		targetDataServerCount := len(targetCluster.DataStorage)
+		targetDataServerCount := len(targetCluster.Servers)
 		// [TODO]
 		// Currently the result will be WRONG in case targetDataServerCount != sourceDataServerCount,
 		// as the storage data spread will not be the same,
@@ -382,8 +382,8 @@ func CopyDeduped(sourceID, targetID string, sourceCluster, targetCluster *config
 	var sourceCfg, targetCfg config.StorageServerConfig
 
 	for i := 0; i < sourceDataServerCount; i++ {
-		sourceCfg = sourceCluster.DataStorage[i]
-		targetCfg = targetCluster.DataStorage[i]
+		sourceCfg = sourceCluster.Servers[i]
+		targetCfg = targetCluster.Servers[i]
 
 		if sourceCfg.Equal(&targetCfg) {
 			// within same storage server

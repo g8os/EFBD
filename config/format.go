@@ -209,7 +209,7 @@ func NewStorageClusterConfig(data []byte) (*StorageClusterConfig, error) {
 // A storage cluster is composed out of multiple data storage servers,
 // and a single (optional) metadata storage.
 type StorageClusterConfig struct {
-	DataStorage []StorageServerConfig `yaml:"dataStorage" valid:"required"`
+	Servers []StorageServerConfig `yaml:"servers" valid:"required"`
 }
 
 // Validate implements FormatValidator.Validate.
@@ -226,7 +226,7 @@ func (cfg *StorageClusterConfig) Validate() error {
 	// validate all data server configs
 	// and ensure that at least one data server is enabled
 	var serversAvailable bool
-	for _, serverConfig := range cfg.DataStorage {
+	for _, serverConfig := range cfg.Servers {
 		err = serverConfig.Validate()
 		if err != nil {
 			return err
@@ -249,8 +249,8 @@ func (cfg *StorageClusterConfig) Clone() StorageClusterConfig {
 		return clone
 	}
 
-	clone.DataStorage = make([]StorageServerConfig, len(cfg.DataStorage))
-	copy(clone.DataStorage, cfg.DataStorage)
+	clone.Servers = make([]StorageServerConfig, len(cfg.Servers))
+	copy(clone.Servers, cfg.Servers)
 
 	return clone
 }
@@ -271,12 +271,12 @@ func (cfg *StorageClusterConfig) Equal(other *StorageClusterConfig) bool {
 
 	// check if the data storage length is equal,
 	// if not than the configs can't be equal
-	if len(cfg.DataStorage) != len(other.DataStorage) {
+	if len(cfg.Servers) != len(other.Servers) {
 		return false
 	}
 	// check if all data storages are equal
-	for i := range cfg.DataStorage {
-		if !cfg.DataStorage[i].Equal(&other.DataStorage[i]) {
+	for i := range cfg.Servers {
+		if !cfg.Servers[i].Equal(&other.Servers[i]) {
 			return false
 		}
 	}
@@ -287,7 +287,7 @@ func (cfg *StorageClusterConfig) Equal(other *StorageClusterConfig) bool {
 
 // FirstAvailableServer returns the first available server.
 func (cfg *StorageClusterConfig) FirstAvailableServer() (*StorageServerConfig, error) {
-	for _, serverCfg := range cfg.DataStorage {
+	for _, serverCfg := range cfg.Servers {
 		if !serverCfg.Disabled {
 			return &serverCfg, nil
 		}
