@@ -21,7 +21,6 @@ func (c *Client) encodeCapnp(blocks []*schema.TlogBlock, timestamp int64) ([]byt
 
 	agg.SetSize(uint64(len(blocks)))
 	agg.SetTimestamp(timestamp)
-	agg.SetVdiskID(c.vdiskID)
 
 	// insert the blocks to the aggregation
 	blockList, err := agg.NewBlocks(int32(len(blocks)))

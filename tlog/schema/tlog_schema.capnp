@@ -23,9 +23,8 @@ struct TlogAggregation {
 	name @0 :Text; # unused now
 	size @1 :UInt64; # number of blocks in this aggregation
 	timestamp @2 :Int64;
-	vdiskID @3 :Text;
-	blocks @4 :List(TlogBlock);
-	prev @5 :Data; # hash of the previous aggregation
+	blocks @3 :List(TlogBlock);
+	prev @4 :Data; # hash of the previous aggregation
 }
 
 # message to send from client to server

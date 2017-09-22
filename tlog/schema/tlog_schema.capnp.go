@@ -92,11 +92,6 @@ func (s HandshakeRequest_List) Set(i int, v HandshakeRequest) error {
 	return s.List.SetStruct(i, v.Struct)
 }
 
-func (s HandshakeRequest_List) String() string {
-	str, _ := text.MarshalList(0xe0d4e6d68fa24ac0, s.List)
-	return str
-}
-
 // HandshakeRequest_Promise is a wrapper for a HandshakeRequest promised by a client call.
 type HandshakeRequest_Promise struct{ *capnp.Pipeline }
 
@@ -163,11 +158,6 @@ func (s HandshakeResponse_List) Set(i int, v HandshakeResponse) error {
 	return s.List.SetStruct(i, v.Struct)
 }
 
-func (s HandshakeResponse_List) String() string {
-	str, _ := text.MarshalList(0xee959a7d96c96641, s.List)
-	return str
-}
-
 // HandshakeResponse_Promise is a wrapper for a HandshakeResponse promised by a client call.
 type HandshakeResponse_Promise struct{ *capnp.Pipeline }
 
@@ -182,12 +172,12 @@ type TlogAggregation struct{ capnp.Struct }
 const TlogAggregation_TypeID = 0xe46ab5b4b619e094
 
 func NewTlogAggregation(s *capnp.Segment) (TlogAggregation, error) {
-	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 16, PointerCount: 4})
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 16, PointerCount: 3})
 	return TlogAggregation{st}, err
 }
 
 func NewRootTlogAggregation(s *capnp.Segment) (TlogAggregation, error) {
-	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 16, PointerCount: 4})
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 16, PointerCount: 3})
 	return TlogAggregation{st}, err
 }
 
@@ -236,37 +226,18 @@ func (s TlogAggregation) SetTimestamp(v int64) {
 	s.Struct.SetUint64(8, uint64(v))
 }
 
-func (s TlogAggregation) VdiskID() (string, error) {
-	p, err := s.Struct.Ptr(1)
-	return p.Text(), err
-}
-
-func (s TlogAggregation) HasVdiskID() bool {
-	p, err := s.Struct.Ptr(1)
-	return p.IsValid() || err != nil
-}
-
-func (s TlogAggregation) VdiskIDBytes() ([]byte, error) {
-	p, err := s.Struct.Ptr(1)
-	return p.TextBytes(), err
-}
-
-func (s TlogAggregation) SetVdiskID(v string) error {
-	return s.Struct.SetText(1, v)
-}
-
 func (s TlogAggregation) Blocks() (TlogBlock_List, error) {
-	p, err := s.Struct.Ptr(2)
+	p, err := s.Struct.Ptr(1)
 	return TlogBlock_List{List: p.List()}, err
 }
 
 func (s TlogAggregation) HasBlocks() bool {
-	p, err := s.Struct.Ptr(2)
+	p, err := s.Struct.Ptr(1)
 	return p.IsValid() || err != nil
 }
 
 func (s TlogAggregation) SetBlocks(v TlogBlock_List) error {
-	return s.Struct.SetPtr(2, v.List.ToPtr())
+	return s.Struct.SetPtr(1, v.List.ToPtr())
 }
 
 // NewBlocks sets the blocks field to a newly
@@ -276,22 +247,22 @@ func (s TlogAggregation) NewBlocks(n int32) (TlogBlock_List, error) {
 	if err != nil {
 		return TlogBlock_List{}, err
 	}
-	err = s.Struct.SetPtr(2, l.List.ToPtr())
+	err = s.Struct.SetPtr(1, l.List.ToPtr())
 	return l, err
 }
 
 func (s TlogAggregation) Prev() ([]byte, error) {
-	p, err := s.Struct.Ptr(3)
+	p, err := s.Struct.Ptr(2)
 	return []byte(p.Data()), err
 }
 
 func (s TlogAggregation) HasPrev() bool {
-	p, err := s.Struct.Ptr(3)
+	p, err := s.Struct.Ptr(2)
 	return p.IsValid() || err != nil
 }
 
 func (s TlogAggregation) SetPrev(v []byte) error {
-	return s.Struct.SetData(3, v)
+	return s.Struct.SetData(2, v)
 }
 
 // TlogAggregation_List is a list of TlogAggregation.
@@ -299,7 +270,7 @@ type TlogAggregation_List struct{ capnp.List }
 
 // NewTlogAggregation creates a new list of TlogAggregation.
 func NewTlogAggregation_List(s *capnp.Segment, sz int32) (TlogAggregation_List, error) {
-	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 16, PointerCount: 4}, sz)
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 16, PointerCount: 3}, sz)
 	return TlogAggregation_List{l}, err
 }
 
@@ -307,11 +278,6 @@ func (s TlogAggregation_List) At(i int) TlogAggregation { return TlogAggregation
 
 func (s TlogAggregation_List) Set(i int, v TlogAggregation) error {
 	return s.List.SetStruct(i, v.Struct)
-}
-
-func (s TlogAggregation_List) String() string {
-	str, _ := text.MarshalList(0xe46ab5b4b619e094, s.List)
-	return str
 }
 
 // TlogAggregation_Promise is a wrapper for a TlogAggregation promised by a client call.
@@ -440,11 +406,6 @@ func (s TlogClientMessage_List) Set(i int, v TlogClientMessage) error {
 	return s.List.SetStruct(i, v.Struct)
 }
 
-func (s TlogClientMessage_List) String() string {
-	str, _ := text.MarshalList(0xc8407b23fdf6d1a2, s.List)
-	return str
-}
-
 // TlogClientMessage_Promise is a wrapper for a TlogClientMessage promised by a client call.
 type TlogClientMessage_Promise struct{ *capnp.Pipeline }
 
@@ -555,11 +516,6 @@ func (s TlogBlock_List) At(i int) TlogBlock { return TlogBlock{s.List.Struct(i)}
 
 func (s TlogBlock_List) Set(i int, v TlogBlock) error { return s.List.SetStruct(i, v.Struct) }
 
-func (s TlogBlock_List) String() string {
-	str, _ := text.MarshalList(0x8cf178de3c82d431, s.List)
-	return str
-}
-
 // TlogBlock_Promise is a wrapper for a TlogBlock promised by a client call.
 type TlogBlock_Promise struct{ *capnp.Pipeline }
 
@@ -639,11 +595,6 @@ func (s TlogResponse_List) At(i int) TlogResponse { return TlogResponse{s.List.S
 
 func (s TlogResponse_List) Set(i int, v TlogResponse) error { return s.List.SetStruct(i, v.Struct) }
 
-func (s TlogResponse_List) String() string {
-	str, _ := text.MarshalList(0x98d11ae1c78a24d9, s.List)
-	return str
-}
-
 // TlogResponse_Promise is a wrapper for a TlogResponse promised by a client call.
 type TlogResponse_Promise struct{ *capnp.Pipeline }
 
@@ -652,61 +603,60 @@ func (p TlogResponse_Promise) Struct() (TlogResponse, error) {
 	return TlogResponse{s}, err
 }
 
-const schema_f4533cbae6e08506 = "x\xda\x8c\x93_\x88\x1bU\x18\xc5\xcf\xb9w&\xbb\x85" +
-	"\xdd\xcd\x0e\x89\xd0\x16e\x05\xfbP\x8b\xd5\xb6\xebS)" +
-	"\xb4\x1bk\xa9\x0bJoV\x10\x16A\xc7\xc9m2n" +
-	"2\x93\xcd\x9d\xec\x1f\xffP-\xf6\xc1\"\x88\xd0J-" +
-	"\x0a\xddR\xa1B\x0b\x0a\xad\x88\xf8PA\xb0>\x16\xaa" +
-	"\xe0\x8b\xac\xa0\x15_\x04A|\xb2\x8e\xdc\xc9&Y\xd3" +
-	"\xc5\xfa\x96\xfb\xe5\xcc\xbd\xdf\xef|\xdf\xd9u\xaf8 " +
-	"v\xbb\x8b\x12P\xdb\xdd\\\xba\xfb\xe6\xf1}?,\xfd" +
-	"\xfe\x16\xd4\x16:i\xee\xc4\xea\xad\xcf\xf7\xcd\xfc\x01W" +
-	"\x0c\x01\x93+\xdc\xca\xc2'\xb4?/\xf3\x19\x82\xe9\xf7" +
-	"\xdbN~\xfd\xe3\xd6\x1bg\xac\x9c\xeb\xe4\x99\xc6\x95{" +
-	"X\xb8G\x0e\x01\x05O.\x82\xe9\xf9\x1b\x7f\xde~\xe0" +
-	"\xe5\x03\xd7\xadZ\xf4\xd5\x8fs\xc8\x01&_\x97\xb3," +
-	"\x9c\xce\xe4\xef\xc8_\xc0\xf4\xda\xf4\xf9\xb7\xbf\xbbus" +
-	"u@\xde\xb9\xbc\xed\x94Yx\xd3\xb1\xea\x13\x8eU\x9f" +
-	"Z\xdd\xf2\xe9\x95\xab/\xfe4\xa8\xb6\x92I\xedN\xb3" +
-	"\xb0\xecf\x1f\xbaY\xe7SG\xbfy\xf7\xd5\xb3\xa7\x7f" +
-	"\x1b\xe8<S\x7f\x9b\x9be\xe1\xd7\x9c\xbd\xfb\xe7\xdc\"" +
-	"v\xa6&\xa8\xe9\x86\xffH\"\xebq\xf5\xb9\xce\xe1\xe1" +
-	"\xc0oF\xcd\xbdO\xd7\xe3j\xa9\x1e\xcb`\xee\x08\xa9" +
-	"6K\x07p\x08x\xefM\x03\xea\x8c\xa4\xba \xe8\x91" +
-	"E\xda\xe2\xca\x1e@\xbd/\xa9.\x0aR\x14)\x00\xef" +
-	"\xc3\x1d\x80:'\xa9.\x09z\x92EJ\xc0\xfb\xc8\x16" +
-	"/H\xaa\x8f\x05=G\x14\xe9\x00\xde\xe52\xa0.I" +
-	"\xaa\xcf\x04=ws\x91.\xe0]\xb5\xc5+\x92\xea\x9a" +
-	"`j\xf4|[G\x81\x06\xc0M\x10\xdc\x04N\x84Q" +
-	"E/\xd1\x85\xa0\x0b\xe6k\xbe\xa9q\x14\x82\xa3`\xbe" +
-	"\xe2'~\xf7\x90&aC\x9b\xc4o\x80\xcd\xae:\x8d" +
-	"\x9b\xba\xe5'a\x0cF\xccA0\x07\xde\xc5\x8a\xb26" +
-	"\x13\xcd82\xda\xba1\xdcs\xe3\xc1\xbd\x80\xda&\xa9" +
-	"v\x09v\xcd\xd8i;\x7fHR\x1d\x16\xdco\x12?" +
-	"i\x1b\x0a\x08\x0a\xac\x03\xa1\xe1\x18xD2\xe3\x19[" +
-	"\xf7\xbe\xb3\xe1\xfb\x8f\xd5C\x1d%Ojc|Y\xcd" +
-	"\x9a\x18\x97\xceH\x9af]\xf8\xd6\xfeg%UM\xf0" +
-	">\xfe\x9d\xae5\xa2\x8f\x03\xaa\"\xa9\x9a\x82\xa3\xe2v" +
-	"\xda\x99K\xe3$\xa0\x9a\x92\xea\x15\xc1Q\xf9W\xda\x19" +
-	"\xcc\xf2,\xa0\x96$\xd5\x1b\x82\x13/\xd4\xe3`\x8e\xe3" +
-	"\xfd\xcc\x80\x1c\x07\xd3\xa3q+\xd0\x87\xeam\x9a\xdaT" +
-	"2\xa3\xe7{\xc3H\x17\xfd0y\xaatp\x86u\x7f" +
-	"A\xcf,G\x01\x86\xd2Jh\x828\x8a4d\x90 " +
-	"\xf7\x1f|\x87\xfd\xa8bj\xfe\x9c.[w\x0c\x935" +
-	"\xbc5\x8f\xfdR\x9f\xae\xeb\xb1\xb6\xb5\xe7%U]\xd0" +
-	"\x13\xec\x90\x85-@\xd5$Ub7\xee\xfe\x0e\xd8\xfc" +
-	"Y@%\x92\xea5\xc1c\x0b\xbae\xc28\xe20\x04" +
-	"\x87\xc1c\x0b\x95\xd0\xcc=q\x90#\x10\x1c\xb1\x80a" +
-	"\xcbd`\x13\xd9\x94zx-mtr(l1\xfb" +
-	"\xb7\xad#\x19h\x12\x82\xbc\xeb\xe0\xa6\xaa\xd5\x96\xae\xda" +
-	"e\x8b\x80\x81(\xd90\x9c\x92T\xe7\xfa`\x1f\xecX" +
-	"\x17\xaf.\xd8Jy\xa3(\x956\x8a\x92\xdd\xc7\x8b\x92" +
-	"\xea+\x1b%\xd9\x89\xd2\x97\xf6\xce/$\xd5u\xc1|" +
-	"\xe47t\x977o\xc2\x97\xfa\x90\x1b\x04e\xd0\xa0\xfd" +
-	"\xd9f\xf4V\xf7\xdf\x1b2\x06\xe6\x9b-\xbd\xd0K\xde" +
-	"\xff\x9a\xb8i\xc6\x91\xbc#V\xa5~\xac<:k\xb9" +
-	"\xb2l\xdb%\xd5\xa3wNr g\xff\x04\x00\x00\xff" +
-	"\xff0\x1ft$"
+const schema_f4533cbae6e08506 = "x\xda\x8c\x93]h\x1cU\x1c\xc5\xcf\xb9wf\xd3B" +
+	"\x92\xcd\xb0+\xb4\x05Y\xc1>\xd4`\xb5m|*\x85" +
+	"6\xb1\x96\x1aPz\x13A\x08\x82\x8e\xb3\xb7\xbbcv" +
+	"g6{g\xf3\xa1-\xb5\xa5\x81Z\x14\x15\xac\xb4\xc5" +
+	"\x07S*Xh@\xa1\x15\xf1\xa9o\xeac\xa1\x08\xbe" +
+	"H\x04\xa9o\x82 >YG\xee\xec\xa7i\xb1\xbe\xed" +
+	"\xdc=s\xe7\xff;\xe7\x7f\xf6\x8c\x88Cb\xaf\xbb$" +
+	"\x01\xb5\xcb\xcd\xa5{\xef\x9c9\xf0\xd3\xf2\xef\xefBm" +
+	"\xa7\x93\xe6V7\xee~s`\xf6\x0f\xb8b\x08\x98X" +
+	"\xe3\x0e\x16\xbe\xa4\xfd\xb9\xce\x97\x09\xa6?\xee<\xff\xed" +
+	"\xcf;n_\xb4r\x0e\xc83\x8d+\xf7\xb1\xf0\x88\x1c" +
+	"\x02\x0a\x9e\\\x02\xd3+\xb7\xff\xbc\xf7\xf8[\x87\xbe\xb3" +
+	"j\xd1W?\xc7!\x07\x988-\xe7X\xb8\x90\xc9?" +
+	"\x94\xbf\x82\xe9\xad\xe9+\xef\xffp\xf7\xce\xc6&y\xfb" +
+	"\xf2\x963\xc3\xc2;\x8eU\xaf:V\xfd\xd1\xc6\xf6\xaf" +
+	"n\xdc|\xe3\x97\xcdj{\xe1\x84v\xa7YXq\xb3" +
+	"\x17\xdd\x92\x9d|\xf2\xf8\xf7\x1f\x9f\xbc|\xe1\xb7M\x93" +
+	"\xdb\x0b'.\xe5\xe6XX\xcf\xd9\xbb\xaf\xe5\x96\xb0;" +
+	"5AU\xd7\xfd\xa7\x13Y\x8b+\xaf\xb6\x1f\x9e\x0a\xfc" +
+	"F\xd4\xd8\xffR-\xaeL\xd5b\x19\xcc\x1f#\xd56" +
+	"\xe9\x00\x0e\x01\xef\xd24\xa0.J\xaa\xab\x82\x1eY\xa4" +
+	"=\\\xdb\x07\xa8O$\xd5\xe7\x82\x14E\x0a\xc0\xfbl" +
+	"\x1cP\x9fJ\xaa\xeb\x82\x9ed\x91\x12\xf0\xae\xd9\xc3\xab" +
+	"\x92\xea\x0bA\xcf\x11E:\x80\xb7>\x03\xa8\xeb\x92\xea" +
+	"kA\xcf\xddV\xa4\x0bx7\xed\xe1\x0dIuK0" +
+	"5z\xa1\xa5\xa3@\x03\xe0V\x08n\x05KaT\xd6" +
+	"\xcbt!\xe8\x82\xf9\xaao\xaa\x1c\x81\xe0\x08\x98/\xfb" +
+	"\x89\xdf}H\x93\xb0\xaeM\xe2\xd7\xc1FW\x9d\xc6\x0d" +
+	"\xdd\xf4\x930\x06#\xe6 \x98\x03\x1fb\xc5\x8c6\xa5" +
+	"F\x1c\x19m\xdd\xd8\xd2s\xe3\x89\xfd\x80\xda)\xa9\xf6" +
+	"\x08v\xcd\xd8m'\x7fRR\x1d\x15<h\x12?i" +
+	"\x19\x0a\x08\x0a\x0c\x80\xd0p\x14<&\x99\xf1\x8c\x0e|" +
+	"\xdfy\xe0\xf7\x9f\xad\x85:J^\xd0\xc6\xf8\xb2\x92\x0d" +
+	"1&\x9d\xe14\xcd\xa6\xf0\xad\xfd\xafH\xaa\xaa\xe0\xa3" +
+	"\xfc;\xed\x0c\xa2\xcf\x00\xaa,\xa9\x1a\x82#\xe2^\xda" +
+	"\xce\xa5~\x1eP\x0dIuBpD\xfe\x95\xb6\x83Y" +
+	"\x99\x03\xd4\xb2\xa4:+Xz\xbd\x16\x07\xf3\x1c\xebw" +
+	"\x06\xe4\x18\x98\x1e\x8f\x9b\x81>Rk\xd1T'\x93Y" +
+	"\xbd\xd0\x0b#]\xf2\xc3\xe4\xc5\xa9\xc3\xb3\xac\xf9\x8bz" +
+	"v%\x0a0\x94\x96C\x13\xc4Q\xa4!\x83\x04\xb9\xff" +
+	"\xe0;\xeaGeS\xf5\xe7\xf5\x8cu\xc70\xe9\xe0u" +
+	"<\xf6\xa7\xfat]\x8f\xb5={MR\xd5\x04=\xc1" +
+	"6Y\xd8\x04TUR%v\xe3\x1ek\x83-\\\x06" +
+	"T\"\xa9\xde\x16<\xb5\xa8\x9b&\x8c#n\x81\xe0\x16" +
+	"\xf0\xd4b94\xf3\xcf\x1f\xe60\x04\x87-`\xd84" +
+	"\x19X)K\xa9\x87\xd7\xd4F'G\xc2&\xb3\x7f[" +
+	":\x92\x81&!\xc8\x87\x067Y\xa94u\xc5.[" +
+	"\x04X\xb0b\x0f\xec\xe4x\xdf\xf3.\xd8i{vB" +
+	"R\x9d\x1b\x00[\xb5\x1buVR}0P\xa5\xf7\xec" +
+	"\xea\x9d\xeb\x14\xb1[\xa5\xb5\xf1~\x11\xf3\x91_\xd7]" +
+	"\xb4\xbc\x09\xdf\xec\xf3<\xa0\x13\x07\xb3\xd0{[\xf9\xef" +
+	"\xf0G\xc1|\xa3\xa9\x17{\xa5\xfa_a\x9aF\x1c\xc9" +
+	"\xfb\x1a3\xd5o\x8cG\xa7S\x19\xcb\xb2KR=s" +
+	"\x7fH\x9b*\xf4O\x00\x00\x00\xff\xff\xcf`j\xf2"
 
 func init() {
 	schemas.Register(schema_f4533cbae6e08506,

@@ -27,7 +27,6 @@ Tlog aggregation per vdisk
 name (Text)          # unused now
 size (uint64)        # number of blocks in this aggregation
 timestamp (uint64)
-vdiskID (uint32)     # vdisk ID
 Blocks: List(Block)  
 prev: Data           # hash of previous aggregation
 ```
