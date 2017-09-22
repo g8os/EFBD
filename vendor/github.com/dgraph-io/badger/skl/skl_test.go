@@ -24,6 +24,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -75,10 +76,10 @@ func TestEmpty(t *testing.T) {
 	require.False(t, it.Valid())
 
 	l.DecrRef()
-	require.True(t, l.Valid()) // Check the reference counting.
+	require.True(t, l.valid()) // Check the reference counting.
 
 	it.Close()
-	require.False(t, l.Valid()) // Check the reference counting.
+	require.False(t, l.valid()) // Check the reference counting.
 }
 
 // TestBasic tests single-threaded inserts and updates and gets.
@@ -91,9 +92,9 @@ func TestBasic(t *testing.T) {
 
 	// Try inserting values.
 	// Somehow require.Nil doesn't work when checking for unsafe.Pointer(nil).
-	l.Put([]byte("key1"), y.ValueStruct{val1, 55, 0, 60000})
-	l.Put([]byte("key3"), y.ValueStruct{val3, 56, 0, 60001})
-	l.Put([]byte("key2"), y.ValueStruct{val2, 57, 0, 60002})
+	l.Put([]byte("key1"), y.MakeValueStruct(val1, 55, 0, 60000))
+	l.Put([]byte("key3"), y.MakeValueStruct(val3, 56, 0, 60001))
+	l.Put([]byte("key2"), y.MakeValueStruct(val2, 57, 0, 60002))
 
 	v := l.Get([]byte("key"))
 	require.True(t, v.Value == nil)
@@ -116,7 +117,7 @@ func TestBasic(t *testing.T) {
 	require.EqualValues(t, 56, v.Meta)
 	require.EqualValues(t, 60001, v.CASCounter)
 
-	l.Put([]byte("key2"), y.ValueStruct{val4, 12, 0, 50000})
+	l.Put([]byte("key2"), y.MakeValueStruct(val4, 12, 0, 50000))
 	v = l.Get([]byte("key2"))
 	require.True(t, v.Value != nil)
 	require.EqualValues(t, "00072", string(v.Value))
@@ -134,7 +135,7 @@ func TestConcurrentBasic(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			l.Put([]byte(fmt.Sprintf("%05d", i)),
-				y.ValueStruct{newValue(i), 0, 0, uint64(i)})
+				y.MakeValueStruct(newValue(i), 0, 0, uint64(i)))
 		}(i)
 	}
 	wg.Wait()
@@ -165,7 +166,7 @@ func TestOneKey(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			l.Put(key, y.ValueStruct{newValue(i), 0, 0, uint64(i)})
+			l.Put(key, y.MakeValueStruct(newValue(i), 0, 0, uint64(i)))
 		}(i)
 	}
 	// We expect that at least some write made it such that some read returns a value.
@@ -195,7 +196,7 @@ func TestFindNear(t *testing.T) {
 	defer l.DecrRef()
 	for i := 0; i < 1000; i++ {
 		key := fmt.Sprintf("%05d", i*10+5)
-		l.Put([]byte(key), y.ValueStruct{newValue(i), 0, 0, uint64(i)})
+		l.Put([]byte(key), y.MakeValueStruct(newValue(i), 0, 0, uint64(i)))
 	}
 
 	n, eq := l.findNear([]byte("00001"), false, false)
@@ -307,7 +308,7 @@ func TestIteratorNext(t *testing.T) {
 	require.False(t, it.Valid())
 	for i := n - 1; i >= 0; i-- {
 		l.Put([]byte(fmt.Sprintf("%05d", i)),
-			y.ValueStruct{newValue(i), 0, 0, uint64(i)})
+			y.MakeValueStruct(newValue(i), 0, 0, uint64(i)))
 	}
 	it.SeekToFirst()
 	for i := 0; i < n; i++ {
@@ -331,7 +332,7 @@ func TestIteratorPrev(t *testing.T) {
 	require.False(t, it.Valid())
 	for i := 0; i < n; i++ {
 		l.Put([]byte(fmt.Sprintf("%05d", i)),
-			y.ValueStruct{newValue(i), 0, 0, uint64(i)})
+			y.MakeValueStruct(newValue(i), 0, 0, uint64(i)))
 	}
 	it.SeekToLast()
 	for i := n - 1; i >= 0; i-- {
@@ -359,7 +360,7 @@ func TestIteratorSeek(t *testing.T) {
 	// 1000, 1010, 1020, ..., 1990.
 	for i := n - 1; i >= 0; i-- {
 		v := i*10 + 1000
-		l.Put([]byte(fmt.Sprintf("%05d", i*10+1000)), y.ValueStruct{newValue(v), 0, 0, 555})
+		l.Put([]byte(fmt.Sprintf("%05d", i*10+1000)), y.MakeValueStruct(newValue(v), 0, 0, 555))
 	}
 	it.Seek([]byte(""))
 	require.True(t, it.Valid())
@@ -409,10 +410,10 @@ func TestIteratorSeek(t *testing.T) {
 	require.EqualValues(t, "01990", v.Value)
 }
 
-func randomKey() []byte {
+func randomKey(rng *rand.Rand) []byte {
 	b := make([]byte, 8)
-	key := rand.Uint32()
-	key2 := rand.Uint32()
+	key := rng.Uint32()
+	key2 := rng.Uint32()
 	binary.LittleEndian.PutUint32(b, key)
 	binary.LittleEndian.PutUint32(b[4:], key2)
 	return b
@@ -425,19 +426,20 @@ func BenchmarkReadWrite(b *testing.B) {
 	for i := 0; i <= 10; i++ {
 		readFrac := float32(i) / 10.0
 		b.Run(fmt.Sprintf("frac_%d", i), func(b *testing.B) {
-			l := NewSkiplist(arenaSize) // TODO: Fix this. Allow arena size to vary with b.N.
+			l := NewSkiplist(arenaSize * 64) // TODO: Fix this. Allow arena size to vary with b.N.
 			defer l.DecrRef()
 			b.ResetTimer()
 			var count int
 			b.RunParallel(func(pb *testing.PB) {
+				rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 				for pb.Next() {
-					if rand.Float32() < readFrac {
-						v := l.Get(randomKey())
+					if rng.Float32() < readFrac {
+						v := l.Get(randomKey(rng))
 						if v.Value != nil {
 							count++
 						}
 					} else {
-						l.Put(randomKey(), y.ValueStruct{value, 0, 0, 0})
+						l.Put(randomKey(rng), y.MakeValueStruct(value, 0, 0, 0))
 					}
 				}
 			})
@@ -457,17 +459,18 @@ func BenchmarkReadWriteMap(b *testing.B) {
 			b.ResetTimer()
 			var count int
 			b.RunParallel(func(pb *testing.PB) {
+				rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 				for pb.Next() {
 					if rand.Float32() < readFrac {
 						mutex.RLock()
-						_, ok := m[string(randomKey())]
+						_, ok := m[string(randomKey(rng))]
 						mutex.RUnlock()
 						if ok {
 							count++
 						}
 					} else {
 						mutex.Lock()
-						m[string(randomKey())] = value
+						m[string(randomKey(rng))] = value
 						mutex.Unlock()
 					}
 				}

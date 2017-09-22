@@ -12,7 +12,6 @@ import (
 var (
 	ErrZeroDataShards              = fmt.Errorf("no data shards specified in the policy")
 	ErrZeroMetaShards              = fmt.Errorf("no meta shards specified in the policy")
-	ErrUnsuportdProtocol           = fmt.Errorf("protocol specified not supported")
 	ErrNotEnoughReplicationShards  = fmt.Errorf("the number of replication number is bigger then the number of data shards")
 	ErrNotEnoughDistributionShards = fmt.Errorf("the number of distribution number is bigger then the number of data shards")
 	ErrNoEncryptionKey             = fmt.Errorf("encryption enabled, but encryption key is empty")
@@ -26,8 +25,6 @@ type Policy struct {
 	Organization string `yaml:"organization" validate:"nonzero"`
 	// Namespace label
 	Namespace string `yaml:"namespace" validate:"nonzero"`
-	// Protocol used, can be 'rest' or 'grpc'
-	Protocol string `yaml:"protocol" validate:"nonzero"`
 
 	// ItsYouOnline oauth2 application ID
 	IYOAppID string `yaml:"iyo_app_id" validate:"nonzero"`
@@ -64,6 +61,17 @@ type Policy struct {
 	EncryptKey string `yaml:"encrypt_key"`
 }
 
+// ReplicationEnabled return true if replication is set to true and the blockSize is
+// smaller then ReplicationMaxSize
+func (p Policy) ReplicationEnabled(blockSize int) bool {
+	return p.ReplicationMaxSize > 0 && blockSize <= p.ReplicationMaxSize
+}
+
+// DistributionEnabled is a helper that check if the distribution is enable in the policy
+func (p Policy) DistributionEnabled() bool {
+	return p.DistributionNr > 0 && p.DistributionRedundancy > 0
+}
+
 // NewPolicyFromReader creates Policy from a reader
 func NewPolicyFromReader(r io.Reader) (Policy, error) {
 	policy := Policy{}
@@ -98,10 +106,6 @@ func (p Policy) validate() error {
 
 	if len(p.MetaShards) <= 0 {
 		return ErrZeroMetaShards
-	}
-
-	if p.Protocol != "grpc" && p.Protocol != "rest" {
-		return ErrUnsuportdProtocol
 	}
 
 	if p.ReplicationNr > 0 && p.ReplicationNr < len(p.DataShards) {

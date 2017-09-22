@@ -2,10 +2,27 @@ package stor
 
 import (
 	"github.com/zero-os/0-Disk/tlog/schema"
+	"github.com/zero-os/0-stor/client/meta"
 )
 
+// WalkResult represents result of Walk method
 type WalkResult struct {
+	// Tlog aggregation
 	Agg *schema.TlogAggregation
+
+	// Key in 0-stor server
+	StorKey []byte
+
+	// 0-stor metadata
+	Meta *meta.Meta
+
+	// Raw data
+	Data []byte
+
+	// Reference list
+	RefList []string
+
+	// Error
 	Err error
 }
 
@@ -22,7 +39,12 @@ func (c *Client) Walk(fromEpoch, toEpoch int64) <-chan *WalkResult {
 		}
 
 		for res := range c.storClient.Walk([]byte(c.firstMetaKey), fromEpoch, toEpoch) {
-			wr := &WalkResult{}
+			wr := &WalkResult{
+				StorKey: res.Key,
+				Meta:    res.Meta,
+				Data:    res.Data,
+				RefList: res.RefList,
+			}
 
 			// make sure it is not error
 			if res.Error != nil {

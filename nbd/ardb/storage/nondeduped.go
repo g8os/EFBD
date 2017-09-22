@@ -231,7 +231,7 @@ func NonDedupedVdiskExists(vdiskID string, cluster *config.StorageClusterConfig)
 	// go through each server to check if the vdisKID exists there
 	// the first vdisk which has data for this vdisk,
 	// we'll take as a sign that the vdisk exists
-	for _, serverConfig := range cluster.DataStorage {
+	for _, serverConfig := range cluster.Servers {
 		exists, err := nonDedupedVdiskExistsOnServer(key, serverConfig)
 		if exists || err != nil {
 			return exists, err
@@ -266,7 +266,7 @@ func ListNonDedupedBlockIndices(vdiskID string, cluster *config.StorageClusterCo
 
 	var indices []int64
 	// collect the indices found on each data server
-	for _, serverConfig := range cluster.DataStorage {
+	for _, serverConfig := range cluster.Servers {
 		serverIndices, err := listNonDedupedBlockIndicesOnDataServer(key, serverConfig)
 		if err == redis.ErrNil {
 			log.Infof(
@@ -308,7 +308,7 @@ func CopyNonDeduped(sourceID, targetID string, sourceCluster, targetCluster *con
 	if sourceCluster == nil {
 		return errors.New("no source cluster given")
 	}
-	sourceDataServerCount := len(sourceCluster.DataStorage)
+	sourceDataServerCount := len(sourceCluster.Servers)
 	if sourceDataServerCount == 0 {
 		return errors.New("no data server configs given for source")
 	}
@@ -318,7 +318,7 @@ func CopyNonDeduped(sourceID, targetID string, sourceCluster, targetCluster *con
 	if targetCluster == nil {
 		targetCluster = sourceCluster
 	} else {
-		targetDataServerCount := len(targetCluster.DataStorage)
+		targetDataServerCount := len(targetCluster.Servers)
 		// [TODO]
 		// Currently the result will be WRONG in case targetDataServerCount != sourceDataServerCount,
 		// as the storage data spread will not be the same,
@@ -330,33 +330,40 @@ func CopyNonDeduped(sourceID, targetID string, sourceCluster, targetCluster *con
 		}
 	}
 
+	var err error
 	var sourceCfg, targetCfg config.StorageServerConfig
+
 	for i := 0; i < sourceDataServerCount; i++ {
-		sourceCfg = sourceCluster.DataStorage[i]
-		targetCfg = targetCluster.DataStorage[i]
+		sourceCfg = sourceCluster.Servers[i]
+		targetCfg = targetCluster.Servers[i]
 
-		// within same storage server
-		if sourceCfg == targetCfg {
-			conn, err := ardb.GetConnection(sourceCfg)
-			if err != nil {
-				return fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
-			}
-			defer conn.Close()
+		if sourceCfg.Equal(&targetCfg) {
+			// within same storage server
+			err = func() error {
+				conn, err := ardb.GetConnection(sourceCfg)
+				if err != nil {
+					return fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
+				}
+				defer conn.Close()
 
-			return copyNonDedupedSameConnection(sourceID, targetID, conn)
+				return copyNonDedupedSameConnection(sourceID, targetID, conn)
+			}()
+		} else {
+			// between different storage servers
+			err = func() error {
+				conns, err := ardb.GetConnections(sourceCfg, targetCfg)
+				if err != nil {
+					return fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
+				}
+				defer func() {
+					conns[0].Close()
+					conns[1].Close()
+				}()
+
+				return copyNonDedupedDifferentConnections(sourceID, targetID, conns[0], conns[1])
+			}()
 		}
 
-		// between different storage servers
-		conns, err := ardb.GetConnections(sourceCfg, targetCfg)
-		if err != nil {
-			return fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
-		}
-		defer func() {
-			conns[0].Close()
-			conns[1].Close()
-		}()
-
-		err = copyNonDedupedDifferentConnections(sourceID, targetID, conns[0], conns[1])
 		if err != nil {
 			return err
 		}

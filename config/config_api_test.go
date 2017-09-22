@@ -40,8 +40,7 @@ func TestReadNBDVdisksConfig(t *testing.T) {
 
 	source.SetVdiskConfig("a", nil) // delete it first, so we can properly create it by default
 	source.SetPrimaryStorageCluster("a", "mycluster", &StorageClusterConfig{
-		DataStorage:     []StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
-		MetadataStorage: &StorageServerConfig{Address: "localhost:16379"},
+		Servers: []StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
 	})
 	vdisksCfg, err := ReadNBDVdisksConfig(source, "foo")
 	if assert.NoError(err, "should return us 'a'") && assert.Len(vdisksCfg.Vdisks, 1) {
@@ -88,7 +87,7 @@ func TestReadVdiskStaticConfig(t *testing.T) {
 	source.SetVdiskConfig("a", nil) // delete it first, so we can properly create it by default
 	// add vdisk by default as deduped (boot)
 	source.SetPrimaryStorageCluster("a", "mycluster", &StorageClusterConfig{
-		DataStorage: []StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
+		Servers: []StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
 	})
 
 	_, err = ReadVdiskStaticConfig(source, "a")
@@ -141,7 +140,7 @@ func TestReadStorageClusterConfig(t *testing.T) {
 	testInvalidKey("foo")
 
 	inputCfg := StorageClusterConfig{
-		DataStorage: []StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
+		Servers: []StorageServerConfig{StorageServerConfig{Address: "localhost:16379"}},
 	}
 	source.SetStorageCluster("foo", &inputCfg)
 
@@ -155,11 +154,10 @@ func TestReadStorageClusterConfig(t *testing.T) {
 	testInvalidKey("bar")
 
 	inputCfg = StorageClusterConfig{
-		DataStorage: []StorageServerConfig{
+		Servers: []StorageServerConfig{
 			StorageServerConfig{Address: "localhost:16379"},
 			StorageServerConfig{Address: "localhost:16379", Database: 42},
 		},
-		MetadataStorage: &StorageServerConfig{Address: "localhost:16381", Database: 2},
 	}
 	source.SetStorageCluster("bar", &inputCfg)
 
@@ -484,11 +482,10 @@ func TestWatchStorageClusterConfig(t *testing.T) {
 	testInvalidKey("foo")
 
 	inputCfg := StorageClusterConfig{
-		DataStorage: []StorageServerConfig{
+		Servers: []StorageServerConfig{
 			StorageServerConfig{Address: "localhost:16379"},
 			StorageServerConfig{Address: "localhost:16379", Database: 42},
 		},
-		MetadataStorage: &StorageServerConfig{Address: "localhost:16381", Database: 2},
 	}
 	source.SetStorageCluster("foo", &inputCfg)
 
@@ -506,18 +503,13 @@ func TestWatchStorageClusterConfig(t *testing.T) {
 
 	testValue(inputCfg)
 
-	// delete meta Data Storage Server
-	inputCfg.MetadataStorage = nil
-	source.SetStorageCluster("foo", &inputCfg)
-	testValue(inputCfg)
-
 	// delete one Data Storage Server
-	inputCfg.DataStorage = inputCfg.DataStorage[0:1]
+	inputCfg.Servers = inputCfg.Servers[0:1]
 	source.SetStorageCluster("foo", &inputCfg)
 	testValue(inputCfg)
 
 	// make invalid, this should make it mark the key as invalid
-	inputCfg.DataStorage = nil
+	inputCfg.Servers = nil
 	source.SetStorageCluster("foo", &inputCfg)
 	testInvalidKey("foo")
 

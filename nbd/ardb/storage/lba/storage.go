@@ -2,7 +2,6 @@ package lba
 
 import (
 	"github.com/garyburd/redigo/redis"
-	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 )
 
@@ -26,7 +25,7 @@ type sectorStorage interface {
 
 // newARDBSectorStorage creates a new sector storage which
 // writes/reads to/from an ARDB server.
-func newARDBSectorStorage(key string, provider ardb.MetadataConnProvider) *ardbSectorStorage {
+func newARDBSectorStorage(key string, provider ardb.DataConnProvider) *ardbSectorStorage {
 	return &ardbSectorStorage{
 		provider: provider,
 		key:      key,
@@ -36,15 +35,13 @@ func newARDBSectorStorage(key string, provider ardb.MetadataConnProvider) *ardbS
 // ardbSectorStorage is the sector storage implementation,
 // used in production, and which writes/reads to/from an ARDB server.
 type ardbSectorStorage struct {
-	provider ardb.MetadataConnProvider
+	provider ardb.DataConnProvider
 	key      string
-
-	flushConn redis.Conn
 }
 
 // GetSector implements sectorStorage.GetSector
 func (s *ardbSectorStorage) GetSector(index int64) (*sector, error) {
-	conn, err := s.provider.MetadataConnection()
+	conn, err := s.provider.DataConnection(index)
 	if err != nil {
 		return nil, err
 	}
@@ -69,30 +66,29 @@ func (s *ardbSectorStorage) GetSector(index int64) (*sector, error) {
 
 // SetSector implements sectorStorage.SetSector
 func (s *ardbSectorStorage) SetSector(index int64, sector *sector) error {
-	if s.flushConn == nil {
-		var err error
-		s.flushConn, err = s.provider.MetadataConnection()
-		if err != nil {
-			return err
-		}
+	// [TODO] see if we should re-enable pipelining again for sending mutliple sectors at once
+	// currently it is not possible as the current provider interface has no method
+	// which would tell us the storae server used for the given index,
+	// without opening a new connection as well.
+	// see: https://github.com/zero-os/0-Disk/issues/483
+	conn, err := s.provider.DataConnection(index)
+	if err != nil {
+		return err
 	}
+	defer conn.Close()
 
 	data := sector.Bytes()
 	if data == nil {
-		return s.flushConn.Send("HDEL", s.key, index)
+		_, err = conn.Do("HDEL", s.key, index)
+		return err
 	}
-	return s.flushConn.Send("HSET", s.key, index, data)
+	_, err = conn.Do("HSET", s.key, index, data)
+	return err
 }
 
 // Flush implements sectorStorage.Flush
 func (s *ardbSectorStorage) Flush() error {
-	if s.flushConn == nil {
-		return nil // nothing to do
-	}
-
-	log.Debug("flushing persistent storage")
-	err := s.flushConn.Flush()
-	s.flushConn.Close()
-	s.flushConn = nil
-	return err
+	// nothing to do for now...
+	// see body of `(*ardbSectorStorage).SetSector` to know why
+	return nil
 }

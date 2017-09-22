@@ -272,16 +272,32 @@ func DedupedVdiskExists(vdiskID string, cluster *config.StorageClusterConfig) (b
 	if cluster == nil {
 		return false, errors.New("no cluster config given")
 	}
-	if cluster.MetadataStorage == nil {
-		return false, errors.New("no metadataServer given for cluster config")
+
+	// storage key used on all data servers for this vdisk
+	key := lba.StorageKey(vdiskID)
+
+	// go through each server to check if the vdisKID exists there
+	// the first vdisk which has data for this vdisk,
+	// we'll take as a sign that the vdisk exists
+	for _, serverConfig := range cluster.Servers {
+		exists, err := dedupedVdiskExistsOnServer(key, serverConfig)
+		if exists || err != nil {
+			return exists, err
+		}
 	}
 
-	conn, err := ardb.GetConnection(*cluster.MetadataStorage)
+	// no errors occured, but no server had the given storage key,
+	// which means the vdisk doesn't exist
+	return false, nil
+}
+
+func dedupedVdiskExistsOnServer(key string, server config.StorageServerConfig) (bool, error) {
+	conn, err := ardb.GetConnection(server)
 	if err != nil {
-		return false, fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
+		return false, fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
 	}
 	defer conn.Close()
-	return redis.Bool(conn.Do("EXISTS", lba.StorageKey(vdiskID)))
+	return redis.Bool(conn.Do("EXISTS", key))
 }
 
 // ListDedupedBlockIndices returns all indices stored for the given deduped storage.
@@ -291,22 +307,46 @@ func ListDedupedBlockIndices(vdiskID string, cluster *config.StorageClusterConfi
 	if cluster == nil {
 		return nil, errors.New("no cluster config given")
 	}
-	if cluster.MetadataStorage == nil {
-		return nil, errors.New("no metadataServer given for cluster config")
+
+	var vdiskIndices []int64
+	key := lba.StorageKey(vdiskID)
+
+	// collect all deduped block indices
+	// from all the different data servers which make up the given storage cluster.
+	var err error
+	var serverIndices []int64
+	for _, server := range cluster.Servers {
+		serverIndices, err = listDedupedBlockIndices(key, server)
+		if err != nil {
+			if err == redis.ErrNil {
+				continue
+			}
+			return nil, err
+		}
+
+		vdiskIndices = append(vdiskIndices, serverIndices...)
 	}
 
-	conn, err := ardb.GetConnection(*cluster.MetadataStorage)
+	// if no vdisk indices are found on any of the given storage servers,
+	// we'll return a redis nil-error, such that the user can decide
+	// if they want to threat it as an error or not
+	if len(vdiskIndices) == 0 {
+		return nil, redis.ErrNil
+	}
+
+	// at least one index is found,
+	// make sure it's sorted in ascending order and return them all.
+	sortInt64s(vdiskIndices)
+	return vdiskIndices, nil
+}
+
+func listDedupedBlockIndices(key string, server config.StorageServerConfig) ([]int64, error) {
+	conn, err := ardb.GetConnection(server)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
+		return nil, fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
 	}
 	defer conn.Close()
-	indices, err := ardb.RedisInt64s(listDedupedBlockIndicesScript.Do(conn, lba.StorageKey(vdiskID)))
-	if err != nil {
-		return nil, err
-	}
-
-	sortInt64s(indices)
-	return indices, nil
+	return ardb.RedisInt64s(listDedupedBlockIndicesScript.Do(conn, key))
 }
 
 // CopyDeduped copies all metadata of a deduped storage
@@ -316,52 +356,68 @@ func CopyDeduped(sourceID, targetID string, sourceCluster, targetCluster *config
 	if sourceCluster == nil {
 		return errors.New("no source cluster given")
 	}
-	if sourceCluster.MetadataStorage == nil {
-		return errors.New("no metadataServer given for source")
+	sourceDataServerCount := len(sourceCluster.Servers)
+	if sourceDataServerCount == 0 {
+		return errors.New("no data server configs given for source")
 	}
 
-	// define whether or not we're copying between different servers,
+	// define whether or not we're copying between different clusters,
 	// and if the target cluster is given, make sure to validate it.
-	var sameServer bool
 	if targetCluster == nil {
-		sameServer = true
-		if sourceID == targetID {
-			return errors.New(
-				"sourceID and targetID can't be equal when copying within the same cluster")
-		}
+		targetCluster = sourceCluster
 	} else {
-		if targetCluster.MetadataStorage == nil {
-			return errors.New("no metaDataServer given for target")
+		targetDataServerCount := len(targetCluster.Servers)
+		// [TODO]
+		// Currently the result will be WRONG in case targetDataServerCount != sourceDataServerCount,
+		// as the storage data spread will not be the same,
+		// to what the nbdserver read calls will expect.
+		// See open issue for more information:
+		// https://github.com/zero-os/0-Disk/issues/206
+		if targetDataServerCount != sourceDataServerCount {
+			return errors.New("target data server count has to equal the source data server count")
 		}
-
-		// even if targetCluster is given,
-		// we could still be dealing with a duplicated cluster
-		sameServer = *sourceCluster.MetadataStorage == *targetCluster.MetadataStorage
 	}
 
-	// within same storage server
-	if sameServer {
-		conn, err := ardb.GetConnection(*sourceCluster.MetadataStorage)
+	var err error
+	var sourceCfg, targetCfg config.StorageServerConfig
+
+	for i := 0; i < sourceDataServerCount; i++ {
+		sourceCfg = sourceCluster.Servers[i]
+		targetCfg = targetCluster.Servers[i]
+
+		if sourceCfg.Equal(&targetCfg) {
+			// within same storage server
+			err = func() error {
+				conn, err := ardb.GetConnection(sourceCfg)
+				if err != nil {
+					return fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
+				}
+				defer conn.Close()
+
+				return copyDedupedSameConnection(sourceID, targetID, conn)
+			}()
+		} else {
+			// between different storage servers
+			err = func() error {
+				conns, err := ardb.GetConnections(sourceCfg, targetCfg)
+				if err != nil {
+					return fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
+				}
+				defer func() {
+					conns[0].Close()
+					conns[1].Close()
+				}()
+
+				return copyDedupedDifferentConnections(sourceID, targetID, conns[0], conns[1])
+			}()
+		}
+
 		if err != nil {
-			return fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
+			return err
 		}
-		defer conn.Close()
-
-		return copyDedupedSameConnection(sourceID, targetID, conn)
 	}
 
-	// between different storage servers
-	conns, err := ardb.GetConnections(
-		*sourceCluster.MetadataStorage, *targetCluster.MetadataStorage)
-	if err != nil {
-		return fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
-	}
-	defer func() {
-		conns[0].Close()
-		conns[1].Close()
-	}()
-
-	return copyDedupedDifferentConnections(sourceID, targetID, conns[0], conns[1])
+	return nil
 }
 
 func copyDedupedSameConnection(sourceID, targetID string, conn redis.Conn) (err error) {
@@ -388,8 +444,7 @@ func copyDedupedDifferentConnections(sourceID, targetID string, connA, connB red
 	}
 	dataLength := len(data)
 	if dataLength == 0 {
-		err = fmt.Errorf("%q does not exist", sourceID)
-		return
+		return // nothing to do
 	}
 
 	log.Infof("collected %d meta indices from source vdisk %q",

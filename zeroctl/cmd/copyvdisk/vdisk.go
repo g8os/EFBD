@@ -11,7 +11,7 @@ import (
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/nbd/nbdserver/tlog"
-	"github.com/zero-os/0-Disk/tlog/generator"
+	"github.com/zero-os/0-Disk/tlog/copy"
 	cmdconfig "github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
 
@@ -71,7 +71,7 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 			"couldn't read source vdisk %s's static config: %v", sourceVdiskID, err)
 	}
 	sourceStorageConfig, err := config.ReadNBDStorageConfig(
-		configSource, sourceVdiskID, sourceStaticConfig)
+		configSource, sourceVdiskID)
 	if err != nil {
 		return fmt.Errorf(
 			"couldn't read source vdisk %s's storage config: %v", sourceVdiskID, err)
@@ -97,30 +97,18 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// try to read the Vdisk config of target vdisk
-	targetStaticConfig, err := config.ReadVdiskStaticConfig(configSource, targetVdiskID)
+	// copy tlog data if possible
+	err = copy.Copy(context.Background(), configSource, copy.Config{
+		SourceVdiskID: sourceVdiskID,
+		TargetVdiskID: targetVdiskID,
+		DataShards:    vdiskCmdCfg.DataShards,
+		ParityShards:  vdiskCmdCfg.ParityShards,
+		PrivKey:       vdiskCmdCfg.PrivKey,
+		JobCount:      vdiskCmdCfg.JobCount,
+	})
+
 	if err != nil {
-		return fmt.Errorf(
-			"couldn't read source vdisk %s's static config: %v", targetVdiskID, err)
-	}
-
-	if targetStaticConfig.Type.TlogSupport() {
-		log.Infof("generating tlog data for target vdisk `%v`", targetVdiskID)
-		generator, err := generator.New(configSource, generator.Config{
-			SourceVdiskID: sourceVdiskID,
-			TargetVdiskID: targetVdiskID,
-			DataShards:    vdiskCmdCfg.DataShards,
-			ParityShards:  vdiskCmdCfg.ParityShards,
-			PrivKey:       vdiskCmdCfg.PrivKey,
-			JobCount:      vdiskCmdCfg.JobCount,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to create tlog generator: %v", err)
-		}
-
-		if err := generator.GenerateFromStorage(context.Background()); err != nil {
-			return fmt.Errorf("failed to generate tlog data for vdisk `%v` : %v", targetVdiskID, err)
-		}
+		return fmt.Errorf("failed to copy/generate tlog data for vdisk `%v`: %v", targetVdiskID, err)
 	}
 
 	// copy the vdisk

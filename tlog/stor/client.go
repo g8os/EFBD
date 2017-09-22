@@ -8,6 +8,7 @@ import (
 	"github.com/zero-os/0-stor/client/lib/hash"
 	"github.com/zero-os/0-stor/client/meta"
 
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
 )
@@ -54,6 +55,9 @@ type Client struct {
 
 	lastMd *meta.Meta
 
+	// refList is 0-stor reference list for this vdisk
+	refList []string
+
 	mux sync.Mutex
 }
 
@@ -85,6 +89,7 @@ func NewClient(conf Config) (*Client, error) {
 		metaCli:          metaCli,
 		firstMetaEtcdKey: []byte(fmt.Sprintf("tlog:%v:first_meta", conf.VdiskID)),
 		lastMetaEtcdKey:  []byte(fmt.Sprintf("tlog:%v:last_meta", conf.VdiskID)),
+		refList:          []string{conf.VdiskID},
 	}
 
 	firstMetaKey, err := cli.getFirstMetaKey()
@@ -100,6 +105,17 @@ func NewClient(conf Config) (*Client, error) {
 	cli.lastMetaKey = lastMetaKey
 
 	return cli, nil
+}
+
+// NewClientFromConfigSource creates new client from given config.Source
+func NewClientFromConfigSource(confSource config.Source, vdiskID, privKey string,
+	dataShards, parityShards int) (*Client, error) {
+
+	conf, err := ConfigFromConfigSource(confSource, vdiskID, privKey, dataShards, parityShards)
+	if err != nil {
+		return nil, err
+	}
+	return NewClient(conf)
 }
 
 // ProcessStore processes and then stores the data to 0-stor server
@@ -131,7 +147,7 @@ func (c *Client) ProcessStore(blocks []*schema.TlogBlock) ([]byte, error) {
 	initialMeta.Epoch = timestamp
 
 	// stor to 0-stor
-	lastMd, err := c.storClient.WriteWithMeta(key, data, c.lastMetaKey, c.lastMd, initialMeta)
+	lastMd, err := c.storClient.WriteWithMeta(key, data, c.lastMetaKey, c.lastMd, initialMeta, c.refList)
 	if err != nil {
 		return nil, err
 	}
@@ -144,11 +160,65 @@ func (c *Client) ProcessStore(blocks []*schema.TlogBlock) ([]byte, error) {
 	return data, c.saveLastMetaKey()
 }
 
+// Store stores the val without doing any pre processing
+func (c *Client) Store(key, val []byte, prevMd, md *meta.Meta) (*meta.Meta, error) {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+
+	var prevKey []byte
+
+	// assign prevKey if prev metadata is not nil
+	if prevMd != nil {
+		prevKey = prevMd.Key
+	}
+
+	// write to object stor
+	md, err := c.storClient.WriteWithMeta(key, val, prevKey, prevMd, md, c.refList)
+	if err != nil || prevMd != nil {
+		return md, err
+	}
+
+	// err == nil && prevMd == nil
+	// update first meta key of this vdisk
+	c.firstMetaKey = key
+	return md, c.saveFirstMetaKey()
+}
+
+// SetFirstMetaKey set & store first meta key of this vdisk
+func (c *Client) SetFirstMetaKey(key []byte) error {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+
+	c.firstMetaKey = key
+	return c.saveFirstMetaKey()
+}
+
+// SetLastMetaKey set & store last meta key of this vdisk
+func (c *Client) SetLastMetaKey(key []byte) error {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+
+	c.lastMetaKey = key
+	return c.saveLastMetaKey()
+}
+
+// PutMeta updates 0-stor metadata
+func (c *Client) PutMeta(key []byte, md *meta.Meta) error {
+	return c.storClient.PutMeta(key, md)
+}
+
+// AppendRefList append reference list to aggregation pointed by the meta
+func (c *Client) AppendRefList(md *meta.Meta, refList []string) error {
+	return c.storClient.AppendReferenceListWithMeta(md, refList)
+}
+
+// Close closes this client
 func (c *Client) Close() error {
 	c.metaCli.Close()
 	return c.storClient.Close()
 }
 
+// LastHash return last meta key of this vdisk
 func (c *Client) LastHash() []byte {
 	c.mux.Lock()
 	defer c.mux.Unlock()
@@ -165,7 +235,6 @@ func newStorClientConf(conf Config) storclient.Policy {
 		MetaShards:             conf.MetaShards,
 		IYOAppID:               conf.IyoClientID,
 		IYOSecret:              conf.IyoSecret,
-		Protocol:               "grpc",
 		Compress:               true,
 		Encrypt:                true,
 		EncryptKey:             conf.EncryptPrivKey,

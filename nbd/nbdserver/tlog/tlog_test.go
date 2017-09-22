@@ -5,7 +5,6 @@ import (
 	"context"
 	crand "crypto/rand"
 	mrand "math/rand"
-	"os"
 	"sync"
 	"testing"
 
@@ -907,10 +906,10 @@ func newZeroStorConfig(t *testing.T, vdiskID string, tlogConf *server.Config) (*
 
 	storConf := stor.Config{
 		VdiskID:         vdiskID,
-		Organization:    os.Getenv("iyo_organization"),
+		Organization:    "testorg",
 		Namespace:       "thedisk",
-		IyoClientID:     os.Getenv("iyo_client_id"),
-		IyoSecret:       os.Getenv("iyo_secret"),
+		IyoClientID:     "",
+		IyoSecret:       "",
 		ZeroStorShards:  storCluster.Addrs(),
 		MetaShards:      []string{mdServer.ListenAddr()},
 		DataShardsNum:   tlogConf.DataShards,

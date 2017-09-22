@@ -4,6 +4,7 @@ import (
 	"github.com/zero-os/0-Disk/config"
 )
 
+// ConfigFromConfigSource creates tlog stor client config from config.Source
 func ConfigFromConfigSource(source config.Source, vdiskID, privKey string, dataShards, parityShards int) (conf Config, err error) {
 	// read vdisk config
 	vdiskConf, err := config.ReadVdiskTlogConfig(source, vdiskID)

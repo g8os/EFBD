@@ -361,7 +361,7 @@ func createBlockStorage(vdiskID string, sourceConfig config.SourceConfig, listIn
 		return nil, err
 	}
 
-	nbdStorageConfig, err := config.ReadNBDStorageConfig(storageConfigCloser, vdiskID, vdiskConfig)
+	nbdStorageConfig, err := config.ReadNBDStorageConfig(storageConfigCloser, vdiskID)
 	if err != nil {
 		return nil, err
 	}

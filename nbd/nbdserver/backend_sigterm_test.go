@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -114,10 +113,8 @@ func newZeroStorConfig(t *testing.T, vdiskID string, tlogConf *server.Config) (*
 
 	storConf := stor.Config{
 		VdiskID:         vdiskID,
-		Organization:    os.Getenv("iyo_organization"),
+		Organization:    "testorg",
 		Namespace:       "thedisk",
-		IyoClientID:     os.Getenv("iyo_client_id"),
-		IyoSecret:       os.Getenv("iyo_secret"),
 		ZeroStorShards:  storCluster.Addrs(),
 		MetaShards:      []string{mdServer.ListenAddr()},
 		DataShardsNum:   tlogConf.DataShards,

@@ -17,7 +17,6 @@ func TestDecode(t *testing.T) {
 	except := Policy{
 		Organization: "mordor",
 		Namespace:    "thedisk",
-		Protocol:     "grpc",
 		IYOAppID:     "1234",
 		IYOSecret:    "45678",
 		DataShards: []string{

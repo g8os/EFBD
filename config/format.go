@@ -209,8 +209,7 @@ func NewStorageClusterConfig(data []byte) (*StorageClusterConfig, error) {
 // A storage cluster is composed out of multiple data storage servers,
 // and a single (optional) metadata storage.
 type StorageClusterConfig struct {
-	DataStorage     []StorageServerConfig `yaml:"dataStorage" valid:"required"`
-	MetadataStorage *StorageServerConfig  `yaml:"metadataStorage" valid:"optional"`
+	Servers []StorageServerConfig `yaml:"servers" valid:"required"`
 }
 
 // Validate implements FormatValidator.Validate.
@@ -227,7 +226,7 @@ func (cfg *StorageClusterConfig) Validate() error {
 	// validate all data server configs
 	// and ensure that at least one data server is enabled
 	var serversAvailable bool
-	for _, serverConfig := range cfg.DataStorage {
+	for _, serverConfig := range cfg.Servers {
 		err = serverConfig.Validate()
 		if err != nil {
 			return err
@@ -240,33 +239,6 @@ func (cfg *StorageClusterConfig) Validate() error {
 		return errNoDataServersAvailable
 	}
 
-	// validate the metadata server config (if defined)
-	err = cfg.MetadataStorage.Validate()
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// ValidateStorageType is an extra validation method,
-// allowing you to check if this cluster is valid for a certain storage type.
-func (cfg *StorageClusterConfig) ValidateStorageType(t StorageType) error {
-	if cfg == nil || t == StorageNonDeduped {
-		return nil // nothing to do
-	}
-
-	return cfg.ValidateRequiredMetadataStorage()
-}
-
-// ValidateRequiredMetadataStorage allows you to ensure that this storage cluster
-// defines a valid Metadata Storage.
-func (cfg *StorageClusterConfig) ValidateRequiredMetadataStorage() error {
-	if cfg != nil && cfg.MetadataStorage == nil {
-		return errors.New("invalid StorageClusterConfig: require a storage server for metadata")
-	}
-
-	// composed config is valid
 	return nil
 }
 
@@ -277,13 +249,8 @@ func (cfg *StorageClusterConfig) Clone() StorageClusterConfig {
 		return clone
 	}
 
-	clone.DataStorage = make([]StorageServerConfig, len(cfg.DataStorage))
-	copy(clone.DataStorage, cfg.DataStorage)
-
-	if cfg.MetadataStorage != nil {
-		storage := *cfg.MetadataStorage
-		clone.MetadataStorage = &storage
-	}
+	clone.Servers = make([]StorageServerConfig, len(cfg.Servers))
+	copy(clone.Servers, cfg.Servers)
 
 	return clone
 }
@@ -304,20 +271,29 @@ func (cfg *StorageClusterConfig) Equal(other *StorageClusterConfig) bool {
 
 	// check if the data storage length is equal,
 	// if not than the configs can't be equal
-	if len(cfg.DataStorage) != len(other.DataStorage) {
+	if len(cfg.Servers) != len(other.Servers) {
 		return false
 	}
 	// check if all data storages are equal
-	for i := range cfg.DataStorage {
-		if !cfg.DataStorage[i].Equal(&other.DataStorage[i]) {
+	for i := range cfg.Servers {
+		if !cfg.Servers[i].Equal(&other.Servers[i]) {
 			return false
 		}
 	}
 
-	// all data storages are equal,
-	// if their metadata storage is equal as well,
-	// than we are dealing with the same storage cluster
-	return cfg.MetadataStorage.Equal(other.MetadataStorage)
+	// all data storages are equal
+	return true
+}
+
+// FirstAvailableServer returns the first available server.
+func (cfg *StorageClusterConfig) FirstAvailableServer() (*StorageServerConfig, error) {
+	for _, serverCfg := range cfg.Servers {
+		if !serverCfg.Disabled {
+			return &serverCfg, nil
+		}
+	}
+
+	return nil, errNoDataServersAvailable
 }
 
 // NewZeroStorClusterConfig creates a new ZeroStorClusterConfig from a given YAML slice.
@@ -420,8 +396,8 @@ func (cfg *ZeroStorClusterConfig) Equal(other *ZeroStorClusterConfig) bool {
 type IYOCredentials struct {
 	Org       string `yaml:"org" valid:"required"`
 	Namespace string `yaml:"namespace" valid:"required"`
-	ClientID  string `yaml:"clientID" valid:"required"`
-	Secret    string `yaml:"secret" valid:"required"`
+	ClientID  string `yaml:"clientID" valid:"optional"`
+	Secret    string `yaml:"secret" valid:"optional"`
 }
 
 // NewTlogClusterConfig creates a new TlogClusterConfig from a given YAML slice.

@@ -1045,45 +1045,36 @@ func CopyMetadata(sourceID, targetID string, sourceCluster, targetCluster *confi
 	if sourceCluster == nil {
 		return errors.New("no source cluster given")
 	}
-	if sourceCluster.MetadataStorage == nil {
-		return errors.New("no metadataServer given for source")
-	}
 
-	// define whether or not we're copying between different servers,
-	// and if the target cluster is given, make sure to validate it.
-	var sameServer bool
+	// define whether or not we're copying between different servers.
 	if targetCluster == nil {
-		sameServer = true
-		if sourceID == targetID {
-			return errors.New(
-				"sourceID and targetID can't be equal when copying within the same cluster")
-		}
-	} else {
-		if targetCluster.MetadataStorage == nil {
-			return errors.New("no metaDataServer given for target")
-		}
-
-		// even if targetCluster is given,
-		// we could still be dealing with a duplicated cluster
-		sameServer = *sourceCluster.MetadataStorage == *targetCluster.MetadataStorage
+		targetCluster = sourceCluster
 	}
 
-	// within same storage server
-	if sameServer {
-		conn, err := ardb.GetConnection(*sourceCluster.MetadataStorage)
+	// get first available storage server
+
+	metaSourceCfg, err := sourceCluster.FirstAvailableServer()
+	if err != nil {
+		return err
+	}
+	metaTargetCfg, err := targetCluster.FirstAvailableServer()
+	if err != nil {
+		return err
+	}
+
+	if metaSourceCfg.Equal(metaTargetCfg) {
+		conn, err := ardb.GetConnection(*metaSourceCfg)
 		if err != nil {
-			return fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
+			return fmt.Errorf("couldn't connect to ardb: %s", err.Error())
 		}
 		defer conn.Close()
 
 		return copyMetadataSameConnection(sourceID, targetID, conn)
 	}
 
-	// between different storage servers
-	conns, err := ardb.GetConnections(
-		*sourceCluster.MetadataStorage, *targetCluster.MetadataStorage)
+	conns, err := ardb.GetConnections(*metaSourceCfg, *metaTargetCfg)
 	if err != nil {
-		return fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
+		return fmt.Errorf("couldn't connect to ardb: %s", err.Error())
 	}
 	defer func() {
 		conns[0].Close()

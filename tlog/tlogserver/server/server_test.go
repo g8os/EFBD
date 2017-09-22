@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"os"
 	"sync"
 	"testing"
 
@@ -48,10 +47,10 @@ func newZeroStorConfig(t *testing.T, vdiskID, privKey string,
 
 	storConf := stor.Config{
 		VdiskID:         vdiskID,
-		Organization:    os.Getenv("iyo_organization"),
+		Organization:    "testorg",
 		Namespace:       "thedisk",
-		IyoClientID:     os.Getenv("iyo_client_id"),
-		IyoSecret:       os.Getenv("iyo_secret"),
+		IyoClientID:     "",
+		IyoSecret:       "",
 		ZeroStorShards:  storCluster.Addrs(),
 		MetaShards:      []string{mdServer.ListenAddr()},
 		DataShardsNum:   data,
