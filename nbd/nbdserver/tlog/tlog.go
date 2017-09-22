@@ -361,6 +361,8 @@ func (tls *tlogStorage) spawnBackgroundGoroutine(ctx context.Context) error {
 					log.Errorf(
 						"tlog server failed to flush for vdisk %s",
 						tls.vdiskID)
+				case tlog.BlockStatusDisconnected:
+					log.Info("tlog connection disconnected")
 				default:
 					panic(fmt.Errorf(
 						"tlog server had fatal failure for vdisk %s: %s",

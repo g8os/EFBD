@@ -8,21 +8,27 @@ import (
 	"io"
 	"net"
 
+	"zombiezen.com/go/capnproto2"
+
 	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
-	"zombiezen.com/go/capnproto2"
 )
 
 func (vd *vdisk) handle(conn *net.TCPConn, br *bufio.Reader, respSegmentBufLen int) error {
 	ctx, cancelFunc := context.WithCancel(vd.ctx)
-	defer cancelFunc()
+	defer func() {
+		vd.removeConn(conn)
+		cancelFunc()
+		log.Infof("vdisk `%v` connection handler exited", vd.id)
+	}()
 
 	// start response sender
 	go vd.sendResp(ctx, conn, respSegmentBufLen)
 
 	for {
+		// decode message
 		msg, err := capnp.NewDecoder(br).Decode()
 		if err != nil {
 			if err == io.EOF {
@@ -35,6 +41,8 @@ func (vd *vdisk) handle(conn *net.TCPConn, br *bufio.Reader, respSegmentBufLen i
 		if err != nil {
 			return err
 		}
+
+		// handle message according to it's typ
 
 		switch which := cmd.Which(); which {
 		case schema.TlogClientMessage_Which_block:
@@ -50,12 +58,15 @@ func (vd *vdisk) handle(conn *net.TCPConn, br *bufio.Reader, respSegmentBufLen i
 
 		case schema.TlogClientMessage_Which_waitNBDSlaveSync:
 			err = vd.handleWaitNBDSlaveSync()
-
+		case schema.TlogClientMessage_Which_disconnect:
+			log.Infof("vdisk `%v` receive disconnect command", vd.id)
+			return nil
 		default:
 			err = fmt.Errorf("%v is not a supported client message type", which)
 		}
 
 		if err != nil {
+			log.Errorf("vd handle failed: %v", err)
 			return err
 		}
 	}
@@ -63,12 +74,19 @@ func (vd *vdisk) handle(conn *net.TCPConn, br *bufio.Reader, respSegmentBufLen i
 
 // response sender for a vdisk
 func (vd *vdisk) sendResp(ctx context.Context, conn *net.TCPConn, respSegmentBufLen int) {
+	segmentBuf := make([]byte, 0, respSegmentBufLen)
+
 	defer func() {
 		log.Infof("sendResp cleanup for vdisk %v", vd.id)
+		resp := BlockResponse{
+			Status: tlog.BlockStatusDisconnected.Int8(),
+		}
+		if err := resp.Write(conn, segmentBuf); err != nil {
+			log.Errorf("failed to send disconnect command: %v", err)
+		}
+
 		conn.Close() // it will also close the receiver
 	}()
-
-	segmentBuf := make([]byte, 0, respSegmentBufLen)
 
 	for {
 		select {
@@ -84,6 +102,7 @@ func (vd *vdisk) sendResp(ctx context.Context, conn *net.TCPConn, respSegmentBuf
 		}
 	}
 }
+
 func (vd *vdisk) handleBlock(block *schema.TlogBlock) error {
 	// check hash
 	if err := vd.hash(block); err != nil {
@@ -91,8 +110,26 @@ func (vd *vdisk) handleBlock(block *schema.TlogBlock) error {
 		return err
 	}
 
+	seq := block.Sequence()
+
+	vd.expectedSequenceLock.Lock()
+	defer vd.expectedSequenceLock.Unlock()
+
+	if seq < vd.expectedSequence {
+		vd.respChan <- &BlockResponse{
+			Status:    tlog.BlockStatusRecvOK.Int8(),
+			Sequences: []uint64{block.Sequence()},
+		}
+		return nil
+	}
+	if seq > vd.expectedSequence {
+		return nil
+	}
+
+	vd.expectedSequence++
+
 	// store
-	vd.blockInputChan <- block
+	vd.orderedBlockChan <- block
 	vd.respChan <- &BlockResponse{
 		Status:    tlog.BlockStatusRecvOK.Int8(),
 		Sequences: []uint64{block.Sequence()},
@@ -141,49 +178,23 @@ func (vd *vdisk) hash(tlb *schema.TlogBlock) (err error) {
 
 	return
 }
+func (vd *vdisk) attachConn(conn *net.TCPConn) error {
+	vd.clientConnLock.Lock()
+	defer vd.clientConnLock.Unlock()
 
-// number of connected clients to this vdisk
-func (vd *vdisk) numConnectedClient() int {
-	vd.clientsTabLock.Lock()
-	defer vd.clientsTabLock.Unlock()
-	return len(vd.clientsTab)
+	if vd.clientConn != nil {
+		return fmt.Errorf("there is already conencted client for vdisk `%v`", vd.id)
+	}
+
+	vd.clientConn = conn
+	return nil
 }
 
-// add client to the table of connected clients
-func (vd *vdisk) addClient(conn *net.TCPConn) {
-	vd.clientsTabLock.Lock()
-	defer vd.clientsTabLock.Unlock()
+func (vd *vdisk) removeConn(conn *net.TCPConn) error {
+	vd.clientConnLock.Lock()
+	defer vd.clientConnLock.Unlock()
 
-	vd.clientsTab[conn.RemoteAddr().String()] = conn
-}
+	vd.clientConn = nil
+	return nil
 
-// remove client from the table of connected clients
-func (vd *vdisk) removeClient(conn *net.TCPConn) {
-	vd.clientsTabLock.Lock()
-	defer vd.clientsTabLock.Unlock()
-
-	addr := conn.RemoteAddr().String()
-	if _, ok := vd.clientsTab[addr]; !ok {
-		log.Errorf("vdisk failed to remove client:%v", addr)
-	} else {
-		delete(vd.clientsTab, addr)
-	}
-}
-
-// disconnect all connected clients except the
-// given exceptConn connection
-func (vd *vdisk) disconnectExcept(exceptConn *net.TCPConn) {
-	vd.clientsTabLock.Lock()
-	defer vd.clientsTabLock.Unlock()
-
-	var conns []*net.TCPConn
-	for _, conn := range vd.clientsTab {
-		if conn != exceptConn {
-			conns = append(conns, conn)
-			conn.Close()
-		}
-	}
-	for _, conn := range conns {
-		delete(vd.clientsTab, conn.RemoteAddr().String())
-	}
 }

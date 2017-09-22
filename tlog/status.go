@@ -57,6 +57,7 @@ const (
 	BlockStatusFlushOK                  BlockStatus = 2
 	BlockStatusForceFlushReceived       BlockStatus = 3
 	BlockStatusWaitNbdSlaveSyncReceived BlockStatus = 4
+	BlockStatusDisconnected             BlockStatus = 5
 )
 
 // HandshakeStatus is returned by the Tlog server
@@ -99,6 +100,8 @@ func (status HandshakeStatus) Error() error {
 		return errors.New("given vdisk is not accepted by the server")
 	case HandshakeStatusInternalServerError:
 		return errors.New("internal server error")
+	case HandshakeStatusAttachFailed:
+		return errors.New("failed to attach to vdisk")
 	case HandshakeStatusInvalidVersion:
 		return errors.New("client version is not compatible with server")
 	case HandshakeStatusInvalidRequest:
@@ -110,6 +113,10 @@ func (status HandshakeStatus) Error() error {
 
 // Handshake status values
 const (
+	// returned when the connection failed to attach to vdisk.
+	// it currently only happened when a connection trying to
+	// to connect to an already used vdisk
+	HandshakeStatusAttachFailed HandshakeStatus = -5
 	// returned when something went wrong internally
 	// in the tlogserver during the handshake phase
 	HandshakeStatusInternalServerError HandshakeStatus = -4

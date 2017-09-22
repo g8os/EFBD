@@ -66,12 +66,11 @@ type Client struct {
 	ctx        context.Context
 	cancelFunc context.CancelFunc
 
-	stopped bool
-
 	waitSlaveSyncCond *sync.Cond
+	disconnectedCond  *sync.Cond
 
-	// serverAddr lock to protect our list of servers
-	serverAddrLock       sync.Mutex
+	mux                  sync.Mutex
+	stopped              bool
 	curServerFailedFlush bool
 }
 
@@ -98,6 +97,7 @@ func newClient(servers []string, vdiskID string, firstSequence uint64, resetFirs
 		ctx:               ctx,
 		cancelFunc:        cancelFunc,
 		waitSlaveSyncCond: sync.NewCond(&sync.Mutex{}),
+		disconnectedCond:  sync.NewCond(&sync.Mutex{}),
 
 		// channel for command
 		commandCh: make(chan command),
@@ -130,7 +130,7 @@ func (c *Client) run(ctx context.Context) {
 
 		// reconnect
 		reconnected := false
-		for !reconnected {
+		for !reconnected && !c.isStopped() {
 			select {
 			case <-ctx.Done():
 				return
@@ -247,6 +247,8 @@ func (c *Client) runReceiver(ctx context.Context, cancelFunc context.CancelFunc)
 				case tlog.BlockStatusFlushFailed:
 					log.Errorf("tlogclient receive BlockStatusFlushFailed for vdisk: %v", c.vdiskID)
 					c.setCurServerFailedFlushStatus(true)
+				case tlog.BlockStatusDisconnected:
+					c.signalCond(c.disconnectedCond)
 				}
 
 				c.respCh <- &Result{
@@ -261,8 +263,8 @@ func (c *Client) runReceiver(ctx context.Context, cancelFunc context.CancelFunc)
 
 // ChangeServerAddresses change servers to the given servers
 func (c *Client) ChangeServerAddresses(servers []string) {
-	c.serverAddrLock.Lock()
-	defer c.serverAddrLock.Unlock()
+	c.mux.Lock()
+	defer c.mux.Unlock()
 
 	if len(servers) == 0 {
 		return
@@ -291,29 +293,29 @@ func (c *Client) ChangeServerAddresses(servers []string) {
 // shift server address move current active client to the back
 // and use 2nd entry as main server
 func (c *Client) shiftServer() {
-	c.serverAddrLock.Lock()
-	defer c.serverAddrLock.Unlock()
+	c.mux.Lock()
+	defer c.mux.Unlock()
 
 	c.servers = append(c.servers[1:], c.servers[0])
 }
 
 func (c *Client) curServerAddress() string {
-	c.serverAddrLock.Lock()
-	defer c.serverAddrLock.Unlock()
+	c.mux.Lock()
+	defer c.mux.Unlock()
 
 	return c.servers[0]
 }
 
 func (c *Client) setCurServerFailedFlushStatus(status bool) {
-	c.serverAddrLock.Lock()
-	defer c.serverAddrLock.Unlock()
+	c.mux.Lock()
+	defer c.mux.Unlock()
 
 	c.curServerFailedFlush = status
 }
 
 func (c *Client) getCurServerFailedFlushStatus() bool {
-	c.serverAddrLock.Lock()
-	defer c.serverAddrLock.Unlock()
+	c.mux.Lock()
+	defer c.mux.Unlock()
 
 	return c.curServerFailedFlush
 }
@@ -321,10 +323,6 @@ func (c *Client) getCurServerFailedFlushStatus() bool {
 // reconnect to server
 func (c *Client) reconnect(closedTime time.Time) error {
 	var err error
-
-	if c.stopped {
-		return ErrClientClosed
-	}
 
 	log.Info("tlogclient reconnect")
 
@@ -542,13 +540,41 @@ func (c *Client) Send(op uint8, seq uint64, index int64, timestamp int64, data [
 // Close the open connection, making this client invalid.
 // It is user responsibility to call this function.
 func (c *Client) Close() error {
-	c.cancelFunc()
-
+	c.mux.Lock()
 	c.stopped = true
+	c.mux.Unlock()
+	c.cancelFunc()
 
 	if c.conn != nil {
 		c.conn.CloseRead() // interrupt the receiver
 		return c.conn.Close()
 	}
 	return nil
+}
+
+// Disconncct disconnects client gracefully
+// It is on progress func which can only be used in unit test
+// See https://github.com/zero-os/0-Disk/issues/426 for the progress
+func (c *Client) Disconnect() error {
+	c.mux.Lock()
+	c.stopped = true
+	c.mux.Unlock()
+
+	doneCh := c.waitCond(c.disconnectedCond)
+
+	c.commandCh <- cmdDisconnect{}
+
+	select {
+	case <-time.After(10 * time.Second):
+		c.signalCond(c.disconnectedCond)
+		return fmt.Errorf("disconnect timed out")
+	case <-doneCh:
+		return nil
+	}
+}
+
+func (c *Client) isStopped() bool {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+	return c.stopped
 }

@@ -167,8 +167,16 @@ func (s *Server) handshake(r io.Reader, w io.Writer, conn *net.TCPConn) (vd *vdi
 		return
 	}
 
+	err = vd.attachConn(conn)
+	if err != nil {
+		status = tlog.HandshakeStatusAttachFailed
+		err = fmt.Errorf("couldn't attach to vdisk %s: %s", vdiskID, err.Error())
+		return
+	}
+
 	if req.ResetFirstSequence() {
 		if err = vd.resetFirstSequence(req.FirstSequence(), conn); err != nil {
+			vd.removeConn(conn)
 			status = tlog.HandshakeStatusInternalServerError
 			err = fmt.Errorf("couldn't reset vdisk first sequence %s: %s", vdiskID, err.Error())
 			return
@@ -200,18 +208,16 @@ func (s *Server) writeHandshakeResponse(w io.Writer, segmentBuf []byte, status t
 }
 
 func (s *Server) handle(conn *net.TCPConn) error {
-	defer conn.Close()
 
 	br := bufio.NewReader(conn)
 
-	vdisk, err := s.handshake(br, conn, conn)
+	vd, err := s.handshake(br, conn, conn)
 	if err != nil {
 		err = fmt.Errorf("handshake failed: %s", err.Error())
+		conn.Close()
 		return err
 	}
-	defer vdisk.removeClient(conn)
-
-	return vdisk.handle(conn, br, s.maxRespSegmentBufLen)
+	return vd.handle(conn, br, s.maxRespSegmentBufLen)
 }
 
 // read and decode tlog handshake request message from client

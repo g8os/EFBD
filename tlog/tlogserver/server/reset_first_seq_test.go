@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
@@ -56,9 +57,12 @@ func TestResetFirstSequence(t *testing.T) {
 	// initialize test data
 	data := make([]byte, 4096)
 
-	testClientSendWaitFlushResp(t, client1, client1.Recv(), firstNumLogs, 0, uint64(conf.FlushSize)-1, data)
+	respCh1 := client1.Recv()
+	testClientSendWaitFlushResp(t, client1, respCh1, firstNumLogs, 0, uint64(conf.FlushSize)-1, data)
 
 	// Step #2
+	err = client1.Disconnect()
+	require.NoError(t, err)
 	client1.Close()
 
 	// Step #3

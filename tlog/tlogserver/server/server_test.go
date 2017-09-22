@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"math/rand"
 	"sync"
 	"testing"
 
@@ -198,115 +197,6 @@ func TestEndToEnd(t *testing.T) {
 	}
 
 	require.Equal(t, numFlush, aggReceived)
-}
-
-// Test tlog server ability to handle unordered message
-func TestUnordered(t *testing.T) {
-	const (
-		vdiskID       = "12345"
-		firstSequence = 10
-	)
-
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	defer cancelFunc()
-
-	// config
-	conf := testConf
-
-	cleanFunc, stubSource, storConfig := newZeroStorConfig(t, vdiskID, conf.PrivKey, conf.DataShards, conf.ParityShards)
-	defer cleanFunc()
-
-	// start the server
-	s, err := NewServer(conf, stubSource)
-	assert.Nil(t, err)
-
-	go s.Listen(ctx)
-
-	t.Logf("listen addr=%v", s.ListenAddr())
-
-	// create tlog client
-	client, err := tlogclient.New([]string{s.ListenAddr()}, vdiskID, firstSequence, false)
-	if !assert.Nil(t, err) {
-		return
-	}
-
-	// initialize test data
-	data := make([]byte, 4096)
-
-	var wg sync.WaitGroup
-
-	wg.Add(1)
-
-	const numFlush = 4
-	numLogs := conf.FlushSize * numFlush // number of logs to send.
-	seqs := []uint64{}
-	for i := 0; i < numLogs; i++ {
-		seqs = append(seqs, uint64(i)+firstSequence)
-	}
-
-	// send tlog
-	go func() {
-		defer wg.Done()
-
-		var seqIdx int
-		for i := 0; i < numLogs; i++ {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				// pick random sequence
-				seqIdx = rand.Intn(len(seqs))
-
-				seq := seqs[seqIdx]
-				seqs = append(seqs[:seqIdx], seqs[seqIdx+1:]...)
-
-				x := uint64(i)
-				// check we can send it without error
-				err := client.Send(schema.OpSet, seq, int64(x), int64(x), data)
-				if !assert.Nil(t, err) {
-					cancelFunc()
-					return
-				}
-
-				// send it twice, to test duplicated message
-				err = client.Send(schema.OpSet, seq, int64(x), int64(x), data)
-				if !assert.Nil(t, err) {
-					cancelFunc()
-					return
-				}
-			}
-		}
-	}()
-
-	// recv it
-	respChan := client.Recv()
-	testClientWaitSeqFlushed(ctx, t, respChan, cancelFunc, uint64(firstSequence+numLogs-1), false)
-
-	wg.Wait()
-
-	// decode it
-	storCli, err := stor.NewClient(storConfig)
-	require.Nil(t, err)
-
-	var expectedSequence = uint64(firstSequence)
-
-	for wr := range storCli.Walk(0, tlog.TimeNowTimestamp()) {
-		require.Nil(t, wr.Err)
-		agg := wr.Agg
-
-		assert.Equal(t, uint64(conf.FlushSize), agg.Size())
-
-		blocks, err := agg.Blocks()
-		assert.Nil(t, err)
-
-		assert.Equal(t, conf.FlushSize, blocks.Len())
-		for i := 0; i < blocks.Len(); i++ {
-			block := blocks.At(i)
-
-			require.Equal(t, expectedSequence, block.Sequence())
-			expectedSequence++
-		}
-	}
 }
 
 func init() {
