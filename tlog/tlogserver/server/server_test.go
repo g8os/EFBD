@@ -176,10 +176,6 @@ func TestEndToEnd(t *testing.T) {
 
 		assert.Equal(t, uint64(conf.FlushSize), agg.Size())
 
-		vdiskID, err := agg.VdiskID()
-		assert.Nil(t, err)
-		assert.Equal(t, expectedVdiskID, vdiskID)
-
 		blocks, err := agg.Blocks()
 		assert.Nil(t, err)
 

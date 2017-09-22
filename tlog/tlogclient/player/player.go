@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/nbd/ardb"
@@ -155,15 +154,6 @@ func (p *Player) ReplayAggregation(agg *schema.TlogAggregation, lmt decoder.Limi
 // It returns last sequence number it replayed.
 func (p *Player) ReplayAggregationWithCallback(agg *schema.TlogAggregation, lmt decoder.Limiter,
 	onReplayCb OnReplayCb) (uint64, error) {
-
-	// some small checking
-	storedViskID, err := agg.VdiskID()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get vdisk id from aggregation: %v", err)
-	}
-	if strings.Compare(storedViskID, p.vdiskID) != 0 {
-		return 0, fmt.Errorf("vdisk id not mactched .expected=%v, got=%v", p.vdiskID, storedViskID)
-	}
 
 	var seq uint64
 	var index int64

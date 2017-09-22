@@ -118,7 +118,7 @@ func newClient(servers []string, vdiskID string, firstSequence uint64, resetFirs
 
 func (c *Client) run(ctx context.Context) {
 	go c.resender()
-	for {
+	for !c.isStopped() {
 		curCtx, cancelFunc := context.WithCancel(ctx)
 		// run receiver and sender
 		sendDoneCh := c.runSender(curCtx, cancelFunc)
@@ -174,7 +174,7 @@ func (c *Client) runSender(ctx context.Context, cancelFunc context.CancelFunc) <
 		for i := 0; i < numCmdRetry; i++ {
 			cmd := <-c.retryCommandCh
 			if err := c.sendCmd(cmd); err != nil {
-				log.Infof("Failed when retyr command = %v", err)
+				log.Errorf("Failed when retry command = %v", err)
 				c.retryCommandCh <- cmd
 				return
 			}
