@@ -224,6 +224,100 @@ func TestRoundTripGRPC(t *testing.T) {
 	}
 }
 
+func TestBlocksizes(t *testing.T) {
+	etcd, err := embedserver.New()
+	require.NoError(t, err, "fail to start embebed etcd server")
+	defer etcd.Stop()
+
+	servers, serverClean := testGRPCServer(t, 4)
+	defer serverClean()
+
+	shards := make([]string, len(servers))
+	for i, server := range servers {
+		shards[i] = server.Addr()
+	}
+
+	policy := Policy{
+		Organization: "testorg",
+		Namespace:    "namespace1",
+		DataShards:   shards,
+		MetaShards:   []string{etcd.ListenAddr()},
+		IYOAppID:     "id",
+		IYOSecret:    "secret",
+	}
+
+	tc := struct {
+		name      string
+		BlockSize int
+
+		ReplicationNr      int
+		ReplicationMaxSize int
+
+		DistributionNr         int
+		DistributionRedundancy int
+
+		Compress   bool
+		Encrypt    bool
+		EncryptKey string
+	}{
+
+		// name: "",
+		// BlockSize:              1024,
+		Compress:   true,
+		Encrypt:    true,
+		EncryptKey: "cF0BFpIsljOS8UmaP8YRHRX0nBPVRVPw",
+		// ReplicationMaxSize:     1, //force to use distribution over replication
+		DistributionNr:         3,
+		DistributionRedundancy: 1,
+	}
+
+	for i := 0; i < 50; i++ {
+		tc.BlockSize = 1024 * 10 * (i + 1)
+		tc.name = fmt.Sprintf("%d", tc.BlockSize)
+
+		t.Run(tc.name, func(t *testing.T) {
+			policy.BlockSize = tc.BlockSize
+			policy.Compress = tc.Compress
+			policy.Encrypt = tc.Encrypt
+			policy.EncryptKey = tc.EncryptKey
+			policy.DistributionNr = tc.DistributionNr
+			policy.DistributionRedundancy = tc.DistributionRedundancy
+			policy.ReplicationNr = tc.ReplicationNr
+			policy.ReplicationMaxSize = tc.ReplicationMaxSize
+
+			c, err := getTestClient(policy)
+			require.NoError(t, err, "fail to create client")
+
+			data := make([]byte, tc.BlockSize)
+			_, err = rand.Read(data)
+			refList := []string{"vdisk-1"}
+			require.NoError(t, err, "fail to read random data")
+
+			// write data to the store
+			key := []byte(fmt.Sprintf("testkey-%d", i))
+			meta, err := c.Write(key, data, refList)
+			require.NoError(t, err, "fail to write data to the store")
+
+			// validate metadata
+			assert.Equal(t, key, meta.Key, "Key in metadata is not the same")
+			for _, chunk := range meta.Chunks {
+				for _, shard := range chunk.Shards {
+					assert.Contains(t, shards, shard, "shards in metadata is not one of the shards configured in the client")
+				}
+			}
+
+			// read data back
+			dataRead, refListRead, err := c.Read(key)
+			require.NoError(t, err, "fail to read data from the store")
+			if bytes.Compare(data, dataRead) != 0 {
+				t.Errorf("data read from store is not the same as original data")
+				t.Errorf("len original: %d len actual %d", len(data), len(dataRead))
+			}
+			require.Equal(t, refList, refListRead)
+		})
+	}
+}
+
 func TestMultipleDownload(t *testing.T) {
 
 	// #test for https://github.com/zero-os/0-stor/issues/208
@@ -427,6 +521,57 @@ func BenchmarkWriteFilesSizes(b *testing.B) {
 			// }
 		})
 	}
+}
+
+func TestIssue225(t *testing.T) {
+	etcd, err := embedserver.New()
+	require.NoError(t, err, "fail to start embebed etcd server")
+	defer etcd.Stop()
+
+	servers, serverClean := testGRPCServer(t, 4)
+	defer serverClean()
+
+	shards := make([]string, len(servers))
+	for i, server := range servers {
+		shards[i] = server.Addr()
+	}
+
+	policy := Policy{
+		Organization:           "testorg",
+		Namespace:              "namespace1",
+		DataShards:             shards,
+		MetaShards:             []string{etcd.ListenAddr()},
+		IYOAppID:               "",
+		IYOSecret:              "",
+		BlockSize:              4096,
+		Compress:               true,
+		Encrypt:                true,
+		EncryptKey:             "cF0BFpIsljOS8UmaP8YRHRX0nBPVRVPw",
+		ReplicationNr:          4,
+		ReplicationMaxSize:     4096, //force to use distribution over replication
+		DistributionNr:         3,
+		DistributionRedundancy: 1,
+	}
+
+	c, err := getTestClient(policy)
+	require.NoError(t, err, "fail to create client")
+	defer c.Close()
+
+	data := make([]byte, 89817)
+
+	_, err = rand.Read(data)
+	require.NoError(t, err, "fail to read random data")
+	key := []byte("testkey")
+	refList := []string{"ref-1"}
+
+	_, err = c.Write(key, data, refList)
+	require.NoError(t, err, "fail write data")
+
+	result, resulRefList, err := c.Read(key)
+	require.NoError(t, err, "fail read data")
+	assert.Equal(t, data, result)
+	assert.Equal(t, refList, resulRefList)
+
 }
 
 // func BenchmarkDirectWriteGRPC(b *testing.B) {

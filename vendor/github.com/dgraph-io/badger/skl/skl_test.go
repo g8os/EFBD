@@ -24,7 +24,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -410,10 +409,10 @@ func TestIteratorSeek(t *testing.T) {
 	require.EqualValues(t, "01990", v.Value)
 }
 
-func randomKey(rng *rand.Rand) []byte {
+func randomKey() []byte {
 	b := make([]byte, 8)
-	key := rng.Uint32()
-	key2 := rng.Uint32()
+	key := rand.Uint32()
+	key2 := rand.Uint32()
 	binary.LittleEndian.PutUint32(b, key)
 	binary.LittleEndian.PutUint32(b[4:], key2)
 	return b
@@ -426,20 +425,19 @@ func BenchmarkReadWrite(b *testing.B) {
 	for i := 0; i <= 10; i++ {
 		readFrac := float32(i) / 10.0
 		b.Run(fmt.Sprintf("frac_%d", i), func(b *testing.B) {
-			l := NewSkiplist(arenaSize * 64) // TODO: Fix this. Allow arena size to vary with b.N.
+			l := NewSkiplist(arenaSize) // TODO: Fix this. Allow arena size to vary with b.N.
 			defer l.DecrRef()
 			b.ResetTimer()
 			var count int
 			b.RunParallel(func(pb *testing.PB) {
-				rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 				for pb.Next() {
-					if rng.Float32() < readFrac {
-						v := l.Get(randomKey(rng))
+					if rand.Float32() < readFrac {
+						v := l.Get(randomKey())
 						if v.Value != nil {
 							count++
 						}
 					} else {
-						l.Put(randomKey(rng), y.MakeValueStruct(value, 0, 0, 0))
+						l.Put(randomKey(), y.MakeValueStruct(value, 0, 0, 0))
 					}
 				}
 			})
@@ -459,18 +457,17 @@ func BenchmarkReadWriteMap(b *testing.B) {
 			b.ResetTimer()
 			var count int
 			b.RunParallel(func(pb *testing.PB) {
-				rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 				for pb.Next() {
 					if rand.Float32() < readFrac {
 						mutex.RLock()
-						_, ok := m[string(randomKey(rng))]
+						_, ok := m[string(randomKey())]
 						mutex.RUnlock()
 						if ok {
 							count++
 						}
 					} else {
 						mutex.Lock()
-						m[string(randomKey(rng))] = value
+						m[string(randomKey())] = value
 						mutex.Unlock()
 					}
 				}

@@ -346,6 +346,28 @@ func (c *Client) readFWithMeta(md *meta.Meta, w io.Writer) (refList []string, er
 	return
 }
 
+func (c *Client) Delete(key []byte) error {
+	meta, err := c.metaCli.Get(string(key))
+	if err != nil {
+		log.Errorf("fail to read metadata: %v", err)
+		return err
+	}
+
+	// TODO: concurent delete
+	for _, chunk := range meta.Chunks {
+		for _, shard := range chunk.Shards {
+			stor, err := c.getStor(shard)
+			if err != nil {
+				return err
+			}
+			if err := stor.ObjectDelete(chunk.Key); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (c *Client) replicateWrite(key, value []byte, referenceList []string) ([]string, error) {
 
 	if c.policy.ReplicationNr <= 2 {
@@ -596,10 +618,11 @@ func (c *Client) distributeRead(key []byte, originalSize int, shards []string) (
 
 			obj, err := cl.ObjectGet(key)
 			if err != nil {
-				log.Errorf("error read %s from stor(%s): %v", fmt.Sprintf("%x", key), shard, err)
+
 				shardErr.Add([]string{shard}, lib.ShardType0Stor, err, 0)
 				return
 			}
+
 			parts[i] = obj.Value
 			refListSlice[i] = obj.ReferenceList
 		}(i, shard)
@@ -607,7 +630,7 @@ func (c *Client) distributeRead(key []byte, originalSize int, shards []string) (
 
 	wg.Wait()
 
-	if !shardErr.Nil() {
+	if !shardErr.Nil() && shardErr.Num() > c.policy.DistributionRedundancy {
 		return nil, shardErr
 	}
 

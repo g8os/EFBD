@@ -19,6 +19,13 @@ matrix:
     - language: go
       sudo: true
       dist: trusty
+      go: 1.8
+      install: skip
+      script: make
+
+    - language: go
+      sudo: true
+      dist: trusty
       go: 1.9
       install: skip
       script: make testserverrace

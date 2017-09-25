@@ -80,10 +80,9 @@ func (b BadgerDB) Get(key []byte) ([]byte, error) {
 	}
 
 	var val []byte
-	err = item.Value(func(v []byte) error {
+	err = item.Value(func(v []byte) {
 		val = make([]byte, len(v))
 		copy(val, v)
-		return nil
 	})
 	if err != nil {
 		return nil, err
@@ -128,10 +127,9 @@ func (b BadgerDB) Filter(prefix []byte, start int, count int) ([][]byte, error) 
 		item := it.Item()
 
 		var val []byte
-		err := item.Value(func(v []byte) error {
+		err := item.Value(func(v []byte) {
 			val = make([]byte, len(v))
 			copy(val, v)
-			return nil
 		})
 		if err != nil {
 			return nil, err

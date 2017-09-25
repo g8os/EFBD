@@ -182,10 +182,9 @@ func NewKV(optParam *Options) (out *KV, err error) {
 	}
 
 	var val []byte
-	err = item.Value(func(v []byte) error {
+	err = item.Value(func(v []byte) {
 		val = make([]byte, len(v))
 		copy(val, v)
-		return nil
 	})
 
 	if err != nil {
@@ -260,7 +259,7 @@ func NewKV(optParam *Options) (out *KV, err error) {
 	go out.doWrites(out.closers.writes)
 
 	out.closers.valueGC = y.NewCloser(1)
-	go out.vlog.waitOnGC(out.closers.valueGC)
+	go out.vlog.runGCInLoop(out.closers.valueGC)
 
 	valueDirLockGuard = nil
 	dirLockGuard = nil
@@ -399,9 +398,10 @@ func (s *KV) getMemTables() ([]*skl.Skiplist, func()) {
 	}
 }
 
-func (s *KV) yieldItemValue(item *KVItem, consumer func([]byte) error) error {
+func (s *KV) yieldItemValue(item *KVItem, consumer func([]byte)) error {
 	if !item.hasValue() {
-		return consumer(nil)
+		consumer(nil)
+		return nil
 	}
 
 	if item.slice == nil {
@@ -411,12 +411,13 @@ func (s *KV) yieldItemValue(item *KVItem, consumer func([]byte) error) error {
 	if (item.meta & BitValuePointer) == 0 {
 		val := item.slice.Resize(len(item.vptr))
 		copy(val, item.vptr)
-		return consumer(val)
+		consumer(val)
+		return nil
 	}
 
 	var vp valuePointer
 	vp.Decode(item.vptr)
-	err := s.vlog.Read(vp, consumer)
+	err := s.vlog.Read(vp, item.slice, consumer)
 	if err != nil {
 		return err
 	}
@@ -635,20 +636,14 @@ func (s *KV) writeRequests(reqs []*request) error {
 	return nil
 }
 
+func writeRequestsOrLogError(s *KV, reqs []*request) {
+	if err := s.writeRequests(reqs); err != nil {
+		log.Printf("ERROR in Badger::writeRequests: %v", err)
+	}
+}
+
 func (s *KV) doWrites(lc *y.Closer) {
 	defer lc.Done()
-	pendingCh := make(chan struct{}, 1)
-
-	writeRequests := func(reqs []*request) {
-		if err := s.writeRequests(reqs); err != nil {
-			log.Printf("ERROR in Badger::writeRequests: %v", err)
-		}
-		<-pendingCh
-	}
-
-	// This variable tracks the number of pending writes.
-	reqLen := new(expvar.Int)
-	y.PendingWrites.Set(s.opt.Dir, reqLen)
 
 	reqs := make([]*request, 0, 10)
 	for {
@@ -661,37 +656,30 @@ func (s *KV) doWrites(lc *y.Closer) {
 
 		for {
 			reqs = append(reqs, r)
-			reqLen.Set(int64(len(reqs)))
-
-			if len(reqs) >= 3*kvWriteChCapacity {
-				pendingCh <- struct{}{} // blocking.
-				goto writeCase
+			if len(reqs) == kvWriteChCapacity {
+				goto defaultCase
 			}
-
 			select {
-			// Either push to pending, or continue to pick from writeCh.
 			case r = <-s.writeCh:
-			case pendingCh <- struct{}{}:
-				goto writeCase
 			case <-lc.HasBeenClosed():
 				goto closedCase
+			default:
+				goto defaultCase
 			}
 		}
 
 	closedCase:
 		close(s.writeCh)
+
 		for r := range s.writeCh { // Flush the channel.
 			reqs = append(reqs, r)
 		}
-
-		pendingCh <- struct{}{} // Push to pending before doing a write.
-		writeRequests(reqs)
+		writeRequestsOrLogError(s, reqs)
 		return
 
-	writeCase:
-		go writeRequests(reqs)
-		reqs = make([]*request, 0, 10)
-		reqLen.Set(0)
+	defaultCase:
+		writeRequestsOrLogError(s, reqs)
+		reqs = reqs[:0]
 	}
 }
 
@@ -1135,7 +1123,7 @@ func (s *KV) updateSize(lc *y.Closer) {
 	metricsTicker := time.NewTicker(5 * time.Minute)
 	defer metricsTicker.Stop()
 
-	newInt := func(val int64) *expvar.Int {
+	getNewInt := func(val int64) *expvar.Int {
 		v := new(expvar.Int)
 		v.Add(val)
 		return v
@@ -1165,41 +1153,14 @@ func (s *KV) updateSize(lc *y.Closer) {
 		select {
 		case <-metricsTicker.C:
 			lsmSize, vlogSize := totalSize(s.opt.Dir)
-			y.LSMSize.Set(s.opt.Dir, newInt(lsmSize))
+			y.LSMSize.Set(s.opt.Dir, getNewInt(lsmSize))
 			// If valueDir is different from dir, we'd have to do another walk.
 			if s.opt.ValueDir != s.opt.Dir {
 				_, vlogSize = totalSize(s.opt.ValueDir)
 			}
-			y.VlogSize.Set(s.opt.Dir, newInt(vlogSize))
+			y.VlogSize.Set(s.opt.Dir, getNewInt(vlogSize))
 		case <-lc.HasBeenClosed():
 			return
 		}
 	}
-}
-
-// RunValueLogGC would trigger a value log garbage collection with no guarantees that a call would
-// result in a space reclaim. Every run would in the best case rewrite only one log file. So,
-// repeated calls may be necessary.
-//
-// The way it currently works is that it would randomly pick up a value log file, and sample it. If
-// the sample shows that we can discard at least discardRatio space of that file, it would be
-// rewritten. Else, an ErrNoRewrite error would be returned indicating that the GC didn't result in
-// any file rewrite.
-//
-// We recommend setting discardRatio to 0.5, thus indicating that a file be rewritten if half the
-// space can be discarded.  This results in a lifetime value log write amplification of 2 (1 from
-// original write + 0.5 rewrite + 0.25 + 0.125 + ... = 2). Setting it to higher value would result
-// in fewer space reclaims, while setting it to a lower value would result in more space reclaims at
-// the cost of increased activity on the LSM tree. discardRatio must be in the range (0.0, 1.0),
-// both endpoints excluded, otherwise an ErrInvalidRequest is returned.
-//
-// Only one GC is allowed at a time. If another value log GC is running, or KV has been closed, this
-// would return an ErrRejected.
-//
-// Note: Every time GC is run, it would produce a spike of activity on the LSM tree.
-func (s *KV) RunValueLogGC(discardRatio float64) error {
-	if discardRatio >= 1.0 || discardRatio <= 0.0 {
-		return ErrInvalidRequest
-	}
-	return s.vlog.runGC(discardRatio)
 }

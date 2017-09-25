@@ -74,10 +74,9 @@
   version = "v1.1.0"
 
 [[projects]]
-  branch = "master"
   name = "github.com/dgraph-io/badger"
   packages = [".","options","protos","skl","table","y"]
-  revision = "830040b338520057a891259098e4b632c5356c89"
+  revision = "a3ac9e5df673e9ae586a8865c489b81c8df71b93"
 
 [[projects]]
   name = "github.com/dgrijalva/jwt-go"
@@ -90,12 +89,6 @@
   name = "github.com/edsrzf/mmap-go"
   packages = ["."]
   revision = "0bce6a6887123b67a60366d2c9fe2dfb74289d2e"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/emirpasic/gods"
-  packages = ["containers","sets","sets/treeset","trees","trees/redblacktree","utils"]
-  revision = "c4fc0ef8b1fa112dc494a06438c99670c779d150"
 
 [[projects]]
   branch = "master"
@@ -394,7 +387,7 @@
   branch = "master"
   name = "github.com/zero-os/0-stor"
   packages = ["client","client/itsyouonline","client/lib","client/lib/block","client/lib/chunker","client/lib/distribution","client/lib/encrypt","client/lib/hash","client/meta","client/meta/embedserver","client/meta/schema","client/stor","grpc_store","server","server/db","server/db/badger","server/jwt","server/manager","server/stats"]
-  revision = "d1b63038a43f9073b96a42db1e2765ee17a34550"
+  revision = "2edfa7219d4e8184f14092abb9782cc5431a0cef"
 
 [[projects]]
   branch = "master"
@@ -453,6 +446,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "6b9b3de0f660a015768e9d0de3f6adf0a38654df37fed30970c9651fa1cb7344"
+  inputs-digest = "e331a16481d6db5ca4695bf757594409f4c1e1f77956143ffe1d156b080aa7e5"
   solver-name = "gps-cdcl"
   solver-version = 1
