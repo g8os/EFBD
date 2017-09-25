@@ -38,17 +38,17 @@ func getTestOptions(dir string) *Options {
 	opt.Dir = dir
 	opt.ValueDir = dir
 	opt.SyncWrites = true // Some tests seem to need this to pass.
+	opt.ValueGCThreshold = 0.8
 	return opt
 }
 
 func getItemValue(t *testing.T, item *KVItem) (val []byte) {
-	err := item.Value(func(v []byte) error {
+	err := item.Value(func(v []byte) {
 		if v == nil {
-			return nil
+			return
 		}
 		val = make([]byte, len(v))
 		copy(val, v)
-		return nil
 	})
 
 	if err != nil {
@@ -782,10 +782,9 @@ func BenchmarkExists(b *testing.B) {
 				b.Error(err)
 			}
 			var val []byte
-			err = item.Value(func(v []byte) error {
+			err = item.Value(func(v []byte) {
 				val = make([]byte, len(v))
 				copy(val, v)
-				return nil
 			})
 			if err != nil {
 				b.Error(err)

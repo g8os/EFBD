@@ -113,4 +113,11 @@ instance/
 .webassets-cache
 
 bin
+
+cmd/zerostorcli
 .db
+utils/dev_setup/stor*
+utils/dev_setup/infra*.etcd*
+
+# editors
+.vscode

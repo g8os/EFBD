@@ -39,6 +39,9 @@ type Client interface {
 	// ObjectExist tests if an object with this id exists
 	ObjectExist(id []byte) (bool, error)
 
+	// ObjectCheck test if an object is still healty or corrupted
+	ObjectsCheck(ids [][]byte) ([]*pb.CheckResponse, error)
+
 	// ReferenceSet sets reference list
 	ReferenceSet(id []byte, refList []string) error
 

@@ -75,7 +75,7 @@ Metadata linked list will be build if  user specify previous meta key when
 calling `WriteWithMeta` or `WriteFWithMeta` methods.
 
 ## Getting started
-- [Getting started](./cmd/zerostorcli/README.md)
+- [Getting started](../cmd/zerostorcli/README.md)
 
 
 ## Now into some technical details!

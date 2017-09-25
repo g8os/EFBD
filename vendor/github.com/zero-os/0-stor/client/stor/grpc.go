@@ -157,6 +157,36 @@ func (c *client) ReferenceAppend(id []byte, refList []string) error {
 	return err
 }
 
+func (c *client) ObjectsCheck(ids [][]byte) ([]*pb.CheckResponse, error) {
+	sids := make([]string, len(ids))
+	for i, id := range ids {
+		sids[i] = string(id)
+	}
+
+	stream, err := c.objService.Check(ctxWithJWT(c.jwtToken), &pb.CheckRequest{Ids: sids, Label: c.namespace})
+	if err != nil {
+		return nil, err
+	}
+
+	checkResps := make([]*pb.CheckResponse, 0, len(sids))
+	for {
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		checkResps = append(checkResps, &pb.CheckResponse{
+			Id:     resp.Id,
+			Status: resp.GetStatus(),
+		})
+	}
+
+	return checkResps, nil
+}
+
 func (c *client) ReferenceRemove(id []byte, refList []string) error {
 	_, err := c.objService.RemoveReferenceList(ctxWithJWT(c.jwtToken), &pb.UpdateReferenceListRequest{
 		Label:         c.namespace,

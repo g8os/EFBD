@@ -38,8 +38,8 @@
   version = "3.0.0"
 
 [[constraint]]
-  branch = "master"
   name = "github.com/dgraph-io/badger"
+  revision = "a3ac9e5df673e9ae586a8865c489b81c8df71b93"
 
 [[constraint]]
   name = "github.com/dgrijalva/jwt-go"
