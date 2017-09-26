@@ -2,16 +2,11 @@ package blockbuffer
 
 import (
 	"context"
-	"errors"
 	"sort"
 	"sync"
 	"time"
 
 	"github.com/zero-os/0-Disk/tlog/schema"
-)
-
-var (
-	ErrRetryExceeded = errors.New("retry exceeded")
 )
 
 // Buffer defines buffer of tlog blocks that already sent
@@ -122,11 +117,39 @@ func (b *Buffer) Add(block *schema.TlogBlock) {
 	b.entries[seq] = ent
 }
 
+// SetLastFlushed set the value of the last
+// flushed sequence
+func (b *Buffer) SetLastFlushed(lastSeq uint64) {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	var seqs []uint64
+
+	for seq := range b.waitToFlush {
+		if seq < lastSeq {
+			seqs = append(seqs, seq)
+		}
+	}
+
+	for seq := range b.entries {
+		if seq < lastSeq {
+			seqs = append(seqs, seq)
+		}
+	}
+
+	seqs = append(seqs, lastSeq)
+	b.setFlushed(seqs)
+}
+
 // SetFlushed set this sequence as succesfully flushed
 func (b *Buffer) SetFlushed(seqs []uint64) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
+	b.setFlushed(seqs)
+}
+
+func (b *Buffer) setFlushed(seqs []uint64) {
 	if len(seqs) == 0 {
 		return
 	}

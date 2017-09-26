@@ -21,7 +21,7 @@ import (
 func TestForceFlushAtSeq(t *testing.T) {
 	const (
 		vdiskID       = "1234567890"
-		firstSequence = 0
+		firstSequence = 1
 	)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
@@ -50,7 +50,7 @@ func TestForceFlushAtSeq(t *testing.T) {
 	forceFlushedSeq := uint64(numLogs - 5)
 
 	// create tlog client
-	client, err := tlogclient.New([]string{s.ListenAddr()}, vdiskID, firstSequence, false)
+	client, err := tlogclient.New([]string{s.ListenAddr()}, vdiskID)
 	require.Nil(t, err)
 
 	// Step 3
@@ -91,7 +91,7 @@ func TestForceFlushAtSeq(t *testing.T) {
 func TestForceFlushAtSeqPossibleRace(t *testing.T) {
 	const (
 		vdiskID       = "12345"
-		firstSequence = 0
+		firstSequence = 1
 	)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
@@ -120,7 +120,7 @@ func TestForceFlushAtSeqPossibleRace(t *testing.T) {
 	forceFlushedSeq := uint64(numLogs - 1)
 
 	// create tlog client
-	client, err := tlogclient.New([]string{s.ListenAddr()}, vdiskID, firstSequence, false)
+	client, err := tlogclient.New([]string{s.ListenAddr()}, vdiskID)
 	require.Nil(t, err)
 
 	var wg sync.WaitGroup

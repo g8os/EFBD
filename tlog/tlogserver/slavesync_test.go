@@ -25,9 +25,8 @@ import (
 
 func TestSlaveSyncEndToEnd(t *testing.T) {
 	const (
-		vdiskID       = "1234567890"
-		firstSequence = 0
-		blockSize     = 4096
+		vdiskID   = "1234567890"
+		blockSize = 4096
 	)
 	conf := server.DefaultConfig()
 	conf.ListenAddr = ""
@@ -56,7 +55,7 @@ func TestSlaveSyncEndToEnd(t *testing.T) {
 	go s.Listen(ctx)
 
 	// create tlog client
-	client, err := tlogclient.New([]string{s.ListenAddr()}, vdiskID, firstSequence, false)
+	client, err := tlogclient.New([]string{s.ListenAddr()}, vdiskID)
 	require.Nil(t, err)
 
 	// initialize test data
@@ -71,10 +70,10 @@ func TestSlaveSyncEndToEnd(t *testing.T) {
 		x := uint64(i)
 
 		// check we can send it without error
-		err := client.Send(schema.OpSet, x, int64(x), int64(x), data[offset:offset+blockSize])
+		err := client.Send(schema.OpSet, x+1, int64(x), int64(x), data[offset:offset+blockSize])
 		require.Nil(t, err)
 	}
-	maxSeq := uint64(numLogs - 1)
+	maxSeq := uint64(numLogs)
 
 	// flush the logs
 	err = client.ForceFlushAtSeq(maxSeq)

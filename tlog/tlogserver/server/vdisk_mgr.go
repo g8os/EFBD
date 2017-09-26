@@ -34,7 +34,7 @@ func newVdiskManager(aggMq *aggmq.MQ, blockSize, flushSize int, configSource con
 }
 
 // get or create the vdisk
-func (vt *vdiskManager) Get(ctx context.Context, vdiskID string, firstSequence uint64,
+func (vt *vdiskManager) Get(ctx context.Context, vdiskID string,
 	conn *net.TCPConn, flusherConf *flusherConfig) (vd *vdisk, err error) {
 
 	vt.lock.Lock()
@@ -48,7 +48,7 @@ func (vt *vdiskManager) Get(ctx context.Context, vdiskID string, firstSequence u
 
 	// create vdisk
 	vd, err = newVdisk(ctx, vdiskID, vt.aggMq, vt.configSource,
-		firstSequence, flusherConf, vt.remove)
+		flusherConf, vt.remove)
 	if err != nil {
 		return
 	}

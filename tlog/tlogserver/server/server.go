@@ -121,12 +121,13 @@ func (s *Server) ListenAddr() string {
 // handshake stage, required prior to receiving blocks
 func (s *Server) handshake(r io.Reader, w io.Writer, conn *net.TCPConn) (vd *vdisk, err error) {
 	status := tlog.HandshakeStatusInternalServerError
+	var lastSeq uint64
 
 	// always return response, even in case of a panic,
 	// but normally this is triggered because of a(n early) return
 	defer func() {
 		segmentBuf := make([]byte, 0, schema.RawServerHandshakeLen())
-		err := s.writeHandshakeResponse(w, segmentBuf, status)
+		err := s.writeHandshakeResponse(w, segmentBuf, status, lastSeq)
 		if err != nil {
 			log.Infof("couldn't write server %s response: %s",
 				status.String(), err.Error())
@@ -160,27 +161,18 @@ func (s *Server) handshake(r io.Reader, w io.Writer, conn *net.TCPConn) (vd *vdi
 		return // error return
 	}
 
-	vd, err = s.vdiskMgr.Get(s.ctx, vdiskID, req.FirstSequence(), conn, s.flusherConf)
+	vd, err = s.vdiskMgr.Get(s.ctx, vdiskID, conn, s.flusherConf)
 	if err != nil {
 		status = tlog.HandshakeStatusInternalServerError
 		err = fmt.Errorf("couldn't create vdisk %s: %s", vdiskID, err.Error())
 		return
 	}
 
-	err = vd.attachConn(conn)
+	lastSeq, err = vd.connect(conn)
 	if err != nil {
-		status = tlog.HandshakeStatusAttachFailed
-		err = fmt.Errorf("couldn't attach to vdisk %s: %s", vdiskID, err.Error())
+		status = tlog.HandshakeStatusInternalServerError
+		err = fmt.Errorf("couldn't connect to vdisk %s: %s", vdiskID, err.Error())
 		return
-	}
-
-	if req.ResetFirstSequence() {
-		if err = vd.resetFirstSequence(req.FirstSequence(), conn); err != nil {
-			vd.removeConn(conn)
-			status = tlog.HandshakeStatusInternalServerError
-			err = fmt.Errorf("couldn't reset vdisk first sequence %s: %s", vdiskID, err.Error())
-			return
-		}
 	}
 
 	log.Debug("handshake phase successfully completed")
@@ -188,7 +180,8 @@ func (s *Server) handshake(r io.Reader, w io.Writer, conn *net.TCPConn) (vd *vdi
 	return // success return
 }
 
-func (s *Server) writeHandshakeResponse(w io.Writer, segmentBuf []byte, status tlog.HandshakeStatus) error {
+func (s *Server) writeHandshakeResponse(w io.Writer, segmentBuf []byte, status tlog.HandshakeStatus,
+	lastFlushedSeq uint64) error {
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(segmentBuf))
 	if err != nil {
 		return err
@@ -200,6 +193,7 @@ func (s *Server) writeHandshakeResponse(w io.Writer, segmentBuf []byte, status t
 	}
 
 	resp.SetVersion(zerodisk.CurrentVersion.UInt32())
+	resp.SetLastFlushedSequence(lastFlushedSeq)
 
 	log.Debug("replying handshake with status: ", status)
 	resp.SetStatus(status.Int8())
