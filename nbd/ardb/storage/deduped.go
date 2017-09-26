@@ -133,20 +133,54 @@ func (ds *dedupedStorage) getTemplateConnection(hash zerodisk.Hash) (ardb.Connec
 	return ds.provider.TemplateConnection(int64(hash[0]))
 }
 
-func (ds *dedupedStorage) markTemplateConnectionInvalid(hash zerodisk.Hash) {
-	ds.provider.MarkTemplateConnectionInvalid(int64(hash[0]))
-}
-
 // getPrimaryContent gets content from the primary storage.
 // Assigned to (*dedupedStorage).getContent in case this storage has no template support.
 func (ds *dedupedStorage) getPrimaryContent(hash zerodisk.Hash) (content []byte, err error) {
 	conn, err := ds.getDataConnection(hash)
 	if err != nil {
+		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
+			log.Errorf("primary server network error for vdisk %s: %v", ds.vdiskID, err)
+			// broadcast the connection issue to 0-Orchestrator
+			cfg := conn.ConnectionConfig()
+			log.Broadcast(
+				status,
+				log.SubjectStorage,
+				log.ARDBServerTimeoutBody{
+					Address:  cfg.Address,
+					Database: cfg.Database,
+					Type:     log.ARDBPrimaryServer,
+					VdiskID:  ds.vdiskID,
+				},
+			)
+			// disable data connection,
+			// so the server remains disabled until next config reload.
+			ds.provider.DisableDataConnection(conn.ServerIndex())
+		}
 		return
 	}
 	defer conn.Close()
 
 	content, err = ardb.RedisBytes(conn.Do("GET", hash.Bytes()))
+	if err != nil {
+		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
+			log.Errorf("primary server network error for vdisk %s: %v", ds.vdiskID, err)
+			// broadcast the connection issue to 0-Orchestrator
+			cfg := conn.ConnectionConfig()
+			log.Broadcast(
+				status,
+				log.SubjectStorage,
+				log.ARDBServerTimeoutBody{
+					Address:  cfg.Address,
+					Database: cfg.Database,
+					Type:     log.ARDBPrimaryServer,
+					VdiskID:  ds.vdiskID,
+				},
+			)
+			// disable data connection,
+			// so the server remains disabled until next config reload.
+			ds.provider.DisableDataConnection(conn.ServerIndex())
+		}
+	}
 	return
 }
 
@@ -171,7 +205,7 @@ func (ds *dedupedStorage) getPrimaryOrTemplateContent(hash zerodisk.Hash) (conte
 				"content not available in primary storage for %v and no template storage available: %s",
 				hash, err.Error())
 			if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
-				log.Errorf("template server error for vdisk %s: %v", ds.vdiskID, err)
+				log.Errorf("template server network error for vdisk %s: %v", ds.vdiskID, err)
 				// broadcast the connection issue to 0-Orchestrator
 				cfg := conn.ConnectionConfig()
 				log.Broadcast(
@@ -184,9 +218,9 @@ func (ds *dedupedStorage) getPrimaryOrTemplateContent(hash zerodisk.Hash) (conte
 						VdiskID:  ds.vdiskID,
 					},
 				)
-				// mark template connection for the given block index invalid,
-				// so it remains marked invalid until next config reload.
-				ds.markTemplateConnectionInvalid(hash)
+				// disable template connection,
+				// so the server remains disabled until next config reload.
+				ds.provider.DisableTemplateConnection(conn.ServerIndex())
 			} else if err == ardb.ErrTemplateClusterNotSpecified {
 				err = nil
 			}
@@ -203,7 +237,7 @@ func (ds *dedupedStorage) getPrimaryOrTemplateContent(hash zerodisk.Hash) (conte
 					"content for %v not available in primary-, nor in template storage: %s",
 					hash, err.Error())
 			} else if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
-				log.Errorf("template server error for vdisk %s: %v", ds.vdiskID, err)
+				log.Errorf("template server network error for vdisk %s: %v", ds.vdiskID, err)
 				// broadcast the connection issue to 0-Orchestrator
 				cfg := conn.ConnectionConfig()
 				log.Broadcast(
@@ -216,9 +250,9 @@ func (ds *dedupedStorage) getPrimaryOrTemplateContent(hash zerodisk.Hash) (conte
 						VdiskID:  ds.vdiskID,
 					},
 				)
-				// mark template connection for the given block index invalid,
-				// so it remains marked invalid until next config reload.
-				ds.markTemplateConnectionInvalid(hash)
+				// disable template connection,
+				// so the server remains disabled until next config reload.
+				ds.provider.DisableTemplateConnection(conn.ServerIndex())
 			}
 		}
 
@@ -255,11 +289,49 @@ func (ds *dedupedStorage) getPrimaryOrTemplateContent(hash zerodisk.Hash) (conte
 func (ds *dedupedStorage) setContent(hash zerodisk.Hash, content []byte) error {
 	conn, err := ds.getDataConnection(hash)
 	if err != nil {
+		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
+			log.Errorf("primary server network error for vdisk %s: %v", ds.vdiskID, err)
+			// broadcast the connection issue to 0-Orchestrator
+			cfg := conn.ConnectionConfig()
+			log.Broadcast(
+				status,
+				log.SubjectStorage,
+				log.ARDBServerTimeoutBody{
+					Address:  cfg.Address,
+					Database: cfg.Database,
+					Type:     log.ARDBPrimaryServer,
+					VdiskID:  ds.vdiskID,
+				},
+			)
+			// disable data connection,
+			// so the server remains disabled until next config reload.
+			ds.provider.DisableDataConnection(conn.ServerIndex())
+		}
 		return err
 	}
 	defer conn.Close()
 
 	_, err = conn.Do("SET", hash.Bytes(), content)
+	if err != nil {
+		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
+			log.Errorf("primary server network error for vdisk %s: %v", ds.vdiskID, err)
+			// broadcast the connection issue to 0-Orchestrator
+			cfg := conn.ConnectionConfig()
+			log.Broadcast(
+				status,
+				log.SubjectStorage,
+				log.ARDBServerTimeoutBody{
+					Address:  cfg.Address,
+					Database: cfg.Database,
+					Type:     log.ARDBPrimaryServer,
+					VdiskID:  ds.vdiskID,
+				},
+			)
+			// disable data connection,
+			// so the server remains disabled until next config reload.
+			ds.provider.DisableDataConnection(conn.ServerIndex())
+		}
+	}
 	return err
 }
 

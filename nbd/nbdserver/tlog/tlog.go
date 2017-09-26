@@ -916,7 +916,24 @@ func newTlogMetadata(vdiskID string, provider ardb.MetadataConnProvider) (*tlogM
 
 	conn, err := provider.MetadataConnection()
 	if err != nil {
-		// TODO: warn 0-Orchestrator and switch to slave?!
+		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
+			log.Errorf("primary server network error for vdisk %s: %v", vdiskID, err)
+			// broadcast the connection issue to 0-Orchestrator
+			cfg := conn.ConnectionConfig()
+			log.Broadcast(
+				status,
+				log.SubjectStorage,
+				log.ARDBServerTimeoutBody{
+					Address:  cfg.Address,
+					Database: cfg.Database,
+					Type:     log.ARDBPrimaryServer,
+					VdiskID:  vdiskID,
+				},
+			)
+			// disable metadata connection,
+			// so the server remains disabled until next config reload.
+			provider.DisableMetadataConnection(conn.ServerIndex())
+		}
 		return nil, err
 	}
 	defer conn.Close()
@@ -924,10 +941,29 @@ func newTlogMetadata(vdiskID string, provider ardb.MetadataConnProvider) (*tlogM
 	key := MetadataKey(vdiskID)
 	md, err := deserializeTlogMetadata(key, conn)
 	if err != nil {
+		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
+			log.Errorf("primary server network error for vdisk %s: %v", vdiskID, err)
+			// broadcast the connection issue to 0-Orchestrator
+			cfg := conn.ConnectionConfig()
+			log.Broadcast(
+				status,
+				log.SubjectStorage,
+				log.ARDBServerTimeoutBody{
+					Address:  cfg.Address,
+					Database: cfg.Database,
+					Type:     log.ARDBPrimaryServer,
+					VdiskID:  vdiskID,
+				},
+			)
+			// disable metadata connection,
+			// so the server remains disabled until next config reload.
+			provider.DisableMetadataConnection(conn.ServerIndex())
+		}
 		return nil, err
 	}
 
 	md.provider = provider
+	md.vdiskID = vdiskID
 	return md, nil
 }
 
@@ -947,9 +983,9 @@ func deserializeTlogMetadata(key string, metaConn redis.Conn) (*tlogMetadata, er
 type tlogMetadata struct {
 	lastFlushedSequence uint64
 
-	key      string
-	provider ardb.MetadataConnProvider
-	mux      sync.Mutex
+	vdiskID, key string
+	provider     ardb.MetadataConnProvider
+	mux          sync.Mutex
 }
 
 // SetLastFlushedSequence sets the given seq as the last flushed sequence,
@@ -977,12 +1013,52 @@ func (md *tlogMetadata) Flush() error {
 
 	conn, err := md.provider.MetadataConnection()
 	if err != nil {
-		// TODO: warn 0-Orchestrator and switch to slave?!
+		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
+			log.Errorf("primary server network error for vdisk %s: %v", md.vdiskID, err)
+			// broadcast the connection issue to 0-Orchestrator
+			cfg := conn.ConnectionConfig()
+			log.Broadcast(
+				status,
+				log.SubjectStorage,
+				log.ARDBServerTimeoutBody{
+					Address:  cfg.Address,
+					Database: cfg.Database,
+					Type:     log.ARDBPrimaryServer,
+					VdiskID:  md.vdiskID,
+				},
+			)
+			// disable metadata connection,
+			// so the server remains disabled until next config reload.
+			md.provider.DisableMetadataConnection(conn.ServerIndex())
+		}
 		return err
 	}
 	defer conn.Close()
 
-	return md.deserialize(conn)
+	err = md.deserialize(conn)
+	if err != nil {
+		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
+			log.Errorf("primary server network error for vdisk %s: %v", md.vdiskID, err)
+			// broadcast the connection issue to 0-Orchestrator
+			cfg := conn.ConnectionConfig()
+			log.Broadcast(
+				status,
+				log.SubjectStorage,
+				log.ARDBServerTimeoutBody{
+					Address:  cfg.Address,
+					Database: cfg.Database,
+					Type:     log.ARDBPrimaryServer,
+					VdiskID:  md.vdiskID,
+				},
+			)
+			// disable metadata connection,
+			// so the server remains disabled until next config reload.
+			md.provider.DisableMetadataConnection(conn.ServerIndex())
+		}
+		return err
+	}
+
+	return nil
 }
 
 func (md *tlogMetadata) deserialize(conn redis.Conn) error {

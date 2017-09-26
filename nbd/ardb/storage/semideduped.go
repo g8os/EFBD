@@ -143,12 +143,48 @@ func (sds *semiDedupedStorage) Close() error {
 func (sds *semiDedupedStorage) readBitMap() error {
 	conn, err := sds.provider.MetadataConnection()
 	if err != nil {
+		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
+			log.Errorf("primary server network error for vdisk %s: %v", sds.vdiskID, err)
+			// broadcast the connection issue to 0-Orchestrator
+			cfg := conn.ConnectionConfig()
+			log.Broadcast(
+				status,
+				log.SubjectStorage,
+				log.ARDBServerTimeoutBody{
+					Address:  cfg.Address,
+					Database: cfg.Database,
+					Type:     log.ARDBPrimaryServer,
+					VdiskID:  sds.vdiskID,
+				},
+			)
+			// disable metadata connection,
+			// so the server remains disabled until next config reload.
+			sds.provider.DisableMetadataConnection(conn.ServerIndex())
+		}
 		return err
 	}
 	defer conn.Close()
 
 	bytes, err := redis.Bytes(conn.Do("GET", semiDedupBitMapKey(sds.vdiskID)))
 	if err != nil {
+		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
+			log.Errorf("primary server network error for vdisk %s: %v", sds.vdiskID, err)
+			// broadcast the connection issue to 0-Orchestrator
+			cfg := conn.ConnectionConfig()
+			log.Broadcast(
+				status,
+				log.SubjectStorage,
+				log.ARDBServerTimeoutBody{
+					Address:  cfg.Address,
+					Database: cfg.Database,
+					Type:     log.ARDBPrimaryServer,
+					VdiskID:  sds.vdiskID,
+				},
+			)
+			// disable metadata connection,
+			// so the server remains disabled until next config reload.
+			sds.provider.DisableMetadataConnection(conn.ServerIndex())
+		}
 		return err
 	}
 
@@ -164,11 +200,49 @@ func (sds *semiDedupedStorage) writeBitMap() error {
 
 	conn, err := sds.provider.MetadataConnection()
 	if err != nil {
+		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
+			log.Errorf("primary server network error for vdisk %s: %v", sds.vdiskID, err)
+			// broadcast the connection issue to 0-Orchestrator
+			cfg := conn.ConnectionConfig()
+			log.Broadcast(
+				status,
+				log.SubjectStorage,
+				log.ARDBServerTimeoutBody{
+					Address:  cfg.Address,
+					Database: cfg.Database,
+					Type:     log.ARDBPrimaryServer,
+					VdiskID:  sds.vdiskID,
+				},
+			)
+			// disable metadata connection,
+			// so the server remains disabled until next config reload.
+			sds.provider.DisableMetadataConnection(conn.ServerIndex())
+		}
 		return err
 	}
 	defer conn.Close()
 
 	_, err = conn.Do("SET", semiDedupBitMapKey(sds.vdiskID), bytes)
+	if err != nil {
+		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
+			log.Errorf("primary server network error for vdisk %s: %v", sds.vdiskID, err)
+			// broadcast the connection issue to 0-Orchestrator
+			cfg := conn.ConnectionConfig()
+			log.Broadcast(
+				status,
+				log.SubjectStorage,
+				log.ARDBServerTimeoutBody{
+					Address:  cfg.Address,
+					Database: cfg.Database,
+					Type:     log.ARDBPrimaryServer,
+					VdiskID:  sds.vdiskID,
+				},
+			)
+			// disable metadata connection,
+			// so the server remains disabled until next config reload.
+			sds.provider.DisableMetadataConnection(conn.ServerIndex())
+		}
+	}
 	return err
 }
 
