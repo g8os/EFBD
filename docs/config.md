@@ -161,10 +161,13 @@ Example Config:
 
 ```yaml
 servers:  # at least one server is required
-  - address: 192.168.1.146:2000 # has to be a valid dial string
+  - address: 192.168.1.146:2000 # required, has to be a valid dial string
     db: 10 # optional, 0 by default
+    disabled: false # optional, false by default
+                    # if true, all other properties become optional
   - address: 192.123.123.1:2001
     db: 10
+  - disabled: true
 ```
 
 Used by the [NBD Server][nbdServerConfig] and [TLog Server][tlogServerConfig] (slave sync).
