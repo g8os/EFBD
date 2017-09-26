@@ -79,12 +79,12 @@ func TestMultipleServerBasicHotReload(t *testing.T) {
 
 func testMultipleServerBasicConf() testTwoServerConf {
 	return testTwoServerConf{
-		firstSendStartSeq:  0,
-		firstSendEndSeq:    99,
-		firstWaitEndSeq:    99,
-		secondSendStartSeq: 100,
-		secondSendEndSeq:   199,
-		secondWaitEndSeq:   199,
+		firstSendStartSeq:  1,
+		firstSendEndSeq:    100,
+		firstWaitEndSeq:    100,
+		secondSendStartSeq: 101,
+		secondSendEndSeq:   200,
+		secondWaitEndSeq:   200,
 	}
 }
 
@@ -116,19 +116,19 @@ func TestMultipleServerResendHotReload(t *testing.T) {
 
 func testMultipleServerResendUnflushedConf() testTwoServerConf {
 	return testTwoServerConf{
-		firstSendStartSeq:  0,
-		firstSendEndSeq:    90,
-		firstWaitEndSeq:    74,
-		secondSendStartSeq: 91,
-		secondSendEndSeq:   199,
-		secondWaitEndSeq:   199,
+		firstSendStartSeq:  1,
+		firstSendEndSeq:    91,
+		firstWaitEndSeq:    75,
+		secondSendStartSeq: 92,
+		secondSendEndSeq:   200,
+		secondWaitEndSeq:   200,
 	}
 }
 
 func testTwoServers(t *testing.T, ttConf testTwoServerConf) {
 	const (
 		vdiskID  = "myimg"
-		firstSeq = 0
+		firstSeq = 1
 		numLogs1 = 100
 	)
 	data := make([]byte, 4096)
@@ -167,7 +167,7 @@ func testTwoServers(t *testing.T, ttConf testTwoServerConf) {
 		tlogAddrs = tlogAddrs[0:1]
 	}
 
-	client, err := New(tlogAddrs, vdiskID, 0, false)
+	client, err := New(tlogAddrs, vdiskID)
 	require.Nil(t, err)
 
 	respChan := client.Recv()

@@ -31,9 +31,16 @@ const (
 )
 
 const (
-	vdiskCmdForceFlushBlocking = iota // blocking force flush
-	vdiskCmdForceFlushAtSeq           // non-blocking force flush with sequence param
-	vdiskCmdWaitSlaveSync             // wait for slave sync to be finished
+	// non-blocking force flush with sequence param
+	vdiskCmdForceFlushAtSeq = iota
+
+	// wait for slave syncer to finish syncing to
+	// slave storage cluster
+	vdiskCmdWaitSlaveSync
+
+	// ignore all sequences before
+	// the sequence provided in the command
+	vdiskCmdIgnoreSeqBefore
 )
 
 // command for vdisk flusher
@@ -87,11 +94,9 @@ func (vd *vdisk) ResponseChan() <-chan *BlockResponse {
 	return vd.respChan
 }
 
-// creates vdisk with given vdiskID, flusher, and first sequence.
-// firstSequence is the very first sequence that this vdisk will receive.
-// blocks with sequence < firstSequence are going to be ignored.
+// creates vdisk with given vdiskID
 func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, configSource config.Source,
-	firstSequence uint64, flusherConf *flusherConfig, cleanup vdiskCleanupFunc) (*vdisk, error) {
+	flusherConf *flusherConfig, cleanup vdiskCleanupFunc) (*vdisk, error) {
 
 	var aggComm *aggmq.AggComm
 
@@ -110,8 +115,6 @@ func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, config
 		id:           vdiskID,
 		respChan:     make(chan *BlockResponse, respChanSize),
 		configSource: configSource,
-
-		expectedSequence: firstSequence,
 
 		// flusher
 		orderedBlockChan:   make(chan *schema.TlogBlock, maxTlbInBuffer),
@@ -221,30 +224,6 @@ func (vd *vdisk) cleanup(cleanup vdiskCleanupFunc) {
 	}
 }
 
-// reset first sequence, what we need to do:
-// - make sure we only have single connections for this vdisk
-// - ignore all unordered blocks (blocking)
-// - flush all unflushed ordered blocks (blocking)
-// - reset it
-func (vd *vdisk) resetFirstSequence(newSeq uint64, conn *net.TCPConn) error {
-	log.Infof("vdisk %v reset first sequence to %v", vd.id, newSeq)
-	vd.expectedSequenceLock.Lock()
-	defer vd.expectedSequenceLock.Unlock()
-
-	if newSeq == vd.expectedSequence { // we already in same page, do nothing
-		return nil
-	}
-
-	// send flush command
-	vd.flusherCmdChan <- vdiskFlusherCmd{
-		cmdType: vdiskCmdForceFlushBlocking,
-	}
-	<-vd.flusherCmdRespChan
-
-	vd.expectedSequence = newSeq
-	return nil
-}
-
 // force flush when vdisk receive the given sequence
 func (vd *vdisk) forceFlushAtSeq(seq uint64) {
 	vd.flusherCmdChan <- vdiskFlusherCmd{
@@ -286,8 +265,56 @@ func (vd *vdisk) waitSlaveSync() error {
 func (vd *vdisk) doWaitSlaveSync(respCh chan error, lastSeqFlushed uint64) {
 	if !vd.withSlaveSyncer {
 		respCh <- nil
+		return
 	}
 	respCh <- vd.aggComm.SendCmd(aggmq.CmdWaitSlaveSync, lastSeqFlushed)
+}
+
+// connects the given connection to this vdisk
+func (vd *vdisk) connect(conn *net.TCPConn) (uint64, error) {
+	if err := vd.attachConn(conn); err != nil {
+		return 0, err
+	}
+
+	lastSeq, err := vd.loadLastFlushedSequence()
+	if err != nil {
+		vd.removeConn(conn)
+	}
+
+	return lastSeq, err
+}
+
+// load last flushed sequence from the stor
+func (vd *vdisk) loadLastFlushedSequence() (uint64, error) {
+	lastSeq, err := vd.storClient.LoadLastSequence()
+
+	vd.expectedSequenceLock.Lock()
+	defer vd.expectedSequenceLock.Unlock()
+
+	if err == stor.ErrNoFlushedBlock {
+		vd.expectedSequence = 1
+		return 0, nil
+	}
+
+	if err != nil {
+		return 0, err
+	}
+
+	expectedSequence := lastSeq + 1
+
+	// ask flusher to ignore all sequences before
+	// the last flushed sequence
+	cmd := vdiskFlusherCmd{
+		cmdType:  vdiskCmdIgnoreSeqBefore,
+		sequence: expectedSequence,
+		respCh:   make(chan error),
+	}
+	vd.flusherCmdChan <- cmd
+	<-cmd.respCh
+
+	vd.expectedSequence = expectedSequence
+
+	return lastSeq, nil
 }
 
 // this is the flusher routine that does the flush asynchronously
@@ -365,7 +392,19 @@ func (vd *vdisk) runFlusher() {
 				// flush right now if possible
 				needForceFlushSeq = false
 
-			case vdiskCmdForceFlushBlocking: // force flush right now, in blocking way
+			case vdiskCmdIgnoreSeqBefore:
+				// ignore sequence before the given sequence value
+				// find last index to remove
+				var idx int
+				var block *schema.TlogBlock
+				for idx, block = range tlogs {
+					if block.Sequence() >= flusherCmd.sequence {
+						break
+					}
+				}
+				tlogs = tlogs[idx:]
+				flusherCmd.respCh <- nil
+				continue
 
 			case vdiskCmdWaitSlaveSync: // wait for slave sync
 				vd.doWaitSlaveSync(flusherCmd.respCh, lastSeqFlushed)
@@ -375,10 +414,6 @@ func (vd *vdisk) runFlusher() {
 			}
 
 			if len(tlogs) == 0 {
-				if cmdType == vdiskCmdForceFlushBlocking {
-					// if it is blocking cmd, something else is waiting, notify him!
-					vd.flusherCmdRespChan <- struct{}{}
-				}
 				continue
 			}
 
@@ -394,6 +429,7 @@ func (vd *vdisk) runFlusher() {
 
 		status := tlog.BlockStatusFlushOK
 
+		// flush to 0-stor
 		rawAgg, err := vd.storClient.ProcessStore(blocks)
 		if err != nil {
 			log.Errorf("flush %v failed: %v", vd.id, err)
@@ -401,11 +437,7 @@ func (vd *vdisk) runFlusher() {
 			status = tlog.BlockStatusFlushFailed
 		}
 
-		if cmdType == vdiskCmdForceFlushBlocking {
-			// if it is blocking cmd, something else is waiting, notify him!
-			vd.flusherCmdRespChan <- struct{}{}
-		}
-
+		// get sequence numbers of the flushed blocks
 		seqs := make([]uint64, len(blocks))
 		for i := 0; i < len(blocks); i++ {
 			seqs[i] = blocks[i].Sequence()

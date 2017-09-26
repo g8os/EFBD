@@ -7,8 +7,6 @@ $Go.import("github.com/zero-os/0-Disk/tlog/schema");
 struct HandshakeRequest {
 	version @0 :UInt32;
 	vdiskID @1 :Text;
-	firstSequence @2: UInt64;
-	resetFirstSequence @3: Bool;
 }
 
 # Response handshake message sent from server to client,
@@ -16,6 +14,7 @@ struct HandshakeRequest {
 struct HandshakeResponse {
 	version @0 :UInt32;
 	status @1 :Int8;
+	lastFlushedSequence @2: UInt64;
 }
 
 # tlog block aggregation

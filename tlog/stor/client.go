@@ -1,6 +1,7 @@
 package stor
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
@@ -15,6 +16,10 @@ import (
 
 const (
 	capnpBufLen = 4096 * 4
+)
+
+var (
+	ErrNoFlushedBlock = errors.New("no flushed block")
 )
 
 // Config defines the 0-stor client config
@@ -47,6 +52,7 @@ type Client struct {
 	// first & last metadata key
 	firstMetaKey []byte
 	lastMetaKey  []byte
+	lastSequence uint64
 
 	// etcd key in which we store our last metadata
 	// we need to store it so we still know it after restart
@@ -58,7 +64,8 @@ type Client struct {
 	// refList is 0-stor reference list for this vdisk
 	refList []string
 
-	mux sync.Mutex
+	mux      sync.Mutex
+	storeNum int
 }
 
 // NewClient creates new client from the given config
@@ -98,11 +105,9 @@ func NewClient(conf Config) (*Client, error) {
 	}
 	cli.firstMetaKey = firstMetaKey
 
-	lastMetaKey, err := cli.getLastMetaKey()
-	if err != nil {
+	if _, err = cli.LoadLastSequence(); err != nil && err != ErrNoFlushedBlock {
 		return nil, err
 	}
-	cli.lastMetaKey = lastMetaKey
 
 	return cli, nil
 }
@@ -157,7 +162,20 @@ func (c *Client) ProcessStore(blocks []*schema.TlogBlock) ([]byte, error) {
 
 	c.lastMd = lastMd
 	c.lastMetaKey = key
-	return data, c.saveLastMetaKey()
+	c.lastSequence = blocks[len(blocks)-1].Sequence()
+
+	c.storeNum++
+	// we don't store last sequence on each iteration because
+	// we can easily fetch it using `Walk` method while it certainly increase
+	// processing time.
+	// We still store it because otherwise we need to walk the entire disk
+	// on startup.
+	if c.storeNum%100 == 0 {
+		if err := c.saveLastMetaKey(); err != nil {
+			return nil, err
+		}
+	}
+	return data, nil
 }
 
 // Store stores the val without doing any pre processing
@@ -224,6 +242,63 @@ func (c *Client) LastHash() []byte {
 	defer c.mux.Unlock()
 
 	return c.lastMetaKey
+}
+
+// LoadLastSequence from 0-stor
+func (c *Client) LoadLastSequence() (uint64, error) {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+
+	// we don't have flushed block yet
+	if c.firstMetaKey == nil {
+		return 0, ErrNoFlushedBlock
+	}
+
+	var wr *storclient.WalkResult
+
+	if len(c.lastMetaKey) == 0 { // never loaded before
+		lastMetaKey, err := c.getLastMetaKey()
+		if err != nil {
+			return 0, err
+		}
+		c.lastMetaKey = lastMetaKey
+		if c.lastMetaKey == nil {
+			c.lastMetaKey = c.firstMetaKey
+		}
+	}
+
+	// walk it until the end
+	for res := range c.storClient.Walk(c.lastMetaKey, 0, tlog.TimeNowTimestamp()) {
+		wr = res
+	}
+
+	// it should never happen
+	if wr == nil {
+		return 0, fmt.Errorf("failed to walk on vdisk %v", c.vdiskID)
+	}
+
+	if wr.Error != nil {
+		return 0, wr.Error
+	}
+
+	// decode aggregation
+	agg, err := c.decodeCapnp(wr.Data)
+	if err != nil {
+		return 0, err
+	}
+
+	blocks, err := agg.Blocks()
+	if err != nil {
+		return 0, err
+	}
+	if blocks.Len() == 0 {
+		return 0, fmt.Errorf("empty blocks for aggregation")
+	}
+
+	c.lastMetaKey = wr.Key
+	c.lastSequence = blocks.At(blocks.Len() - 1).Sequence()
+
+	return c.lastSequence, nil
 }
 
 // creates 0-stor client config from Config

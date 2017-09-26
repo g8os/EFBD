@@ -28,7 +28,7 @@ func main() {
 		dataLen       = 4096
 	)
 
-	client, err := client.New([]string{"127.0.0.1:11211"}, vdiskID, firstSequence, false)
+	client, err := client.New([]string{"127.0.0.1:11211"}, vdiskID)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func main() {
 	numLogsToSend := 25 * numFlush
 	logsToSend := map[uint64]struct{}{}
 	for i := 0; i < numLogsToSend; i++ {
-		logsToSend[uint64(i)] = struct{}{}
+		logsToSend[uint64(i)+1] = struct{}{}
 	}
 
 	var wg sync.WaitGroup
@@ -82,7 +82,7 @@ func main() {
 
 	// send the data
 	for i := 0; i < numLogsToSend; i++ {
-		seq := uint64(i)
+		seq := uint64(i) + 1
 		err := client.Send(schema.OpSet, seq, int64(seq), tlog.TimeNowTimestamp(), data)
 		if err != nil {
 			log.Fatalf("send failed at seq=%v, err= %v", seq, err)

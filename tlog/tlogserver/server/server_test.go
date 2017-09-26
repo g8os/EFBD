@@ -87,7 +87,6 @@ func newZeroStorConfig(t *testing.T, vdiskID, privKey string,
 func TestEndToEnd(t *testing.T) {
 	const (
 		expectedVdiskID = "1234567890"
-		firstSequence   = 0
 		numFlush        = 5
 		dataLen         = 4096 * 4
 	)
@@ -111,7 +110,7 @@ func TestEndToEnd(t *testing.T) {
 	t.Logf("listen addr=%v", s.ListenAddr())
 
 	// create tlog client
-	client, err := tlogclient.New([]string{s.ListenAddr()}, expectedVdiskID, firstSequence, false)
+	client, err := tlogclient.New([]string{s.ListenAddr()}, expectedVdiskID)
 	if !assert.Nil(t, err) {
 		return
 	}
@@ -135,7 +134,7 @@ func TestEndToEnd(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < numLogs; i++ {
-			x := uint64(i)
+			x := uint64(i) + 1
 			// check we can send it without error
 			err := client.Send(schema.OpSet, x, int64(x), int64(x), data)
 			assert.Nil(t, err)

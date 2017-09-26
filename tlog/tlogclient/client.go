@@ -77,18 +77,16 @@ type Client struct {
 // New creates a new tlog client for a vdisk with 'addrs' is the tlogserver addresses.
 // Client is going to use first address and then move to next addresses if the first address
 // is failed.
-// 'firstSequence' is the first sequence number this client is going to send.
-// Set 'resetFirstSeq' to true to force reset the vdisk first/expected sequence.
 // The client is not goroutine safe.
-func New(servers []string, vdiskID string, firstSequence uint64, resetFirstSeq bool) (*Client, error) {
-	client, err := newClient(servers, vdiskID, firstSequence, resetFirstSeq)
+func New(servers []string, vdiskID string) (*Client, error) {
+	client, err := newClient(servers, vdiskID)
 	if err != nil {
 		return nil, err
 	}
 	go client.run(client.ctx)
 	return client, nil
 }
-func newClient(servers []string, vdiskID string, firstSequence uint64, resetFirstSeq bool) (*Client, error) {
+func newClient(servers []string, vdiskID string) (*Client, error) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	client := &Client{
 		servers:           servers,
@@ -113,7 +111,7 @@ func newClient(servers []string, vdiskID string, firstSequence uint64, resetFirs
 		respCh: make(chan *Result, 3),
 	}
 
-	return client, client.connect(firstSequence, resetFirstSeq)
+	return client, client.connect()
 }
 
 func (c *Client) run(ctx context.Context) {
@@ -330,7 +328,7 @@ func (c *Client) reconnect(closedTime time.Time) error {
 		// try other server
 		c.shiftServer()
 
-		if err = c.connect(c.blockBuffer.LastFlushed()+1, false); err == nil {
+		if err = c.connect(); err == nil {
 			// if reconnect success, sent all unflushed blocks
 			// because we don't know what happens in servers.
 			// it might crashed
@@ -342,7 +340,7 @@ func (c *Client) reconnect(closedTime time.Time) error {
 }
 
 // connect to server
-func (c *Client) connect(firstSequence uint64, resetFirstSeq bool) (err error) {
+func (c *Client) connect() (err error) {
 	if c.conn != nil {
 		c.conn.CloseRead() // interrupt the receiver
 	}
@@ -360,7 +358,7 @@ func (c *Client) connect(firstSequence uint64, resetFirstSeq bool) (err error) {
 		return fmt.Errorf("client couldn't be created: %s", err.Error())
 	}
 
-	if err = c.handshake(firstSequence, resetFirstSeq); err != nil {
+	if err = c.handshake(); err != nil {
 		if errClose := c.conn.Close(); errClose != nil {
 			log.Debug("couldn't close open connection of invalid client:", errClose)
 		}
@@ -399,9 +397,9 @@ func (c *Client) resender() {
 	}
 }
 
-func (c *Client) handshake(firstSequence uint64, resetFirstSeq bool) error {
+func (c *Client) handshake() error {
 	// send handshake request
-	err := c.encodeHandshakeCapnp(firstSequence, resetFirstSeq)
+	err := c.encodeHandshakeCapnp()
 	if err != nil {
 		return err
 	}
@@ -420,6 +418,11 @@ func (c *Client) handshake(firstSequence uint64, resetFirstSeq bool) error {
 	err = tlog.HandshakeStatus(resp.Status()).Error()
 	if err != nil {
 		return err
+	}
+
+	serverLastFlushed := resp.LastFlushedSequence()
+	if serverLastFlushed != 0 {
+		c.blockBuffer.SetLastFlushed(serverLastFlushed)
 	}
 
 	// all checks out, ready to go!
@@ -537,6 +540,11 @@ func (c *Client) Send(op uint8, seq uint64, index int64, timestamp int64, data [
 	return nil
 }
 
+// LastFlushedSequence returns tlog last flushed sequence
+func (c *Client) LastFlushedSequence() uint64 {
+	return c.blockBuffer.LastFlushed()
+}
+
 // Close the open connection, making this client invalid.
 // It is user responsibility to call this function.
 func (c *Client) Close() error {
@@ -552,7 +560,7 @@ func (c *Client) Close() error {
 	return nil
 }
 
-// Disconncct disconnects client gracefully
+// Disconnect disconnects client gracefully
 // It is on progress func which can only be used in unit test
 // See https://github.com/zero-os/0-Disk/issues/426 for the progress
 func (c *Client) Disconnect() error {

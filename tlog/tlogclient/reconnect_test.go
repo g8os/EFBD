@@ -18,9 +18,8 @@ func TestReconnectFromSend(t *testing.T) {
 	defer cancelFunc()
 
 	const (
-		vdisk         = "12345"
-		firstSequence = 0
-		numLogs       = 50
+		vdisk   = "12345"
+		numLogs = 50
 	)
 
 	// create test server
@@ -31,7 +30,7 @@ func TestReconnectFromSend(t *testing.T) {
 	require.Nil(t, err)
 	go serv.Listen(ctx)
 
-	client, err := New([]string{serv.ListenAddr()}, vdisk, firstSequence, false)
+	client, err := New([]string{serv.ListenAddr()}, vdisk)
 	require.Nil(t, err)
 	defer client.Close()
 
@@ -46,12 +45,12 @@ func TestReconnectFromSend(t *testing.T) {
 			}
 
 			// send
-			err := client.Send(schema.OpSet, x, int64(x), int64(x), data)
+			err := client.Send(schema.OpSet, x+1, int64(x), int64(x), data)
 			require.Nil(t, err)
 		}
 	}()
 
-	waitForBlockReceivedResponse(t, client, 0, uint64(numLogs)-1)
+	waitForBlockReceivedResponse(t, client, 1, uint64(numLogs))
 }
 
 func TestReconnectFromForceFlush(t *testing.T) {
@@ -70,14 +69,14 @@ func TestReconnectFromForceFlush(t *testing.T) {
 	go s.Listen(ctx)
 
 	// Create client
-	client, err := New([]string{s.ListenAddr()}, vdisk, 0, false)
+	client, err := New([]string{s.ListenAddr()}, vdisk)
 	require.Nil(t, err)
 
 	// Simulate closed connection
 	client.conn.Close()
 
 	// Do forceFlush, it should reconnect here
-	err = client.ForceFlushAtSeq(uint64(0))
+	err = client.ForceFlushAtSeq(uint64(1))
 	require.Nil(t, err)
 
 	respCh := client.Recv()
