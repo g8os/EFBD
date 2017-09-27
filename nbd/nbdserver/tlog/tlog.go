@@ -59,8 +59,7 @@ func Storage(ctx context.Context, vdiskID, clusterID string, configSource config
 			// TODO call tlog player if last flushed sequence from tlog server is
 			// higher than us.
 			// see: https://github.com/zero-os/0-Disk/issues/230
-			cancel()
-			return nil, fmt.Errorf("error when starting vdisk `%v`: need to sync with tlog", vdiskID)
+			log.Infof("possile error when starting vdisk `%v`: might need to sync with tlog", vdiskID)
 		}
 	}
 
