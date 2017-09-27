@@ -135,7 +135,7 @@ func (c *Client) ProcessStore(blocks []*schema.TlogBlock) ([]byte, error) {
 		return nil, err
 	}
 
-	key := c.hasher.Hash(data)
+	key := c.hasher.Hash(append([]byte(c.vdiskID), data...))
 
 	// it is very first data, save first key to metadata server
 	if c.firstMetaKey == nil {
