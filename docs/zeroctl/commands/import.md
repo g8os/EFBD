@@ -8,6 +8,9 @@ where the backup is stored in a secure and efficient manner.
 > (!) Remember to use the same (snapshot) name,
 crypto (private) key and the compression type,
 as you used while exporting the backup in question.
+>
+> The crypto (private) key has a required fixed length of 32 bytes,
+and cannot be all zeroes.
 
 If an error occured during the import process,
 blocks might already have been written to the block storage.

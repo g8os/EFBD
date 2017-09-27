@@ -8,6 +8,9 @@ in a secure and efficient manner.
 > (!) Remember to keep note of the used (snapshot) name,
 crypto (private) key and the compression type,
 as you will need the same information when importing the exported backup.
+>
+> The crypto (private) key has a required fixed length of 32 bytes,
+and cannot be all zeroes.
 
 If an error occured during the export process,
 deduped blocks might already have been written to the FTP server.

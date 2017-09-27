@@ -158,26 +158,46 @@ func (key *CryptoKey) Type() string {
 }
 
 func (key *CryptoKey) validate() error {
-	if key == nil {
-		return errors.New("nil crypto key")
-	}
-
 	return validateCryptoKey(key[:])
 }
 
 func validateCryptoKey(key []byte) error {
-	if key != nil && len(key) == CryptoKeySize {
-		for _, b := range key {
-			if b != 0 {
-				return nil
-			}
+	// ensure the key isn't nil
+	if key == nil {
+		return ErrNilCryptoKey
+	}
+
+	// ensure a key is given,
+	// and if it's given that it has the correct size
+	if len(key) != CryptoKeySize {
+		return ErrInvalidCryptoKeySize
+	}
+
+	// ensure that a key isn't all zeroes,
+	// as that would be the default for a static array key
+	for _, b := range key {
+		if b != 0 {
+			return nil
 		}
 	}
 
-	return errors.New("invalid crypto key")
+	// the key was all zeroes
+	return ErrInvalidCryptoKeyAllZeroes
 }
 
 func newKeyedHasher(ct CompressionType, ck CryptoKey) (zerodisk.Hasher, error) {
 	key := append(ck[:], byte(ct))
 	return zerodisk.NewKeyedHasher(key)
 }
+
+var (
+	// ErrInvalidCryptoKeySize is returned in case a
+	// given encryption key is not equal to `CryptoKeySize`.
+	ErrInvalidCryptoKeySize = errors.New("invalid crypto key size")
+	// ErrInvalidCryptoKeyAllZeroes is returned in case a
+	// given encryption key is all zeroes.
+	ErrInvalidCryptoKeyAllZeroes = errors.New("invalid all-zeroes crypto key")
+	// ErrNilCryptoKey is returned in case a
+	// given encryption key is nil.
+	ErrNilCryptoKey = errors.New("nil crypto key")
+)
