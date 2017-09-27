@@ -158,15 +158,14 @@ func (key *CryptoKey) Type() string {
 }
 
 func (key *CryptoKey) validate() error {
-	return validateCryptoKey(key[:])
-}
-
-func validateCryptoKey(key []byte) error {
-	// ensure the key isn't nil
 	if key == nil {
 		return ErrNilCryptoKey
 	}
 
+	return validateCryptoKey(key[:])
+}
+
+func validateCryptoKey(key []byte) error {
 	// ensure a key is given,
 	// and if it's given that it has the correct size
 	if len(key) != CryptoKeySize {
