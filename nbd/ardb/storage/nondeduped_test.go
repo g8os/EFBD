@@ -276,7 +276,7 @@ func TestNonDedupedStorageTemplateServerDown(t *testing.T) {
 	}
 
 	// now mark template invalid, and that should make it return an expected error instead
-	redisProviderB.MarkTemplateConnectionInvalid(-1)
+	redisProviderB.DisableTemplateConnection(0)
 	content, err = storageB.GetBlock(someIndexPlusOne)
 	if len(content) != 0 {
 		t.Fatalf("content should be empty but was was: %v",

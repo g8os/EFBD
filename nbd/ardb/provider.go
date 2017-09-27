@@ -27,19 +27,24 @@ type Connection interface {
 	// ConnectionConfig returns the configuration used to
 	// configure this connection.
 	ConnectionConfig() config.StorageServerConfig
+
+	// ServerIndex returns the server index of the server this connection is established for.
+	// The index is defined implicitly by the order the server is configured within the cluster.
+	ServerIndex() int64
 }
 
 // newConnection returns a new available ARDB connection from a given pool,
 // using a given storage server config.
-func newConnection(pool *RedisPool, cfg config.StorageServerConfig) (*connection, error) {
+func newConnection(pool *RedisPool, serverIndex int64, cfg config.StorageServerConfig) (*connection, error) {
 	if cfg.Disabled {
 		return nil, errDisabledStorageServer
 	}
 
 	conn := pool.Get(cfg.Address, cfg.Database)
 	return &connection{
-		Conn: conn,
-		cfg:  cfg,
+		Conn:        conn,
+		cfg:         cfg,
+		serverIndex: serverIndex,
 	}, nil
 }
 
@@ -47,12 +52,18 @@ func newConnection(pool *RedisPool, cfg config.StorageServerConfig) (*connection
 // with its configuration it was created with.
 type connection struct {
 	redis.Conn
-	cfg config.StorageServerConfig
+	cfg         config.StorageServerConfig
+	serverIndex int64
 }
 
 // ConnectionConfig implements Connection.ConnectionConfig
 func (conn *connection) ConnectionConfig() config.StorageServerConfig {
 	return conn.cfg
+}
+
+// ServerIndex implements Connection.ServerIndex
+func (conn *connection) ServerIndex() int64 {
+	return conn.serverIndex
 }
 
 // ConnProvider defines the interface to get ARDB connections
@@ -70,13 +81,17 @@ type DataConnProvider interface {
 	// DataConnection gets an ardb (data) connection based on the given modulo index,
 	// which depends on the available servers in the cluster used by the provider.
 	DataConnection(index int64) (conn Connection, err error)
+	// DisableDataConnection disables an ardb (data) connection.
+	// In case the DataConnProvider supports hot-reloading
+	// this server might be re-enabled after an updated configuration.
+	DisableDataConnection(serverIndex int64)
 	// TemplateConnection gets an ardb (template data) connection based on the given modulo index,
 	// which depends on the available servers in the cluster used by the provider.
 	TemplateConnection(index int64) (conn Connection, err error)
-	// MarkTemplateConnectionInvalid marks the server for a given index invalid,
-	// which is to be used as a hint that a connection for that server no longer has to be returned,
-	// until the connection issue has been resolved.
-	MarkTemplateConnectionInvalid(index int64)
+	// DisableTemplateConnection disables an ardb (template data) connection.
+	// In case the DataConnProvider supports hot-reloading
+	// this server might be re-enabled after an updated configuration.
+	DisableTemplateConnection(serverIndex int64)
 }
 
 // MetadataConnProvider defines the interface to get an ARDB metadata connection.
@@ -84,6 +99,10 @@ type MetadataConnProvider interface {
 	// MetaConnection gets an ardb (metadata) connection
 	// the the metadata storage server of the cluster used by the provider.
 	MetadataConnection() (conn Connection, err error)
+	// DisableMetadataConnection disables an ardb (metadata) connection.
+	// In case the MetadataConnProvider supports hot-reloading
+	// this server might be re-enabled after an updated configuration.
+	DisableMetadataConnection(serverIndex int64)
 }
 
 // StaticProvider creates a Static Provider using the given NBD Config.
@@ -140,7 +159,7 @@ func (rp *staticRedisProvider) DataConnection(index int64) (conn Connection, err
 	bcIndex := index % rp.numberOfServers
 	connConfig := rp.dataConnectionConfigs[bcIndex]
 	if !connConfig.Disabled {
-		conn, err = newConnection(rp.redisPool, connConfig)
+		conn, err = newConnection(rp.redisPool, bcIndex, connConfig)
 		return
 	}
 
@@ -160,12 +179,22 @@ func (rp *staticRedisProvider) DataConnection(index int64) (conn Connection, err
 		}
 		connConfig = rp.dataConnectionConfigs[bcIndex]
 		if !connConfig.Disabled {
-			conn, err = newConnection(rp.redisPool, connConfig)
+			conn, err = newConnection(rp.redisPool, bcIndex, connConfig)
 			return
 		}
 
 		index++
 	}
+}
+
+// DisableDataConnection implements DataConnProvider.DisableDataConnection
+func (rp *staticRedisProvider) DisableDataConnection(serverIndex int64) {
+	if serverIndex < 0 || serverIndex >= rp.numberOfServers {
+		log.Errorf("can't disable data connection as index %d is out of bounds", serverIndex)
+		return
+	}
+
+	rp.dataConnectionConfigs[serverIndex].Disabled = true
 }
 
 // TemplateConnection implements DataConnProvider.TemplateConnection
@@ -187,32 +216,40 @@ func (rp *staticRedisProvider) TemplateConnection(index int64) (conn Connection,
 		return nil, ErrServerMarkedInvalid
 	}
 
-	conn, err = newConnection(rp.redisPool, connConfig)
+	conn, err = newConnection(rp.redisPool, bcIndex, connConfig)
 	return
 }
 
-// MarkTemplateConnectionInvalid implements DataConnProvider.MarkTemplateConnectionInvalid
-func (rp *staticRedisProvider) MarkTemplateConnectionInvalid(index int64) {
-	if rp.numberOfTemplateServers < 1 {
+// DisableTemplateConnection implements DataConnProvider.DisableTemplateConnection
+func (rp *staticRedisProvider) DisableTemplateConnection(serverIndex int64) {
+	if serverIndex < 0 || serverIndex >= rp.numberOfTemplateServers {
+		log.Errorf("can't disable template data connection as index %d is out of bounds", serverIndex)
 		return
 	}
 
-	// disable the template server for the given index,
-	// until the next config reload or until the end.
-	bcIndex := index % rp.numberOfTemplateServers
-	rp.templateDataConnectionConfigs[bcIndex].Address = ""
+	rp.templateDataConnectionConfigs[serverIndex].Disabled = true
 }
 
 // MetadataConnection implements MetadataConnProvider.MetaConnection
 func (rp *staticRedisProvider) MetadataConnection() (conn Connection, err error) {
-	for _, connConfig := range rp.dataConnectionConfigs {
-		conn, err = newConnection(rp.redisPool, connConfig)
+	for index, connConfig := range rp.dataConnectionConfigs {
+		conn, err = newConnection(rp.redisPool, int64(index), connConfig)
 		if err == nil {
 			return
 		}
 	}
 
 	return nil, errNoStorageServerAvailable
+}
+
+// DisableMetadataConnection implements MetadataConnProvider.DisableMetadataConnection
+func (rp *staticRedisProvider) DisableMetadataConnection(serverIndex int64) {
+	if serverIndex < 0 || serverIndex >= rp.numberOfServers {
+		log.Errorf("can't disable metadata connection as index %d is out of bounds", serverIndex)
+		return
+	}
+
+	rp.dataConnectionConfigs[serverIndex].Disabled = true
 }
 
 // Close implements ConnProvider.Close
@@ -245,16 +282,22 @@ type redisProvider struct {
 	done chan struct{}
 
 	// to protect connection configs
-	dataMux     sync.RWMutex
-	metaMux     sync.RWMutex
+	primaryMux  sync.RWMutex
 	templateMux sync.RWMutex
 }
 
 // DataConnection implements DataConnProvider.DataConnection
 func (rp *redisProvider) DataConnection(index int64) (Connection, error) {
-	rp.dataMux.RLock()
-	defer rp.dataMux.RUnlock()
+	rp.primaryMux.RLock()
+	defer rp.primaryMux.RUnlock()
 	return rp.static.DataConnection(index)
+}
+
+// DisableDataConnection implements DataConnProvider.DataConDisableDataConnectionnection
+func (rp *redisProvider) DisableDataConnection(index int64) {
+	rp.primaryMux.Lock()
+	defer rp.primaryMux.Unlock()
+	rp.static.DisableDataConnection(index)
 }
 
 // TemplateConnection implements DataConnProvider.TemplateConnection
@@ -264,18 +307,25 @@ func (rp *redisProvider) TemplateConnection(index int64) (Connection, error) {
 	return rp.static.TemplateConnection(index)
 }
 
-// MarkTemplateConnectionInvalid implements DataConnProvider.MarkTemplateConnectionInvalid
-func (rp *redisProvider) MarkTemplateConnectionInvalid(index int64) {
-	rp.templateMux.Lock()
-	defer rp.templateMux.Unlock()
-	rp.static.MarkTemplateConnectionInvalid(index)
+// DisableTemplateConnection implements DataConnProvider.DisableTemplateConnection
+func (rp *redisProvider) DisableTemplateConnection(index int64) {
+	rp.primaryMux.Lock()
+	defer rp.primaryMux.Unlock()
+	rp.static.DisableTemplateConnection(index)
 }
 
 // MetadataConnection implements MetadataConnProvider.MetaConnection
 func (rp *redisProvider) MetadataConnection() (Connection, error) {
-	rp.metaMux.RLock()
-	defer rp.metaMux.RUnlock()
+	rp.primaryMux.RLock()
+	defer rp.primaryMux.RUnlock()
 	return rp.static.MetadataConnection()
+}
+
+// DisableMetadataConnection implements MetadataConnProvider.DisableMetadataConnection
+func (rp *redisProvider) DisableMetadataConnection(index int64) {
+	rp.primaryMux.Lock()
+	defer rp.primaryMux.Unlock()
+	rp.static.DisableMetadataConnection(index)
 }
 
 // spawns listen goroutine which gives the initial config (if successfull,
@@ -303,12 +353,10 @@ func (rp *redisProvider) listen(ctx context.Context, vdiskID string, source conf
 		for {
 			select {
 			case cfg := <-ch:
-				rp.dataMux.Lock()
-				rp.metaMux.Lock()
+				rp.primaryMux.Lock()
 				rp.templateMux.Lock()
 				rp.static.setConfig(&cfg)
-				rp.dataMux.Unlock()
-				rp.metaMux.Unlock()
+				rp.primaryMux.Unlock()
 				rp.templateMux.Unlock()
 
 			case <-rp.done:

@@ -58,6 +58,24 @@ func (ss *nonDedupedStorage) SetBlock(blockIndex int64, content []byte) (err err
 	// get a connection to a data storage server, based on the modulo blockIndex
 	conn, err := ss.provider.DataConnection(blockIndex)
 	if err != nil {
+		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
+			log.Errorf("primary server network error for vdisk %s: %v", ss.vdiskID, err)
+			// broadcast the connection issue to 0-Orchestrator
+			cfg := conn.ConnectionConfig()
+			log.Broadcast(
+				status,
+				log.SubjectStorage,
+				log.ARDBServerTimeoutBody{
+					Address:  cfg.Address,
+					Database: cfg.Database,
+					Type:     log.ARDBPrimaryServer,
+					VdiskID:  ss.vdiskID,
+				},
+			)
+			// disable data connection,
+			// so the server remains disabled until next config reload.
+			ss.provider.DisableDataConnection(conn.ServerIndex())
+		}
 		return
 	}
 	defer conn.Close()
@@ -66,11 +84,32 @@ func (ss *nonDedupedStorage) SetBlock(blockIndex int64, content []byte) (err err
 	// and delete existing ones if they already existed
 	if ss.isZeroContent(content) {
 		_, err = conn.Do("HDEL", ss.storageKey, blockIndex)
-		return
+	} else {
+		// content is not zero, so let's (over)write it
+		_, err = conn.Do("HSET", ss.storageKey, blockIndex, content)
 	}
 
-	// content is not zero, so let's (over)write it
-	_, err = conn.Do("HSET", ss.storageKey, blockIndex, content)
+	if err != nil {
+		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
+			log.Errorf("primary server network error for vdisk %s: %v", ss.vdiskID, err)
+			// broadcast the connection issue to 0-Orchestrator
+			cfg := conn.ConnectionConfig()
+			log.Broadcast(
+				status,
+				log.SubjectStorage,
+				log.ARDBServerTimeoutBody{
+					Address:  cfg.Address,
+					Database: cfg.Database,
+					Type:     log.ARDBPrimaryServer,
+					VdiskID:  ss.vdiskID,
+				},
+			)
+			// disable data connection,
+			// so the server remains disabled until next config reload.
+			ss.provider.DisableDataConnection(conn.ServerIndex())
+		}
+	}
+
 	return
 }
 
@@ -108,6 +147,24 @@ func (ss *nonDedupedStorage) getPrimaryContent(blockIndex int64) (content []byte
 	// get a connection to a data storage server, based on the modulo blockIndex
 	conn, err := ss.provider.DataConnection(blockIndex)
 	if err != nil {
+		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
+			log.Errorf("primary server network error for vdisk %s: %v", ss.vdiskID, err)
+			// broadcast the connection issue to 0-Orchestrator
+			cfg := conn.ConnectionConfig()
+			log.Broadcast(
+				status,
+				log.SubjectStorage,
+				log.ARDBServerTimeoutBody{
+					Address:  cfg.Address,
+					Database: cfg.Database,
+					Type:     log.ARDBPrimaryServer,
+					VdiskID:  ss.vdiskID,
+				},
+			)
+			// disable data connection,
+			// so the server remains disabled until next config reload.
+			ss.provider.DisableDataConnection(conn.ServerIndex())
+		}
 		return
 	}
 	defer conn.Close()
@@ -115,6 +172,26 @@ func (ss *nonDedupedStorage) getPrimaryContent(blockIndex int64) (content []byte
 	// get block from primary data storage server, if it exists at all,
 	// a nil block is returned in case it didn't exist
 	content, err = ardb.RedisBytes(conn.Do("HGET", ss.storageKey, blockIndex))
+	if err != nil {
+		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
+			log.Errorf("primary server network error for vdisk %s: %v", ss.vdiskID, err)
+			// broadcast the connection issue to 0-Orchestrator
+			cfg := conn.ConnectionConfig()
+			log.Broadcast(
+				status,
+				log.SubjectStorage,
+				log.ARDBServerTimeoutBody{
+					Address:  cfg.Address,
+					Database: cfg.Database,
+					Type:     log.ARDBPrimaryServer,
+					VdiskID:  ss.vdiskID,
+				},
+			)
+			// disable data connection,
+			// so the server remains disabled until next config reload.
+			ss.provider.DisableDataConnection(conn.ServerIndex())
+		}
+	}
 	return
 }
 
@@ -130,7 +207,7 @@ func (ss *nonDedupedStorage) getPrimaryOrTemplateContent(blockIndex int64) (cont
 		conn, err := ss.provider.TemplateConnection(blockIndex)
 		if err != nil {
 			if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
-				log.Errorf("template server error for vdisk %s: %v", ss.vdiskID, err)
+				log.Errorf("template server network error for vdisk %s: %v", ss.vdiskID, err)
 				// broadcast the connection issue to 0-Orchestrator
 				cfg := conn.ConnectionConfig()
 				log.Broadcast(
@@ -143,9 +220,9 @@ func (ss *nonDedupedStorage) getPrimaryOrTemplateContent(blockIndex int64) (cont
 						VdiskID:  ss.vdiskID,
 					},
 				)
-				// mark template connection for the given block index invalid,
-				// so it remains marked invalid until next config reload.
-				ss.provider.MarkTemplateConnectionInvalid(blockIndex)
+				// disable template connection,
+				// so the server remains disabled until next config reload.
+				ss.provider.DisableTemplateConnection(conn.ServerIndex())
 			} else if err == ardb.ErrTemplateClusterNotSpecified {
 				err = nil
 			}
@@ -163,7 +240,7 @@ func (ss *nonDedupedStorage) getPrimaryOrTemplateContent(blockIndex int64) (cont
 					"content for block %d (vdisk %s) not available in primary-, nor in template storage: %s",
 					blockIndex, ss.templateVdiskID, err.Error())
 			} else if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
-				log.Errorf("template server error for vdisk %s: %v", ss.vdiskID, err)
+				log.Errorf("template server network error for vdisk %s: %v", ss.vdiskID, err)
 				// broadcast the connection issue to 0-Orchestrator
 				cfg := conn.ConnectionConfig()
 				log.Broadcast(
@@ -176,9 +253,9 @@ func (ss *nonDedupedStorage) getPrimaryOrTemplateContent(blockIndex int64) (cont
 						VdiskID:  ss.vdiskID,
 					},
 				)
-				// mark template connection for the given block index invalid,
-				// so it remains marked invalid until next config reload.
-				ss.provider.MarkTemplateConnectionInvalid(blockIndex)
+				// disable template connection,
+				// so the server remains disabled until next config reload.
+				ss.provider.DisableTemplateConnection(conn.ServerIndex())
 			}
 		}
 
