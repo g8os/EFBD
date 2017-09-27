@@ -2,6 +2,7 @@ package lba
 
 import (
 	"github.com/garyburd/redigo/redis"
+	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 )
 
@@ -25,9 +26,10 @@ type sectorStorage interface {
 
 // newARDBSectorStorage creates a new sector storage which
 // writes/reads to/from an ARDB server.
-func newARDBSectorStorage(key string, provider ardb.DataConnProvider) *ardbSectorStorage {
+func newARDBSectorStorage(vdiskID, key string, provider ardb.DataConnProvider) *ardbSectorStorage {
 	return &ardbSectorStorage{
 		provider: provider,
+		vdiskID:  vdiskID,
 		key:      key,
 	}
 }
@@ -35,20 +37,60 @@ func newARDBSectorStorage(key string, provider ardb.DataConnProvider) *ardbSecto
 // ardbSectorStorage is the sector storage implementation,
 // used in production, and which writes/reads to/from an ARDB server.
 type ardbSectorStorage struct {
-	provider ardb.DataConnProvider
-	key      string
+	provider     ardb.DataConnProvider
+	vdiskID, key string
 }
 
 // GetSector implements sectorStorage.GetSector
 func (s *ardbSectorStorage) GetSector(index int64) (*sector, error) {
 	conn, err := s.provider.DataConnection(index)
 	if err != nil {
+		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
+			log.Errorf("primary server network error for vdisk %s: %v", s.vdiskID, err)
+			// disable data connection,
+			// so the server remains disabled until next config reload.
+			if s.provider.DisableDataConnection(conn.ServerIndex()) {
+				// only if the data connection wasn't already disabled,
+				// we'll broadcast the failure
+				cfg := conn.ConnectionConfig()
+				log.Broadcast(
+					status,
+					log.SubjectStorage,
+					log.ARDBServerTimeoutBody{
+						Address:  cfg.Address,
+						Database: cfg.Database,
+						Type:     log.ARDBPrimaryServer,
+						VdiskID:  s.vdiskID,
+					},
+				)
+			}
+		}
 		return nil, err
 	}
 	defer conn.Close()
 
 	reply, err := conn.Do("HGET", s.key, index)
 	if err != nil {
+		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
+			log.Errorf("primary server network error for vdisk %s: %v", s.vdiskID, err)
+			// disable data connection,
+			// so the server remains disabled until next config reload.
+			if s.provider.DisableDataConnection(conn.ServerIndex()) {
+				// only if the data connection wasn't already disabled,
+				// we'll broadcast the failure
+				cfg := conn.ConnectionConfig()
+				log.Broadcast(
+					status,
+					log.SubjectStorage,
+					log.ARDBServerTimeoutBody{
+						Address:  cfg.Address,
+						Database: cfg.Database,
+						Type:     log.ARDBPrimaryServer,
+						VdiskID:  s.vdiskID,
+					},
+				)
+			}
+		}
 		return nil, err
 	}
 
@@ -73,6 +115,26 @@ func (s *ardbSectorStorage) SetSector(index int64, sector *sector) error {
 	// see: https://github.com/zero-os/0-Disk/issues/483
 	conn, err := s.provider.DataConnection(index)
 	if err != nil {
+		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
+			log.Errorf("primary server network error for vdisk %s: %v", s.vdiskID, err)
+			// disable data connection,
+			// so the server remains disabled until next config reload.
+			if s.provider.DisableDataConnection(conn.ServerIndex()) {
+				// only if the data connection wasn't already disabled,
+				// we'll broadcast the failure
+				cfg := conn.ConnectionConfig()
+				log.Broadcast(
+					status,
+					log.SubjectStorage,
+					log.ARDBServerTimeoutBody{
+						Address:  cfg.Address,
+						Database: cfg.Database,
+						Type:     log.ARDBPrimaryServer,
+						VdiskID:  s.vdiskID,
+					},
+				)
+			}
+		}
 		return err
 	}
 	defer conn.Close()
@@ -80,10 +142,34 @@ func (s *ardbSectorStorage) SetSector(index int64, sector *sector) error {
 	data := sector.Bytes()
 	if data == nil {
 		_, err = conn.Do("HDEL", s.key, index)
+	} else {
+		_, err = conn.Do("HSET", s.key, index, data)
+	}
+	if err != nil {
+		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
+			log.Errorf("primary server network error for vdisk %s: %v", s.vdiskID, err)
+			// disable data connection,
+			// so the server remains disabled until next config reload.
+			if s.provider.DisableDataConnection(conn.ServerIndex()) {
+				// only if the data connection wasn't already disabled,
+				// we'll broadcast the failure
+				cfg := conn.ConnectionConfig()
+				log.Broadcast(
+					status,
+					log.SubjectStorage,
+					log.ARDBServerTimeoutBody{
+						Address:  cfg.Address,
+						Database: cfg.Database,
+						Type:     log.ARDBPrimaryServer,
+						VdiskID:  s.vdiskID,
+					},
+				)
+			}
+		}
 		return err
 	}
-	_, err = conn.Do("HSET", s.key, index, data)
-	return err
+
+	return nil
 }
 
 // Flush implements sectorStorage.Flush

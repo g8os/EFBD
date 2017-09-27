@@ -145,21 +145,23 @@ func (sds *semiDedupedStorage) readBitMap() error {
 	if err != nil {
 		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
 			log.Errorf("primary server network error for vdisk %s: %v", sds.vdiskID, err)
-			// broadcast the connection issue to 0-Orchestrator
-			cfg := conn.ConnectionConfig()
-			log.Broadcast(
-				status,
-				log.SubjectStorage,
-				log.ARDBServerTimeoutBody{
-					Address:  cfg.Address,
-					Database: cfg.Database,
-					Type:     log.ARDBPrimaryServer,
-					VdiskID:  sds.vdiskID,
-				},
-			)
-			// disable metadata connection,
+			// disable data connection,
 			// so the server remains disabled until next config reload.
-			sds.provider.DisableMetadataConnection(conn.ServerIndex())
+			if sds.provider.DisableMetadataConnection(conn.ServerIndex()) {
+				// only if the data connection wasn't already disabled,
+				// we'll broadcast the failure
+				cfg := conn.ConnectionConfig()
+				log.Broadcast(
+					status,
+					log.SubjectStorage,
+					log.ARDBServerTimeoutBody{
+						Address:  cfg.Address,
+						Database: cfg.Database,
+						Type:     log.ARDBPrimaryServer,
+						VdiskID:  sds.vdiskID,
+					},
+				)
+			}
 		}
 		return err
 	}
@@ -169,21 +171,23 @@ func (sds *semiDedupedStorage) readBitMap() error {
 	if err != nil {
 		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
 			log.Errorf("primary server network error for vdisk %s: %v", sds.vdiskID, err)
-			// broadcast the connection issue to 0-Orchestrator
-			cfg := conn.ConnectionConfig()
-			log.Broadcast(
-				status,
-				log.SubjectStorage,
-				log.ARDBServerTimeoutBody{
-					Address:  cfg.Address,
-					Database: cfg.Database,
-					Type:     log.ARDBPrimaryServer,
-					VdiskID:  sds.vdiskID,
-				},
-			)
-			// disable metadata connection,
+			// disable data connection,
 			// so the server remains disabled until next config reload.
-			sds.provider.DisableMetadataConnection(conn.ServerIndex())
+			if sds.provider.DisableMetadataConnection(conn.ServerIndex()) {
+				// only if the data connection wasn't already disabled,
+				// we'll broadcast the failure
+				cfg := conn.ConnectionConfig()
+				log.Broadcast(
+					status,
+					log.SubjectStorage,
+					log.ARDBServerTimeoutBody{
+						Address:  cfg.Address,
+						Database: cfg.Database,
+						Type:     log.ARDBPrimaryServer,
+						VdiskID:  sds.vdiskID,
+					},
+				)
+			}
 		}
 		return err
 	}
@@ -202,21 +206,23 @@ func (sds *semiDedupedStorage) writeBitMap() error {
 	if err != nil {
 		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
 			log.Errorf("primary server network error for vdisk %s: %v", sds.vdiskID, err)
-			// broadcast the connection issue to 0-Orchestrator
-			cfg := conn.ConnectionConfig()
-			log.Broadcast(
-				status,
-				log.SubjectStorage,
-				log.ARDBServerTimeoutBody{
-					Address:  cfg.Address,
-					Database: cfg.Database,
-					Type:     log.ARDBPrimaryServer,
-					VdiskID:  sds.vdiskID,
-				},
-			)
-			// disable metadata connection,
+			// disable data connection,
 			// so the server remains disabled until next config reload.
-			sds.provider.DisableMetadataConnection(conn.ServerIndex())
+			if sds.provider.DisableMetadataConnection(conn.ServerIndex()) {
+				// only if the data connection wasn't already disabled,
+				// we'll broadcast the failure
+				cfg := conn.ConnectionConfig()
+				log.Broadcast(
+					status,
+					log.SubjectStorage,
+					log.ARDBServerTimeoutBody{
+						Address:  cfg.Address,
+						Database: cfg.Database,
+						Type:     log.ARDBPrimaryServer,
+						VdiskID:  sds.vdiskID,
+					},
+				)
+			}
 		}
 		return err
 	}
@@ -226,21 +232,23 @@ func (sds *semiDedupedStorage) writeBitMap() error {
 	if err != nil {
 		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
 			log.Errorf("primary server network error for vdisk %s: %v", sds.vdiskID, err)
-			// broadcast the connection issue to 0-Orchestrator
-			cfg := conn.ConnectionConfig()
-			log.Broadcast(
-				status,
-				log.SubjectStorage,
-				log.ARDBServerTimeoutBody{
-					Address:  cfg.Address,
-					Database: cfg.Database,
-					Type:     log.ARDBPrimaryServer,
-					VdiskID:  sds.vdiskID,
-				},
-			)
-			// disable metadata connection,
+			// disable data connection,
 			// so the server remains disabled until next config reload.
-			sds.provider.DisableMetadataConnection(conn.ServerIndex())
+			if sds.provider.DisableMetadataConnection(conn.ServerIndex()) {
+				// only if the data connection wasn't already disabled,
+				// we'll broadcast the failure
+				cfg := conn.ConnectionConfig()
+				log.Broadcast(
+					status,
+					log.SubjectStorage,
+					log.ARDBServerTimeoutBody{
+						Address:  cfg.Address,
+						Database: cfg.Database,
+						Type:     log.ARDBPrimaryServer,
+						VdiskID:  sds.vdiskID,
+					},
+				)
+			}
 		}
 	}
 	return err

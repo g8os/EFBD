@@ -138,11 +138,14 @@ func (rp *InMemoryRedisProvider) DataConnection(index int64) (ardb.Connection, e
 }
 
 // DisableDataConnection implements ConnProvider.DisableDataConnection
-func (rp *InMemoryRedisProvider) DisableDataConnection(serverIndex int64) {
-	if rp.primaryPool != nil {
-		rp.primaryPool.Close()
+func (rp *InMemoryRedisProvider) DisableDataConnection(serverIndex int64) bool {
+	if rp.primaryPool == nil {
+		return false
 	}
+
+	rp.primaryPool.Close()
 	rp.primaryPool = nil
+	return true
 }
 
 // MetadataConnection implements ConnProvider.MetadataConnection
@@ -155,11 +158,14 @@ func (rp *InMemoryRedisProvider) MetadataConnection() (ardb.Connection, error) {
 }
 
 // DisableMetadataConnection implements ConnProvider.DisableMetadataConnection
-func (rp *InMemoryRedisProvider) DisableMetadataConnection(serverIndex int64) {
-	if rp.primaryPool != nil {
-		rp.primaryPool.Close()
+func (rp *InMemoryRedisProvider) DisableMetadataConnection(serverIndex int64) bool {
+	if rp.primaryPool == nil {
+		return false
 	}
+
+	rp.primaryPool.Close()
 	rp.primaryPool = nil
+	return true
 }
 
 // TemplateConnection implements ConnProvider.TemplateConnection
@@ -175,11 +181,14 @@ func (rp *InMemoryRedisProvider) TemplateConnection(index int64) (ardb.Connectio
 }
 
 // DisableTemplateConnection implements ConnProvider.DisableTemplateConnection
-func (rp *InMemoryRedisProvider) DisableTemplateConnection(serverIndex int64) {
-	if rp.templatePool != nil {
-		rp.templatePool.Close()
+func (rp *InMemoryRedisProvider) DisableTemplateConnection(serverIndex int64) bool {
+	if rp.templatePool == nil {
+		return false
 	}
+
+	rp.templatePool.Close()
 	rp.templatePool = nil
+	return true
 }
 
 // PrimaryAddress returns the address of the primary in-memory ardb server.
@@ -302,15 +311,18 @@ func (rp *InMemoryRedisProviderMultiServers) DataConnection(index int64) (ardb.C
 }
 
 // DisableDataConnection implements ConnProvider.DisableDataConnection
-func (rp *InMemoryRedisProviderMultiServers) DisableDataConnection(serverIndex int64) {
+func (rp *InMemoryRedisProviderMultiServers) DisableDataConnection(serverIndex int64) bool {
 	if serverIndex < 0 || serverIndex >= int64(len(rp.memRedisSlice)) {
 		panic(fmt.Errorf("can't disable data connection as index %d is out of bounds", serverIndex))
 	}
 
-	if rp.memRedisSlice[serverIndex] != nil {
-		rp.memRedisSlice[serverIndex].Close()
-		rp.memRedisSlice[serverIndex] = nil
+	if rp.memRedisSlice[serverIndex] == nil {
+		return false
 	}
+
+	rp.memRedisSlice[serverIndex].Close()
+	rp.memRedisSlice[serverIndex] = nil
+	return true
 }
 
 // MetadataConnection implements ConnProvider.MetadataConnection
@@ -329,15 +341,18 @@ func (rp *InMemoryRedisProviderMultiServers) MetadataConnection() (ardb.Connecti
 }
 
 // DisableMetadataConnection implements ConnProvider.DisableMetadataConnection
-func (rp *InMemoryRedisProviderMultiServers) DisableMetadataConnection(serverIndex int64) {
+func (rp *InMemoryRedisProviderMultiServers) DisableMetadataConnection(serverIndex int64) bool {
 	if serverIndex < 0 || serverIndex >= int64(len(rp.memRedisSlice)) {
 		panic(fmt.Errorf("can't disable metadata connection as index %d is out of bounds", serverIndex))
 	}
 
-	if rp.memRedisSlice[serverIndex] != nil {
-		rp.memRedisSlice[serverIndex].Close()
-		rp.memRedisSlice[serverIndex] = nil
+	if rp.memRedisSlice[serverIndex] == nil {
+		return false
 	}
+
+	rp.memRedisSlice[serverIndex].Close()
+	rp.memRedisSlice[serverIndex] = nil
+	return true
 }
 
 // TemplateConnection implements ConnProvider.TemplateConnection
@@ -362,15 +377,18 @@ func (rp *InMemoryRedisProviderMultiServers) TemplateConnection(index int64) (ar
 }
 
 // DisableTemplateConnection implements ConnProvider.DisableTemplateConnection
-func (rp *InMemoryRedisProviderMultiServers) DisableTemplateConnection(serverIndex int64) {
+func (rp *InMemoryRedisProviderMultiServers) DisableTemplateConnection(serverIndex int64) bool {
 	if serverIndex < 0 || serverIndex >= int64(len(rp.templateMemRedisSlice)) {
 		panic(fmt.Errorf("can't disable template connection as index %d is out of bounds", serverIndex))
 	}
 
-	if rp.templateMemRedisSlice[serverIndex] != nil {
-		rp.templateMemRedisSlice[serverIndex].Close()
-		rp.templateMemRedisSlice[serverIndex] = nil
+	if rp.templateMemRedisSlice[serverIndex] == nil {
+		return false
 	}
+
+	rp.templateMemRedisSlice[serverIndex].Close()
+	rp.templateMemRedisSlice[serverIndex] = nil
+	return true
 }
 
 // ClusterConfig returns the cluster config which

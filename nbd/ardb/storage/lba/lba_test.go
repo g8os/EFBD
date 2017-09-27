@@ -37,7 +37,7 @@ func TestLBAWithEmptyARDBStorage(t *testing.T) {
 	defer provider.Close()
 
 	lba := newLBAWithStorageFactory(bucketCount, bucketLimit, func() sectorStorage {
-		return newARDBSectorStorage("foo", provider)
+		return newARDBSectorStorage("foo", "foo", provider)
 	})
 	if lba == nil {
 		t.Fatal("lba is nil")
