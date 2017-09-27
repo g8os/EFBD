@@ -64,15 +64,23 @@ func Storage(ctx context.Context, vdiskID, clusterID string, configSource config
 	}
 
 	tlogStorage := &tlogStorage{
-		vdiskID:        vdiskID,
-		tlog:           client,
-		storage:        storage,
-		metadata:       metadata,
-		cache:          newInMemorySequenceCache(),
-		blockSize:      blockSize,
-		sequence:       client.LastFlushedSequence() + 1,
-		transactionCh:  make(chan *transaction, transactionChCapacity),
-		toFlushCh:      make(chan []uint64, toFlushChCapacity),
+		vdiskID:       vdiskID,
+		tlog:          client,
+		storage:       storage,
+		metadata:      metadata,
+		cache:         newInMemorySequenceCache(),
+		blockSize:     blockSize,
+		sequence:      client.LastFlushedSequence() + 1,
+		transactionCh: make(chan *transaction, transactionChCapacity),
+		toFlushCh:     make(chan []uint64, toFlushChCapacity),
+
+		// there is no strong reason to choose 5 as the channel size.
+		// i think we normally only need 1.
+		// I give 5 just in case we need more than 1, because it is async
+		// after all, a bit hard to predict.
+		// On the other hand, 5 as channel size doesn't really matter
+		// in term of memory usage
+		flushErrCh:     make(chan error, 5),
 		cacheEmptyCond: sync.NewCond(&sync.Mutex{}),
 		done:           make(chan struct{}, 1),
 	}
@@ -107,6 +115,7 @@ type tlogStorage struct {
 	sequenceMux   sync.Mutex
 	transactionCh chan *transaction
 	toFlushCh     chan []uint64 // channel of sequences to be flushed
+	flushErrCh    chan error    // channel of all flush related errors
 
 	// mutex for the ardb storage
 	storageMux sync.Mutex
@@ -243,6 +252,8 @@ func (tls *tlogStorage) Flush() error {
 	var forceFlushNum int
 	for !finished {
 		select {
+		case err := <-tls.flushErrCh:
+			return err
 		case <-time.After(FlushWaitRetry): // retry it
 			tls.tlog.ForceFlushAtSeq(latestSeq)
 
@@ -337,9 +348,10 @@ func (tls *tlogStorage) spawnBackgroundGoroutine(ctx context.Context) error {
 			select {
 			case res := <-recvCh:
 				if res.Err != nil {
-					panic(fmt.Errorf(
+					tls.flushErrCh <- fmt.Errorf(
 						"tlog server resulted in error for vdisk %s: %s",
-						tls.vdiskID, res.Err))
+						tls.vdiskID, res.Err)
+					continue
 				}
 				if res.Resp == nil {
 					log.Info(
@@ -365,9 +377,9 @@ func (tls *tlogStorage) spawnBackgroundGoroutine(ctx context.Context) error {
 				case tlog.BlockStatusDisconnected:
 					log.Info("tlog connection disconnected")
 				default:
-					panic(fmt.Errorf(
-						"tlog server had fatal failure for vdisk %s: %s",
-						tls.vdiskID, res.Resp.Status))
+					log.Errorf(
+						"got unknown response type for vdisk %s: %s",
+						tls.vdiskID, res.Resp.Status)
 				}
 
 			case <-tls.done:
@@ -396,15 +408,12 @@ func (tls *tlogStorage) transactionSender(ctx context.Context) {
 				transaction.Content,
 			)
 			if err != nil {
-				if err == tlogclient.ErrClientClosed {
-					return
-				}
-				panic(fmt.Errorf(
+				tls.flushErrCh <- fmt.Errorf(
 					"tlogStorage couldn't send block %d (seq: %d): %s",
 					transaction.Index,
 					transaction.Sequence,
 					err,
-				))
+				)
 			}
 
 		case <-ctx.Done():
@@ -423,9 +432,9 @@ func (tls *tlogStorage) flusher(ctx context.Context) {
 		case seqs := <-tls.toFlushCh:
 			err := tls.flushCachedContent(seqs)
 			if err != nil {
-				panic(fmt.Errorf(
+				tls.flushErrCh <- fmt.Errorf(
 					"failed to write cached content into storage for vdisk %s: %s",
-					tls.vdiskID, err))
+					tls.vdiskID, err)
 			}
 
 		case <-ctx.Done():
