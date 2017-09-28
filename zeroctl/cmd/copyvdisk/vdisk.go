@@ -97,21 +97,8 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// copy tlog data if possible
-	err = copy.Copy(context.Background(), configSource, copy.Config{
-		SourceVdiskID: sourceVdiskID,
-		TargetVdiskID: targetVdiskID,
-		DataShards:    vdiskCmdCfg.DataShards,
-		ParityShards:  vdiskCmdCfg.ParityShards,
-		PrivKey:       vdiskCmdCfg.PrivKey,
-		JobCount:      vdiskCmdCfg.JobCount,
-	})
+	// 1. copy the vdisk (meta)data
 
-	if err != nil {
-		return fmt.Errorf("failed to copy/generate tlog data for vdisk `%v`: %v", targetVdiskID, err)
-	}
-
-	// copy the vdisk
 	switch stype := sourceStaticConfig.Type.StorageType(); stype {
 	case config.StorageDeduped:
 		err = storage.CopyDeduped(
@@ -129,9 +116,22 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 		err = fmt.Errorf("vdisk %s has an unknown storage type %d",
 			sourceVdiskID, stype)
 	}
-
 	if err != nil {
 		return err
+	}
+
+	// 2. copy the tlog data if it is needed
+
+	err = copy.Copy(context.Background(), configSource, copy.Config{
+		SourceVdiskID: sourceVdiskID,
+		TargetVdiskID: targetVdiskID,
+		DataShards:    vdiskCmdCfg.DataShards,
+		ParityShards:  vdiskCmdCfg.ParityShards,
+		PrivKey:       vdiskCmdCfg.PrivKey,
+		JobCount:      vdiskCmdCfg.JobCount,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to copy/generate tlog data for vdisk `%v`: %v", targetVdiskID, err)
 	}
 
 	if !sourceStaticConfig.Type.TlogSupport() {

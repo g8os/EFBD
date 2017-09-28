@@ -7,6 +7,7 @@ import (
 	"gopkg.in/validator.v2"
 
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/log"
 )
 
 // Config represents config for copy operation
@@ -27,6 +28,12 @@ type Config struct {
 func Copy(ctx context.Context, confSource config.Source, conf Config) error {
 	targetStaticConf, err := config.ReadVdiskStaticConfig(confSource, conf.TargetVdiskID)
 	if err != nil {
+		if err == config.ErrConfigUnavailable {
+			log.Infof(
+				"won't copy/generate tlog data as no VdiskStaticConfig was found for target vdisk `%s`",
+				conf.TargetVdiskID)
+			return nil // nothing to do
+		}
 		return fmt.Errorf(
 			"couldn't read target vdisk %s's static config: %v", conf.TargetVdiskID, err)
 	}
