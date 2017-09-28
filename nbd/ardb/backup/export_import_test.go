@@ -301,6 +301,117 @@ func testImportExportCommuteWithOffsetAndInterval(t *testing.T, srcBS, dstBS, bl
 	}
 }
 
+func TestImportExportCommuteNoEncryption_src2_dst8_c8_o0_i1_MS(t *testing.T) {
+	testImportExportCommuteNoEncryptionWithOffsetAndInterval(t, 2, 8, 8, 0, 1, newInMemoryStorage)
+}
+
+func TestImportExportCommuteNoEncryption_src2_dst8_c8_o4_i9_MS(t *testing.T) {
+	testImportExportCommuteNoEncryptionWithOffsetAndInterval(t, 2, 8, 8, 4, 9, newInMemoryStorage)
+}
+
+func TestImportExportCommuteNoEncryption_src2_dst8_c8_o4_i9_DS(t *testing.T) {
+	testImportExportCommuteNoEncryptionWithOffsetAndInterval(t, 2, 8, 8, 4, 9, newDedupedStorage)
+}
+
+func TestImportExportCommuteNoEnryption_src8_dst2_c8_o4_i9_MS(t *testing.T) {
+	testImportExportCommuteNoEncryptionWithOffsetAndInterval(t, 8, 2, 8, 4, 9, newInMemoryStorage)
+}
+
+func TestImportExportCommuteNoEncryption_src8_dst8_c8_o5_i27_MS(t *testing.T) {
+	testImportExportCommuteNoEncryptionWithOffsetAndInterval(t, 8, 8, 8, 5, 27, newInMemoryStorage)
+}
+
+func TestImportExportCommuteNoEncryption_src4096_dst131072_c8_o5_i27_DS(t *testing.T) {
+	testImportExportCommuteNoEncryptionWithOffsetAndInterval(t, 4096, 131072, 64, 3, 5, newDedupedStorage)
+}
+
+func testImportExportCommuteNoEncryptionWithOffsetAndInterval(t *testing.T, srcBS, dstBS, blockCount, offset, interval int64, sgen storageGenerator) {
+	assert := assert.New(t)
+
+	ibm, indices := generateImportExportDataWithOffsetAndInterval(srcBS, blockCount, offset, interval)
+
+	const (
+		vdiskID = "foo"
+	)
+
+	var err error
+
+	// ctx used for this test
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// setup source in-memory storage
+	srcMS, srcMSClose := sgen(t, vdiskID, srcBS)
+	defer srcMSClose()
+	// store all blocks in the source
+	for index, block := range ibm {
+		err = srcMS.SetBlock(index, block)
+		if !assert.NoError(err) {
+			return
+		}
+	}
+	err = srcMS.Flush()
+	if !assert.NoError(err) {
+		return
+	}
+
+	// setup stub driver to use for this test
+	driver := newStubDriver()
+
+	// export source in-memory storage
+	exportCfg := exportConfig{
+		JobCount:        runtime.NumCPU(),
+		SrcBlockSize:    srcBS,
+		DstBlockSize:    dstBS,
+		CompressionType: LZ4Compression,
+		SnapshotID:      vdiskID,
+	}
+	err = exportBS(ctx, srcMS, indices, driver, exportCfg)
+	if !assert.NoError(err) {
+		return
+	}
+
+	// setup destination in-memory storage
+	dstMS, dstMSClose := sgen(t, vdiskID, srcBS)
+	defer dstMSClose()
+
+	// import into destination in-memory storage
+	importCfg := importConfig{
+		JobCount:        runtime.NumCPU(),
+		SrcBlockSize:    dstBS,
+		DstBlockSize:    srcBS,
+		CompressionType: LZ4Compression,
+		SnapshotID:      vdiskID,
+	}
+	err = importBS(ctx, driver, dstMS, importCfg)
+	if !assert.NoError(err) {
+		return
+	}
+
+	err = dstMS.Flush()
+	if !assert.NoError(err) {
+		return
+	}
+
+	var srcBlock, dstBlock []byte
+
+	// ensure that both source and destination contain
+	// the same blocks for the same indices
+	for _, index := range indices {
+		srcBlock, err = srcMS.GetBlock(index)
+		if !assert.NoError(err) {
+			continue
+		}
+
+		dstBlock, err = dstMS.GetBlock(index)
+		if !assert.NoError(err) {
+			continue
+		}
+
+		assert.Equal(srcBlock, dstBlock)
+	}
+}
+
 func generateImportExportDataWithOffsetAndInterval(blockSize, blockCount, offset, interval int64) (map[int64][]byte, []int64) {
 	indexBlockMap := make(map[int64][]byte, blockCount)
 	indices := make([]int64, blockCount)

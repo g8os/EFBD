@@ -157,6 +157,25 @@ func benchmarkCrypto(b *testing.B, size int64, encrypter Encrypter, decrypter De
 	}
 }
 
+func TestCryptoKeyDefined(t *testing.T) {
+	assert := assert.New(t)
+
+	nonDefinedBackups := []*CryptoKey{
+		nil,
+		&CryptoKey{
+			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		},
+	}
+	for _, key := range nonDefinedBackups {
+		assert.False(key.Defined(), key.String())
+	}
+
+	definedKey := &CryptoKey{
+		0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1,
+	}
+	assert.True(definedKey.Defined(), definedKey.String())
+}
+
 func TestCryptoKeyStringFunctions(t *testing.T) {
 	assert := assert.New(t)
 

@@ -13,7 +13,7 @@ var vdiskCmdCfg struct {
 	SnapshotID          string                 // optional
 	ExportBlockSize     int64                  // optional
 	BackupStorageConfig backup.StorageConfig   // optional
-	PrivateKey          backup.CryptoKey       // required
+	PrivateKey          backup.CryptoKey       // optional
 	CompressionType     backup.CompressionType // optional
 	JobCount            int                    // optional
 	Force               bool                   //optional

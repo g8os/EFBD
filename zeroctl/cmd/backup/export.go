@@ -16,7 +16,7 @@ import (
 
 // ExportVdiskCmd represents the vdisk export subcommand
 var ExportVdiskCmd = &cobra.Command{
-	Use:   "vdisk vdiskid cryptoKey [snapshotID]",
+	Use:   "vdisk vdiskid [snapshotID]",
 	Short: "export a vdisk",
 	RunE:  exportVdisk,
 }
@@ -61,21 +61,21 @@ func exportVdisk(cmd *cobra.Command, args []string) error {
 func parseExportPosArguments(args []string) error {
 	// validate pos arg length
 	argn := len(args)
-	if argn < 2 {
+	if argn < 1 {
 		return errors.New("not enough arguments")
-	} else if argn > 3 {
+	} else if argn > 2 {
 		return errors.New("too many arguments")
 	}
 
 	vdiskCmdCfg.VdiskID = args[0]
-	if argn == 3 {
-		vdiskCmdCfg.SnapshotID = args[2]
+	if argn == 2 {
+		vdiskCmdCfg.SnapshotID = args[1]
 	} else {
 		epoch := time.Now().UTC().Unix()
 		vdiskCmdCfg.SnapshotID = fmt.Sprintf("%s_%d", vdiskCmdCfg.VdiskID, epoch)
 	}
 
-	return vdiskCmdCfg.PrivateKey.Set(args[1])
+	return nil
 }
 
 func init() {
@@ -85,8 +85,8 @@ Remember to keep note of the used (snapshot) name,
 crypto (private) key and the compression type,
 as you will need the same information when importing the exported backup.
 
-The crypto (private) key has a required fixed length of 32 bytes,
-and cannot be all zeroes.
+The crypto (private) key has a required fixed length of 32 bytes.
+If no key is given, the compressed snapshot will not be encrypted.
 
   If an error occured during the export process,
 deduped blocks might already have been written to the FTP server.
@@ -125,6 +125,9 @@ using a different private key or compression type, than the one(s) used right no
 	ExportVdiskCmd.Flags().VarP(
 		&vdiskCmdCfg.CompressionType, "compression", "c",
 		"the compression type to use, options { lz4, xz }")
+	ExportVdiskCmd.Flags().VarP(
+		&vdiskCmdCfg.PrivateKey, "key", "k",
+		"an optional 32 byte fixed-size private key used for encryption when given")
 	ExportVdiskCmd.Flags().IntVarP(
 		&vdiskCmdCfg.JobCount, "jobs", "j", runtime.NumCPU(),
 		"the amount of parallel jobs to run")

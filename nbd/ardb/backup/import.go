@@ -109,10 +109,15 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 		if err != nil {
 			return err
 		}
-		decrypter, err := NewDecrypter(&cfg.CryptoKey)
-		if err != nil {
-			return err
+
+		var decrypter Decrypter
+		if cfg.CryptoKey.Defined() {
+			decrypter, err = NewDecrypter(&cfg.CryptoKey)
+			if err != nil {
+				return err
+			}
 		}
+
 		hasher, err := newKeyedHasher(cfg.CompressionType, cfg.CryptoKey)
 		if err != nil {
 			return err
@@ -398,15 +403,24 @@ func (p *importPipeline) ReadBlock(index int64, hash zerodisk.Hash) ([]byte, err
 	}
 
 	bufB := bytes.NewBuffer(nil)
-	err = p.Decrypter.Decrypt(bufA, bufB)
-	if err != nil {
-		return nil, err
-	}
 
-	bufA.Reset()
-	err = p.Decompressor.Decompress(bufB, bufA)
-	if err != nil {
-		return nil, err
+	if p.Decrypter != nil {
+		err = p.Decrypter.Decrypt(bufA, bufB)
+		if err != nil {
+			return nil, err
+		}
+
+		bufA.Reset()
+		err = p.Decompressor.Decompress(bufB, bufA)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		err = p.Decompressor.Decompress(bufA, bufB)
+		if err != nil {
+			return nil, err
+		}
+		bufA = bufB
 	}
 
 	bytes, err := ioutil.ReadAll(bufA)
