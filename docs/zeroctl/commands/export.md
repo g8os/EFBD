@@ -9,8 +9,8 @@ in a secure and efficient manner.
 crypto (private) key and the compression type,
 as you will need the same information when importing the exported backup.
 >
-> The crypto (private) key has a required fixed length of 32 bytes,
-and cannot be all zeroes.
+> The crypto (private) key has a required fixed length of 32 bytes.
+If no key is given, the compressed snapshot will not be encrypted.
 
 If an error occured during the export process,
 deduped blocks might already have been written to the FTP server.
@@ -44,7 +44,7 @@ XZ compression can be used, which has a better compression ratio but slows down 
 
 ```
 Usage:
-  zeroctl export vdisk vdiskid cryptoKey [snapshotID] [flags]
+  zeroctl export vdisk vdiskid [snapshotID] [flags]
 
 Flags:
   -b, --blocksize int                 the size of the exported (deduped) blocks (default 131072)
@@ -52,7 +52,8 @@ Flags:
       --config SourceConfig           config resource: dialstrings (etcd cluster) or path (yaml file) (default config.yml)
   -f, --force                         when given, overwrite a deduped map if it can't be loaded
   -h, --help                          help for vdisk
-  -j, --jobs int                      the amount of parallel jobs to run (default <NUMBER_OF_CPUS>)
+  -j, --jobs int                      the amount of parallel jobs to run (default $NUMBER_OF_CPUS)
+  -k, --key AESCryptoKey              an optional 32 byte fixed-size private key used for encryption when given
   -s, --storage StorageConfig         ftp server url or local dir path to export the backup to (default $HOME/.zero-os/nbd/vdisks)
 
 Global Flags:

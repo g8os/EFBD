@@ -100,16 +100,28 @@ func DeserializeDedupedMap(key *CryptoKey, ct CompressionType, src io.Reader) (*
 		return nil, err
 	}
 
-	bufA := bytes.NewBuffer(nil)
-	bufB := bytes.NewBuffer(nil)
+	var bufB *bytes.Buffer
 
-	err = Decrypt(key, src, bufA)
-	if err != nil {
-		return nil, fmt.Errorf("couldn't decrypt compressed deduped map: %v", err)
-	}
-	err = decompressor.Decompress(bufA, bufB)
-	if err != nil {
-		return nil, fmt.Errorf("couldn't decompress deduped map: %v", err)
+	if key.Defined() {
+		bufA := bytes.NewBuffer(nil)
+
+		err = Decrypt(key, src, bufA)
+		if err != nil {
+			return nil, fmt.Errorf("couldn't decrypt compressed deduped map: %v", err)
+		}
+
+		bufB = bytes.NewBuffer(nil)
+		err = decompressor.Decompress(bufA, bufB)
+		if err != nil {
+			return nil, fmt.Errorf("couldn't decompress deduped map: %v", err)
+		}
+	} else {
+		bufB = bytes.NewBuffer(nil)
+
+		err = decompressor.Decompress(src, bufB)
+		if err != nil {
+			return nil, fmt.Errorf("couldn't decompress deduped map: %v", err)
+		}
 	}
 
 	hashes, err := deserializeHashes(bufB)
@@ -174,15 +186,24 @@ func (dm *DedupedMap) Serialize(key *CryptoKey, ct CompressionType, dst io.Write
 		return fmt.Errorf("couldn't bencode dedupd map: %v", err)
 	}
 
-	imbuffer := bytes.NewBuffer(nil)
-	err = compressor.Compress(hmbuffer, imbuffer)
-	if err != nil {
-		return fmt.Errorf("couldn't compress bencoded dedupd map: %v", err)
-	}
+	if key.Defined() {
+		// compress and encrypt
+		imbuffer := bytes.NewBuffer(nil)
+		err = compressor.Compress(hmbuffer, imbuffer)
+		if err != nil {
+			return fmt.Errorf("couldn't compress bencoded dedupd map: %v", err)
+		}
 
-	err = Encrypt(key, imbuffer, dst)
-	if err != nil {
-		return fmt.Errorf("couldn't encrypt compressed dedupd map: %v", err)
+		err = Encrypt(key, imbuffer, dst)
+		if err != nil {
+			return fmt.Errorf("couldn't encrypt compressed dedupd map: %v", err)
+		}
+	} else {
+		// only compress
+		err = compressor.Compress(hmbuffer, dst)
+		if err != nil {
+			return fmt.Errorf("couldn't compress bencoded dedupd map: %v", err)
+		}
 	}
 
 	return nil

@@ -277,10 +277,15 @@ func exportBS(ctx context.Context, src storage.BlockStorage, blockIndices []int6
 		if err != nil {
 			return err
 		}
-		encrypter, err := NewEncrypter(&cfg.CryptoKey)
-		if err != nil {
-			return err
+
+		var encrypter Encrypter
+		if cfg.CryptoKey.Defined() {
+			encrypter, err = NewEncrypter(&cfg.CryptoKey)
+			if err != nil {
+				return err
+			}
 		}
+
 		hasher, err := newKeyedHasher(cfg.CompressionType, cfg.CryptoKey)
 		if err != nil {
 			return err
@@ -297,7 +302,6 @@ func exportBS(ctx context.Context, src storage.BlockStorage, blockIndices []int6
 		// launch worker
 		go func(id int) {
 			defer owg.Done()
-
 			log.Debugf("starting export pipeline worker #%d", id)
 
 			var err error
@@ -397,15 +401,25 @@ func (p *exportPipeline) WriteBlock(index int64, data []byte) error {
 		return nil // we're done here
 	}
 
-	err := p.Compressor.Compress(bufA, bufB)
-	if err != nil {
-		return err
-	}
+	if p.Encrypter != nil {
+		// compress and encrypt
+		err := p.Compressor.Compress(bufA, bufB)
+		if err != nil {
+			return err
+		}
 
-	bufA = bytes.NewBuffer(nil)
-	err = p.Encrypter.Encrypt(bufB, bufA)
-	if err != nil {
-		return err
+		bufA = bytes.NewBuffer(nil)
+		err = p.Encrypter.Encrypt(bufB, bufA)
+		if err != nil {
+			return err
+		}
+	} else {
+		// compress
+		err := p.Compressor.Compress(bufA, bufB)
+		if err != nil {
+			return err
+		}
+		bufA = bufB
 	}
 
 	return p.StorageDriver.SetDedupedBlock(hash, bufA)

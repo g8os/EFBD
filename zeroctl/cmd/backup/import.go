@@ -18,7 +18,7 @@ import (
 
 // ImportVdiskCmd represents the vdisk import subcommand
 var ImportVdiskCmd = &cobra.Command{
-	Use:   "vdisk vdiskid cryptoKey snapshotID",
+	Use:   "vdisk vdiskid snapshotID",
 	Short: "import a vdisk",
 	RunE:  importVdisk,
 }
@@ -148,16 +148,16 @@ func deleteTlogMetadata(serverCfg config.StorageServerConfig, vdiskMap map[strin
 func parseImportPosArguments(args []string) error {
 	// validate pos arg length
 	argn := len(args)
-	if argn < 3 {
+	if argn < 2 {
 		return errors.New("not enough arguments")
-	} else if argn > 3 {
+	} else if argn > 2 {
 		return errors.New("too many arguments")
 	}
 
 	vdiskCmdCfg.VdiskID = args[0]
-	vdiskCmdCfg.SnapshotID = args[2]
+	vdiskCmdCfg.SnapshotID = args[1]
 
-	return vdiskCmdCfg.PrivateKey.Set(args[1])
+	return nil
 }
 
 func init() {
@@ -167,8 +167,9 @@ Remember to use the same (snapshot) name,
 crypto (private) key and the compression type,
 as you used while exporting the backup in question.
 
-The crypto (private) key has a required fixed length of 32 bytes,
-and cannot be all zeroes.
+The crypto (private) key has a required fixed length of 32 bytes.
+If the snapshot wasn't encrypted, no key should be given,
+giving a key in this scenario will fail the import.
 
   If an error occured during the import process,
 blocks might already have been written to the block storage.
@@ -198,6 +199,9 @@ This is also the default in case the --storage flag is not specified.
 	ImportVdiskCmd.Flags().VarP(
 		&vdiskCmdCfg.CompressionType, "compression", "c",
 		"the compression type to use, options { lz4, xz }")
+	ImportVdiskCmd.Flags().VarP(
+		&vdiskCmdCfg.PrivateKey, "key", "k",
+		"an optional 32 byte fixed-size private key used for decryption when given")
 	ImportVdiskCmd.Flags().IntVarP(
 		&vdiskCmdCfg.JobCount, "jobs", "j", runtime.NumCPU(),
 		"the amount of parallel jobs to run")

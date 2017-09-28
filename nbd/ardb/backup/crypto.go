@@ -157,6 +157,26 @@ func (key *CryptoKey) Type() string {
 	return "AESCryptoKey"
 }
 
+// Defined returns true if this crypto key is defined.
+func (key *CryptoKey) Defined() bool {
+	// if a key is nil, it isn't defined
+	if key == nil {
+		return false
+	}
+
+	// if a key has at least one non-0 character, it is defined
+	for _, b := range key {
+		if b != 0 {
+			return true
+		}
+	}
+
+	// the key is non-nil,
+	// but has only zeroes as characters,
+	// and thus isn't defined.
+	return false
+}
+
 func (key *CryptoKey) validate() error {
 	if key == nil {
 		return ErrNilCryptoKey
@@ -185,7 +205,13 @@ func validateCryptoKey(key []byte) error {
 }
 
 func newKeyedHasher(ct CompressionType, ck CryptoKey) (zerodisk.Hasher, error) {
-	key := append(ck[:], byte(ct))
+	var key []byte
+	if ck.Defined() {
+		key = append(ck[:], byte(ct))
+	} else {
+		key = []byte{byte(ct)}
+	}
+
 	return zerodisk.NewKeyedHasher(key)
 }
 
