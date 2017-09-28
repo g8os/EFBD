@@ -67,6 +67,9 @@ func exportBS(ctx context.Context, src storage.BlockStorage, blockIndices []int6
 		return err
 	}
 
+	errCh := make(chan error)
+	defer close(errCh)
+
 	// setup the context that we'll use for all worker goroutines
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -79,12 +82,10 @@ func exportBS(ctx context.Context, src storage.BlockStorage, blockIndices []int6
 	// used as input for the compress->encrypt->write pipelines (goroutines)
 	inputCh := make(chan blockIndexPair, cfg.JobCount) // gets closed by glue goroutine
 
-	errCh := make(chan error)
-	defer close(errCh)
-
 	sendErr := func(err error) {
 		log.Errorf("an error occured while exporting: %v", err)
 		select {
+		case <-ctx.Done():
 		case errCh <- err:
 		default:
 		}
