@@ -96,58 +96,75 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// try to read the Vdisk config of target vdisk
-	targetStaticConfig, err := config.ReadVdiskStaticConfig(configSource, targetVdiskID)
-	if err != nil {
-		return fmt.Errorf(
-			"couldn't read source vdisk %s's static config: %v", targetVdiskID, err)
-	}
+	// 1. copy the vdisk (meta)data
 
-	if targetStaticConfig.Type.TlogSupport() {
-		targetVdiskNBDConfig, err := config.ReadVdiskNBDConfig(configSource, targetVdiskID)
-		if err != nil {
-			return fmt.Errorf(
-				"couldn't read target vdisk %s's storage config: %v", targetVdiskID, err)
-		}
-
-		if targetVdiskNBDConfig.TlogServerClusterID != "" {
-			log.Infof("generating tlog data for target vdisk `%v`", targetVdiskID)
-			generator, err := generator.New(configSource, generator.Config{
-				SourceVdiskID: sourceVdiskID,
-				TargetVdiskID: targetVdiskID,
-				DataShards:    vdiskCmdCfg.DataShards,
-				ParityShards:  vdiskCmdCfg.ParityShards,
-				PrivKey:       vdiskCmdCfg.PrivKey,
-				JobCount:      vdiskCmdCfg.JobCount,
-			})
-			if err != nil {
-				return fmt.Errorf("failed to create tlog generator: %v", err)
-			}
-
-			if err := generator.GenerateFromStorage(context.Background()); err != nil {
-				return fmt.Errorf("failed to generate tlog data for vdisk `%v` : %v", targetVdiskID, err)
-			}
-		}
-	}
-
-	// copy the vdisk
 	switch stype := sourceStaticConfig.Type.StorageType(); stype {
 	case config.StorageDeduped:
-		return storage.CopyDeduped(
+		err = storage.CopyDeduped(
 			sourceVdiskID, targetVdiskID,
 			sourceClusterConfig, targetClusterConfig)
 	case config.StorageNonDeduped:
-		return storage.CopyNonDeduped(
+		err = storage.CopyNonDeduped(
 			sourceVdiskID, targetVdiskID,
 			sourceClusterConfig, targetClusterConfig)
 	case config.StorageSemiDeduped:
-		return storage.CopySemiDeduped(
+		err = storage.CopySemiDeduped(
 			sourceVdiskID, targetVdiskID,
 			sourceClusterConfig, targetClusterConfig)
 	default:
-		return fmt.Errorf("vdisk %s has an unknown storage type %d",
-			sourceVdiskID, stype)
+		err = fmt.Errorf("vdisk %s has an unknown storage type %d", sourceVdiskID, stype)
 	}
+	if err != nil {
+		return err
+	}
+
+	// 2. copy the tlog data if it is needed
+
+	// try to read the Vdisk config of target vdisk
+	targetStaticConfig, err := config.ReadVdiskStaticConfig(configSource, targetVdiskID)
+	if err != nil {
+		if err == config.ErrConfigUnavailable {
+			log.Infof("could not find VdiskStaticConfig for target vdisk `%v`, ignoring tlog features", targetVdiskID)
+			return nil // it is ok for the target static vdisk config not to be there
+		}
+		return fmt.Errorf("couldn't read source vdisk %s's static config: %v", targetVdiskID, err)
+	}
+
+	if !targetStaticConfig.Type.TlogSupport() {
+		return nil // nothing to do: no tlog support
+	}
+
+	targetVdiskNBDConfig, err := config.ReadVdiskNBDConfig(configSource, targetVdiskID)
+	if err != nil {
+		if err == config.ErrConfigUnavailable {
+			log.Infof("could not find VdiskNBDConfig for target vdisk `%v`, ignoring tlog features", targetVdiskID)
+			return nil // it is ok for the target VDisk NBD vdisk config not to be there
+		}
+		return fmt.Errorf("couldn't read target vdisk %s's storage config: %v", targetVdiskID, err)
+	}
+
+	if targetVdiskNBDConfig.TlogServerClusterID == "" {
+		return nil // nothing to do: no tlog cluster configured
+	}
+
+	log.Infof("generating tlog data for target vdisk `%v`", targetVdiskID)
+	generator, err := generator.New(configSource, generator.Config{
+		SourceVdiskID: sourceVdiskID,
+		TargetVdiskID: targetVdiskID,
+		DataShards:    vdiskCmdCfg.DataShards,
+		ParityShards:  vdiskCmdCfg.ParityShards,
+		PrivKey:       vdiskCmdCfg.PrivKey,
+		JobCount:      vdiskCmdCfg.JobCount,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create tlog generator: %v", err)
+	}
+
+	if err := generator.GenerateFromStorage(context.Background()); err != nil {
+		return fmt.Errorf("failed to generate tlog data for vdisk `%v` : %v", targetVdiskID, err)
+	}
+
+	return nil
 }
 
 func init() {
