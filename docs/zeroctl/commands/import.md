@@ -4,6 +4,7 @@
 
 Import a [vdisk][vdisk] from a storage (FTP) server,
 where the backup is stored in a secure and efficient manner.
+Tlog data will be generated if the vdisk has configured tlog cluster.
 
 > (!) Remember to use the same (snapshot) name,
 crypto (private) key and the compression type,
@@ -39,11 +40,14 @@ Flags:
   -b, --blocksize int                 the size of the exported (deduped) blocks (default 131072)
   -c, --compression CompressionType   the compression type to use, options { lz4, xz } (default lz4)
       --config SourceConfig           config resource: dialstrings (etcd cluster) or path (yaml file) (default config.yml)
+      --data-shards int               data shards (K) variable of erasure encoding (default 4)
   -f, --force                         when given, delete the vdisk if it already existed
   -h, --help                          help for vdisk
   -j, --jobs int                      the amount of parallel jobs to run (default $NUMBER_OF_CPUS)
   -k, --key AESCryptoKey              an optional 32 byte fixed-size private key used for decryption when given
-  -s, --storage StorageConfig         ftp server url or local dir path to import the backup from (default $HOME/.zero-os/nbd/vdisks)
+      --parity-shards int             parity shards (M) variable of erasure encoding (default 2)
+  -s, --storage StorageConfig         ftp server url or local dir path to import the backup from (default /$HOME/.zero-os/nbd/vdisks)
+      --tlog-priv-key string          tlog private key (default "12345678901234567890123456789012")
 
 Global Flags:
   -v, --verbose   log available information

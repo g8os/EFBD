@@ -111,7 +111,7 @@ func TestGenerate(t *testing.T) {
 	require.NoError(t, err)
 
 	// 2. Generate tlog data
-	generator, err := newGenerator(confSource, Config{
+	generator, err := NewGenerator(confSource, Config{
 		SourceVdiskID: sourceVdiskID,
 		TargetVdiskID: targetVdiskID,
 		DataShards:    dataShards,

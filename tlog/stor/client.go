@@ -10,6 +10,7 @@ import (
 	"github.com/zero-os/0-stor/client/meta"
 
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
 )
@@ -101,11 +102,13 @@ func NewClient(conf Config) (*Client, error) {
 
 	firstMetaKey, err := cli.getFirstMetaKey()
 	if err != nil {
+		log.Errorf("failed to get first key of `%v`: %v", cli.vdiskID, err)
 		return nil, err
 	}
 	cli.firstMetaKey = firstMetaKey
 
 	if _, err = cli.LoadLastSequence(); err != nil && err != ErrNoFlushedBlock {
+		log.Errorf("failed to load last sequence of `%v`: %v", cli.vdiskID, err)
 		return nil, err
 	}
 
@@ -137,14 +140,6 @@ func (c *Client) ProcessStore(blocks []*schema.TlogBlock) ([]byte, error) {
 
 	key := c.hasher.Hash(append([]byte(c.vdiskID), data...))
 
-	// it is very first data, save first key to metadata server
-	if c.firstMetaKey == nil {
-		c.firstMetaKey = key
-		if err := c.saveFirstMetaKey(); err != nil {
-			return nil, err
-		}
-	}
-
 	// we set our initial meta because
 	// we need to set our own timestamp in the 0-stor metadata server
 	// in order to have only one epoch for both tlog aggregation and 0-stor metadata
@@ -158,6 +153,14 @@ func (c *Client) ProcessStore(blocks []*schema.TlogBlock) ([]byte, error) {
 	}
 	if lastMd == nil {
 		return nil, fmt.Errorf("empty meta returned by stor client")
+	}
+
+	// it is very first data, save first key to metadata server
+	if c.firstMetaKey == nil {
+		c.firstMetaKey = key
+		if err := c.saveFirstMetaKey(); err != nil {
+			return nil, err
+		}
 	}
 
 	c.lastMd = lastMd

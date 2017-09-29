@@ -79,7 +79,7 @@ func Copy(ctx context.Context, confSource config.Source, conf Config) error {
 	}
 
 	// source vdisk has no tlog, generate it
-	generator, err := newGenerator(confSource, conf)
+	generator, err := NewGenerator(confSource, conf)
 	if err != nil {
 		return err
 	}
