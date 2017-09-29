@@ -108,3 +108,29 @@ func RedisInt64s(reply interface{}, err error) ([]int64, error) {
 
 	return ints, nil
 }
+
+// RedisInt64ToBytesMapping is a helper that converts an array command reply to a map[int64][]byte.
+// If err is not equal to nil, then this function returns the error.
+// If the given reply can also not be transformed into a `map[int64][]byte` this function returns an error as well.
+func RedisInt64ToBytesMapping(reply interface{}, err error) (map[int64][]byte, error) {
+	values, err := redis.Values(reply, err)
+	if err != nil {
+		return nil, err
+	}
+	if len(values)%2 != 0 {
+		return nil, errors.New("RedisInt64ToBytesMapping expects even number of values result")
+	}
+	m := make(map[int64][]byte, len(values)/2)
+	for i := 0; i < len(values); i += 2 {
+		key, err := redis.Int64(values[i], nil)
+		if err != nil {
+			return nil, err
+		}
+		value, err := redis.Bytes(values[i+1], nil)
+		if err != nil {
+			return nil, err
+		}
+		m[key] = value
+	}
+	return m, nil
+}

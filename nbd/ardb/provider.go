@@ -119,6 +119,20 @@ func StaticProvider(cfg config.NBDStorageConfig, pool *RedisPool) (ConnProvider,
 	return provider, nil
 }
 
+// StaticProviderFromStorageCluster creates a Static provider
+// using a given (primary) Storage Cluster Config.
+func StaticProviderFromStorageCluster(cluster config.StorageClusterConfig, pool *RedisPool) (ConnProvider, error) {
+	if pool == nil {
+		pool = NewRedisPool(nil)
+	}
+
+	provider := &staticRedisProvider{redisPool: pool}
+	provider.dataConnectionConfigs = cluster.Servers
+	provider.numberOfServers = int64(len(cluster.Servers))
+
+	return provider, nil
+}
+
 // DynamicProvider creates a provider which always
 // has the most up to date config it can know about.
 func DynamicProvider(ctx context.Context, vdiskID string, source config.Source, pool *RedisPool) (ConnProvider, error) {

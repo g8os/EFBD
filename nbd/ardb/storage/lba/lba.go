@@ -42,19 +42,18 @@ func NewLBA(vdiskID string, cacheLimitInBytes int64, provider ardb.DataConnProvi
 	}
 
 	bucketLimitInBytes := cacheLimitInBytes / bucketCount
-	storageKey := StorageKey(vdiskID)
 
 	log.Debugf("creating LBA for vdisk %s with %d bucket(s)", vdiskID, bucketCount)
 
-	return newLBAWithStorageFactory(int32(bucketCount), bucketLimitInBytes, func() sectorStorage {
-		return newARDBSectorStorage(vdiskID, storageKey, provider)
+	return newLBAWithStorageFactory(int32(bucketCount), bucketLimitInBytes, func() SectorStorage {
+		return ARDBSectorStorage(vdiskID, provider)
 	}), nil
 }
 
-func newLBAWithStorageFactory(bucketCount int32, bucketLimitInBytes int64, factory func() sectorStorage) *LBA {
+func newLBAWithStorageFactory(bucketCount int32, bucketLimitInBytes int64, factory func() SectorStorage) *LBA {
 	buckets := make([]*sectorBucket, bucketCount)
 
-	var storage sectorStorage
+	var storage SectorStorage
 	for index := range buckets {
 		storage = factory()
 		buckets[index] = newSectorBucket(bucketLimitInBytes, storage)
