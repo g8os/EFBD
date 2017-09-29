@@ -19,18 +19,18 @@ type stubSectorStorage struct {
 }
 
 // GetSector implements sectorStorage.GetSector
-func (s *stubSectorStorage) GetSector(index int64) (*sector, error) {
+func (s *stubSectorStorage) GetSector(index int64) (*Sector, error) {
 	s.mux.RLock()
 	defer s.mux.RUnlock()
 	bytes, ok := s.sectors[index]
 	if !ok {
-		return newSector(), nil
+		return NewSector(), nil
 	}
-	return sectorFromBytes(bytes)
+	return SectorFromBytes(bytes)
 }
 
 // SetSector implements sectorStorage.SetSector
-func (s *stubSectorStorage) SetSector(index int64, sector *sector) error {
+func (s *stubSectorStorage) SetSector(index int64, sector *Sector) error {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 

@@ -440,34 +440,29 @@ func CopyDeduped(sourceID, targetID string, sourceCluster, targetCluster *config
 	if sourceCluster == nil {
 		return errors.New("no source cluster given")
 	}
-	sourceDataServerCount := len(sourceCluster.Servers)
-	if sourceDataServerCount == 0 {
-		return errors.New("no data server configs given for source")
-	}
 
-	// define whether or not we're copying between different clusters,
-	// and if the target cluster is given, make sure to validate it.
+	// copy the source LBA to a target LBA within the same cluster
 	if targetCluster == nil {
-		targetCluster = sourceCluster
-	} else {
-		targetDataServerCount := len(targetCluster.Servers)
-		// [TODO]
-		// Currently the result will be WRONG in case targetDataServerCount != sourceDataServerCount,
-		// as the storage data spread will not be the same,
-		// to what the nbdserver read calls will expect.
-		// See open issue for more information:
-		// https://github.com/zero-os/0-Disk/issues/206
-		if targetDataServerCount != sourceDataServerCount {
-			return errors.New("target data server count has to equal the source data server count")
-		}
+		return copyDedupedSameServerCount(sourceID, targetID, sourceCluster, sourceCluster)
 	}
 
-	var err error
-	var sourceCfg, targetCfg config.StorageServerConfig
+	// copy the source LBA to a target LBA,
+	// between clusters with an equal server count
+	if len(sourceCluster.Servers) == len(targetCluster.Servers) {
+		return copyDedupedSameServerCount(sourceID, targetID, sourceCluster, targetCluster)
+	}
 
-	for i := 0; i < sourceDataServerCount; i++ {
-		sourceCfg = sourceCluster.Servers[i]
-		targetCfg = targetCluster.Servers[i]
+	// copy the source LBA to a target LBA,
+	// between clusters with a different server count
+	return copyDedupedDifferentServerCount(sourceID, targetID, sourceCluster, targetCluster)
+}
+
+func copyDedupedSameServerCount(sourceID, targetID string, sourceCluster, targetCluster *config.StorageClusterConfig) error {
+	var err error
+	var targetCfg config.StorageServerConfig
+
+	for index, sourceCfg := range sourceCluster.Servers {
+		targetCfg = targetCluster.Servers[index]
 
 		if sourceCfg.Equal(&targetCfg) {
 			// within same storage server
@@ -501,6 +496,28 @@ func CopyDeduped(sourceID, targetID string, sourceCluster, targetCluster *config
 		}
 	}
 
+	return nil
+}
+
+func copyDedupedDifferentServerCount(sourceID, targetID string, sourceCluster, targetCluster *config.StorageClusterConfig) error {
+	// create the target LBA sector storage,
+	// which will be used to store the source LBA sectors into the target ARDB cluster.
+	provider, err := ardb.StaticProviderFromStorageCluster(*targetCluster, nil)
+	if err != nil {
+		return err
+	}
+	targetStorage := lba.ARDBSectorStorage(targetID, provider)
+
+	// copy all the source sectors into the target ARDB cluster,
+	// one source ARDB server at a time.
+	for _, sourceCfg := range sourceCluster.Servers {
+		err = copyDedupedUsingSectorStorage(sourceID, targetID, sourceCfg, targetStorage)
+		if err != nil {
+			return err
+		}
+	}
+
+	// all source sectors were succesfully copied.
 	return nil
 }
 
@@ -567,6 +584,47 @@ func copyDedupedDifferentConnections(sourceID, targetID string, connA, connB red
 	}
 
 	return
+}
+
+func copyDedupedUsingSectorStorage(sourceID, targetID string, sourceCfg config.StorageServerConfig, storage lba.SectorStorage) error {
+	conn, err := ardb.GetConnection(sourceCfg)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	sourceKey := lba.StorageKey(sourceID)
+
+	// get data from source connection
+	log.Infof("collecting all metadata from source vdisk %q...", sourceID)
+	sectors, err := ardb.RedisInt64ToBytesMapping(conn.Do("HGETALL", sourceKey))
+	if err != nil {
+		return err
+	}
+
+	sectorLength := len(sectors)
+	if sectorLength == 0 {
+		return nil // nothing to do
+	}
+
+	log.Infof("collected %d sectors from source vdisk %q, storing them now...", sectorLength, sourceID)
+
+	var sector *lba.Sector
+	for index, bytes := range sectors {
+		sector, err = lba.SectorFromBytes(bytes)
+		if err != nil {
+			return fmt.Errorf("invalid raw sector bytes at sector index %d: %v", index, err)
+		}
+
+		err = storage.SetSector(index, sector)
+		if err != nil {
+			return fmt.Errorf("couldn't set target sector %d: %v", index, err)
+		}
+	}
+
+	log.Infof("set %d target sectors from target vdisk %q, flushing now...", sectorLength, targetID)
+
+	return storage.Flush()
 }
 
 func newDeleteDedupedMetadataOp(vdiskID string) storageOp {

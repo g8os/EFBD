@@ -10,7 +10,7 @@ import (
 
 // create a new sector bucket
 // NOTE that this constructor doesn't validate its input
-func newSectorBucket(sizeLimitInBytes int64, storage sectorStorage) *sectorBucket {
+func newSectorBucket(sizeLimitInBytes int64, storage SectorStorage) *sectorBucket {
 	// the amount of most recent sectors we keep in memory
 	size := sizeLimitInBytes / BytesPerSector
 
@@ -28,7 +28,7 @@ type sectorBucket struct {
 	sectors   map[int64]*list.Element
 	evictList *list.List
 	size      int
-	storage   sectorStorage
+	storage   SectorStorage
 	mux       sync.Mutex
 }
 
@@ -111,7 +111,7 @@ func (bucket *sectorBucket) Flush() error {
 }
 
 // getSector returns a cached or fresh sector.
-func (bucket *sectorBucket) getSector(index int64) (*sector, error) {
+func (bucket *sectorBucket) getSector(index int64) (*Sector, error) {
 	// return the sector from bucket
 	if elem, ok := bucket.sectors[index]; ok {
 		bucket.evictList.MoveToFront(elem)
@@ -166,5 +166,5 @@ func (bucket *sectorBucket) flushOldest() error {
 // cacheEntry defines the entry for a bucket
 type cacheEntry struct {
 	sectorIndex int64
-	sector      *sector
+	sector      *Sector
 }

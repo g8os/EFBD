@@ -2,7 +2,8 @@ package storage
 
 import (
 	"bytes"
-	"crypto/rand"
+	crand "crypto/rand"
+	mrand "math/rand"
 	"runtime/debug"
 	"strconv"
 	"testing"
@@ -438,7 +439,7 @@ func TestGetDedupedTemplateContentDeadlock(t *testing.T) {
 	// store a lot of content in storageA
 	for i := int64(0); i < blockCount; i++ {
 		contentArray[i] = make([]byte, blockSize)
-		rand.Read(contentArray[i])
+		crand.Read(contentArray[i])
 		err = storageA.SetBlock(i, contentArray[i])
 		if err != nil {
 			t.Fatal(i, err)
@@ -585,7 +586,7 @@ func TestListDedupedBlockIndices(t *testing.T) {
 	for i := 0; i < blockCount; i++ {
 		// store a block
 		data := make([]byte, blockSize)
-		_, err := rand.Read(data)
+		_, err := crand.Read(data)
 		if err != nil {
 			t.Fatalf("couldn't generate a random block (%d): %v", i, err)
 		}
@@ -656,6 +657,93 @@ func TestListDedupedBlockIndices(t *testing.T) {
 		}
 
 		ci++
+	}
+}
+
+func TestCopyDedupedDifferentServerCount(t *testing.T) {
+	assert := assert.New(t)
+
+	sourceCluster := redisstub.NewInMemoryRedisProviderMultiServers(4, 0)
+	if !assert.NotNil(sourceCluster) {
+		return
+	}
+	defer sourceCluster.Close()
+
+	sourceProvider, err := ardb.StaticProviderFromStorageCluster(*sourceCluster.ClusterConfig(), nil)
+	if !assert.NoError(err) {
+		return
+	}
+	defer sourceProvider.Close()
+
+	sourceSectorStorage := lba.ARDBSectorStorage("source", sourceProvider)
+
+	// create random source sectors
+	var indices []int64
+	for i := 0; i < 128; i++ {
+		bytes := make([]byte, lba.BytesPerSector)
+		crand.Read(bytes)
+
+		sector, err := lba.SectorFromBytes(bytes)
+		if !assert.NoError(err) {
+			return
+		}
+
+		index := int64(mrand.Uint32())
+		indices = append(indices, index)
+
+		sourceSectorStorage.SetSector(index, sector)
+	}
+
+	// test copying to a target cluster with less servers available
+	testCopyDedupedDifferentServerCount(assert, indices, "source", "target",
+		sourceCluster.ClusterConfig(), sourceSectorStorage, 3)
+	testCopyDedupedDifferentServerCount(assert, indices, "source", "target",
+		sourceCluster.ClusterConfig(), sourceSectorStorage, 2)
+	testCopyDedupedDifferentServerCount(assert, indices, "source", "target",
+		sourceCluster.ClusterConfig(), sourceSectorStorage, 1)
+
+	// test coping to a target cluster with more servers available
+	testCopyDedupedDifferentServerCount(assert, indices, "source", "target",
+		sourceCluster.ClusterConfig(), sourceSectorStorage, 5)
+	testCopyDedupedDifferentServerCount(assert, indices, "source", "target",
+		sourceCluster.ClusterConfig(), sourceSectorStorage, 8)
+}
+
+func testCopyDedupedDifferentServerCount(assert *assert.Assertions, indices []int64, sourceID, targetID string, sourceCluster *config.StorageClusterConfig, sourceSectorStorage lba.SectorStorage, targetServerCount int) {
+	targetCluster := redisstub.NewInMemoryRedisProviderMultiServers(targetServerCount, 0)
+	if !assert.NotNil(targetCluster) {
+		return
+	}
+	defer targetCluster.Close()
+
+	// copy the sectors
+	err := copyDedupedDifferentServerCount(sourceID, targetID, sourceCluster, targetCluster.ClusterConfig())
+	if !assert.NoError(err) {
+		return
+	}
+
+	// now validate all sectors are correctly copied
+
+	targetProvider, err := ardb.StaticProviderFromStorageCluster(*targetCluster.ClusterConfig(), nil)
+	if !assert.NoError(err) {
+		return
+	}
+	defer targetProvider.Close()
+
+	targetSectorStorage := lba.ARDBSectorStorage(targetID, targetProvider)
+	for _, index := range indices {
+		sourceSector, err := sourceSectorStorage.GetSector(index)
+		if !assert.NoError(err) {
+			return
+		}
+		targetSector, err := targetSectorStorage.GetSector(index)
+		if !assert.NoError(err) {
+			return
+		}
+
+		if !assert.Equal(sourceSector.Bytes(), targetSector.Bytes()) {
+			return
+		}
 	}
 }
 

@@ -6,31 +6,31 @@ import (
 	"github.com/zero-os/0-Disk/nbd/ardb"
 )
 
-// sectorStorage defines the API for a persistent storage,
+// SectorStorage defines the API for a persistent storage,
 // used to fetch sectors from which aren't cached yet,
 // and to store sectors which are evicted from a cache.
 // NOTE: a sectorStorage is not guaranteed to be thread-safe!
-type sectorStorage interface {
+type SectorStorage interface {
 	// GetSector fetches a sector from a storage,
 	// returning an error if this wasn't possible.
-	GetSector(index int64) (*sector, error)
+	GetSector(index int64) (*Sector, error)
 
 	// SetSector marks a sector persistent,
 	// by preparing it to store on a stoage.
 	// Note that it is isn't stored until you call
 	// the flush function.
-	SetSector(index int64, sector *sector) error
+	SetSector(index int64, sector *Sector) error
 	// Flush flushes all added sectors to the storage.
 	Flush() error
 }
 
-// newARDBSectorStorage creates a new sector storage which
-// writes/reads to/from an ARDB server.
-func newARDBSectorStorage(vdiskID, key string, provider ardb.DataConnProvider) *ardbSectorStorage {
+// ARDBSectorStorage creates a new sector storage
+// which writes/reads to/from an ARDB Server
+func ARDBSectorStorage(vdiskID string, provider ardb.DataConnProvider) SectorStorage {
 	return &ardbSectorStorage{
 		provider: provider,
 		vdiskID:  vdiskID,
-		key:      key,
+		key:      StorageKey(vdiskID),
 	}
 }
 
@@ -42,7 +42,7 @@ type ardbSectorStorage struct {
 }
 
 // GetSector implements sectorStorage.GetSector
-func (s *ardbSectorStorage) GetSector(index int64) (*sector, error) {
+func (s *ardbSectorStorage) GetSector(index int64) (*Sector, error) {
 	conn, err := s.provider.DataConnection(index)
 	if err != nil {
 		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
@@ -95,7 +95,7 @@ func (s *ardbSectorStorage) GetSector(index int64) (*sector, error) {
 	}
 
 	if reply == nil {
-		return newSector(), nil
+		return NewSector(), nil
 	}
 
 	data, err := redis.Bytes(reply, err)
@@ -103,11 +103,11 @@ func (s *ardbSectorStorage) GetSector(index int64) (*sector, error) {
 		return nil, err
 	}
 
-	return sectorFromBytes(data)
+	return SectorFromBytes(data)
 }
 
 // SetSector implements sectorStorage.SetSector
-func (s *ardbSectorStorage) SetSector(index int64, sector *sector) error {
+func (s *ardbSectorStorage) SetSector(index int64, sector *Sector) error {
 	// [TODO] see if we should re-enable pipelining again for sending mutliple sectors at once
 	// currently it is not possible as the current provider interface has no method
 	// which would tell us the storae server used for the given index,
