@@ -168,21 +168,13 @@ func (l *Listener) Listen(parentCtx context.Context, sessionParentCtx context.Co
 				conn.Close()
 			} else {
 				go func() {
-					defer func() {
-						// keep server up and running,
-						// even if we panic while handling this connection
-						if r := recover(); r != nil {
-							l.logger.Error("connection dropped because of an internal panic: ", r)
-						}
-					}()
-
 					// do not use our parent ctx as a context, as we don't want it to cancel when
 					// we reload config and cancel this listener
 					ctx, cancelFunc := context.WithCancel(sessionParentCtx)
 					defer cancelFunc()
 					sessionWaitGroup.Add(1)
+					defer sessionWaitGroup.Done()
 					connection.Serve(ctx)
-					sessionWaitGroup.Done()
 				}()
 			}
 		}
