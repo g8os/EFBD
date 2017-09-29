@@ -166,6 +166,18 @@ func (rp *staticRedisProvider) DataConnection(index int64) (conn Connection, err
 		return
 	}
 
+	// ensure that there are actually servers available
+	var serversAvailable bool
+	for _, connConfig = range rp.dataConnectionConfigs {
+		if !connConfig.Disabled {
+			serversAvailable = true
+			break
+		}
+	}
+	if !serversAvailable {
+		return nil, errNoStorageServerAvailable
+	}
+
 	// keep trying until we find a non-offline shard
 	// in the same reproducable manner
 	// (another kind of tracing)
@@ -217,14 +229,46 @@ func (rp *staticRedisProvider) TemplateConnection(index int64) (conn Connection,
 	bcIndex := index % rp.numberOfTemplateServers
 	connConfig := rp.templateDataConnectionConfigs[bcIndex]
 
-	// if a config address is not given,
-	// it can only be because the server has been marked invalid by the user of this provider.
-	if connConfig.Address == "" {
-		return nil, ErrServerMarkedInvalid
+	// if server config is disabled, simply quit
+	if !connConfig.Disabled {
+		conn, err = newConnection(rp.redisPool, bcIndex, connConfig)
+		return
 	}
 
-	conn, err = newConnection(rp.redisPool, bcIndex, connConfig)
-	return
+	// ensure that there are actually servers available
+	var serversAvailable bool
+	for _, connConfig = range rp.templateDataConnectionConfigs {
+		if !connConfig.Disabled {
+			serversAvailable = true
+			break
+		}
+	}
+	if !serversAvailable {
+		return nil, errNoStorageServerAvailable
+	}
+
+	// keep trying until we find a non-offline shard
+	// in the same reproducable manner
+	// (another kind of tracing)
+	// using jumpConsistentHash taken from https://arxiv.org/pdf/1406.2294.pdf
+	var j int64
+	var key uint64
+	for {
+		key = uint64(index)
+		j = 0
+		for j < rp.numberOfTemplateServers {
+			bcIndex = j
+			key = key*2862933555777941757 + 1
+			j = int64(float64(bcIndex+1) * (float64(int64(1)<<31) / float64((key>>33)+1)))
+		}
+		connConfig = rp.templateDataConnectionConfigs[bcIndex]
+		if !connConfig.Disabled {
+			conn, err = newConnection(rp.redisPool, bcIndex, connConfig)
+			return
+		}
+
+		index++
+	}
 }
 
 // DisableTemplateConnection implements DataConnProvider.DisableTemplateConnection
