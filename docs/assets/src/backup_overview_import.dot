@@ -15,9 +15,11 @@ digraph {
 
     decrypter_1 [
         label = "decrypter\ni"
+        style = "dashed"
     ]
     decrypter_2 [
         label = "decrypter\ni+j"
+        style = "dashed"
     ]
     checkHashIsCorrect1_Out -> decrypter_1 [
         label = "decrypt\neach block\n(2.2)"
@@ -25,6 +27,15 @@ digraph {
     ]
     checkHashIsCorrect2_Out -> decrypter_2 [
         label = "decrypt\neach block\n(2.2)"
+        style = "dashed"
+    ]
+
+    checkHashIsCorrect1_Out -> decompressor1 [
+        label = "decompress\neach block\n(2.2)"
+        style = "dashed"
+    ]
+    checkHashIsCorrect2_Out -> decompressor2 [
+        label = "decompress\neach block\n(2.2)"
         style = "dashed"
     ]
 
@@ -36,9 +47,11 @@ digraph {
     ]
     decrypter_1 -> decompressor1 [
         label = "decompress\neach block\n(2.2)"
+        style = "dashed"
     ]
     decrypter_2 -> decompressor2 [
         label = "decompress\neach block\n(2.2)"
+        style = "dashed"
     ]
 
     blockFetcher [

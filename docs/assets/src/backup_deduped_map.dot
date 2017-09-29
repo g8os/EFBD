@@ -38,9 +38,9 @@ digraph {
         keyI -> valueI:t
         keyC -> valueC
 
-        valueH:1 -> valueI:1
-        valueH:2 -> valueI:2
-        valueH:3 -> valueI:3
+        valueI:1 -> valueH:1
+        valueI:2 -> valueH:2
+        valueI:3 -> valueH:3
     }
 
     subgraph clusterBlocks {
@@ -48,19 +48,19 @@ digraph {
 
         dedupedBlock1 [
             shape = "rectangle"
-            label = "deduped block\ni"
+            label = "deduped block\nhash i"
         ]
         dedupedBlock2 [
             shape = "rectangle"
-            label = "deduped block\ni+9"
+            label = "deduped block\nhash i+1"
         ]
         dedupedBlock3 [
             shape = "rectangle"
-            label = "deduped block\nn"
+            label = "deduped block\nhash n"
         ]
     }
 
-    valueI:1 -> dedupedBlock2
-    valueI:2 -> dedupedBlock1
-    valueI:3 -> dedupedBlock2
+    valueH:1 -> dedupedBlock2
+    valueH:2 -> dedupedBlock1
+    valueH:3 -> dedupedBlock2
 }

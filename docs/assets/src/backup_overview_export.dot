@@ -21,15 +21,26 @@ digraph {
 
     encrypter1 [
         label = "encrypter\ni"
+        style = "dashed"
     ]
     encrypter2 [
         label = "encrypter\ni+j"
+        style = "dashed"
     ]
     compressor1 -> encrypter1 [
         label = "encrypt\neach block\n(3.3)"
+        style = "dashed"
     ]
     compressor2 -> encrypter2 [
         label = "encrypt\neach block\n(3.3)"
+        style = "dashed"
+    ]
+
+    compressor1 -> indexHashLinker1 [
+        style = "dashed"
+    ]
+    compressor2 -> indexHashLinker2 [
+        style = "dashed"
     ]
 
     indexHashLinker1 [
@@ -40,8 +51,12 @@ digraph {
         shape = "rectangle"
         label = "link block index\nwith hash\n(3.4)"
     ]
-    encrypter1 -> indexHashLinker1
-    encrypter2 -> indexHashLinker2
+    encrypter1 -> indexHashLinker1 [
+        style = "dashed"
+    ]
+    encrypter2 -> indexHashLinker2 [
+        style = "dashed"
+    ]
 
     dedupedMap [
         label = "deduped map"
