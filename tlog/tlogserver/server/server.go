@@ -92,14 +92,6 @@ func (s *Server) Listen(ctx context.Context) {
 				continue
 			}
 			go func() {
-				defer func() {
-					// recover from handle panics,
-					// to keep server up and running at all costs
-					if r := recover(); r != nil {
-						log.Error("connection dropped because of an internal panic: ", r)
-					}
-				}()
-
 				addr := conn.RemoteAddr()
 
 				err := s.handle(tcpConn)
