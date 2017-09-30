@@ -14,24 +14,22 @@ import (
 	"github.com/zero-os/0-Disk/tlog/schema"
 )
 
-// generator represents a tlog data generator/copier
-type generator struct {
+// Generator represents a tlog data generator
+type Generator struct {
 	sourceVdiskID string
-	targetVdiskID string
 	flusher       *flusher.Flusher
 	configSource  config.Source
 	jobCount      int
 }
 
-// New creates new generator
-func newGenerator(configSource config.Source, conf Config) (*generator, error) {
+// NewGenerator creates new tlog generator
+func NewGenerator(configSource config.Source, conf Config) (*Generator, error) {
 	flusher, err := flusher.New(configSource, conf.DataShards, conf.ParityShards, conf.TargetVdiskID, conf.PrivKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create flusher: %v", err)
 	}
-	return &generator{
+	return &Generator{
 		sourceVdiskID: conf.SourceVdiskID,
-		targetVdiskID: conf.TargetVdiskID,
 		flusher:       flusher,
 		configSource:  configSource,
 		jobCount:      conf.JobCount,
@@ -39,7 +37,7 @@ func newGenerator(configSource config.Source, conf Config) (*generator, error) {
 }
 
 // GenerateFromStorage generates tlog data from block storage
-func (g *generator) GenerateFromStorage(parentCtx context.Context) error {
+func (g *Generator) GenerateFromStorage(parentCtx context.Context) error {
 	staticConf, err := config.ReadVdiskStaticConfig(g.configSource, g.sourceVdiskID)
 	if err != nil {
 		return err

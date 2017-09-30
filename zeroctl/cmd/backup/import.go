@@ -11,7 +11,9 @@ import (
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb/backup"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
-	"github.com/zero-os/0-Disk/nbd/nbdserver/tlog"
+	nbdtlog "github.com/zero-os/0-Disk/nbd/nbdserver/tlog"
+	"github.com/zero-os/0-Disk/tlog"
+	"github.com/zero-os/0-Disk/tlog/copy"
 
 	cmdconfig "github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
@@ -23,8 +25,17 @@ var ImportVdiskCmd = &cobra.Command{
 	RunE:  importVdisk,
 }
 
+// import only configuration
+// see `init` for more information
+// about the meaning of each config property.
+var importVdiskCmdCfg struct {
+	DataShards   int
+	ParityShards int
+	TlogPrivKey  string
+}
+
 func importVdisk(cmd *cobra.Command, args []string) error {
-	logLevel := log.ErrorLevel
+	logLevel := log.InfoLevel
 	if cmdconfig.Verbose {
 		logLevel = log.DebugLevel
 	}
@@ -44,6 +55,11 @@ func importVdisk(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	configSource, err := config.NewSource(vdiskCmdCfg.SourceConfig)
+	if err != nil {
+		return err
+	}
+
 	cfg := backup.Config{
 		VdiskID:             vdiskCmdCfg.VdiskID,
 		SnapshotID:          vdiskCmdCfg.SnapshotID,
@@ -56,7 +72,36 @@ func importVdisk(cmd *cobra.Command, args []string) error {
 		Force:               vdiskCmdCfg.Force,
 	}
 
-	return backup.Import(ctx, cfg)
+	log.Info("Importing the vdisk")
+	err = backup.Import(ctx, cfg)
+	if err != nil {
+		return err
+	}
+
+	// check if this vdisk has tlog cluster
+	hasTlogCluster, err := tlog.HasTlogCluster(configSource, vdiskCmdCfg.VdiskID)
+	if err != nil || !hasTlogCluster {
+		return err
+	}
+
+	log.Infof("generate tlog data")
+
+	generator, err := copy.NewGenerator(configSource, copy.Config{
+		SourceVdiskID: vdiskCmdCfg.VdiskID,
+		TargetVdiskID: vdiskCmdCfg.VdiskID,
+		DataShards:    importVdiskCmdCfg.DataShards,
+		ParityShards:  importVdiskCmdCfg.ParityShards,
+		PrivKey:       importVdiskCmdCfg.TlogPrivKey,
+		JobCount:      vdiskCmdCfg.JobCount,
+	})
+	if err != nil {
+		return err
+	}
+
+	return generator.GenerateFromStorage(ctx)
+
+	// TODO : copy nbd's tlog metadata
+	// see https://github.com/zero-os/0-Disk/issues/230
 }
 
 // checkVdiskExists checks if the vdisk in question already/still exists,
@@ -142,7 +187,7 @@ func deleteTlogMetadata(serverCfg config.StorageServerConfig, vdiskMap map[strin
 	// TODO: also delete actual tlog meta(data) from 0-Stor cluster for the supported vdisks
 	//       https://github.com/zero-os/0-Disk/issues/147
 
-	return tlog.DeleteMetadata(serverCfg, vdisks...)
+	return nbdtlog.DeleteMetadata(serverCfg, vdisks...)
 }
 
 func parseImportPosArguments(args []string) error {
@@ -214,4 +259,18 @@ This is also the default in case the --storage flag is not specified.
 		&vdiskCmdCfg.Force,
 		"force", "f", false,
 		"when given, delete the vdisk if it already existed")
+
+	ImportVdiskCmd.Flags().IntVar(
+		&importVdiskCmdCfg.DataShards,
+		"data-shards", 4,
+		"data shards (K) variable of erasure encoding")
+	ImportVdiskCmd.Flags().IntVar(
+		&importVdiskCmdCfg.ParityShards,
+		"parity-shards", 2,
+		"parity shards (M) variable of erasure encoding")
+	ImportVdiskCmd.Flags().StringVar(
+		&importVdiskCmdCfg.TlogPrivKey,
+		"tlog-priv-key", "12345678901234567890123456789012",
+		"tlog private key")
+
 }
