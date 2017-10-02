@@ -62,15 +62,20 @@ digraph {
         label = "deduped map"
         shape = "square"
     ]
+    header [
+        label = "header"
+        shape = "square"
+    ]
+    dedupedMap -> header  [ dir = "none" ]
     storageServer [
         shape = "cylinder"
         label = "Storage Server\n(FTP)"
     ]
-    dedupedMap -> storageServer [
-        label = "store deduped map\n(4)"
+    header -> storageServer [
+        label = "store header\n(4)"
     ]
-    storageServer -> dedupedMap [
-        label = "load deduped map\nor create new map\n(2)"
+    storageServer -> header [
+        label = "load header\nor create new header\n(2)"
     ]
 
     indexHashLinker1 -> dedupedMap [ dir = "none" ]

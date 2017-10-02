@@ -179,8 +179,8 @@ func (ftp *ftpStorageDriver) SetDedupedBlock(hash zerodisk.Hash, r io.Reader) er
 	return ftp.lazyStore(path.Join(dir, file), r)
 }
 
-// SetDedupedMap implements ServerDriver.SetDedupedMap
-func (ftp *ftpStorageDriver) SetDedupedMap(id string, r io.Reader) error {
+// SetHeader implements ServerDriver.SetHeader
+func (ftp *ftpStorageDriver) SetHeader(id string, r io.Reader) error {
 	dir, err := ftp.mkdirs(backupDir)
 	if err != nil {
 		return err
@@ -200,8 +200,8 @@ func (ftp *ftpStorageDriver) GetDedupedBlock(hash zerodisk.Hash, w io.Writer) er
 	return ftp.retrieve(loc, w)
 }
 
-// GetDedupedMap implements ServerDriver.GetDedupedMap
-func (ftp *ftpStorageDriver) GetDedupedMap(id string, w io.Writer) error {
+// GetHeader implements ServerDriver.GetHeader
+func (ftp *ftpStorageDriver) GetHeader(id string, w io.Writer) error {
 	loc := path.Join(ftp.rootDir, backupDir, id)
 	return ftp.retrieve(loc, w)
 }

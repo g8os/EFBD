@@ -61,12 +61,20 @@ func Import(ctx context.Context, cfg Config) error {
 
 func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, cfg importConfig) error {
 	// load the deduped map
-	dedupedMap, err := LoadDedupedMap(cfg.SnapshotID, src, &cfg.CryptoKey, cfg.CompressionType)
+	header, err := LoadHeader(cfg.SnapshotID, src, &cfg.CryptoKey, cfg.CompressionType)
 	if err != nil {
 		if err == ErrDataDidNotExist {
 			return fmt.Errorf("no deduped map could be found using the id %s", cfg.SnapshotID)
 		}
 
+		return err
+	}
+	// TODO:
+	// ensure that the snapshot size does not exceed the max vdisk size
+	// see: https://github.com/zero-os/0-Disk/issues/510
+
+	dedupedMap, err := UnpackRawDedupedMap(header.DedupedMap)
+	if err != nil {
 		return err
 	}
 

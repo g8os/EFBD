@@ -1,0 +1,95 @@
+digraph {
+    label = "bencode-encoded header example"
+    rankdir = "LR"
+
+    subgraph clusterHeader {
+    label = "Header"
+    style = "dotted"
+
+    keyMap [
+        label = "key\n\"map\""
+        shape = "square"
+    ]
+
+    keyMetadata [
+        label = "key\n\"meta\""
+        shape = "square"
+    ]
+
+    dedupedMap [
+        shape = "record"
+        label = "<t> (raw deduped map) | <h> key \"h\" | <i> key \"i\" | <c> hash \"c\""
+    ]
+
+    metadata [
+        shape = "record"
+        label = "<t> (metadata) |
+            key \"id\" \=\=\> \<snapshotID\> |
+            key \"bs\" \=\=\> \<blockSize\> |
+            key \"at\" \=\=\> \[createdAtInRFC3339\] |
+            <s> key \"src\""
+    ]
+
+    metadataSource [
+        shape = "record"
+        label = "<t> (source metadata) |
+            key \"id\" \=\=\> \[vdiskID\] |
+            key \"bs\" \=\=\> \[blockSize\] |
+            key \"sz\" \=\=\> \[size\]"
+    ]
+
+    keyMap -> dedupedMap:t
+    keyMetadata -> metadata:t
+    metadata:s -> metadataSource:t
+
+    subgraph clusterDedupedMap {
+        label = "Deduped Map"
+        style = "dotted"
+
+        valueH [
+            shape = "record"
+            label = "<t> (block hashes) | <1> hash i | <2> hash i+1 | ... | <3> hash n"
+        ]
+
+        valueI [
+            shape = "record"
+            label = "<t> (block indices) | <1> index i | <2> index i+1 | ... | <3> index n"
+        ]
+
+        valueC [
+            label = "n\n(block index/hash count)"
+            shape = "rectangle"
+        ]
+
+        valueI:1 -> valueH:1
+        valueI:2 -> valueH:2
+        valueI:3 -> valueH:3
+    }
+
+    dedupedMap:h -> valueH:t
+    dedupedMap:i -> valueI:t
+    dedupedMap:c -> valueC
+
+    }
+
+    subgraph clusterBlocks {
+        style = "invis"
+
+        dedupedBlock1 [
+            shape = "rectangle"
+            label = "deduped block\nhash i"
+        ]
+        dedupedBlock2 [
+            shape = "rectangle"
+            label = "deduped block\nhash i+1"
+        ]
+        dedupedBlock3 [
+            shape = "rectangle"
+            label = "deduped block\nhash n"
+        ]
+    }
+
+    valueH:1 -> dedupedBlock2
+    valueH:2 -> dedupedBlock1
+    valueH:3 -> dedupedBlock2
+}

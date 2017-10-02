@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/log"
@@ -52,6 +53,7 @@ func Export(ctx context.Context, cfg Config) error {
 		DstBlockSize:    cfg.BlockSize,
 		CompressionType: cfg.CompressionType,
 		CryptoKey:       cfg.CryptoKey,
+		VdiskID:         cfg.VdiskID,
 		SnapshotID:      cfg.SnapshotID,
 		Force:           cfg.Force,
 	}
@@ -59,10 +61,83 @@ func Export(ctx context.Context, cfg Config) error {
 	return exportBS(ctx, blockStorage, storageConfig.Indices, storageDriver, exportConfig)
 }
 
+// existingOrNewHeader tries to first fetch an existing (snapshot) header from a given server,
+// if it doesn't exist yet, a new one will be created in-memory instead.
+// If it did exist already, it will be optionally decrypted, decompressed and loaded in-memory as a Header.
+// When `cfg.Force` is `true`, a new header will be created, even if one existed already but couldn't be loaded.
+// When `cfg.Force` is `false`, and a header exists but can't be a loaded,
+// the error of why it couldn't be loaded, is returned instead.
+func existingOrNewHeader(cfg exportConfig, src StorageDriver, key *CryptoKey, ct CompressionType) (*Header, error) {
+	header, err := LoadHeader(cfg.SnapshotID, src, key, ct)
+
+	if err == ErrDataDidNotExist {
+		// deduped map did not exist yet,
+		// return a new one based on the given export config
+		return newExportHeader(cfg), nil
+	}
+	if err != nil {
+		// deduped map did exist, but we couldn't load it.
+		if cfg.Force {
+			// we forcefully create a new one anyhow if `force == true`
+			log.Debugf(
+				"couldn't read header for snapshot '%s' due to an error (%s), forcefully creating a new one",
+				cfg.SnapshotID, err)
+			return newExportHeader(cfg), nil
+		}
+		// deduped map did exist,
+		// but an error was triggered while fetching it
+		return nil, err
+	}
+
+	if header.Metadata.BlockSize != cfg.DstBlockSize {
+		if cfg.Force {
+			// we forcefully create a new one anyhow if `force == true`
+			log.Debugf(
+				"existing header for snapshot '%s' defined incompatible snapshot blocksize, forcefully creating a new one",
+				cfg.SnapshotID)
+			return newExportHeader(cfg), nil
+		}
+
+		return nil, errIncompatibleHeader
+	}
+
+	// update information to match new export session
+	header.Metadata.Created = time.Now().Format(time.RFC3339)
+	header.Metadata.Source.VdiskID = cfg.VdiskID
+	header.Metadata.Source.BlockSize = cfg.SrcBlockSize
+
+	// return existing header, which was updated
+	log.Debugf("loaded and updated existing header for snapshot %s", cfg.SnapshotID)
+	return header, nil
+}
+
+var (
+	errIncompatibleHeader = errors.New("incompatible snapshot header")
+)
+
+func newExportHeader(cfg exportConfig) *Header {
+	return &Header{
+		Metadata: Metadata{
+			SnapshotID: cfg.SnapshotID,
+			BlockSize:  cfg.DstBlockSize,
+			Created:    time.Now().Format(time.RFC3339),
+			Source: Source{
+				VdiskID:   cfg.VdiskID,
+				BlockSize: cfg.SrcBlockSize,
+			},
+		},
+		DedupedMap: RawDedupedMap{},
+	}
+}
+
 func exportBS(ctx context.Context, src storage.BlockStorage, blockIndices []int64, dst StorageDriver, cfg exportConfig) error {
-	// load the deduped map, or create a new one if it doesn't exist yet
-	dedupedMap, err := ExistingOrNewDedupedMap(
-		cfg.SnapshotID, dst, &cfg.CryptoKey, cfg.CompressionType, cfg.Force)
+	// load the header, or create a new one if it doesn't exist yet
+	header, err := existingOrNewHeader(cfg, dst, &cfg.CryptoKey, cfg.CompressionType)
+	if err != nil {
+		return err
+	}
+	// unpack the raw deduped map so we can use it as the model we require it to be
+	dedupedMap, err := UnpackRawDedupedMap(header.DedupedMap)
 	if err != nil {
 		return err
 	}
@@ -347,13 +422,15 @@ func exportBS(ctx context.Context, src storage.BlockStorage, blockIndices []int6
 		return exportErr
 	}
 
-	// store the deduped map
-	buf := bytes.NewBuffer(nil)
-	err = dedupedMap.Serialize(&cfg.CryptoKey, cfg.CompressionType, buf)
+	// get the raw deduped map, so the header can be prepared and stored as well
+	RawDedupedMap, err := dedupedMap.Raw()
 	if err != nil {
 		return err
 	}
-	return dst.SetDedupedMap(cfg.SnapshotID, buf)
+	header.DedupedMap = *RawDedupedMap
+
+	// store the (updated) header
+	return StoreHeader(header, &cfg.CryptoKey, cfg.CompressionType, dst)
 }
 
 // used to connect a sequence index to a block index,
@@ -378,6 +455,7 @@ type exportConfig struct {
 	CompressionType CompressionType
 	CryptoKey       CryptoKey
 
+	VdiskID    string
 	SnapshotID string
 
 	Force bool
