@@ -112,9 +112,15 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	// but only one will be used at a time, the others merely serve as backup servers.
 	if staticConfig.Type.TlogSupport() {
 		vdiskNBDConfig, err := config.ReadVdiskNBDConfig(f.configSource, vdiskID)
-		if err == nil && vdiskNBDConfig.TlogServerClusterID != "" {
+		if err != nil {
+			blockStorage.Close()
+			redisProvider.Close()
+			log.Infof("couldn't vdisk %s's NBD config: %s", vdiskID, err.Error())
+			return nil, err
+		}
+		if vdiskNBDConfig.TlogServerClusterID != "" {
 			log.Debugf("creating tlogStorage for backend %v (%v)", vdiskID, staticConfig.Type)
-			blockStorage, err = tlog.Storage(ctx,
+			tlogBlockStorage, err := tlog.Storage(ctx,
 				vdiskID, vdiskNBDConfig.TlogServerClusterID,
 				f.configSource, blockSize, blockStorage, redisProvider, nil)
 			if err != nil {
@@ -123,12 +129,7 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 				log.Infof("couldn't create tlog storage: %s", err.Error())
 				return nil, err
 			}
-		}
-		if err != nil {
-			blockStorage.Close()
-			redisProvider.Close()
-			log.Infof("couldn't create tlog storage: %s", err.Error())
-			return nil, err
+			blockStorage = tlogBlockStorage
 		}
 	}
 
