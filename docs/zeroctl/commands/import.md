@@ -60,26 +60,32 @@ More (technical) information about the backup module can be found in [the (nbd) 
 To import a [vdisk][vdisk] `a`, and thus restore from a backup (snapshot) stored on an FTP server `1.2.3.4:21`:
 
 ```
-$ zerodisk import vdisk a 01234567890123456789012345678901 mybackup -s ftp://1.2.3.4:21
+$ zerodisk import vdisk a mybackup -s ftp://1.2.3.4:21 -k 01234567890123456789012345678901
 ```
 
 If the vdisk `a` already existed on the ARDB storage cluster specified in the config the `-f` flag can be specified,
 to forcefully delete the existing vdisk before restoring the vdisk from the specified backup:
 
 ```
-$ zerodisk import vdisk a 01234567890123456789012345678901 mybackup -s ftp://1.2.3.4:21 -f
+$ zerodisk import vdisk a mybackup -s ftp://1.2.3.4:21 -f -k 01234567890123456789012345678901
 ```
 
 If we want to import a snapshot which was compressuing using the the `XZ` compression algorithm we can do:
 
 ```
-$ zerodisk import vdisk a 01234567890123456789012345678901 mybackup -s ftp://1.2.3.4:21 -cxz
+$ zerodisk import vdisk a mybackup -s ftp://1.2.3.4:21 -cxz -k 01234567890123456789012345678901
 ```
 
 If we want to use an [etcd][etcd] cluster for our [vdisk][vdisk] configuration we can do:
 
 ```
-$ zerodisk import vdisk a 01234567890123456789012345678901 mybackup -s ftp://1.2.3.4:21 -config 1.2.3.4:2000
+$ zerodisk import vdisk a mybackup -s ftp://1.2.3.4:21 --config 1.2.3.4:2000 -k 01234567890123456789012345678901
+```
+
+If we want to import a public backup we can simply omit the `-k` flag as we no longer have a private key (or encryption):
+
+```
+$ zerodisk import vdisk a mybackup -s ftp://1.2.3.4:21 --config 1.2.3.4:2000
 ```
 
 [vdisk]: /docs/glossary.md#vdisk

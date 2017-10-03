@@ -67,25 +67,31 @@ More (technical) information about the backup module can be found in [the (nbd) 
 To export a [vdisk][vdisk] `a`, and thus make a backup (snapshot) on an FTP server `1.2.3.4:21`:
 
 ```
-$ zerodisk export vdisk a 01234567890123456789012345678901 -s ftp://1.2.3.4:21
+$ zerodisk export vdisk a -k 01234567890123456789012345678901 -s ftp://1.2.3.4:21
 ```
 
 If we want to define our own snapshot id for the backup we could instead do:
 
 ```
-$ zerodisk export vdisk a 01234567890123456789012345678901 mybackup -s ftp://1.2.3.4:21
+$ zerodisk export vdisk a mybackup -k 01234567890123456789012345678901 -s ftp://1.2.3.4:21
 ```
 
 If we want to use the `XZ` compression algorithm instead of the `LZ4` compression algorithm we can do:
 
 ```
-$ zerodisk export vdisk a 01234567890123456789012345678901 -s ftp://1.2.3.4:21 -cxz
+$ zerodisk export vdisk a -k 01234567890123456789012345678901 -s ftp://1.2.3.4:21 -cxz
 ```
 
 If we want to use an [etcd][etcd] cluster for our [vdisk][vdisk] configuration we can do:
 
 ```
-$ zerodisk export vdisk a 01234567890123456789012345678901 -s ftp://1.2.3.4:21 -config 1.2.3.4:2000
+$ zerodisk export vdisk a -k 01234567890123456789012345678901 -s ftp://1.2.3.4:21 --config 1.2.3.4:2000
+```
+
+If we want to create a public backup (without encryption) we can omit the `-k` flag:
+
+```
+$ zerodisk export vdisk a -s ftp://1.2.3.4:21 --config 1.2.3.4:2000
 ```
 
 [vdisk]: /docs/glossary.md#vdisk
