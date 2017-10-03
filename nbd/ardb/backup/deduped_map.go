@@ -1,17 +1,33 @@
 package backup
 
 import (
-	"bytes"
 	"errors"
-	"fmt"
-	"io"
 	"sync"
 
 	"github.com/zero-os/0-Disk"
-	"github.com/zero-os/0-Disk/log"
-
-	"github.com/zeebo/bencode"
 )
+
+// UnpackRawDedupedMap allows you to unpack a raw deduped map
+// and start using it as an actual DedupedMap.
+// If the count of the given raw deduped map is `0`, a new DedupedMap is created instead.
+// NOTE: the slice (hashes) data will be shared amongst the raw and real deduped map,
+// so ensure that this is OK.
+func UnpackRawDedupedMap(raw RawDedupedMap) (*DedupedMap, error) {
+	if raw.Count == 0 {
+		return NewDedupedMap(), nil
+	}
+	err := raw.Validate()
+	if err != nil {
+		return nil, err
+	}
+
+	hashes := make(map[int64]zerodisk.Hash, raw.Count)
+	for i := int64(0); i < raw.Count; i++ {
+		hashes[raw.Indices[i]] = zerodisk.Hash(raw.Hashes[i])
+	}
+
+	return &DedupedMap{hashes: hashes}, nil
+}
 
 // NewDedupedMap creates a new deduped map,
 // which contains all the metadata stored for a(n) (exported) backup.
@@ -22,120 +38,8 @@ func NewDedupedMap() *DedupedMap {
 	}
 }
 
-// LoadDedupedMap a deduped map from a given (backup) server.
-func LoadDedupedMap(id string, src StorageDriver, key *CryptoKey, ct CompressionType) (*DedupedMap, error) {
-	buf := bytes.NewBuffer(nil)
-	err := src.GetDedupedMap(id, buf)
-	if err != nil {
-		// deduped map did exist,
-		// but an unknown error was triggered while fetching it
-		return nil, err
-	}
-
-	// try to load the existing deduped map in memory
-	return DeserializeDedupedMap(key, ct, buf)
-}
-
-// ExistingOrNewDedupedMap tries to first fetch an existing deduped map from a given server,
-// if it doesn't exist yet, a new one will be created in-memory instead.
-// If it did exist already, it will be decrypted, decompressed and loaded in-memory as a DedupedMap.
-// When `force` is `true`, a new map will be created, even if one existed already but couldn't be loaded.
-// When `force` is `false`, and a map exists but can't be a loaded,
-// the error of why it couldn't be loaded, is returned instead.
-func ExistingOrNewDedupedMap(id string, src StorageDriver, key *CryptoKey, ct CompressionType, force bool) (*DedupedMap, error) {
-	buf := bytes.NewBuffer(nil)
-	err := src.GetDedupedMap(id, buf)
-
-	if err == ErrDataDidNotExist {
-		// deduped map did not exist yet, return a new one
-		return NewDedupedMap(), nil
-	}
-	if err != nil {
-		// deduped map did exist, but we couldn't load it.
-		if force {
-			// we forcefully create a new one anyhow if `force == true`
-			log.Debugf(
-				"couldn't read deduped map '%s' due to an error (%s), forcefully creating a new one",
-				id, err)
-			return NewDedupedMap(), nil
-		}
-		// deduped map did exist,
-		// but an unknown error was triggered while fetching it
-		return nil, err
-	}
-
-	// try to load the existing deduped map in memory
-	dm, err := DeserializeDedupedMap(key, ct, buf)
-	if err != nil {
-		// deduped map did exist, but we couldn't deserialize it.
-		// This could for example happen in case the given encryption key is false,
-		// or the compression algorithm doesn't match with the one used during serialization.
-
-		// However, when `force` is given, we'll ignore this err and return a new deduped map instead.
-		if force {
-			log.Debugf(
-				"couldn't deserialize deduped map '%s' due to an error (%s), forcefully creating a new one",
-				id, err)
-			return NewDedupedMap(), nil
-		}
-
-		return nil, err
-	}
-
-	log.Debugf("loaded and deserialized existing deduped map %s", id)
-	return dm, err
-}
-
-// DeserializeDedupedMap allows you to deserialize a deduped map from a given reader.
-// It is expected that all the data in the reader is available,
-// and is compressed and (only than) encrypted.
-// This function will attempt to decrypt and decompress the read data,
-// using the given private (AES) key and compression type.
-// The given compression type and private key has to match the information,
-// used to serialize this DedupedMap in the first place.
-// See `DedupedMap` for more information.
-func DeserializeDedupedMap(key *CryptoKey, ct CompressionType, src io.Reader) (*DedupedMap, error) {
-	decompressor, err := NewDecompressor(ct)
-	if err != nil {
-		return nil, err
-	}
-
-	var bufB *bytes.Buffer
-
-	if key.Defined() {
-		bufA := bytes.NewBuffer(nil)
-
-		err = Decrypt(key, src, bufA)
-		if err != nil {
-			return nil, fmt.Errorf("couldn't decrypt compressed deduped map: %v", err)
-		}
-
-		bufB = bytes.NewBuffer(nil)
-		err = decompressor.Decompress(bufA, bufB)
-		if err != nil {
-			return nil, fmt.Errorf("couldn't decompress deduped map: %v", err)
-		}
-	} else {
-		bufB = bytes.NewBuffer(nil)
-
-		err = decompressor.Decompress(src, bufB)
-		if err != nil {
-			return nil, fmt.Errorf("couldn't decompress deduped map: %v", err)
-		}
-	}
-
-	hashes, err := deserializeHashes(bufB)
-	if err != nil {
-		return nil, fmt.Errorf("couldn't decode bencoded deduped map: %v", err)
-	}
-
-	return &DedupedMap{hashes: hashes}, nil
-}
-
 // DedupedMap contains all hashes for a vdisk's backup,
 // where each hash is mapped to its (export) block index.
-// NOTE: DedupedMap is not thread-safe,
-//       and should only be used on one goroutine at a time.
 type DedupedMap struct {
 	hashes map[int64]zerodisk.Hash
 	mux    sync.Mutex
@@ -167,104 +71,30 @@ func (dm *DedupedMap) GetHash(index int64) (zerodisk.Hash, bool) {
 	return hash, found
 }
 
-// Serialize allows you to write all data of this map in a binary encoded manner,
-// to the given writer. The encoded data will be compressed and encrypted before being
-// writen to the given writer.
-// You can re-load this map in memory using the `DeserializeDedupedMap` function.
-func (dm *DedupedMap) Serialize(key *CryptoKey, ct CompressionType, dst io.Writer) error {
+// Raw returns this DedupedMap as a RawDedupedMap.
+// NOTE: the hash data is shared with the hashes stored in this DedupedMap,
+//       so ensure that this functional is called in complete isolation
+func (dm *DedupedMap) Raw() (*RawDedupedMap, error) {
 	dm.mux.Lock()
 	defer dm.mux.Unlock()
 
-	compressor, err := NewCompressor(ct)
-	if err != nil {
-		return err
-	}
-
-	hmbuffer := bytes.NewBuffer(nil)
-	err = serializeHashes(dm.hashes, hmbuffer)
-	if err != nil {
-		return fmt.Errorf("couldn't bencode dedupd map: %v", err)
-	}
-
-	if key.Defined() {
-		// compress and encrypt
-		imbuffer := bytes.NewBuffer(nil)
-		err = compressor.Compress(hmbuffer, imbuffer)
-		if err != nil {
-			return fmt.Errorf("couldn't compress bencoded dedupd map: %v", err)
-		}
-
-		err = Encrypt(key, imbuffer, dst)
-		if err != nil {
-			return fmt.Errorf("couldn't encrypt compressed dedupd map: %v", err)
-		}
-	} else {
-		// only compress
-		err = compressor.Compress(hmbuffer, dst)
-		if err != nil {
-			return fmt.Errorf("couldn't compress bencoded dedupd map: %v", err)
-		}
-	}
-
-	return nil
-}
-
-// serializeHashes encapsulates the entire encoding logic
-// for the deduped map serialization.
-func serializeHashes(hashes map[int64]zerodisk.Hash, w io.Writer) error {
-	hashCount := len(hashes)
+	hashCount := len(dm.hashes)
 	if hashCount == 0 {
-		return errors.New("deduped map is empty")
+		return nil, errors.New("deduped map is empty")
 	}
 
-	var format dedupedMapEncodeFormat
-	format.Count = int64(hashCount)
+	raw := new(RawDedupedMap)
+	raw.Count = int64(hashCount)
 
-	format.Indices = make([]int64, hashCount)
-	format.Hashes = make([][]byte, hashCount)
+	raw.Indices = make([]int64, hashCount)
+	raw.Hashes = make([][]byte, hashCount)
 
 	var i int
-	for index, hash := range hashes {
-		format.Indices[i] = index
-		format.Hashes[i] = hash.Bytes()
+	for index, hash := range dm.hashes {
+		raw.Indices[i] = index
+		raw.Hashes[i] = hash.Bytes()
 		i++
 	}
 
-	return bencode.NewEncoder(w).Encode(format)
-}
-
-// deserializeHashes encapsulates the entire decoding logic
-// for the deduped map serialization.
-func deserializeHashes(r io.Reader) (map[int64]zerodisk.Hash, error) {
-	var format dedupedMapEncodeFormat
-	err := bencode.NewDecoder(r).Decode(&format)
-	if err != nil {
-		return nil, fmt.Errorf("couldn't decode bencoded deduped map: %v", err)
-	}
-
-	if format.Count == 0 {
-		return nil, errors.New("invalid count for decoded deduped map")
-	}
-	if format.Count != int64(len(format.Indices)) {
-		return nil, errors.New("invalid index count for decoded deduped map")
-	}
-	if format.Count != int64(len(format.Hashes)) {
-		return nil, errors.New("invalid hash count for decoded deduped map")
-	}
-
-	hashes := make(map[int64]zerodisk.Hash, format.Count)
-	for i := int64(0); i < format.Count; i++ {
-		hashes[format.Indices[i]] = zerodisk.Hash(format.Hashes[i])
-	}
-
-	return hashes, nil
-}
-
-// dedupedMapEncodeFormat defines the structure used to
-// encode a deduped map to a binary format.
-// See https://github.com/zeebo/bencode for more information.
-type dedupedMapEncodeFormat struct {
-	Count   int64    `bencode:"c"`
-	Indices []int64  `bencode:"i"`
-	Hashes  [][]byte `bencode:"h"`
+	return raw, nil
 }

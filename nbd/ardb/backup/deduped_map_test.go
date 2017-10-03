@@ -1,108 +1,52 @@
 package backup
 
 import (
-	"bytes"
-	"crypto/rand"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/zero-os/0-Disk"
+	"github.com/stretchr/testify/require"
 )
 
-func TestHashMapSerialization(t *testing.T) {
-	const (
-		hashCount = 1024 * 64
-	)
+func TestUnpackRawDedupedMapFailure(t *testing.T) {
+	require := require.New(t)
 
-	// create and set all hashes
-	hashes := make(map[int64]zerodisk.Hash)
-	for i := 0; i < hashCount; i++ {
-		hash := zerodisk.NewHash()
-		_, err := rand.Read(hash[:])
-		if err != nil {
-			t.Fatal(err)
-		}
-		hashes[int64(i)] = hash
-	}
+	dm, err := UnpackRawDedupedMap(RawDedupedMap{Count: 1})
+	require.Error(err, "should be error, as count is wrong")
+	require.Nil(dm)
 
-	buf := bytes.NewBuffer(nil)
+	dm, err = UnpackRawDedupedMap(RawDedupedMap{Count: 1, Indices: []int64{1, 2}})
+	require.Error(err, "should be error, as index- and hash count is wrong")
+	require.Nil(dm)
 
-	// serialize
-	err := serializeHashes(hashes, buf)
-	if err != nil {
-		t.Fatal(err)
-	}
+	dm, err = UnpackRawDedupedMap(RawDedupedMap{Count: 2, Indices: []int64{1, 2}, Hashes: [][]byte{[]byte{}}})
+	require.Error(err, "should be error, as hash count is wrong")
+	require.Nil(dm)
 
-	t.Logf(
-		"hashmap with %d hashes (%d bytes) is serialized into %d bytes",
-		hashCount, ((zerodisk.HashSize + 4) * hashCount), len(buf.Bytes()))
-
-	// deserialize
-	outHashes, err := deserializeHashes(buf)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for index, hash := range hashes {
-		outHash, ok := outHashes[index]
-		if !ok {
-			t.Errorf("couldn't find hash %d in out hashmap", index)
-			continue
-		}
-		assert.Equal(t, hash, outHash)
-	}
+	dm, err = UnpackRawDedupedMap(RawDedupedMap{Count: 1, Indices: []int64{1, 2}, Hashes: [][]byte{[]byte{}}})
+	require.Error(err, "should be error, as index count is wrong")
+	require.Nil(dm)
 }
 
-func TestDedupedMapSerialization(t *testing.T) {
-	dm := NewDedupedMap()
+func TestRawDedupedMap(t *testing.T) {
+	require := require.New(t)
 
-	const (
-		hashCount = 1024 * 64
-	)
-
-	// set all hashes
-	hashes := make([]zerodisk.Hash, hashCount)
-	for i := 0; i < hashCount; i++ {
-		hashes[i] = zerodisk.NewHash()
-		_, err := rand.Read(hashes[i][:])
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		assert.True(t, dm.SetHash(int64(i), hashes[i]))
+	originalRaw := RawDedupedMap{
+		Count:   4,
+		Indices: []int64{8, 4, 2, 1},
+		Hashes: [][]byte{
+			[]byte{1, 2},
+			[]byte{2, 3},
+			[]byte{3, 4},
+			[]byte{4, 5},
+		},
 	}
 
-	// ensure all hashes were written
-	for i := 0; i < hashCount; i++ {
-		hash, ok := dm.GetHash(int64(i))
-		if assert.True(t, ok) {
-			assert.Equal(t, hashes[i], hash)
-		}
-	}
+	dm, err := UnpackRawDedupedMap(originalRaw)
+	require.NoError(err)
+	require.NotNil(dm)
 
-	var buf bytes.Buffer
-
-	// serialize map
-	err := dm.Serialize(&privKey, LZ4Compression, &buf)
-	if !assert.NoError(t, err) {
-		return
-	}
-
-	t.Logf(
-		"deduped map of %d hashes (%d bytes) is serialized into %d bytes",
-		hashCount, ((zerodisk.HashSize + 4) * hashCount), len(buf.Bytes()))
-
-	// Deserialize map again
-	dm, err = DeserializeDedupedMap(&privKey, LZ4Compression, &buf)
-	if !assert.NoError(t, err) {
-		return
-	}
-
-	// ensure all hashes are available
-	for i := 0; i < hashCount; i++ {
-		hash, ok := dm.GetHash(int64(i))
-		if assert.True(t, ok) {
-			assert.Equal(t, hashes[i], hash)
-		}
-	}
+	newRaw, err := dm.Raw()
+	require.NoError(err)
+	require.Equal(originalRaw.Count, newRaw.Count)
+	require.Subset(originalRaw.Hashes, newRaw.Hashes)
+	require.Subset(originalRaw.Indices, newRaw.Indices)
 }

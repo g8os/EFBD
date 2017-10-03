@@ -21,6 +21,13 @@ var ExportVdiskCmd = &cobra.Command{
 	RunE:  exportVdisk,
 }
 
+// export only configuration
+// see `init` for more information
+// about the meaning of each config property.
+var exportVdiskCmdCfg struct {
+	ExportBlockSize int64
+}
+
 func exportVdisk(cmd *cobra.Command, args []string) error {
 	logLevel := log.ErrorLevel
 	if cmdconfig.Verbose {
@@ -40,7 +47,7 @@ func exportVdisk(cmd *cobra.Command, args []string) error {
 	cfg := backup.Config{
 		VdiskID:             vdiskCmdCfg.VdiskID,
 		SnapshotID:          vdiskCmdCfg.SnapshotID,
-		BlockSize:           vdiskCmdCfg.ExportBlockSize,
+		BlockSize:           exportVdiskCmdCfg.ExportBlockSize,
 		BlockStorageConfig:  vdiskCmdCfg.SourceConfig,
 		BackupStorageConfig: vdiskCmdCfg.BackupStorageConfig,
 		JobCount:            vdiskCmdCfg.JobCount,
@@ -120,7 +127,7 @@ using a different private key or compression type, than the one(s) used right no
 		"config resource: dialstrings (etcd cluster) or path (yaml file)")
 
 	ExportVdiskCmd.Flags().Int64VarP(
-		&vdiskCmdCfg.ExportBlockSize, "blocksize", "b", backup.DefaultBlockSize,
+		&exportVdiskCmdCfg.ExportBlockSize, "blocksize", "b", backup.DefaultBlockSize,
 		"the size of the exported (deduped) blocks")
 	ExportVdiskCmd.Flags().VarP(
 		&vdiskCmdCfg.CompressionType, "compression", "c",

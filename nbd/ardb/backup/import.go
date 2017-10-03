@@ -49,8 +49,8 @@ func Import(ctx context.Context, cfg Config) error {
 
 	importConfig := importConfig{
 		JobCount:        cfg.JobCount,
-		SrcBlockSize:    cfg.BlockSize,
 		DstBlockSize:    storageConfig.BlockStorage.BlockSize,
+		DstVdiskSize:    storageConfig.VdiskSize,
 		CompressionType: cfg.CompressionType,
 		CryptoKey:       cfg.CryptoKey,
 		SnapshotID:      cfg.SnapshotID,
@@ -61,12 +61,17 @@ func Import(ctx context.Context, cfg Config) error {
 
 func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, cfg importConfig) error {
 	// load the deduped map
-	dedupedMap, err := LoadDedupedMap(cfg.SnapshotID, src, &cfg.CryptoKey, cfg.CompressionType)
+	header, err := LoadHeader(cfg.SnapshotID, src, &cfg.CryptoKey, cfg.CompressionType)
 	if err != nil {
 		if err == ErrDataDidNotExist {
 			return fmt.Errorf("no deduped map could be found using the id %s", cfg.SnapshotID)
 		}
 
+		return err
+	}
+
+	dedupedMap, err := UnpackRawDedupedMap(header.DedupedMap)
+	if err != nil {
 		return err
 	}
 
@@ -231,7 +236,7 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 		}()
 
 		sbf := newStreamBlockFetcher()
-		obf := sizedBlockFetcher(sbf, cfg.SrcBlockSize, cfg.DstBlockSize)
+		obf := sizedBlockFetcher(sbf, header.Metadata.BlockSize, cfg.DstBlockSize)
 
 		defer func() {
 			if err != nil {
@@ -331,6 +336,30 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 		}()
 
 		hf := newHashFetcher(dedupedMap)
+
+		if cfg.DstVdiskSize != 0 {
+			// if destination vdisk size is known,
+			// we'll validate whether or not the vdisk is big enough
+			// to hold all the vdisk data.
+			// To know that we need to first get the biggest possible blockIndex,
+			// combining that together with the blocksize, should allow us to tell if
+			// the snapshot fits in the vdisk or not.
+			var snapshotSize uint64
+			snapshotSize, err = computeSnapshotImportSize(
+				hf.pairs[hf.length-1], src, header.Metadata.BlockSize, cfg)
+			if err != nil {
+				sendErr(err)
+				return
+			}
+			if snapshotSize > cfg.DstVdiskSize {
+				log.Infof("snapshot %s (size %d) is too big for target vdisk (size %d)",
+					cfg.SnapshotID, snapshotSize, cfg.DstVdiskSize)
+				err = ErrSnapshotTooBig
+				sendErr(err)
+				return
+			}
+		}
+
 		var pair *indexHashPair
 
 		var sequence int64
@@ -475,7 +504,7 @@ func (hf *hashFetcher) FetchHash() (*indexHashPair, error) {
 	return &hf.pairs[hf.cursor-1], nil
 }
 
-// A pair of index and the hash it is mapped to.
+// indexHashPair is a pair of index and the hash it is mapped to.
 type indexHashPair struct {
 	Index int64
 	Hash  zerodisk.Hash
@@ -487,8 +516,10 @@ type indexHashPairSlice []indexHashPair
 type importConfig struct {
 	JobCount int
 
-	SrcBlockSize int64
 	DstBlockSize int64
+
+	// max destination vdisk size
+	DstVdiskSize uint64
 
 	CompressionType CompressionType
 	CryptoKey       CryptoKey
@@ -513,6 +544,48 @@ type importOutput struct {
 	SequenceIndex int64  // = importInput.SequenceIndex
 }
 
+func computeSnapshotImportSize(biggestSrcPair indexHashPair, src StorageDriver, srcBlockSize int64, cfg importConfig) (uint64, error) {
+	// define the blockIndex
+	var blockIndex int64
+	if srcBlockSize == cfg.DstBlockSize {
+		blockIndex = biggestSrcPair.Index
+	} else if srcBlockSize < cfg.DstBlockSize {
+		ratio := cfg.DstBlockSize / srcBlockSize
+		blockIndex = biggestSrcPair.Index / ratio
+	} else { // cfg.SrcBlockSize > cfg.DstBlockSize
+		// read the deduped block,
+		// as we need to define what the biggest non-nil block is
+		block, err := readDedupedBlock(
+			biggestSrcPair.Index, biggestSrcPair.Hash,
+			src, &cfg.CryptoKey, cfg.CompressionType)
+		if err != nil {
+			return 0, err
+		}
+
+		blen := int64(len(block))
+		for index := int64(0); index < blen; {
+			if block[index] != 0 {
+				blockIndex = index / cfg.DstBlockSize
+				index = blockIndex*cfg.DstBlockSize + cfg.DstBlockSize
+				continue
+			}
+			index++
+		}
+
+		ratio := srcBlockSize / cfg.DstBlockSize
+		blockIndex += biggestSrcPair.Index * ratio
+	}
+
+	snapshotSize := uint64(cfg.DstBlockSize + blockIndex*cfg.DstBlockSize)
+	log.Debugf("snapshot %s's import size is %d bytes", cfg.SnapshotID, snapshotSize)
+	return snapshotSize, nil
+}
+
 var (
 	errInvalidBlockIndex = errors.New("block index could not be found in deduped map")
+)
+
+// Various public import-related errors
+var (
+	ErrSnapshotTooBig = errors.New("snapshot is too big for target vdisk")
 )

@@ -138,7 +138,6 @@ func testImportExportCommute(t *testing.T, srcBS, dstBS, blockCount int64, sgen 
 	// import into destination in-memory storage
 	importCfg := importConfig{
 		JobCount:        runtime.NumCPU(),
-		SrcBlockSize:    dstBS,
 		DstBlockSize:    srcBS,
 		CompressionType: LZ4Compression,
 		CryptoKey:       privKey,
@@ -266,7 +265,6 @@ func testImportExportCommuteWithOffsetAndInterval(t *testing.T, srcBS, dstBS, bl
 	// import into destination in-memory storage
 	importCfg := importConfig{
 		JobCount:        runtime.NumCPU(),
-		SrcBlockSize:    dstBS,
 		DstBlockSize:    srcBS,
 		CompressionType: LZ4Compression,
 		CryptoKey:       privKey,
@@ -378,7 +376,6 @@ func testImportExportCommuteNoEncryptionWithOffsetAndInterval(t *testing.T, srcB
 	// import into destination in-memory storage
 	importCfg := importConfig{
 		JobCount:        runtime.NumCPU(),
-		SrcBlockSize:    dstBS,
 		DstBlockSize:    srcBS,
 		CompressionType: LZ4Compression,
 		SnapshotID:      vdiskID,
@@ -517,7 +514,6 @@ func testImportExportCommuteStatic(t *testing.T, sourceData []byte, srcBS, dstBS
 	// import into destination in-memory storage
 	importCfg := importConfig{
 		JobCount:        runtime.NumCPU(),
-		SrcBlockSize:    dstBS,
 		DstBlockSize:    srcBS,
 		CompressionType: LZ4Compression,
 		CryptoKey:       privKey,
@@ -632,7 +628,6 @@ func testImportExportCommuteUsingPremadeData(t *testing.T, ibm map[int64][]byte,
 	// import into destination in-memory storage
 	importCfg := importConfig{
 		JobCount:        runtime.NumCPU(),
-		SrcBlockSize:    dstBS,
 		DstBlockSize:    srcBS,
 		CompressionType: LZ4Compression,
 		CryptoKey:       privKey,

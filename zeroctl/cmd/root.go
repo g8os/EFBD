@@ -34,6 +34,7 @@ func init() {
 		ExportCmd,
 		ImportCmd,
 		ListCmd,
+		DescribeCmd,
 	)
 
 	RootCmd.PersistentFlags().BoolVarP(

@@ -27,6 +27,7 @@ type Config struct {
 	SnapshotID string
 
 	// Optional: Snapshot BlockSize (128KiB by default)
+	// NOTE: only used by export funcs (ignored by import funcs)
 	BlockSize int64
 
 	// Required: SourceConfig to configure the storage with
@@ -102,6 +103,7 @@ type storageConfig struct {
 	Indices      []int64
 	NBD          config.NBDStorageConfig
 	BlockStorage storage.BlockStorageConfig
+	VdiskSize    uint64 // max source/target vdisk size in KiB
 }
 
 // blockFetcher is a generic interface which defines the API
@@ -389,6 +391,7 @@ func createBlockStorage(vdiskID string, sourceConfig config.SourceConfig, listIn
 		Indices:      indices,
 		NBD:          *nbdStorageConfig,
 		BlockStorage: blockStorage,
+		VdiskSize:    vdiskConfig.Size * 1024 * 1024 * 1024, // GiB -> bytes
 	}, nil
 }
 

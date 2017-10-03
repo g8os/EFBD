@@ -37,7 +37,6 @@ Usage:
   zeroctl import vdisk vdiskid snapshotID [flags]
 
 Flags:
-  -b, --blocksize int                 the size of the exported (deduped) blocks (default 131072)
   -c, --compression CompressionType   the compression type to use, options { lz4, xz } (default lz4)
       --config SourceConfig           config resource: dialstrings (etcd cluster) or path (yaml file) (default config.yml)
       --data-shards int               data shards (K) variable of erasure encoding (default 4)

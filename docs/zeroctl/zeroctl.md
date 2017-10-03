@@ -48,6 +48,10 @@ Export a [stored (1)][storage] [vdisk][vdisk] in a secure and efficient manner o
 
 Import a [vdisk][vdisk] [backup][backup] from a (S)FTP server and [store (1)][storage] it as a (new) [vdisk][vdisk].
 
+### [`zeroctl describe snapshot`](commands/describe.md#snapshot)
+
+Describe a [vdisk][vdisk] [backup][backup] (see: snapshot) from a (S)FTP server.
+
 [storage]: /docs/glossary.md#storage
 [backup]: /docs/glossary.md#backup
 [data]: /docs/glossary.md#data

@@ -40,8 +40,8 @@ func (ld *localDriver) SetDedupedBlock(hash zerodisk.Hash, r io.Reader) error {
 	return ld.writeFile(dir, file, r, false)
 }
 
-// SetDedupedMap implements StorageDriver.SetDedupedMap
-func (ld *localDriver) SetDedupedMap(id string, r io.Reader) error {
+// SetHeader implements StorageDriver.SetHeader
+func (ld *localDriver) SetHeader(id string, r io.Reader) error {
 	return ld.writeFile(backupDir, id, r, true)
 }
 
@@ -55,8 +55,8 @@ func (ld *localDriver) GetDedupedBlock(hash zerodisk.Hash, w io.Writer) error {
 	return ld.readFile(dir, file, w)
 }
 
-// GetDedupedMap implements StorageDriver.GetDedupedMap
-func (ld *localDriver) GetDedupedMap(id string, w io.Writer) error {
+// GetHeader implements StorageDriver.GetHeader
+func (ld *localDriver) GetHeader(id string, w io.Writer) error {
 	return ld.readFile(backupDir, id, w)
 }
 

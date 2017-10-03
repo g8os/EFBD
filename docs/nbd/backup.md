@@ -10,15 +10,16 @@ For more information about the actual Golang implementation of this backup modul
 
 ## Index
 
-1. [Deduped Map](#deduped-map): the metadata which identifies a snapshot and all its deduped blocks;
-2. [Storage Types](#storage-types): the different storage types and how they relate;
-3. [Block Sizes](#block-sizes): the different block sizes and how they relate;
+1. [Deduped Map](#deduped-map): the metadata which maps a snapshot's indices to the correct hashes of the deduped blocks;
+2. [Header](#header): the metadata which identifies a snapshot and which maps all its deduped blocks;
+3. [Storage Types](#storage-types): the different storage types and how they relate;
+4. [Block Sizes](#block-sizes): the different block sizes and how they relate;
     1. [Inflation](#inflation): going from smaller to bigger blocks;
     2. [Deflation](#deflation): going from bigger to smaller blocks;
-4. [Storage](#storage): information on how a snapshot is stored;
-5. [Hashing](#hashing): information on the hashing of deduped blocks;
-6. [Export](#export): how a snapshot (backup) is created from a [vdisk][vdisk];
-7. [Import](#import): how a [vdisk](#vdisk) is created from a snapshot (backup);
+5. [Storage](#storage): information on how a snapshot is stored;
+6. [Hashing](#hashing): information on the hashing of deduped blocks;
+7. [Export](#export): how a snapshot (backup) is created from a [vdisk][vdisk];
+8. [Import](#import): how a [vdisk](#vdisk) is created from a snapshot (backup);
 
 ## Deduped Map
 
@@ -29,6 +30,14 @@ The deduped map is encoded using the [bencoding][bencode] encoding format. It is
 ![backup deduped map](/docs/assets/backup_deduped_map.png)
 
 As the content is stored and referenced using its hash, and the hash is stored in a deduped map, which is optionally encrypted, the content is also guaranteed to stay untouched and correctly linked to the block index it was assigned to at serialization time.
+
+## Header
+
+In the last section we've talked about the [Deduped Map](#deduped-map). In it we said that it is encoded using the [bencoding][bencode] encoding format. What we didn't say yet is that the [Deduped Map](#deduped-map) is actually part of a bigger object, the header. In the header don't only store the deduped map but also some information about the snapshot and information about the vdisk which acted as source to create the snapshot.
+
+![backup header](/docs/assets/backup_header.png)
+
+Thus the header is encoded using the [bencoding][bencode] encoding format, and the [Deduped Map](#deduped-map) is part of it. It is choosen for its simplicity and efficiency. The encoded version of the header is also compressed and if desired encrypted before writing it to the storage server, using the same compression algorithm use for the the compression of (encrypted) deduped blocks, and if encrypting the same private key used for the encryption of the (deduped) uncompressed blocks.
 
 ## Storage Types
 
@@ -82,9 +91,9 @@ Please read through the inline-documented `DeflationBlockFetcher` implementation
 
 ## Storage
 
-In production and for most use cases the [snapshots][snapshot] are stored onto a given FTP server. A [snapshot][snapshot] consists out of (deduped) block data, and a [deduped map](#deduped-map). The [deduped map](#deduped-map) links each block index with that block's hash.
+In production and for most use cases the [snapshots][snapshot] are stored onto a given FTP server. A [snapshot][snapshot] consists out of (deduped) block data, and a [header](#header). The [header](#header) contains a [deduped map](#deduped-map), which links each block index with that block's hash.
 
-The [deduped map](#deduped-map) is stored using the [snapshot][snapshot]'s identifier as its name under the `backups/` subdir of the root directory. By default this is the [vdisk][vdisk]'s identifier and epoch of creation, but this can be configured during creation to be a custom value instead.
+The [header](#header) is stored using the [snapshot][snapshot]'s identifier as its name under the `backups/` subdir of the root directory. By default this is the [vdisk][vdisk]'s identifier and epoch of creation, but this can be configured during creation to be a custom value instead.
 
 All deduped blocks are stored under `/XX/YY/ZZZZZZZZZZZZZZZZZZZZZZZZZZZZ` of the root directory. Thus all blocks are stored in a 2-layer deep directory structure, where `XX` are the first 2 bytes of the block's [hash][hash] and the name of the first directory. `YY` represents the 3rd and 4th bytes of the block's [hash][hash]. `ZZZZZZZZZZZZZZZZZZZZZZZZZZZZ`, the last 28 bytes of the block's [hash][hash] is the name of the block itself.
 
@@ -114,7 +123,7 @@ All deduped blocks are stored under `/XX/YY/ZZZZZZZZZZZZZZZZZZZZZZZZZZZZ` of the
     └── a_1503675086
 ```
 
-Thus a snapshot (backup) is essentially a collection of many deduped blocks, and one deduped map. The tree example above should give you an idea of how a snapshot will be stored on the server. Note that the example above is using a very tiny [vdisk][vdisk]. Most likely you'll have a lot more deduped block files though. Increasing the snapshot's [block size](#block-sizes) will result in less files, but it will also make the de-duplication less effective. The file count is also not a good metric. A better metric is the total size of all blocks for a snapshot. And for that an effective de-duplication will help you a lot.
+Thus a snapshot (backup) is essentially a collection of many deduped blocks, and one [header](#header). The tree example above should give you an idea of how a snapshot will be stored on the server. Note that the example above is using a very tiny [vdisk][vdisk]. Most likely you'll have a lot more deduped block files though. Increasing the snapshot's [block size](#block-sizes) will result in less files, but it will also make the de-duplication less effective. The file count is also not a good metric. A better metric is the total size of all blocks for a snapshot. And for that an effective de-duplication will help you a lot.
 
 ## Hashing
 
@@ -153,14 +162,14 @@ The backup module provides a global `Export` function which allows you to export
 The export process is straightforward and can be summarized as follows:
 
 1. All block indices are collected from the ARDB cluster, ordered from smallest to biggest;
-2. The deduped map is loaded if it already existed, and newly created if it didn't;
+2. The header is loaded if it already existed, and newly created if it didn't;
 3. All content is written in a parallel and streamlined fashion:
     1. All blocks are read in parallel from the ARDB storage;
     2. The blocks are ordered in a single goroutine and sized to the correct export block size;
     3. The newly sized blocks are all compressed, optionally encrypted and stored in parallel;
     4. Link the block index with the block hash in the deduped map, unless it is already set, in which case false is returned;
     5. If the block is however new, it will now be stored on the (FTP) Storage Server;
-4. Store the deduped map on the (FTP) Storage Server;
+4. Store the header on the (FTP) Storage Server;
 
 Check out [the zeroctl export command documentation][export] for more information on how to export a [vdisk][vdisk] yourself.
 
@@ -174,7 +183,7 @@ The backup module provides a global `Import` function which allows you to import
 
 The import process is straightforward and can be summarized as follows:
 
-1. The [deduped map](#deduped-map) is loaded from the server, and all its hash and index mappings are collected;
+1. The [header](#header) is loaded from the server, and all its hash and index mappings are collected;
 2. All content is read and optionally stored in a parallel and streamlined fashion:
     1. All deduped (snapshot) blocks are read in parallel from the given storage (FTP) server;
     2. If the read block is correct and untouched, it is decrypted (if needed) and decompressed, to send for storage into the ARDB cluster;

@@ -20,6 +20,7 @@
   * [`zeroctl delete` command](zeroctl/commands/delete.md)
   * [`zeroctl export` command](zeroctl/commands/export.md)
   * [`zeroctl import` command](zeroctl/commands/import.md)
+  * [`zeroctl describe` command](zeroctl/commands/describe.md)
   * [`zeroctl list` command](zeroctl/commands/list.md)
   * [`zeroctl restore` command](zeroctl/commands/restore.md)
   * [`zeroctl version` command](zeroctl/commands/version.md)

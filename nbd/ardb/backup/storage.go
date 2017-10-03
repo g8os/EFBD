@@ -51,10 +51,10 @@ func NewStorageDriver(cfg StorageConfig) (StorageDriver, error) {
 // the deduped blocks and map which form a backup.
 type StorageDriver interface {
 	SetDedupedBlock(hash zerodisk.Hash, r io.Reader) error
-	SetDedupedMap(id string, r io.Reader) error
+	SetHeader(id string, r io.Reader) error
 
 	GetDedupedBlock(hash zerodisk.Hash, w io.Writer) error
-	GetDedupedMap(id string, w io.Writer) error
+	GetHeader(id string, w io.Writer) error
 
 	Close() error
 }

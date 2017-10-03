@@ -14,13 +14,13 @@ import (
 func newStubDriver() *stubDriver {
 	return &stubDriver{
 		dedupedBlocks: make(map[string][]byte),
-		dedupedMaps:   make(map[string][]byte),
+		headers:       make(map[string][]byte),
 	}
 }
 
 type stubDriver struct {
 	dedupedBlocks map[string][]byte
-	dedupedMaps   map[string][]byte
+	headers       map[string][]byte
 
 	bmux, mmux sync.RWMutex
 }
@@ -38,8 +38,8 @@ func (stub *stubDriver) SetDedupedBlock(hash zerodisk.Hash, r io.Reader) error {
 	return nil
 }
 
-// SetDedupedMap implements StorageDriver.SetDedupedMap
-func (stub *stubDriver) SetDedupedMap(id string, r io.Reader) error {
+// SetHeader implements StorageDriver.SetHeader
+func (stub *stubDriver) SetHeader(id string, r io.Reader) error {
 	bytes, err := ioutil.ReadAll(r)
 	if err != nil {
 		return err
@@ -47,7 +47,7 @@ func (stub *stubDriver) SetDedupedMap(id string, r io.Reader) error {
 
 	stub.mmux.Lock()
 	defer stub.mmux.Unlock()
-	stub.dedupedMaps[id] = bytes
+	stub.headers[id] = bytes
 	return nil
 }
 
@@ -70,12 +70,12 @@ func (stub *stubDriver) GetDedupedBlock(hash zerodisk.Hash, w io.Writer) error {
 	return nil
 }
 
-// GetDedupedMap implements StorageDriver.GetDedupedMap
-func (stub *stubDriver) GetDedupedMap(id string, w io.Writer) error {
+// GetHeader implements StorageDriver.GetHeader
+func (stub *stubDriver) GetHeader(id string, w io.Writer) error {
 	stub.mmux.RLock()
 	defer stub.mmux.RUnlock()
 
-	bytes, ok := stub.dedupedMaps[id]
+	bytes, ok := stub.headers[id]
 	if !ok {
 		return ErrDataDidNotExist
 	}
@@ -84,7 +84,7 @@ func (stub *stubDriver) GetDedupedMap(id string, w io.Writer) error {
 		return err
 	}
 	if n != len(bytes) {
-		return errors.New("couldn't write full deduped map")
+		return errors.New("couldn't write full header")
 	}
 	return nil
 }

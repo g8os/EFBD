@@ -94,7 +94,7 @@ digraph {
     ]
 
     storageServer -> dedupedMap:t [
-        label = "load deduped map\n(1)"
+        label = "load header\n(1)"
     ]
 
     block2 [
