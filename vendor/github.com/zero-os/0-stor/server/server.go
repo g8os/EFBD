@@ -28,23 +28,28 @@ type grpcServer struct {
 
 // New creates a grpc server with given DB data & meta directory
 // if authEnabled is false, JWT authentification is disabled
-func New(data, meta string, authEnabled bool) (StoreServer, error) {
+func New(data, meta string, authEnabled bool, maxSizeMsg int) (StoreServer, error) {
 	db, err := badger.New(data, meta)
 	if err != nil {
 		return nil, err
 	}
-	return NewWithDB(db, authEnabled)
+	return NewWithDB(db, authEnabled, maxSizeMsg)
 }
 
 // NewWithDB creates a grpc server with given DB object
 // if authEnabled is false, JWT authentification is disabled
-func NewWithDB(db *badger.BadgerDB, authEnabled bool) (StoreServer, error) {
+func NewWithDB(db *badger.BadgerDB, authEnabled bool, maxSizeMsg int) (StoreServer, error) {
 	if !authEnabled {
 		disableAuth()
 	}
+
+	maxSizeMsg = maxSizeMsg * 1024 * 1024 //Mib to Bytes
+
 	s := &grpcServer{
-		db:         db,
-		grpcServer: grpc.NewServer(),
+		db: db,
+		grpcServer: grpc.NewServer(
+			grpc.MaxRecvMsgSize(maxSizeMsg),
+		),
 	}
 
 	pb.RegisterObjectManagerServer(s.grpcServer, NewObjectAPI(db))
