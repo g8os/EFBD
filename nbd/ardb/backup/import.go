@@ -49,7 +49,6 @@ func Import(ctx context.Context, cfg Config) error {
 
 	importConfig := importConfig{
 		JobCount:        cfg.JobCount,
-		SrcBlockSize:    cfg.BlockSize,
 		DstBlockSize:    storageConfig.BlockStorage.BlockSize,
 		DstVdiskSize:    storageConfig.VdiskSize,
 		CompressionType: cfg.CompressionType,
@@ -237,7 +236,7 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 		}()
 
 		sbf := newStreamBlockFetcher()
-		obf := sizedBlockFetcher(sbf, cfg.SrcBlockSize, cfg.DstBlockSize)
+		obf := sizedBlockFetcher(sbf, header.Metadata.BlockSize, cfg.DstBlockSize)
 
 		defer func() {
 			if err != nil {
@@ -346,7 +345,8 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 			// combining that together with the blocksize, should allow us to tell if
 			// the snapshot fits in the vdisk or not.
 			var snapshotSize uint64
-			snapshotSize, err = computeSnapshotImportSize(hf.pairs[hf.length-1], src, cfg)
+			snapshotSize, err = computeSnapshotImportSize(
+				hf.pairs[hf.length-1], src, header.Metadata.BlockSize, cfg)
 			if err != nil {
 				sendErr(err)
 				return
@@ -516,7 +516,6 @@ type indexHashPairSlice []indexHashPair
 type importConfig struct {
 	JobCount int
 
-	SrcBlockSize int64
 	DstBlockSize int64
 
 	// max destination vdisk size
@@ -545,13 +544,13 @@ type importOutput struct {
 	SequenceIndex int64  // = importInput.SequenceIndex
 }
 
-func computeSnapshotImportSize(biggestSrcPair indexHashPair, src StorageDriver, cfg importConfig) (uint64, error) {
+func computeSnapshotImportSize(biggestSrcPair indexHashPair, src StorageDriver, srcBlockSize int64, cfg importConfig) (uint64, error) {
 	// define the blockIndex
 	var blockIndex int64
-	if cfg.SrcBlockSize == cfg.DstBlockSize {
+	if srcBlockSize == cfg.DstBlockSize {
 		blockIndex = biggestSrcPair.Index
-	} else if cfg.SrcBlockSize < cfg.DstBlockSize {
-		ratio := cfg.DstBlockSize / cfg.SrcBlockSize
+	} else if srcBlockSize < cfg.DstBlockSize {
+		ratio := cfg.DstBlockSize / srcBlockSize
 		blockIndex = biggestSrcPair.Index / ratio
 	} else { // cfg.SrcBlockSize > cfg.DstBlockSize
 		// read the deduped block,
@@ -573,7 +572,7 @@ func computeSnapshotImportSize(biggestSrcPair indexHashPair, src StorageDriver, 
 			index++
 		}
 
-		ratio := cfg.SrcBlockSize / cfg.DstBlockSize
+		ratio := srcBlockSize / cfg.DstBlockSize
 		blockIndex += biggestSrcPair.Index * ratio
 	}
 

@@ -63,7 +63,6 @@ func importVdisk(cmd *cobra.Command, args []string) error {
 	cfg := backup.Config{
 		VdiskID:             vdiskCmdCfg.VdiskID,
 		SnapshotID:          vdiskCmdCfg.SnapshotID,
-		BlockSize:           vdiskCmdCfg.ExportBlockSize,
 		BlockStorageConfig:  vdiskCmdCfg.SourceConfig,
 		BackupStorageConfig: vdiskCmdCfg.BackupStorageConfig,
 		JobCount:            vdiskCmdCfg.JobCount,
@@ -238,9 +237,6 @@ This is also the default in case the --storage flag is not specified.
 		&vdiskCmdCfg.SourceConfig, "config",
 		"config resource: dialstrings (etcd cluster) or path (yaml file)")
 
-	ImportVdiskCmd.Flags().Int64VarP(
-		&vdiskCmdCfg.ExportBlockSize, "blocksize", "b", backup.DefaultBlockSize,
-		"the size of the exported (deduped) blocks")
 	ImportVdiskCmd.Flags().VarP(
 		&vdiskCmdCfg.CompressionType, "compression", "c",
 		"the compression type to use, options { lz4, xz }")

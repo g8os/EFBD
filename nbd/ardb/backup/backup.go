@@ -27,6 +27,7 @@ type Config struct {
 	SnapshotID string
 
 	// Optional: Snapshot BlockSize (128KiB by default)
+	// NOTE: only used by export funcs (ignored by import funcs)
 	BlockSize int64
 
 	// Required: SourceConfig to configure the storage with

@@ -64,8 +64,8 @@ func TestComputeSnapshotImportSize_EqualTargetBlocks(t *testing.T) {
 	assert := assert.New(t)
 	assertSnapshotSize := func(index, blockSize int64, expectedSnapshotSize uint64) {
 		snapshotSize, err := computeSnapshotImportSize(
-			indexHashPair{Index: index}, nil,
-			importConfig{SrcBlockSize: blockSize, DstBlockSize: blockSize})
+			indexHashPair{Index: index}, nil, blockSize,
+			importConfig{DstBlockSize: blockSize})
 		if assert.NoError(err) {
 			assert.Equal(expectedSnapshotSize, snapshotSize)
 		}
@@ -82,8 +82,8 @@ func TestComputeSnapshotImportSize_BiggerTargetBlocks(t *testing.T) {
 	assert := assert.New(t)
 	assertSnapshotSize := func(index, srcBlockSize, dstBlockSize int64, expectedSnapshotSize uint64) {
 		snapshotSize, err := computeSnapshotImportSize(
-			indexHashPair{Index: index}, nil,
-			importConfig{SrcBlockSize: srcBlockSize, DstBlockSize: dstBlockSize})
+			indexHashPair{Index: index}, nil, srcBlockSize,
+			importConfig{DstBlockSize: dstBlockSize})
 		if assert.NoError(err) {
 			assert.Equal(expectedSnapshotSize, snapshotSize)
 		}
@@ -126,9 +126,8 @@ func TestComputeSnapshotImportSize_SmallerTargetBlocks(t *testing.T) {
 		func(index, srcBlockSize, dstBlockSize int64, srcBlock []byte, expectedSnapshotSize uint64) {
 			pipeline.WriteBlock(index, srcBlock)
 			snapshotSize, err := computeSnapshotImportSize(
-				indexHashPair{Index: index, Hash: dm.hashes[index]}, driver,
+				indexHashPair{Index: index, Hash: dm.hashes[index]}, driver, srcBlockSize,
 				importConfig{
-					SrcBlockSize:    srcBlockSize,
 					DstBlockSize:    dstBlockSize,
 					CryptoKey:       privKey,
 					CompressionType: LZ4Compression,

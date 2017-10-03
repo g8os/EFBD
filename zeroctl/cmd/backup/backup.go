@@ -11,7 +11,6 @@ var vdiskCmdCfg struct {
 	VdiskID             string                 // required
 	SourceConfig        config.SourceConfig    // optional
 	SnapshotID          string                 // optional
-	ExportBlockSize     int64                  // optional
 	BackupStorageConfig backup.StorageConfig   // optional
 	PrivateKey          backup.CryptoKey       // optional
 	CompressionType     backup.CompressionType // optional
