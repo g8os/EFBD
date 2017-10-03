@@ -14,6 +14,7 @@ var (
 	ErrZeroMetaShards              = fmt.Errorf("no meta shards specified in the policy")
 	ErrNotEnoughReplicationShards  = fmt.Errorf("the number of replication number is bigger then the number of data shards")
 	ErrNotEnoughDistributionShards = fmt.Errorf("the number of distribution number is bigger then the number of data shards")
+	ErrReplicationMinimum          = fmt.Errorf("replication number has to be 2 minimum")
 	ErrNoEncryptionKey             = fmt.Errorf("encryption enabled, but encryption key is empty")
 )
 
@@ -108,12 +109,16 @@ func (p Policy) validate() error {
 		return ErrZeroMetaShards
 	}
 
-	if p.ReplicationNr > 0 && p.ReplicationNr < len(p.DataShards) {
+	if p.ReplicationNr > len(p.DataShards) {
 		return ErrNotEnoughReplicationShards
 	}
 
+	if p.ReplicationNr == 1 {
+		return ErrReplicationMinimum
+	}
+
 	distributionNr := (p.DistributionNr + p.DistributionRedundancy)
-	if distributionNr > 0 && distributionNr < len(p.DataShards) {
+	if distributionNr > len(p.DataShards) {
 		return ErrNotEnoughDistributionShards
 	}
 

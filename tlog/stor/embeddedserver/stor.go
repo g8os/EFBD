@@ -28,7 +28,7 @@ func newZeroStorServer() (*zeroStorServer, error) {
 		return nil, err
 	}
 
-	server, err := server.NewWithDB(db, false)
+	server, err := server.NewWithDB(db, false, 16)
 	if err != nil {
 		return nil, err
 	}

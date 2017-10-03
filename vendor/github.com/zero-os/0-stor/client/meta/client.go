@@ -72,6 +72,15 @@ func (c *Client) Get(key string) (*Meta, error) {
 	return Decode(resp.Kvs[0].Value)
 }
 
+// Delete a metadata entry from metadata server
+func (c *Client) Delete(key string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), metaOpTimeout)
+	defer cancel()
+
+	_, err := c.etcdClient.Delete(ctx, key)
+	return err
+}
+
 func (c *Client) Endpoints() []string {
 	return c.etcdClient.Endpoints()
 }
