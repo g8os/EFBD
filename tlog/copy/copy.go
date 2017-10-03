@@ -17,7 +17,8 @@ type Config struct {
 	PrivKey       string `validate:"nonzero"`
 	DataShards    int    `validate:"nonzero,min=1"`
 	ParityShards  int    `validate:"nonzero,min=1"`
-	JobCount      int    `validate:"nonzero,min=1"`
+	FlushSize     int
+	JobCount      int `validate:"nonzero,min=1"`
 }
 
 // Copy copies tlog data from source vdisk to target vdisk

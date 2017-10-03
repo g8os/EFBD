@@ -41,6 +41,7 @@ Flags:
   -c, --compression CompressionType   the compression type to use, options { lz4, xz } (default lz4)
       --config SourceConfig           config resource: dialstrings (etcd cluster) or path (yaml file) (default config.yml)
       --data-shards int               data shards (K) variable of erasure encoding (default 4)
+      --flush-size int                number of tlog blocks in one flush (default 25)
   -f, --force                         when given, delete the vdisk if it already existed
   -h, --help                          help for vdisk
   -j, --jobs int                      the amount of parallel jobs to run (default $NUMBER_OF_CPUS)
