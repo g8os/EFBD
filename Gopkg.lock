@@ -193,10 +193,10 @@
   version = "v0.0.9"
 
 [[projects]]
+  branch = "master"
   name = "github.com/mattn/go-isatty"
   packages = ["."]
-  revision = "fc9e8d8ef48496124e79ae0df75490096eccf6fe"
-  version = "v0.0.2"
+  revision = "a5cdd64afdee435007ee3e9f6ed4684af949d568"
 
 [[projects]]
   name = "github.com/matttproud/golang_protobuf_extensions"
@@ -387,7 +387,7 @@
   branch = "master"
   name = "github.com/zero-os/0-stor"
   packages = ["client","client/itsyouonline","client/lib","client/lib/block","client/lib/chunker","client/lib/distribution","client/lib/encrypt","client/lib/hash","client/meta","client/meta/embedserver","client/meta/schema","client/stor","grpc_store","server","server/db","server/db/badger","server/jwt","server/manager","server/stats"]
-  revision = "2edfa7219d4e8184f14092abb9782cc5431a0cef"
+  revision = "69503c693fc3b741ce24a06edfcb5aad97c326c2"
 
 [[projects]]
   branch = "master"

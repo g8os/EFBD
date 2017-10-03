@@ -28,7 +28,11 @@ func newZeroStorServer() (*zeroStorServer, error) {
 		return nil, err
 	}
 
-	server, err := server.NewWithDB(db, false)
+	const (
+		authEnabled     = false
+		maxSizeMsgInMiB = 64
+	)
+	server, err := server.NewWithDB(db, authEnabled, maxSizeMsgInMiB)
 	if err != nil {
 		return nil, err
 	}
