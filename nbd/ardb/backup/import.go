@@ -70,7 +70,7 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 		return err
 	}
 
-	dedupedMap, err := UnpackRawDedupedMap(header.DedupedMap)
+	dedupedMap, err := unpackRawDedupedMap(header.DedupedMap)
 	if err != nil {
 		return err
 	}
@@ -466,7 +466,7 @@ func (p *importPipeline) ReadBlock(index int64, hash zerodisk.Hash) ([]byte, err
 	return bytes, nil
 }
 
-func newHashFetcher(dedupedMap *DedupedMap) *hashFetcher {
+func newHashFetcher(dedupedMap *dedupedMap) *hashFetcher {
 	// collect and sort all index-hash pairs
 	var pairs indexHashPairSlice
 	for index, hash := range dedupedMap.hashes {

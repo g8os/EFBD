@@ -140,7 +140,7 @@ func exportBS(ctx context.Context, src storage.BlockStorage, blockIndices []int6
 		return err
 	}
 	// unpack the raw deduped map so we can use it as the model we require it to be
-	dedupedMap, err := UnpackRawDedupedMap(header.DedupedMap)
+	dedupedMap, err := unpackRawDedupedMap(header.DedupedMap)
 	if err != nil {
 		return err
 	}
@@ -472,7 +472,7 @@ type exportPipeline struct {
 	Compressor    Compressor
 	Encrypter     Encrypter
 	StorageDriver StorageDriver
-	DedupedMap    *DedupedMap
+	DedupedMap    *dedupedMap
 }
 
 func (p *exportPipeline) WriteBlock(index int64, data []byte) error {

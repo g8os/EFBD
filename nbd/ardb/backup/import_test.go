@@ -113,7 +113,7 @@ func TestComputeSnapshotImportSize_SmallerTargetBlocks(t *testing.T) {
 	hasher, err := newKeyedHasher(LZ4Compression, privKey)
 	require.NoError(err)
 
-	dm := NewDedupedMap()
+	dm := newDedupedMap()
 	pipeline := &exportPipeline{
 		Hasher:        hasher,
 		Compressor:    compressor,
@@ -148,8 +148,8 @@ func TestComputeSnapshotImportSize_SmallerTargetBlocks(t *testing.T) {
 	assertSnapshotSize(1, 8, 2, []byte{0, 1, 0, 0, 0, 0, 0, 0}, 10)
 }
 
-func generateTestFetcherData(n int64) (*DedupedMap, map[int64]zerodisk.Hash) {
-	dm := NewDedupedMap()
+func generateTestFetcherData(n int64) (*dedupedMap, map[int64]zerodisk.Hash) {
+	dm := newDedupedMap()
 	mapping := make(map[int64]zerodisk.Hash)
 
 	for i := int64(0); i < n; i++ {

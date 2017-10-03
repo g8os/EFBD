@@ -9,19 +9,19 @@ import (
 func TestUnpackRawDedupedMapFailure(t *testing.T) {
 	require := require.New(t)
 
-	dm, err := UnpackRawDedupedMap(RawDedupedMap{Count: 1})
+	dm, err := unpackRawDedupedMap(RawDedupedMap{Count: 1})
 	require.Error(err, "should be error, as count is wrong")
 	require.Nil(dm)
 
-	dm, err = UnpackRawDedupedMap(RawDedupedMap{Count: 1, Indices: []int64{1, 2}})
+	dm, err = unpackRawDedupedMap(RawDedupedMap{Count: 1, Indices: []int64{1, 2}})
 	require.Error(err, "should be error, as index- and hash count is wrong")
 	require.Nil(dm)
 
-	dm, err = UnpackRawDedupedMap(RawDedupedMap{Count: 2, Indices: []int64{1, 2}, Hashes: [][]byte{[]byte{}}})
+	dm, err = unpackRawDedupedMap(RawDedupedMap{Count: 2, Indices: []int64{1, 2}, Hashes: [][]byte{[]byte{}}})
 	require.Error(err, "should be error, as hash count is wrong")
 	require.Nil(dm)
 
-	dm, err = UnpackRawDedupedMap(RawDedupedMap{Count: 1, Indices: []int64{1, 2}, Hashes: [][]byte{[]byte{}}})
+	dm, err = unpackRawDedupedMap(RawDedupedMap{Count: 1, Indices: []int64{1, 2}, Hashes: [][]byte{[]byte{}}})
 	require.Error(err, "should be error, as index count is wrong")
 	require.Nil(dm)
 }
@@ -40,7 +40,7 @@ func TestRawDedupedMap(t *testing.T) {
 		},
 	}
 
-	dm, err := UnpackRawDedupedMap(originalRaw)
+	dm, err := unpackRawDedupedMap(originalRaw)
 	require.NoError(err)
 	require.NotNil(dm)
 

@@ -152,7 +152,7 @@ func TestLoadHeader_DeprecatedDedupedMap(t *testing.T) {
 	// create fake snapshot blocks (and generate a deduped map that way)
 
 	driver := newStubDriver()
-	dm := NewDedupedMap()
+	dm := newDedupedMap()
 
 	// NOTE: that we also need to store the deduped blocks
 	pipeline := testExportPipeline(t, driver, dm)
@@ -187,7 +187,7 @@ func TestLoadHeader_DeprecatedDedupedMap(t *testing.T) {
 	require.Subset(header.DedupedMap.Hashes, outHeader.DedupedMap.Hashes)
 }
 
-func testExportPipeline(t *testing.T, driver StorageDriver, dm *DedupedMap) *exportPipeline {
+func testExportPipeline(t *testing.T, driver StorageDriver, dm *dedupedMap) *exportPipeline {
 	require := require.New(t)
 
 	compressor, err := NewCompressor(LZ4Compression)
@@ -220,7 +220,7 @@ func testExportPipeline(t *testing.T, driver StorageDriver, dm *DedupedMap) *exp
 // to the given writer. The encoded data will be compressed and encrypted before being
 // writen to the given writer.
 // You can re-load this map in memory using the `DeserializeDedupedMap` function.
-func (dm *DedupedMap) serialize(key *CryptoKey, ct CompressionType, dst io.Writer) error {
+func (dm *dedupedMap) serialize(key *CryptoKey, ct CompressionType, dst io.Writer) error {
 	dm.mux.Lock()
 	defer dm.mux.Unlock()
 
