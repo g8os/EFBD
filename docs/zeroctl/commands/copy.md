@@ -26,8 +26,15 @@ Usage:
   zeroctl copy vdisk source_vdiskid target_vdiskid [target_cluster] [flags]
 
 Flags:
-      --config string   zeroctl config file (default "config.yml")
-  -h, --help            help for vdisk
+Flags:
+      --config SourceConfig   config resource: dialstrings (etcd cluster) or path (yaml file) (default config.yml)
+      --data-shards int       data shards (K) variable of erasure encoding (default 4)
+      --flush-size int        number of tlog blocks in one flush (default 25)
+  -h, --help                  help for vdisk
+  -j, --jobs int              the amount of parallel jobs to run the tlog generator (default $NUMBER_OF_CPUS)
+      --parity-shards int     parity shards (M) variable of erasure encoding (default 2)
+      --priv-key string       private key (default "12345678901234567890123456789012")
+      --same                  enable flag to force copy within the same nbd servers
 
 Global Flags:
   -v, --verbose   log available information

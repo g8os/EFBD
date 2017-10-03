@@ -12,6 +12,7 @@ import (
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/nbd/nbdserver/tlog"
 	"github.com/zero-os/0-Disk/tlog/copy"
+	tlogserver "github.com/zero-os/0-Disk/tlog/tlogserver/server"
 	cmdconfig "github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
 
@@ -21,6 +22,7 @@ var vdiskCmdCfg struct {
 	DataShards              int
 	ParityShards            int
 	PrivKey                 string
+	FlushSize               int
 	JobCount                int
 }
 
@@ -128,6 +130,7 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 		DataShards:    vdiskCmdCfg.DataShards,
 		ParityShards:  vdiskCmdCfg.ParityShards,
 		PrivKey:       vdiskCmdCfg.PrivKey,
+		FlushSize:     vdiskCmdCfg.FlushSize,
 		JobCount:      vdiskCmdCfg.JobCount,
 	})
 	if err != nil {
@@ -191,4 +194,8 @@ WARNING: when copying nondeduped vdisks,
 		"jobs", "j", runtime.NumCPU(),
 		"the amount of parallel jobs to run the tlog generator")
 
+	VdiskCmd.Flags().IntVar(
+		&vdiskCmdCfg.FlushSize,
+		"flush-size", tlogserver.DefaultConfig().FlushSize,
+		"number of tlog blocks in one flush")
 }

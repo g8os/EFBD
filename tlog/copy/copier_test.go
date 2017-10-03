@@ -169,7 +169,7 @@ func testCopy(t *testing.T, confSource config.Source, dataShards, parityShards, 
 		numLogs = 50
 	)
 	// generates some tlog data
-	flusher, err := flusher.New(confSource, dataShards, parityShards, sourceVdiskID, privKey)
+	flusher, err := flusher.New(confSource, dataShards, parityShards, 0, sourceVdiskID, privKey)
 	require.NoError(t, err)
 
 	for i := 0; i < numLogs; i++ {

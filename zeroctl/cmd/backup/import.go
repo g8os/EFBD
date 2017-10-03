@@ -14,6 +14,7 @@ import (
 	nbdtlog "github.com/zero-os/0-Disk/nbd/nbdserver/tlog"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/copy"
+	tlogserver "github.com/zero-os/0-Disk/tlog/tlogserver/server"
 
 	cmdconfig "github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
@@ -32,6 +33,7 @@ var importVdiskCmdCfg struct {
 	DataShards   int
 	ParityShards int
 	TlogPrivKey  string
+	FlushSize    int
 }
 
 func importVdisk(cmd *cobra.Command, args []string) error {
@@ -89,6 +91,7 @@ func importVdisk(cmd *cobra.Command, args []string) error {
 	generator, err := copy.NewGenerator(configSource, copy.Config{
 		SourceVdiskID: vdiskCmdCfg.VdiskID,
 		TargetVdiskID: vdiskCmdCfg.VdiskID,
+		FlushSize:     importVdiskCmdCfg.FlushSize,
 		DataShards:    importVdiskCmdCfg.DataShards,
 		ParityShards:  importVdiskCmdCfg.ParityShards,
 		PrivKey:       importVdiskCmdCfg.TlogPrivKey,
@@ -272,5 +275,10 @@ This is also the default in case the --storage flag is not specified.
 		&importVdiskCmdCfg.TlogPrivKey,
 		"tlog-priv-key", "12345678901234567890123456789012",
 		"tlog private key")
+
+	ImportVdiskCmd.Flags().IntVar(
+		&importVdiskCmdCfg.FlushSize,
+		"flush-size", tlogserver.DefaultConfig().FlushSize,
+		"number of tlog blocks in one flush")
 
 }

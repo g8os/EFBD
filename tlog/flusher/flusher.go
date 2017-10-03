@@ -29,7 +29,7 @@ type Flusher struct {
 }
 
 // New creates a new flusher
-func New(confSource config.Source, dataShards, parityShards int, vdiskID, privKey string) (*Flusher, error) {
+func New(confSource config.Source, dataShards, parityShards, flushSize int, vdiskID, privKey string) (*Flusher, error) {
 	// creates stor client
 	storConf, err := stor.ConfigFromConfigSource(confSource, vdiskID, privKey, dataShards, parityShards)
 	if err != nil {
@@ -40,11 +40,13 @@ func New(confSource config.Source, dataShards, parityShards int, vdiskID, privKe
 		return nil, err
 	}
 
-	tlogConf := server.DefaultConfig()
+	if flushSize == 0 {
+		flushSize = server.DefaultConfig().FlushSize
+	}
 
 	return &Flusher{
 		storCli:   storCli,
-		flushSize: tlogConf.FlushSize,
+		flushSize: flushSize,
 	}, nil
 }
 
