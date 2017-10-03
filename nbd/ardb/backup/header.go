@@ -256,7 +256,7 @@ func (header *Header) Validate() error {
 type Metadata struct {
 	// required: ID of the snapshot (vdisk backup)
 	SnapshotID string `bencode:"id" valid:"required"`
-	// required: block size of the snapshot in KiB
+	// required: block size of the snapshot in bytes
 	BlockSize int64 `bencode:"bs" valid:"required"`
 	// optional: creation (RFC3339) data, time and timezone
 	Created string `bencode:"at" valid:"optional"`
@@ -270,8 +270,10 @@ type Metadata struct {
 type Source struct {
 	// ID of the source vdisk
 	VdiskID string `bencode:"id" valid:"optional"`
-	// block size of the source vdisk in KiB
+	// block size of the source vdisk in bytes
 	BlockSize int64 `bencode:"bs" valid:"optional"`
+	// size of the source vdisk in bytes
+	Size int64 `bencode:"sz" valid:"optional"`
 }
 
 // RawDedupedMap defines the structure used to

@@ -29,6 +29,7 @@ func TestHeaderEncoding(t *testing.T) {
 			Source: Source{
 				VdiskID:   "foo",
 				BlockSize: 4096,
+				Size:      16384,
 			},
 		},
 		DedupedMap: RawDedupedMap{
@@ -85,6 +86,7 @@ func TestStoreLoadHeader(t *testing.T) {
 			Source: Source{
 				VdiskID:   "foo",
 				BlockSize: 4096,
+				Size:      16384,
 			},
 		},
 		DedupedMap: RawDedupedMap{
@@ -142,6 +144,7 @@ func TestLoadHeader_DeprecatedDedupedMap(t *testing.T) {
 			Source: Source{
 				VdiskID:   "foo",
 				BlockSize: 4096,
+				Size:      16384,
 			},
 		},
 	}

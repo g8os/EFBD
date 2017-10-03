@@ -51,6 +51,7 @@ func Export(ctx context.Context, cfg Config) error {
 		JobCount:        cfg.JobCount,
 		SrcBlockSize:    storageConfig.BlockStorage.BlockSize,
 		DstBlockSize:    cfg.BlockSize,
+		VdiskSize:       storageConfig.VdiskSize,
 		CompressionType: cfg.CompressionType,
 		CryptoKey:       cfg.CryptoKey,
 		VdiskID:         cfg.VdiskID,
@@ -105,6 +106,7 @@ func existingOrNewHeader(cfg exportConfig, src StorageDriver, key *CryptoKey, ct
 	header.Metadata.Created = time.Now().Format(time.RFC3339)
 	header.Metadata.Source.VdiskID = cfg.VdiskID
 	header.Metadata.Source.BlockSize = cfg.SrcBlockSize
+	header.Metadata.Source.Size = int64(cfg.VdiskSize)
 
 	// return existing header, which was updated
 	log.Debugf("loaded and updated existing header for snapshot %s", cfg.SnapshotID)
@@ -124,6 +126,7 @@ func newExportHeader(cfg exportConfig) *Header {
 			Source: Source{
 				VdiskID:   cfg.VdiskID,
 				BlockSize: cfg.SrcBlockSize,
+				Size:      int64(cfg.VdiskSize),
 			},
 		},
 		DedupedMap: RawDedupedMap{},
@@ -451,6 +454,8 @@ type exportConfig struct {
 
 	SrcBlockSize int64
 	DstBlockSize int64
+
+	VdiskSize uint64
 
 	CompressionType CompressionType
 	CryptoKey       CryptoKey
