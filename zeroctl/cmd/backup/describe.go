@@ -62,9 +62,13 @@ func describeSnapshot(cmd *cobra.Command, args []string) error {
 	info.Size = info.BlockSize * header.DedupedMap.Count
 	info.Created = header.Metadata.Created
 
-	info.Source.VdiskID = header.Metadata.Source.VdiskID
-	info.Source.BlockSize = header.Metadata.Source.BlockSize
-	info.Source.Size = header.Metadata.Source.Size
+	if header.Metadata.Source.VdiskID != "" {
+		info.Source = &SnapshotSourceInfo{
+			VdiskID:   header.Metadata.Source.VdiskID,
+			BlockSize: header.Metadata.Source.BlockSize,
+			Size:      header.Metadata.Source.Size,
+		}
+	}
 
 	var bytes []byte
 	if describeVdiskCmdCfg.PrettyPrint {
@@ -83,15 +87,19 @@ func describeSnapshot(cmd *cobra.Command, args []string) error {
 // SnapshotInfo describes a snapshot,
 // using both required and optional information.
 type SnapshotInfo struct {
-	SnapshotID string `json:"snapshotID"`
-	BlockSize  int64  `json:"blockSize"`
-	Size       int64  `json:"size"`
-	Created    string `json:"created,omitempty"`
-	Source     struct {
-		VdiskID   string `json:"vdiskID,omitempty"`
-		BlockSize int64  `json:"blockSize,omitempty"`
-		Size      int64  `json:"size,omitempty"`
-	} `json:"source,omitempty"`
+	SnapshotID string              `json:"snapshotID"`
+	BlockSize  int64               `json:"blockSize"`
+	Size       int64               `json:"size"`
+	Created    string              `json:"created,omitempty"`
+	Source     *SnapshotSourceInfo `json:"source,omitempty"`
+}
+
+// SnapshotSourceInfo describes optional information about
+// the source of a snapshot.
+type SnapshotSourceInfo struct {
+	VdiskID   string `json:"vdiskID,omitempty"`
+	BlockSize int64  `json:"blockSize,omitempty"`
+	Size      int64  `json:"size,omitempty"`
 }
 
 func parseDescribePosArguments(args []string) error {
