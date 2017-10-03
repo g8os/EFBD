@@ -2,15 +2,9 @@ package tlog
 
 import "github.com/zero-os/0-Disk"
 
-var (
-	// FirstAggregateHash is used as the prevHash value
-	// for the first aggregation
-	FirstAggregateHash = zerodisk.NilHash
-)
-
 const (
-	// LastHashPrefix is the last hash ardb key prefix
-	LastHashPrefix = "last_hash_"
+	// FirstSequence is the first sequence number used by tlog
+	FirstSequence = uint64(1)
 )
 
 var (

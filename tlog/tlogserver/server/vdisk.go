@@ -292,7 +292,7 @@ func (vd *vdisk) loadLastFlushedSequence() (uint64, error) {
 	defer vd.expectedSequenceLock.Unlock()
 
 	if err == stor.ErrNoFlushedBlock {
-		vd.expectedSequence = 1
+		vd.expectedSequence = tlog.FirstSequence
 		return 0, nil
 	}
 
