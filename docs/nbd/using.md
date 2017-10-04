@@ -79,6 +79,15 @@ sudo mount /dev/nbd1 /mnt/sharedvolume
 <a id="convert-image"></a>
 ### Converting an image
 
+> ⚠ NOTE ⚠
+>
+> When using qemu to convert and emulate images hosted via an nbdserver,
+> only `qemu 2.8` is supported.
+>
+> It is known and accepted that the nbdserver does not work
+> when used with `qemu 2.10` and any version other than `2.8`.
+> See [issue #523](https://github.com/zero-os/0-Disk/issues/523) for more information.
+
 This will actually to copy our standard qcow2, img or vdi template file into ARDB.
 
 Converting an image using qemu-img to insert an image in the NBD server:
