@@ -121,7 +121,7 @@ func TestGenerate(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = generator.GenerateFromStorage(context.Background())
+	_, err = generator.GenerateFromStorage(context.Background())
 	require.NoError(t, err)
 
 	// 3. Use tlog replay to restore data

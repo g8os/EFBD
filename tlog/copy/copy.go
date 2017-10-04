@@ -84,6 +84,6 @@ func Copy(ctx context.Context, confSource config.Source, conf Config) error {
 	if err != nil {
 		return err
 	}
-	return generator.GenerateFromStorage(ctx)
-
+	_, err = generator.GenerateFromStorage(ctx)
+	return err
 }

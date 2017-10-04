@@ -37,26 +37,27 @@ func NewGenerator(configSource config.Source, conf Config) (*Generator, error) {
 	}, nil
 }
 
-// GenerateFromStorage generates tlog data from block storage
-func (g *Generator) GenerateFromStorage(parentCtx context.Context) error {
+// GenerateFromStorage generates tlog data from block storage.
+// It returns last sequence flushed.
+func (g *Generator) GenerateFromStorage(parentCtx context.Context) (uint64, error) {
 	staticConf, err := config.ReadVdiskStaticConfig(g.configSource, g.sourceVdiskID)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	storageConf, err := config.ReadNBDStorageConfig(g.configSource, g.sourceVdiskID)
 	if err != nil {
-		return fmt.Errorf("failed to ReadNBDStorageConfig: %v", err)
+		return 0, fmt.Errorf("failed to ReadNBDStorageConfig: %v", err)
 	}
 
 	indices, err := storage.ListBlockIndices(g.sourceVdiskID, staticConf.Type, &storageConf.StorageCluster)
 	if err != nil {
-		return fmt.Errorf("ListBlockIndices failed for vdisk `%v`: %v", g.sourceVdiskID, err)
+		return 0, fmt.Errorf("ListBlockIndices failed for vdisk `%v`: %v", g.sourceVdiskID, err)
 	}
 
 	ardbProv, err := ardb.StaticProvider(*storageConf, nil)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	sourceStorage, err := storage.NewBlockStorage(storage.BlockStorageConfig{
@@ -66,7 +67,7 @@ func (g *Generator) GenerateFromStorage(parentCtx context.Context) error {
 		BlockSize:       int64(staticConf.BlockSize),
 	}, ardbProv)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer sourceStorage.Close()
 
@@ -124,7 +125,8 @@ func (g *Generator) GenerateFromStorage(parentCtx context.Context) error {
 	}
 
 	// add to flusher
-	var seq uint64
+	seq := tlog.FirstSequence
+
 	wg.Add(1)
 	go func() {
 		timestamp := tlog.TimeNowTimestamp()
@@ -140,10 +142,10 @@ func (g *Generator) GenerateFromStorage(parentCtx context.Context) error {
 					errCh <- err
 					return
 				}
-				seq++
 				if int(seq) == len(indices) {
 					return
 				}
+				seq++
 			}
 		}
 	}()
@@ -155,12 +157,12 @@ func (g *Generator) GenerateFromStorage(parentCtx context.Context) error {
 
 	select {
 	case err := <-errCh:
-		return err
+		return 0, err
 	case <-doneCh:
 		// all is good
 	}
 
 	_, err = g.flusher.Flush()
 	log.Infof("GenerateFromStorage generates `%v` tlog data with err = %v", len(indices), err)
-	return err
+	return seq, err
 }
