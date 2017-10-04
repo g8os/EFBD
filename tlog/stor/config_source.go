@@ -1,6 +1,8 @@
 package stor
 
 import (
+	"fmt"
+
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 )
@@ -18,6 +20,14 @@ func ConfigFromConfigSource(source config.Source, vdiskID, privKey string, dataS
 	zsc, err := config.ReadZeroStoreClusterConfig(source, vdiskConf.ZeroStorClusterID)
 	if err != nil {
 		log.Errorf("failed to read ZeroStorCluster config for vdisk `%v`: %v", vdiskID, err)
+		return
+	}
+
+	minServerNum := dataShards + parityShards
+	serverNum := len(zsc.Servers)
+	if minServerNum > len(zsc.Servers) {
+		err = fmt.Errorf("number of zerostor servers (%v) is less than data + parity (%v)",
+			serverNum, minServerNum)
 		return
 	}
 
