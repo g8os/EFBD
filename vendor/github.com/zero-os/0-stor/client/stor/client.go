@@ -1,6 +1,8 @@
 package stor
 
 import (
+	"math"
+
 	pb "github.com/zero-os/0-stor/grpc_store"
 	"google.golang.org/grpc"
 )
@@ -57,7 +59,12 @@ type Config struct {
 
 // NewClient creates new 0-stor client
 func NewClient(addr, namespace, token string) (Client, error) {
-	conn, err := grpc.Dial(addr, grpc.WithInsecure())
+	conn, err := grpc.Dial(addr,
+		grpc.WithInsecure(),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(math.MaxInt32),
+			grpc.MaxCallSendMsgSize(math.MaxInt32),
+		))
 	if err != nil {
 		return nil, err
 	}

@@ -28,6 +28,7 @@ API documentation : [https://godoc.org/github.com/zero-os/0-stor/client](https:/
 ## Important
 - 0stor server is JUST a simple key/value store
 - splitting, compression, encryption, and replication is the responsibility of client
+- you need at least etcd 3
 
 
 **Features**

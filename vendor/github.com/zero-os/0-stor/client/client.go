@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math/rand"
+	"runtime"
 	"sync"
 
 	"github.com/zero-os/0-stor/client/lib"
@@ -62,8 +63,9 @@ func newClient(policy Policy, iyoCl itsyouonline.IYOClient) (*Client, error) {
 
 	if iyoCl != nil {
 		iyoToken, err = iyoCl.CreateJWT(policy.Namespace, itsyouonline.Permission{
-			Write: true,
-			Read:  true,
+			Write:  true,
+			Read:   true,
+			Delete: true,
 		})
 		if err != nil {
 			log.Error(err.Error())
@@ -346,33 +348,78 @@ func (c *Client) readFWithMeta(md *meta.Meta, w io.Writer) (refList []string, er
 	return
 }
 
+// Delete deletes object from the 0-stor server pointed by the key
+// It also deletes the metadata.
 func (c *Client) Delete(key []byte) error {
 	meta, err := c.metaCli.Get(string(key))
 	if err != nil {
 		log.Errorf("fail to read metadata: %v", err)
 		return err
 	}
+	return c.DeleteWithMeta(meta)
+}
 
-	// TODO: concurent delete
+// DeleteWithMeta deletes object from the 0-stor server pointed by the
+// given metadata
+// It also deletes the metadata.
+func (c *Client) DeleteWithMeta(meta *meta.Meta) error {
+	type job struct {
+		key   []byte
+		shard string
+	}
+
+	var (
+		wg   = sync.WaitGroup{}
+		cJob = make(chan job, runtime.NumCPU())
+	)
+
+	// create some worker that will delete all shards
+	wg.Add(runtime.NumCPU())
+	for i := 0; i < runtime.NumCPU(); i++ {
+		go func(cJob chan job) {
+			defer wg.Done()
+
+			for job := range cJob {
+				stor, err := c.getStor(job.shard)
+				if err != nil {
+					// FIXME: probably want to handle this
+					log.Errorf("error deleting object:%v", err)
+					continue
+				}
+				if err := stor.ObjectDelete(job.key); err != nil {
+					// FIXME: probably want to handle this
+					log.Errorf("error deleting object:%v", err)
+					continue
+				}
+			}
+
+		}(cJob)
+	}
+
+	// send job to the workers
 	for _, chunk := range meta.Chunks {
 		for _, shard := range chunk.Shards {
-			stor, err := c.getStor(shard)
-			if err != nil {
-				return err
-			}
-			if err := stor.ObjectDelete(chunk.Key); err != nil {
-				return err
+			cJob <- job{
+				key:   chunk.Key,
+				shard: shard,
 			}
 		}
 	}
+	close(cJob)
+
+	// wait for all shards to be delete
+	wg.Wait()
+
+	// delete metadata
+	if err := c.metaCli.Delete(string(meta.Key)); err != nil {
+		log.Errorf("error deleting metadata :%v", err)
+		return err
+	}
+
 	return nil
 }
 
 func (c *Client) replicateWrite(key, value []byte, referenceList []string) ([]string, error) {
-
-	if c.policy.ReplicationNr <= 2 {
-		return nil, fmt.Errorf("replication number can't be lower then 2")
-	}
 
 	type Job struct {
 		client stor.Client

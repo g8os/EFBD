@@ -30,6 +30,9 @@ Here are the options of the server:
    --bind value, -b value    Bind address (default: ":8080")
    --data value              Data directory (default: ".db/data")
    --meta value              Metadata directory (default: ".db/meta")
+   --profile-addr value      Enables profiling of this server as an http service
+   --auth-disable            Disable JWT authentification [$STOR_TESTING]
+   --max-msg-size value      Configure the maximum size of the message GRPC server can receive, in MiB (default: 32)
    --help, -h                show help
    --version, -v             print the version
 
