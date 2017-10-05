@@ -18,6 +18,14 @@ Usage: import_file_into_etcd_config [flags] etcd_endpoint...
     	path to yaml config file (default: config.yml) (default "config.yml")
 ```
 
+> Note that the id string value given to the `-id` flag is the same shared id,
+as the one you pass to the nbdserver and tlogserver you're using.
+This is to ensure that we do not have to look through all etcd keys,
+and instead can simply access one value to get a list of all vdisks
+to be managed by that nbdserver/tlogserver.
+>
+> See [NBDVdisksConfig docs](/docs/config.md#NBDVdisksConfig) for more info.
+
 You can simply run the tool using:
 
 ```

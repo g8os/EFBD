@@ -419,5 +419,6 @@ Learn more about:
 [StorageClusterConfigGodoc]: https://godoc.org/github.com/zero-os/0-Disk/config#StorageClusterConfig
 [TlogClusterConfigGodoc]: https://godoc.org/github.com/zero-os/0-Disk/config#TlogClusterConfig
 [ZerostorClusterConfigGodoc]: https://godoc.org/github.com/zero-os/0-Disk/config#ZeroStorClusterConfig
+[NBDVDisksConfigGodoc]: https://godoc.org/github.com/zero-os/0-Disk/config#NBDVdisksConfig
 [zeroStorNamespacing]: https://github.com/zero-os/0-stor/blob/master/specs/concept.md#namespaces-concept
 [logDocs]: /docs/log.md
