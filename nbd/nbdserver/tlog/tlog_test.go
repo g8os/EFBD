@@ -7,6 +7,7 @@ import (
 	mrand "math/rand"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,11 +19,16 @@ import (
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/stor"
 	"github.com/zero-os/0-Disk/tlog/stor/embeddedserver"
+	"github.com/zero-os/0-Disk/tlog/tlogclient"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/player"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
 	"github.com/zero-os/0-stor/client/meta/embedserver"
 )
+
+func init() {
+	log.SetLevel(log.DebugLevel)
+}
 
 func TestTlogStorageWithInMemory(t *testing.T) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
@@ -145,13 +151,14 @@ func testTlogStorage(ctx context.Context, t *testing.T, vdiskID string, blockSiz
 	}
 
 	source := config.NewStubSource()
+	source.SetPrimaryStorageCluster(vdiskID, "nbdCluster", nil)
 	source.SetTlogServerCluster(vdiskID, "tlogcluster", &config.TlogClusterConfig{
 		Servers: []string{tlogrpc},
 	})
 	defer source.Close()
 
 	storage, err := Storage(
-		ctx, vdiskID, "tlogcluster", source, blockSize, storage, nil, nil)
+		ctx, vdiskID, source, blockSize, storage, nil, nil)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}
@@ -167,13 +174,14 @@ func testTlogStorageForceFlush(ctx context.Context, t *testing.T, vdiskID string
 	}
 
 	source := config.NewStubSource()
+	source.SetPrimaryStorageCluster(vdiskID, "nbdCluster", nil)
 	source.SetTlogServerCluster(vdiskID, "tlogcluster", &config.TlogClusterConfig{
 		Servers: []string{tlogrpc},
 	})
 	defer source.Close()
 
 	storage, err := Storage(
-		ctx, vdiskID, "tlogcluster", source, blockSize, storage, nil, nil)
+		ctx, vdiskID, source, blockSize, storage, nil, nil)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}
@@ -295,13 +303,14 @@ func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
 	}
 
 	source := config.NewStubSource()
+	source.SetPrimaryStorageCluster(vdiskID, "nbdCluster", nil)
 	source.SetTlogServerCluster(vdiskID, "tlogcluster", &config.TlogClusterConfig{
 		Servers: []string{tlogrpc},
 	})
 	defer source.Close()
 
 	storage, err := Storage(
-		ctx, vdiskID, "tlogcluster", source, blockSize, internalStorage, nil, nil)
+		ctx, vdiskID, source, blockSize, internalStorage, nil, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -883,10 +892,6 @@ func TestDataHistory(t *testing.T) {
 	}
 }
 
-func init() {
-	log.SetLevel(log.DebugLevel)
-}
-
 func newZeroStorConfig(t *testing.T, vdiskID string, tlogConf *server.Config) (*config.StubSource, stor.Config, func()) {
 
 	// stor server
@@ -940,4 +945,121 @@ func newZeroStorConfig(t *testing.T, vdiskID string, tlogConf *server.Config) (*
 		storCluster.Close()
 	}
 	return stubSource, storConf, cleanFunc
+}
+
+// Added this test for this issue (VdiskNBDConfig not watched for updates on tlog storage cluster ID)
+// https://github.com/zero-os/0-Disk/issues/526
+func TestTlogSwitchClusterID(t *testing.T) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
+	const (
+		vdiskID   = "a"
+		blockSize = 8
+	)
+
+	redisProvider := redisstub.NewInMemoryRedisProvider(nil)
+	storage, err := storage.NonDeduped(
+		vdiskID, "", blockSize, false, redisProvider)
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	tlogrpc, cleanup := newTlogTestServer(ctx, t, vdiskID)
+	defer cleanup()
+	if !assert.NotEmpty(t, tlogrpc) {
+		return
+	}
+
+	source := config.NewStubSource()
+	originalClusterID := "nbdCluster"
+	source.SetPrimaryStorageCluster(vdiskID, originalClusterID, nil)
+	source.SetTlogServerCluster(vdiskID, originalClusterID, &config.TlogClusterConfig{
+		Servers: []string{tlogrpc},
+	})
+	defer source.Close()
+
+	tlogClient := &stubTlogClient{}
+	tStorage, err := Storage(ctx, vdiskID, source, blockSize, storage, nil, tlogClient)
+	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
+		return
+	}
+
+	tlogStorage := tStorage.(*tlogStorage)
+	newClusterID := "anotherTlogcluster"
+	newServers := []string{"1.2.3.4:5678"}
+
+	// change tlog server cluster
+	source.SetTlogServerCluster(vdiskID, newClusterID, &config.TlogClusterConfig{
+		Servers: newServers,
+	})
+
+	// wait for update to propagate
+	timeoutTicker := time.NewTicker(30 * time.Second)
+	pollTicker := time.NewTicker(5 * time.Millisecond)
+	changed := false
+	for !changed {
+		select {
+		case <-pollTicker.C:
+			tlogStorage.mux.Lock()
+			if tlogStorage.tlogClusterID != originalClusterID {
+				log.Debugf("tlog cluster ID changed to: %s", tlogStorage.tlogClusterID)
+				changed = true
+			}
+			tlogStorage.mux.Unlock()
+		case <-timeoutTicker.C:
+			assert.FailNow(t, "Timed out waiting for tlog cluster ID to be updated.")
+		}
+	}
+
+	assert.Equal(t, newClusterID, tlogStorage.tlogClusterID)
+	assert.Equal(t, newServers[0], tlogClient.getServers()[0])
+}
+
+type stubTlogClient struct {
+	servers []string
+	lock    sync.Mutex
+}
+
+func (stls *stubTlogClient) Send(op uint8, seq uint64, index int64, timestamp int64, data []byte) error {
+	return nil
+}
+
+func (stls *stubTlogClient) ForceFlushAtSeq(uint64) error {
+	return nil
+}
+
+func (stls *stubTlogClient) WaitNbdSlaveSync() error {
+	return nil
+}
+
+func (stls *stubTlogClient) ChangeServerAddresses(servers []string) {
+	/*
+		log.Debugf("stubbed tlog client received ChangeServerAddresses call")
+		if len(servers) > 0 {
+			log.Debugf(servers[0])
+		} else {
+			log.Debug("server list is empty")
+		}
+	*/
+	stls.lock.Lock()
+	stls.servers = servers
+	stls.lock.Unlock()
+}
+
+func (stls *stubTlogClient) getServers() []string {
+	stls.lock.Lock()
+	defer stls.lock.Unlock()
+	return stls.servers
+}
+
+func (stls *stubTlogClient) Recv() <-chan *tlogclient.Result {
+	return nil
+}
+
+func (stls *stubTlogClient) LastFlushedSequence() uint64 {
+	return 0
+}
+func (stls *stubTlogClient) Close() error {
+	return nil
 }

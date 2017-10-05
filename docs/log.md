@@ -4,7 +4,7 @@ Using the [0-Log library][zerolog] we can log to the `stderr`/`stdout` messages 
 
 ## Broadcasting to 0-Orchestrator
 
-The `Broadcast` function in the `0-Disk/log` package logs messages using the [0-Log library][zeroLog] to broadcast any message the [0-Orchestrator][zeroOrchestrator] should be aware of. While in most cases the 0-disk services won't stop working because of the occured failures, it is none the less very important that [0-Orchestrator][zeroOrchestrator] handles these messages as quickly as possible, in case intervention is required.
+The `Broadcast` function in the `0-Disk/log` package logs messages using the [0-Log library][zeroLog] to broadcast any message the [0-Orchestrator][zeroOrchestrator] should be aware of. While in most cases the 0-disk services won't stop working because of the occurred failures, it is none the less very important that [0-Orchestrator][zeroOrchestrator] handles these messages as quickly as possible, in case intervention is required.
 
 For more in-depth information about the actual implementation in 0-Disk, you can read [the log module Godocs][zeroDiskLogGodcs].
 
@@ -20,7 +20,7 @@ All broadcasted messages are send using [level 20 (loglevel JSON)][loglevels] an
 }
 ```
 
-The (message) subject defines where the message orginates from,
+The (message) subject defines where the message originates from,
 while the (message) status code defines what is happening in that origin.
 
 ```js
@@ -59,6 +59,7 @@ Thanks to the [0-Log library][zerolog] the final output of the example above wou
 | `400` | generic/unknown error |
 | `401` | cluster time out |
 | `403` | invalid config |
+| `405` | unexpected config |
 | `421` | server timeout |
 | `422` | server disconnect |
 | `423` | server temporary error |
@@ -69,7 +70,8 @@ Thanks to the [0-Log library][zerolog] the final output of the example above wou
 | ----- | ------- |
 | `ardb` | (our usage of) an [ardb][ardb] server/cluster |
 | `etcd` | (our usage of) an [etcd][etcd] server/cluster |
-| `zerostor` | (our usage of) an [zerostor][zerostor] server/cluster |
+| `tlog` | (our usage of) a [tlog][tlog] server/cluster |
+| `zerostor` | (our usage of) a [zerostor][zerostor] server/cluster |
 
 ### Messages
 
@@ -174,6 +176,21 @@ Or if that is not possible, that it can be replaced by another 0-stor cluster wh
 
 Sent when receiving an invalid config for a certain key, while reading or watching that key. If this happens during an update while watching this key, we'll stick with the config as it was, such that nothing breaks down as the old configuration is still valid for usage. If the old config is no longer usable or we are reading the given key (initially), this will however result in a critical failure and it might potentially shut down the [vdisk][vdisk]'s session it is used for.
 
+This message is send in the hope that the config can be made valid by receiving an(other) update from the [0-Orchestrator][zeroOrchestrator].
+
+#### received an unexpected tlog cluster config
+
+```js
+{
+    "subject": "tlog",  // tlog
+    "status": 405,      // unexpected config
+    "data": {
+        "vdiskID": "vd3",   // ID of the vdisk that received an unexpected config
+    },
+}
+```
+
+Sent when receiving an unexpected config through an update of the configuration. If this happens the config will stay with the old config, such that nothing breaks down as the old configuration is still valid for usage.
 This message is send in the hope that the config can be made valid by receiving an(other) update from the [0-Orchestrator][zeroOrchestrator].
 
 ## Broadcast statistics 

@@ -58,11 +58,12 @@ func TestBackendSigtermHandler(t *testing.T) {
 
 		source := config.NewStubSource()
 		defer source.Close()
+		source.SetPrimaryStorageCluster(vdiskID, "nbdCluster", nil)
 		source.SetTlogServerCluster(vdiskID, "tlogcluster", &config.TlogClusterConfig{
 			Servers: []string{tlogrpc},
 		})
 
-		tls, err := tlog.Storage(ctx, vdiskID, "tlogcluster", source, blockSize, storage, provider, nil)
+		tls, err := tlog.Storage(ctx, vdiskID, source, blockSize, storage, provider, nil)
 		require.NoError(t, err)
 		require.NotNil(t, tls)
 

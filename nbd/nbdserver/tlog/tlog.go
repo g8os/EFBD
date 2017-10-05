@@ -8,22 +8,20 @@ import (
 	"sync"
 	"time"
 
-	"github.com/zero-os/0-Disk/nbd/ardb"
-
+	"github.com/garyburd/redigo/redis"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
 	"github.com/zero-os/0-Disk/tlog/tlogclient"
-
-	"github.com/garyburd/redigo/redis"
 )
 
 // Storage creates a tlog storage BlockStorage,
 // wrapping around a given backend storage,
 // using the given tlog client to send its write transactions to the tlog server.
-func Storage(ctx context.Context, vdiskID, clusterID string, configSource config.Source, blockSize int64, storage storage.BlockStorage, mdProvider ardb.MetadataConnProvider, client tlogClient) (storage.BlockStorage, error) {
+func Storage(ctx context.Context, vdiskID string, configSource config.Source, blockSize int64, storage storage.BlockStorage, mdProvider ardb.MetadataConnProvider, client tlogClient) (storage.BlockStorage, error) {
 	if storage == nil {
 		return nil, errors.New("tlogStorage requires a non-nil BlockStorage")
 	}
@@ -33,19 +31,22 @@ func Storage(ctx context.Context, vdiskID, clusterID string, configSource config
 		return nil, errors.New("tlogStorage requires a valid metadata ARDB provider: " + err.Error())
 	}
 
+	tlogStorage := &tlogStorage{
+		vdiskID:        vdiskID,
+		storage:        storage,
+		metadata:       metadata,
+		cache:          newInMemorySequenceCache(),
+		blockSize:      blockSize,
+		transactionCh:  make(chan *transaction, transactionChCapacity),
+		toFlushCh:      make(chan []uint64, toFlushChCapacity),
+		cacheEmptyCond: sync.NewCond(&sync.Mutex{}),
+		done:           make(chan struct{}, 1),
+	}
 	ctx, cancel := context.WithCancel(ctx)
-	tlogClusterCh, err := config.WatchTlogClusterConfig(ctx, configSource, clusterID)
+	tlogClusterConfig, err := tlogStorage.tlogRPCReloader(ctx, vdiskID, configSource)
 	if err != nil {
 		cancel()
-		return nil, errors.New("tlogStorage requires a valid config source: " + err.Error())
-	}
-
-	var tlogClusterConfig config.TlogClusterConfig
-	select {
-	case tlogClusterConfig = <-tlogClusterCh:
-	case <-ctx.Done():
-		cancel()
-		return nil, errors.New("tlogStorage requires active context")
+		return nil, errors.New("tlogstorage couldn't retrieve data from config: " + err.Error())
 	}
 
 	if client == nil {
@@ -59,23 +60,11 @@ func Storage(ctx context.Context, vdiskID, clusterID string, configSource config
 			// TODO call tlog player if last flushed sequence from tlog server is
 			// higher than us.
 			// see: https://github.com/zero-os/0-Disk/issues/230
-			log.Infof("possile error when starting vdisk `%v`: might need to sync with tlog", vdiskID)
+			log.Infof("possible error when starting vdisk `%v`: might need to sync with tlog", vdiskID)
 		}
 	}
-
-	tlogStorage := &tlogStorage{
-		vdiskID:        vdiskID,
-		tlog:           client,
-		storage:        storage,
-		metadata:       metadata,
-		cache:          newInMemorySequenceCache(),
-		blockSize:      blockSize,
-		sequence:       client.LastFlushedSequence() + 1,
-		transactionCh:  make(chan *transaction, transactionChCapacity),
-		toFlushCh:      make(chan []uint64, toFlushChCapacity),
-		cacheEmptyCond: sync.NewCond(&sync.Mutex{}),
-		done:           make(chan struct{}, 1),
-	}
+	tlogStorage.tlog = client
+	tlogStorage.sequence = client.LastFlushedSequence() + 1
 
 	err = tlogStorage.spawnBackgroundGoroutine(ctx)
 	if err != nil {
@@ -83,7 +72,6 @@ func Storage(ctx context.Context, vdiskID, clusterID string, configSource config
 		return nil, err
 	}
 
-	go tlogStorage.goTlogRPCReloader(ctx, tlogClusterCh, cancel)
 	return tlogStorage, nil
 }
 
@@ -97,6 +85,7 @@ func Storage(ctx context.Context, vdiskID, clusterID string, configSource config
 // such that these are logged (e.g. for data recovery), using an embedded tlogclient.
 type tlogStorage struct {
 	vdiskID       string
+	tlogClusterID string
 	mux           sync.RWMutex
 	tlog          tlogClient
 	storage       storage.BlockStorage
@@ -416,7 +405,7 @@ func (tls *tlogStorage) transactionSender(ctx context.Context) {
 
 // flusher is spawned by the `GoBackground` method,
 // and is meant to flush transaction from sequence cache to storage,
-// over a seperate goroutine
+// over a separate goroutine
 func (tls *tlogStorage) flusher(ctx context.Context) {
 	for {
 		select {
@@ -436,25 +425,81 @@ func (tls *tlogStorage) flusher(ctx context.Context) {
 
 }
 
-func (tls *tlogStorage) goTlogRPCReloader(ctx context.Context, ch <-chan config.TlogClusterConfig, cancel func()) {
-	defer cancel()
-
-	for {
-		select {
-		case cfg := <-ch:
-			if len(cfg.Servers) == 0 {
-				// TODO: notify 0-orchestrator
-				log.Errorf(
-					"nbd config for vdisk %s no longer specifies tlog rpcs", tls.vdiskID)
-				continue
-			}
-
-			tls.tlog.ChangeServerAddresses(cfg.Servers)
-
-		case <-ctx.Done():
-			return
-		}
+func (tls *tlogStorage) tlogRPCReloader(ctx context.Context, vdiskID string, source config.Source) (*config.TlogClusterConfig, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	vdiskNBDUpdate, err := config.WatchVdiskNBDConfig(ctx, source, vdiskID)
+	if err != nil {
+		cancel()
+		return nil, err
 	}
+
+	var vdiskNBDConfig config.VdiskNBDConfig
+	select {
+	case vdiskNBDConfig = <-vdiskNBDUpdate:
+		tls.tlogClusterID = vdiskNBDConfig.TlogServerClusterID
+	case <-ctx.Done():
+		cancel()
+		return nil, errors.New("tlogStorage requires active context")
+	}
+
+	tlogCfgCtx, tlogCfgCancel := context.WithCancel(ctx)
+	tlogClusterCfgUpdate, err := config.WatchTlogClusterConfig(tlogCfgCtx, source, vdiskNBDConfig.TlogServerClusterID)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+
+	var tlogClusterConfig config.TlogClusterConfig
+	select {
+	case tlogClusterConfig = <-tlogClusterCfgUpdate:
+	case <-ctx.Done():
+		cancel()
+		return nil, errors.New("tlogStorage requires active context")
+	}
+
+	go func() {
+		for {
+			select {
+			case vdiskNBDConfig := <-vdiskNBDUpdate:
+				if tls.tlogClusterID != vdiskNBDConfig.TlogServerClusterID {
+					if vdiskNBDConfig.TlogServerClusterID == "" {
+						log.Broadcast(log.StatusUnexpectedConfig, log.SubjectTlog, log.UnexpectedConfigBody{VdiskID: vdiskID})
+						log.Errorf(
+							"vdisk %s encountered an error switching to new Tlog cluster ID: %s",
+							tls.vdiskID,
+							"TlogServerClusterID is empty")
+						continue
+					}
+
+					newTlogCfgCtx, newTlogCfgCancel := context.WithCancel(ctx)
+					newTlogClusterCfgUpdate, err := config.WatchTlogClusterConfig(newTlogCfgCtx, source, vdiskNBDConfig.TlogServerClusterID)
+					if err != nil {
+						log.Errorf(
+							"vdisk %s encountered an error switching to Tlog cluster ID '%s': %s",
+							tls.vdiskID,
+							vdiskNBDConfig.TlogServerClusterID,
+							err)
+						continue
+					}
+
+					log.Debugf("Setting Tlog cluster ID to: %s", vdiskNBDConfig.TlogServerClusterID)
+					tlogCfgCancel()
+					tlogCfgCtx = newTlogCfgCtx
+					tlogCfgCancel = newTlogCfgCancel
+					tls.mux.Lock()
+					tls.tlogClusterID = vdiskNBDConfig.TlogServerClusterID
+					tls.mux.Unlock()
+					tlogClusterCfgUpdate = newTlogClusterCfgUpdate
+				}
+			case tlogClusterCfg := <-tlogClusterCfgUpdate:
+				tls.tlog.ChangeServerAddresses(tlogClusterCfg.Servers)
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	return &tlogClusterConfig, nil
 }
 
 // switch to ardb slave if possible
