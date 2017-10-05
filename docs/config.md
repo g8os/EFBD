@@ -39,7 +39,7 @@ Who uses what:
     * [StorageClusterConfig](#StorageClusterConfig):
       * required for [tlog storage (1)][storage] (some fields are not used);
       * optional for [slave storage][slave] (some fields are optional);
-* [zeroctl][zeroctl] (copy/delete/restore) uses:
+* [zeroctl][zeroctl] uses:
   * for most [VDisk][vdisk] operations:
     * [VdiskStaticConfig](#VdiskStaticConfig): required (some fields are optional);
     * [VdiskNBDConfig](#VdiskNBDConfig): required (some fields are optional);
@@ -252,7 +252,7 @@ The source implementation for [etcd][etcd] provides methodes to read and watch s
 In the etcd cluster it will look for the following subconfig keys:
 
 
-* [VdiskStaticConfig](#VdiskStaticConfig): `<VdiskID>:vdisk:conf:static`;
+* [VdiskStaticConfig](#VdiskStaticConfig): `<vdiskID>:vdisk:conf:static`;
 * [VdiskNBDConfig](#VdiskNBDConfig): `<vdiskID>:vdisk:conf:storage:nbd`;
 * [VdiskTlogConfig](#VdiskTlogConfig): `<vdiskID>:vdisk:conf:storage:tlog`;
 * [StorageClusterConfig](#StorageClusterConfig): `<clusterID>:cluster:conf:storage`;
