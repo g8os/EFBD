@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/flusher"
@@ -178,10 +179,22 @@ func testCopy(t *testing.T, confSource config.Source, dataShards, parityShards, 
 		data := make([]byte, blockSize)
 		rand.Read(data)
 
-		err = flusher.AddTransaction(schema.OpSet, seq, data, idx, tlog.TimeNowTimestamp())
+		err = flusher.AddTransaction(tlog.Transaction{
+			Operation: schema.OpSet,
+			Sequence:  seq,
+			Content:   data,
+			Index:     idx,
+			Timestamp: tlog.TimeNowTimestamp(),
+			Hash:      zerodisk.Hash(data),
+		})
 		require.NoError(t, err)
+
+		if flusher.Full() {
+			_, _, err = flusher.Flush()
+			require.NoError(t, err)
+		}
 	}
-	_, err = flusher.Flush()
+	_, _, err = flusher.Flush()
 	require.NoError(t, err)
 
 	// copy
