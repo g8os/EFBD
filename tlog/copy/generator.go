@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
@@ -137,10 +138,24 @@ func (g *Generator) GenerateFromStorage(parentCtx context.Context) (uint64, erro
 			case <-ctx.Done():
 				return
 			default:
-				err = g.flusher.AddTransaction(schema.OpSet, seq, ic.content, ic.idx, timestamp)
+				err = g.flusher.AddTransaction(tlog.Transaction{
+					Operation: schema.OpSet,
+					Sequence:  seq,
+					Content:   ic.content,
+					Index:     ic.idx,
+					Timestamp: timestamp,
+					Hash:      zerodisk.Hash(ic.content),
+				})
+
 				if err != nil {
 					errCh <- err
 					return
+				}
+				if g.flusher.Full() {
+					if _, _, err := g.flusher.Flush(); err != nil {
+						errCh <- err
+						return
+					}
 				}
 				if int(seq) == len(indices) {
 					return
@@ -162,7 +177,7 @@ func (g *Generator) GenerateFromStorage(parentCtx context.Context) (uint64, erro
 		// all is good
 	}
 
-	_, err = g.flusher.Flush()
+	_, _, err = g.flusher.Flush()
 	log.Infof("GenerateFromStorage generates `%v` tlog data with err = %v", len(indices), err)
 	return seq, err
 }

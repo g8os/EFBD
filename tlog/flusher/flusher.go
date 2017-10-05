@@ -3,33 +3,29 @@ package flusher
 import (
 	"sync"
 
-	"zombiezen.com/go/capnproto2"
-
-	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
 	"github.com/zero-os/0-Disk/tlog/stor"
-	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
 )
 
-type transaction struct {
-	Operation uint8
-	Sequence  uint64
-	Content   []byte
-	Index     int64
-	Timestamp int64
-}
+const (
+	// DefaultFlushSize is default flush size value
+	DefaultFlushSize = 25
+)
 
 // Flusher defines a tlog flusher
 type Flusher struct {
-	mux          sync.Mutex
-	flushSize    int
-	storCli      *stor.Client
-	transactions []transaction
+	mux       sync.Mutex
+	flushSize int
+	storCli   *stor.Client
+	curAgg    *tlog.Aggregation
+	capnpBuf  []byte
 }
 
 // New creates a new flusher
-func New(confSource config.Source, dataShards, parityShards, flushSize int, vdiskID, privKey string) (*Flusher, error) {
+func New(confSource config.Source, dataShards, parityShards, flushSize int,
+	vdiskID, privKey string) (*Flusher, error) {
 	// creates stor client
 	storConf, err := stor.ConfigFromConfigSource(confSource, vdiskID, privKey, dataShards, parityShards)
 	if err != nil {
@@ -40,101 +36,113 @@ func New(confSource config.Source, dataShards, parityShards, flushSize int, vdis
 		return nil, err
 	}
 
+	// read vdisk conf
+	vdiskConf, err := config.ReadVdiskStaticConfig(confSource, vdiskID)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewWithStorClient(storCli, flushSize, int(vdiskConf.BlockSize)), nil
+}
+
+// NewWithStorClient creates new flusher with given stor.Client
+func NewWithStorClient(storCli *stor.Client, flushSize, blockSize int) *Flusher {
 	if flushSize == 0 {
-		flushSize = server.DefaultConfig().FlushSize
+		flushSize = DefaultFlushSize
 	}
 
 	return &Flusher{
 		storCli:   storCli,
 		flushSize: flushSize,
-	}, nil
+		capnpBuf:  make([]byte, 0, blockSize*(flushSize+1)),
+	}
 }
 
-// AddTransaction add transaction to this flusher and
-// flush it if it reach FlushSize
-func (f *Flusher) AddTransaction(op uint8, seq uint64, content []byte, index, timestamp int64) error {
+// AddTransaction add transaction to this flusher
+func (f *Flusher) AddTransaction(t tlog.Transaction) error {
 	f.mux.Lock()
 	defer f.mux.Unlock()
 
-	f.transactions = append(f.transactions, transaction{
-		Operation: op,
-		Sequence:  seq,
-		Content:   content,
-		Index:     index,
-		Timestamp: timestamp,
-	})
-	if len(f.transactions) < f.flushSize {
+	// creates aggregation if needed
+	if f.curAgg == nil {
+		if err := f.initAggregation(); err != nil {
+			return err
+		}
+	}
+
+	return f.curAgg.AddTransaction(t)
+}
+
+// AddBlock adds capnp block to this flusher
+func (f *Flusher) AddBlock(block *schema.TlogBlock) error {
+	f.mux.Lock()
+	defer f.mux.Unlock()
+
+	// creates aggregation if needed
+	if f.curAgg == nil {
+		if err := f.initAggregation(); err != nil {
+			return err
+		}
+	}
+
+	return f.curAgg.AddBlock(block)
+}
+
+func (f *Flusher) initAggregation() error {
+	agg, err := tlog.NewAggregation(f.capnpBuf, f.flushSize)
+	if err != nil {
+		return err
+	}
+	f.curAgg = agg
+	return nil
+}
+
+// Full returns true if the flusher's aggregation is full
+func (f *Flusher) Full() bool {
+	if f.curAgg == nil {
+		return false
+	}
+	return f.curAgg.Full()
+}
+
+// Empty returns true if the flusher's aggregation is empty
+func (f *Flusher) Empty() bool {
+	if f.curAgg == nil {
+		return true
+	}
+	return f.curAgg.Empty()
+}
+
+// IgnoreSeqBefore ignores all blocks with sequence less than
+// the given sequence
+func (f *Flusher) IgnoreSeqBefore(seq uint64) error {
+	if f.curAgg == nil {
 		return nil
 	}
-	_, err := f.flush()
-	return err
+	return f.curAgg.IgnoreSeqBefore(seq)
 }
 
 // Flush flushes the transactions in buffer
-func (f *Flusher) Flush() (int, error) {
+func (f *Flusher) Flush() ([]byte, []uint64, error) {
 	f.mux.Lock()
 	defer f.mux.Unlock()
 
-	n, err := f.flush()
-	return n, err
+	return f.flush()
 }
 
-func (f *Flusher) flush() (flushed int, err error) {
-	if len(f.transactions) == 0 {
-		return
+func (f *Flusher) flush() ([]byte, []uint64, error) {
+	if f.curAgg == nil || f.curAgg.Empty() {
+		return nil, nil, nil
 	}
 
-	// count flush size
-	flushSize := f.flushSize
-	if len(f.transactions) < flushSize {
-		flushSize = len(f.transactions)
-	}
-
-	// take transactions to flush
-	toFlush := f.transactions[:flushSize]
-	f.transactions = f.transactions[flushSize:]
-
-	blocks := make([]*schema.TlogBlock, 0, len(toFlush))
-	for _, t := range toFlush {
-		var block *schema.TlogBlock
-		block, err = f.transactionToBlock(t)
-		if err != nil {
-			f.transactions = append(toFlush, f.transactions...)
-			return
-		}
-		blocks = append(blocks, block)
-	}
-
-	_, err = f.storCli.ProcessStore(blocks)
-	flushed = flushSize
-
-	return
-}
-
-func (f *Flusher) transactionToBlock(t transaction) (*schema.TlogBlock, error) {
-	_, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
+	data, err := f.storCli.ProcessStoreAgg(f.curAgg)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	block, err := schema.NewTlogBlock(seg)
-	if err != nil {
-		return nil, err
-	}
+	seqs := f.curAgg.Sequences()
 
-	hash := zerodisk.Hash(t.Content)
-	if err := block.SetHash(hash); err != nil {
-		return nil, err
-	}
+	f.curAgg = nil
 
-	if err := block.SetData(t.Content); err != nil {
-		return nil, err
-	}
-
-	block.SetOperation(t.Operation)
-	block.SetSequence(t.Sequence)
-	block.SetIndex(t.Index)
-	block.SetTimestamp(t.Timestamp)
-
-	return &block, nil
+	return data, seqs, nil
 }
