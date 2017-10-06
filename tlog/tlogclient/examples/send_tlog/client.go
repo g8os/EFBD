@@ -28,7 +28,7 @@ func main() {
 		dataLen       = 4096
 	)
 
-	client, err := client.New([]string{"127.0.0.1:11211"}, vdiskID)
+	client, _, err := client.New([]string{"127.0.0.1:11211"}, vdiskID)
 	if err != nil {
 		log.Fatal(err)
 	}

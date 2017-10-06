@@ -16,7 +16,7 @@ import (
 	"github.com/zero-os/0-Disk/tlog/schema"
 )
 
-func (vd *vdisk) handle(conn *net.TCPConn, br *bufio.Reader, respSegmentBufLen int, coordAddr string) error {
+func (vd *vdisk) handle(conn *net.TCPConn, br *bufio.Reader, respSegmentBufLen int) error {
 	ctx, cancelFunc := context.WithCancel(vd.ctx)
 	defer func() {
 		vd.removeConn(conn)
@@ -29,12 +29,17 @@ func (vd *vdisk) handle(conn *net.TCPConn, br *bufio.Reader, respSegmentBufLen i
 
 	lastSeq := vd.expectedSequence
 
-	if coordAddr != "" {
+	if !vd.Ready() && vd.coordConnectAddr != "" {
 		var err error
-		lastSeq, err = vd.coordOther(coordAddr)
+		lastSeq, err = vd.coordOther()
 		if err != nil {
 			return err
 		}
+
+		vd.mux.Lock()
+		vd.ready = true
+		vd.mux.Unlock()
+
 		// tell client that we are ready
 		vd.respChan <- &BlockResponse{
 			Status:    tlog.BlockStatusReady.Int8(),
@@ -127,8 +132,8 @@ func (vd *vdisk) handleBlock(block *schema.TlogBlock) error {
 
 	seq := block.Sequence()
 
-	vd.expectedSequenceLock.Lock()
-	defer vd.expectedSequenceLock.Unlock()
+	vd.mux.Lock()
+	defer vd.mux.Unlock()
 
 	if seq < vd.expectedSequence {
 		vd.respChan <- &BlockResponse{

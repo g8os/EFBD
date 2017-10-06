@@ -50,7 +50,7 @@ func TestForceFlushAtSeq(t *testing.T) {
 	forceFlushedSeq := uint64(numLogs - 5)
 
 	// create tlog client
-	client, err := tlogclient.New([]string{s.ListenAddr()}, vdiskID)
+	client, _, err := tlogclient.New([]string{s.ListenAddr()}, vdiskID)
 	require.Nil(t, err)
 
 	// Step 3
@@ -120,7 +120,7 @@ func TestForceFlushAtSeqPossibleRace(t *testing.T) {
 	forceFlushedSeq := uint64(numLogs - 1)
 
 	// create tlog client
-	client, err := tlogclient.New([]string{s.ListenAddr()}, vdiskID)
+	client, _, err := tlogclient.New([]string{s.ListenAddr()}, vdiskID)
 	require.Nil(t, err)
 
 	var wg sync.WaitGroup

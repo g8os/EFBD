@@ -59,7 +59,7 @@ func TestCoord(t *testing.T) {
 	go t1.Listen(ctx1)
 
 	// start client 1
-	c1, err := tlogclient.New([]string{t1.ListenAddr()}, vdiskID)
+	c1, _, err := tlogclient.New([]string{t1.ListenAddr()}, vdiskID)
 	require.NoError(t, err)
 
 	resp1Ch := c1.Recv()
@@ -91,7 +91,7 @@ func TestCoord(t *testing.T) {
 	go t2.Listen(ctx2)
 
 	// start c2
-	c2, err := tlogclient.New([]string{t2.ListenAddr()}, vdiskID)
+	c2, _, err := tlogclient.New([]string{t2.ListenAddr()}, vdiskID)
 	require.NoError(t, err)
 
 	// wait for t1 finish it flush and kil it

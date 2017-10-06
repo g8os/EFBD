@@ -15,6 +15,7 @@ struct HandshakeResponse {
 	version @0 :UInt32;
 	status @1 :Int8;
 	lastFlushedSequence @2: UInt64;
+	waitTlogReady @3: Bool;
 }
 
 # tlog block aggregation

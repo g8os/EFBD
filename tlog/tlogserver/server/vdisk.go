@@ -63,8 +63,8 @@ type vdisk struct {
 	flusherCmdChan     chan vdiskFlusherCmd   // channel of flusher command
 	flusherCmdRespChan chan struct{}          // channel of flusher command response
 
-	expectedSequence     uint64 // expected sequence to be received
-	expectedSequenceLock sync.Mutex
+	expectedSequence uint64 // expected sequence to be received
+	mux              sync.Mutex
 
 	flusherConf *flusherConfig
 
@@ -81,6 +81,12 @@ type vdisk struct {
 	ctx        context.Context
 	cancelFunc context.CancelFunc
 
+	// true if this vdisk ready to be used
+	// - have no remote tlog server to coordinate
+	// - remote tlog server to coordinate/wait already dies
+	ready            bool
+	coordConnectAddr string // remote tlog server to coordinate before marking ourself as ready
+
 	storClient *stor.Client
 }
 
@@ -96,7 +102,7 @@ func (vd *vdisk) ResponseChan() <-chan *BlockResponse {
 
 // creates vdisk with given vdiskID
 func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, configSource config.Source,
-	flusherConf *flusherConfig, cleanup vdiskCleanupFunc) (*vdisk, error) {
+	flusherConf *flusherConfig, cleanup vdiskCleanupFunc, coordConnectAddr string) (*vdisk, error) {
 
 	var aggComm *aggmq.AggComm
 
@@ -127,8 +133,13 @@ func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, config
 		aggMq:           aggMq,
 		apc:             apc,
 
-		ctx:        ctx,
-		cancelFunc: cancelFunc,
+		ctx:              ctx,
+		cancelFunc:       cancelFunc,
+		coordConnectAddr: coordConnectAddr,
+	}
+
+	if vd.coordConnectAddr == "" {
+		vd.ready = true
 	}
 
 	if err := vd.watchConfig(); err != nil {
@@ -151,6 +162,12 @@ func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, config
 
 	log.Infof("vdisk %v created", vd.id)
 	return vd, nil
+}
+
+func (vd *vdisk) Ready() bool {
+	vd.mux.Lock()
+	defer vd.mux.Unlock()
+	return vd.ready
 }
 
 func (vd *vdisk) watchConfig() error {
@@ -276,6 +293,10 @@ func (vd *vdisk) connect(conn *net.TCPConn) (uint64, error) {
 		return 0, err
 	}
 
+	if !vd.Ready() {
+		return 0, nil
+	}
+
 	lastSeq, err := vd.loadLastFlushedSequence()
 	if err != nil {
 		vd.removeConn(conn)
@@ -288,8 +309,8 @@ func (vd *vdisk) connect(conn *net.TCPConn) (uint64, error) {
 func (vd *vdisk) loadLastFlushedSequence() (uint64, error) {
 	lastSeq, err := vd.storClient.LoadLastSequence()
 
-	vd.expectedSequenceLock.Lock()
-	defer vd.expectedSequenceLock.Unlock()
+	vd.mux.Lock()
+	defer vd.mux.Unlock()
 
 	if err == stor.ErrNoFlushedBlock {
 		vd.expectedSequence = tlog.FirstSequence

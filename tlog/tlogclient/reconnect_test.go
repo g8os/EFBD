@@ -30,7 +30,7 @@ func TestReconnectFromSend(t *testing.T) {
 	require.Nil(t, err)
 	go serv.Listen(ctx)
 
-	client, err := New([]string{serv.ListenAddr()}, vdisk)
+	client, _, err := New([]string{serv.ListenAddr()}, vdisk)
 	require.Nil(t, err)
 	defer client.Close()
 
@@ -69,7 +69,7 @@ func TestReconnectFromForceFlush(t *testing.T) {
 	go s.Listen(ctx)
 
 	// Create client
-	client, err := New([]string{s.ListenAddr()}, vdisk)
+	client, _, err := New([]string{s.ListenAddr()}, vdisk)
 	require.Nil(t, err)
 
 	// Simulate closed connection

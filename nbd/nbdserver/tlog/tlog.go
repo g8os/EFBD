@@ -49,7 +49,7 @@ func Storage(ctx context.Context, vdiskID, clusterID string, configSource config
 	}
 
 	if client == nil {
-		client, err = tlogclient.New(tlogClusterConfig.Servers, vdiskID)
+		client, _, err = tlogclient.New(tlogClusterConfig.Servers, vdiskID)
 		if err != nil {
 			cancel()
 			return nil, errors.New("tlogStorage requires valid tlogclient: " + err.Error())

@@ -173,12 +173,13 @@ func (s *Server) CoordListenAddr() string {
 func (s *Server) handshake(r io.Reader, w io.Writer, conn *net.TCPConn) (vd *vdisk, err error) {
 	status := tlog.HandshakeStatusInternalServerError
 	var lastSeq uint64
+	var vdiskReady bool
 
 	// always return response, even in case of a panic,
 	// but normally this is triggered because of a(n early) return
 	defer func() {
 		segmentBuf := make([]byte, 0, schema.RawServerHandshakeLen())
-		err := s.writeHandshakeResponse(w, segmentBuf, status, lastSeq)
+		err := s.writeHandshakeResponse(w, segmentBuf, status, lastSeq, !vdiskReady)
 		if err != nil {
 			log.Infof("couldn't write server %s response: %s",
 				status.String(), err.Error())
@@ -212,12 +213,13 @@ func (s *Server) handshake(r io.Reader, w io.Writer, conn *net.TCPConn) (vd *vdi
 		return // error return
 	}
 
-	vd, err = s.vdiskMgr.Get(s.ctx, vdiskID, conn, s.flusherConf)
+	vd, err = s.vdiskMgr.Get(s.ctx, vdiskID, conn, s.flusherConf, s.coordConnectAddr)
 	if err != nil {
 		status = tlog.HandshakeStatusInternalServerError
 		err = fmt.Errorf("couldn't create vdisk %s: %s", vdiskID, err.Error())
 		return
 	}
+	vdiskReady = vd.Ready()
 
 	lastSeq, err = vd.connect(conn)
 	if err != nil {
@@ -232,7 +234,7 @@ func (s *Server) handshake(r io.Reader, w io.Writer, conn *net.TCPConn) (vd *vdi
 }
 
 func (s *Server) writeHandshakeResponse(w io.Writer, segmentBuf []byte, status tlog.HandshakeStatus,
-	lastFlushedSeq uint64) error {
+	lastFlushedSeq uint64, waitTlogReady bool) error {
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(segmentBuf))
 	if err != nil {
 		return err
@@ -245,6 +247,7 @@ func (s *Server) writeHandshakeResponse(w io.Writer, segmentBuf []byte, status t
 
 	resp.SetVersion(zerodisk.CurrentVersion.UInt32())
 	resp.SetLastFlushedSequence(lastFlushedSeq)
+	resp.SetWaitTlogReady(waitTlogReady)
 
 	log.Debug("replying handshake with status: ", status)
 	resp.SetStatus(status.Int8())
@@ -262,7 +265,7 @@ func (s *Server) handle(conn *net.TCPConn) error {
 		conn.Close()
 		return err
 	}
-	return vd.handle(conn, br, s.maxRespSegmentBufLen, s.coordConnectAddr)
+	return vd.handle(conn, br, s.maxRespSegmentBufLen)
 }
 
 // read and decode tlog handshake request message from client

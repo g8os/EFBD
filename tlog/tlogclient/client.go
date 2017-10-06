@@ -78,15 +78,15 @@ type Client struct {
 // Client is going to use first address and then move to next addresses if the first address
 // is failed.
 // The client is not goroutine safe.
-func New(servers []string, vdiskID string) (*Client, error) {
-	client, err := newClient(servers, vdiskID)
+func New(servers []string, vdiskID string) (client *Client, ready bool, err error) {
+	client, ready, err = newClient(servers, vdiskID)
 	if err != nil {
-		return nil, err
+		return
 	}
 	go client.run(client.ctx)
-	return client, nil
+	return
 }
-func newClient(servers []string, vdiskID string) (*Client, error) {
+func newClient(servers []string, vdiskID string) (*Client, bool, error) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	client := &Client{
 		servers:           servers,
@@ -111,7 +111,8 @@ func newClient(servers []string, vdiskID string) (*Client, error) {
 		respCh: make(chan *Result, 3),
 	}
 
-	return client, client.connect()
+	ready, err := client.connect()
+	return client, ready, err
 }
 
 func (c *Client) run(ctx context.Context) {
@@ -334,7 +335,7 @@ func (c *Client) reconnect(closedTime time.Time) error {
 		// try other server
 		c.shiftServer()
 
-		if err = c.connect(); err == nil {
+		if _, err = c.connect(); err == nil {
 			// if reconnect success, sent all unflushed blocks
 			// because we don't know what happens in servers.
 			// it might crashed
@@ -346,7 +347,7 @@ func (c *Client) reconnect(closedTime time.Time) error {
 }
 
 // connect to server
-func (c *Client) connect() (err error) {
+func (c *Client) connect() (ready bool, err error) {
 	if c.conn != nil {
 		c.conn.CloseRead() // interrupt the receiver
 	}
@@ -361,16 +362,19 @@ func (c *Client) connect() (err error) {
 	c.setCurServerFailedFlushStatus(false)
 
 	if err = c.createConn(); err != nil {
-		return fmt.Errorf("client couldn't be created: %s", err.Error())
+		err = fmt.Errorf("client couldn't be created: %s", err.Error())
+		return
 	}
 
-	if err = c.handshake(); err != nil {
+	ready, err = c.handshake()
+	if err != nil {
 		if errClose := c.conn.Close(); errClose != nil {
 			log.Debug("couldn't close open connection of invalid client:", errClose)
 		}
-		return fmt.Errorf("client handshake failed: %s", err.Error())
+		err = fmt.Errorf("client handshake failed: %s", err.Error())
+		return
 	}
-	return nil
+	return
 }
 
 // goroutine which re-send the block.
@@ -403,27 +407,30 @@ func (c *Client) resender() {
 	}
 }
 
-func (c *Client) handshake() error {
+// do handshaking process to tlogserver
+// it returns true if tlogserver is ready
+func (c *Client) handshake() (bool, error) {
+	ready := false
 	// send handshake request
 	err := c.encodeHandshakeCapnp()
 	if err != nil {
-		return err
+		return ready, err
 	}
 	err = c.bw.Flush()
 	if err != nil {
-		return err
+		return ready, err
 	}
 
 	// receive handshake response
 	resp, err := c.decodeHandshakeResponse()
 	if err != nil {
-		return err
+		return ready, err
 	}
 
 	// check server response status
 	err = tlog.HandshakeStatus(resp.Status()).Error()
 	if err != nil {
-		return err
+		return ready, err
 	}
 
 	serverLastFlushed := resp.LastFlushedSequence()
@@ -431,8 +438,10 @@ func (c *Client) handshake() error {
 		c.blockBuffer.SetLastFlushed(serverLastFlushed)
 	}
 
+	ready = !resp.WaitTlogReady()
+
 	// all checks out, ready to go!
-	return nil
+	return ready, nil
 }
 
 // Recv get channel of responses and errors (Result)
