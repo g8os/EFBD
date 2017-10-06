@@ -225,18 +225,11 @@ func (cfg *StorageClusterConfig) Validate() error {
 
 	// validate all data server configs
 	// and ensure that at least one data server is enabled
-	var serversAvailable bool
 	for _, serverConfig := range cfg.Servers {
 		err = serverConfig.Validate()
 		if err != nil {
 			return err
 		}
-		if !serverConfig.Disabled {
-			serversAvailable = true
-		}
-	}
-	if !serversAvailable {
-		return errNoDataServersAvailable
 	}
 
 	return nil
