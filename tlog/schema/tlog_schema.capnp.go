@@ -76,6 +76,11 @@ func (s HandshakeRequest_List) Set(i int, v HandshakeRequest) error {
 	return s.List.SetStruct(i, v.Struct)
 }
 
+func (s HandshakeRequest_List) String() string {
+	str, _ := text.MarshalList(0xe0d4e6d68fa24ac0, s.List)
+	return str
+}
+
 // HandshakeRequest_Promise is a wrapper for a HandshakeRequest promised by a client call.
 type HandshakeRequest_Promise struct{ *capnp.Pipeline }
 
@@ -148,6 +153,11 @@ func (s HandshakeResponse_List) At(i int) HandshakeResponse {
 
 func (s HandshakeResponse_List) Set(i int, v HandshakeResponse) error {
 	return s.List.SetStruct(i, v.Struct)
+}
+
+func (s HandshakeResponse_List) String() string {
+	str, _ := text.MarshalList(0xee959a7d96c96641, s.List)
+	return str
 }
 
 // HandshakeResponse_Promise is a wrapper for a HandshakeResponse promised by a client call.
@@ -270,6 +280,11 @@ func (s TlogAggregation_List) At(i int) TlogAggregation { return TlogAggregation
 
 func (s TlogAggregation_List) Set(i int, v TlogAggregation) error {
 	return s.List.SetStruct(i, v.Struct)
+}
+
+func (s TlogAggregation_List) String() string {
+	str, _ := text.MarshalList(0xe46ab5b4b619e094, s.List)
+	return str
 }
 
 // TlogAggregation_Promise is a wrapper for a TlogAggregation promised by a client call.
@@ -398,6 +413,11 @@ func (s TlogClientMessage_List) Set(i int, v TlogClientMessage) error {
 	return s.List.SetStruct(i, v.Struct)
 }
 
+func (s TlogClientMessage_List) String() string {
+	str, _ := text.MarshalList(0xc8407b23fdf6d1a2, s.List)
+	return str
+}
+
 // TlogClientMessage_Promise is a wrapper for a TlogClientMessage promised by a client call.
 type TlogClientMessage_Promise struct{ *capnp.Pipeline }
 
@@ -508,6 +528,11 @@ func (s TlogBlock_List) At(i int) TlogBlock { return TlogBlock{s.List.Struct(i)}
 
 func (s TlogBlock_List) Set(i int, v TlogBlock) error { return s.List.SetStruct(i, v.Struct) }
 
+func (s TlogBlock_List) String() string {
+	str, _ := text.MarshalList(0x8cf178de3c82d431, s.List)
+	return str
+}
+
 // TlogBlock_Promise is a wrapper for a TlogBlock promised by a client call.
 type TlogBlock_Promise struct{ *capnp.Pipeline }
 
@@ -586,6 +611,11 @@ func NewTlogResponse_List(s *capnp.Segment, sz int32) (TlogResponse_List, error)
 func (s TlogResponse_List) At(i int) TlogResponse { return TlogResponse{s.List.Struct(i)} }
 
 func (s TlogResponse_List) Set(i int, v TlogResponse) error { return s.List.SetStruct(i, v.Struct) }
+
+func (s TlogResponse_List) String() string {
+	str, _ := text.MarshalList(0x98d11ae1c78a24d9, s.List)
+	return str
+}
 
 // TlogResponse_Promise is a wrapper for a TlogResponse promised by a client call.
 type TlogResponse_Promise struct{ *capnp.Pipeline }

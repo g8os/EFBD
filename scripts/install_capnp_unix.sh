@@ -7,3 +7,6 @@ cd capnproto-c++-0.6.1 || (echo "couldn't download capnproto-c++-0.6.0" && exit 
 ./configure
 sudo make install
 cd "$ORIGDIR" && sudo rm -rf capnproto-c++-0.6.1
+
+BASEDIR=$(dirname "$0")
+"$BASEDIR"/install_capnpc_go_plugin.sh
