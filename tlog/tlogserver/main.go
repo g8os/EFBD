@@ -33,6 +33,8 @@ func main() {
 	flag.IntVar(&conf.BlockSize, "block-size", conf.BlockSize, "block size (bytes)")
 	flag.IntVar(&conf.DataShards, "data-shards", conf.DataShards, "data shards (K) variable of the erasure encoding")
 	flag.IntVar(&conf.ParityShards, "parity-shards", conf.ParityShards, "parity shards (M) variable of the erasure encoding")
+	flag.StringVar(&conf.CoordListenAddr, "wait-listen-addr", conf.CoordListenAddr, "wait listen addr")
+	flag.StringVar(&conf.CoordConnectAddr, "wait-connect-addr", conf.CoordListenAddr, "wait connect addr")
 	flag.StringVar(&conf.PrivKey, "priv-key", conf.PrivKey, "private key")
 	flag.StringVar(&profileAddr, "profile-address", "", "Enables profiling of this server as an http service")
 	flag.Var(&sourceConfig, "config", "config resource: dialstrings (etcd cluster) or path (yaml file)")

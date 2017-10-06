@@ -48,8 +48,9 @@ func Storage(ctx context.Context, vdiskID, clusterID string, configSource config
 		return nil, errors.New("tlogStorage requires active context")
 	}
 
+	var serverReady bool
 	if client == nil {
-		client, err = tlogclient.New(tlogClusterConfig.Servers, vdiskID)
+		client, serverReady, err = tlogclient.New(tlogClusterConfig.Servers, vdiskID)
 		if err != nil {
 			cancel()
 			return nil, errors.New("tlogStorage requires valid tlogclient: " + err.Error())
@@ -75,6 +76,8 @@ func Storage(ctx context.Context, vdiskID, clusterID string, configSource config
 		toFlushCh:      make(chan []uint64, toFlushChCapacity),
 		cacheEmptyCond: sync.NewCond(&sync.Mutex{}),
 		done:           make(chan struct{}, 1),
+		tlogReadyCh:    make(chan uint64),
+		tlogReady:      serverReady,
 	}
 
 	err = tlogStorage.spawnBackgroundGoroutine(ctx)
@@ -115,6 +118,11 @@ type tlogStorage struct {
 	cacheEmptyCond *sync.Cond
 
 	done chan struct{}
+
+	tlogReadyCh      chan uint64
+	tlogReadyMux     sync.Mutex
+	tlogReady        bool
+	tlogNotReadyBuff []writeOp
 }
 
 type transaction struct {
@@ -125,10 +133,26 @@ type transaction struct {
 	Timestamp int64
 }
 
+type writeOp struct {
+	blockIndex int64
+	content    []byte
+}
+
 // SetBlock implements BlockStorage.SetBlock
 func (tls *tlogStorage) SetBlock(blockIndex int64, content []byte) error {
 	tls.mux.Lock()
 	defer tls.mux.Unlock()
+
+	// insert to buffer if tlog not ready yet
+	tls.tlogReadyMux.Lock()
+	defer tls.tlogReadyMux.Unlock()
+	if !tls.tlogReady {
+		tls.tlogNotReadyBuff = append(tls.tlogNotReadyBuff, writeOp{
+			blockIndex: blockIndex,
+			content:    content,
+		})
+		return nil
+	}
 
 	return tls.set(blockIndex, content)
 }
@@ -215,18 +239,40 @@ func (tls *tlogStorage) DeleteBlock(blockIndex int64) (err error) {
 	tls.mux.Lock()
 	defer tls.mux.Unlock()
 
+	// insert to buffer if tlog not ready yet
+	tls.tlogReadyMux.Lock()
+	defer tls.tlogReadyMux.Unlock()
+	if !tls.tlogReady {
+		tls.tlogNotReadyBuff = append(tls.tlogNotReadyBuff, writeOp{
+			blockIndex: blockIndex,
+			content:    nil,
+		})
+		return nil
+	}
+
 	err = tls.set(blockIndex, nil)
 	return
 }
 
 // Flush implements BlockStorage.Flush
 func (tls *tlogStorage) Flush() error {
+	// wait for tlog to be ready
+	// TODO : find a way without waiting
+	for {
+		tls.tlogReadyMux.Lock()
+		if tls.tlogReady {
+			tls.tlogReadyMux.Unlock()
+			break
+		}
+		time.Sleep(1 * time.Second)
+		tls.tlogReadyMux.Unlock()
+	}
+
 	tls.mux.Lock()
 	defer tls.mux.Unlock()
 
 	// ForceFlush at the latest sequence
-	latestSeq := tls.getLatestSequence()
-	tls.tlog.ForceFlushAtSeq(latestSeq)
+	tls.tlog.ForceFlushAtSeq(tls.getLatestSequence())
 
 	// wait until the cache is empty or timeout
 	doneCh := make(chan struct{})
@@ -244,7 +290,7 @@ func (tls *tlogStorage) Flush() error {
 	for !finished {
 		select {
 		case <-time.After(FlushWaitRetry): // retry it
-			tls.tlog.ForceFlushAtSeq(latestSeq)
+			tls.tlog.ForceFlushAtSeq(tls.getLatestSequence())
 
 			forceFlushNum++
 
@@ -309,9 +355,39 @@ func (tls *tlogStorage) Close() (err error) {
 	return
 }
 
+func (tls *tlogStorage) waitTlogServerReady() {
+	defer log.Infof("tlogServer for %v is ready", tls.vdiskID)
+
+	newLastSeq := <-tls.tlogReadyCh
+
+	tls.tlogReadyMux.Lock()
+	defer tls.tlogReadyMux.Unlock()
+
+	// update last sequence
+	tls.sequenceMux.Lock()
+	tls.sequence = newLastSeq + 1
+	tls.sequenceMux.Unlock()
+
+	// resume all helds IO
+	for _, op := range tls.tlogNotReadyBuff {
+		tls.set(op.blockIndex, op.content)
+	}
+
+	// mark tlog server as ready
+	tls.tlogNotReadyBuff = []writeOp{}
+	tls.tlogReady = true
+}
 func (tls *tlogStorage) spawnBackgroundGoroutine(ctx context.Context) error {
 	ctx, cancelFunc := context.WithCancel(ctx)
 	recvCh := tls.tlog.Recv()
+
+	if !tls.tlogReady { // wait until our server is ready
+		go func() {
+			log.Infof("wait tlogserver for vdisk `%v` to be ready", tls.vdiskID)
+
+			tls.waitTlogServerReady()
+		}()
+	}
 
 	// used for sending our transactions
 	go tls.transactionSender(ctx)
@@ -364,6 +440,9 @@ func (tls *tlogStorage) spawnBackgroundGoroutine(ctx context.Context) error {
 						tls.vdiskID)
 				case tlog.BlockStatusDisconnected:
 					log.Info("tlog connection disconnected")
+				case tlog.BlockStatusReady:
+					tls.tlogReadyCh <- res.Resp.Sequences[0]
+					log.Info("tlog connection is ready")
 				default:
 					panic(fmt.Errorf(
 						"tlog server had fatal failure for vdisk %s: %s",

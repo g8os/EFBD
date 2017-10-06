@@ -110,7 +110,7 @@ func TestEndToEnd(t *testing.T) {
 	t.Logf("listen addr=%v", s.ListenAddr())
 
 	// create tlog client
-	client, err := tlogclient.New([]string{s.ListenAddr()}, expectedVdiskID)
+	client, _, err := tlogclient.New([]string{s.ListenAddr()}, expectedVdiskID)
 	if !assert.Nil(t, err) {
 		return
 	}

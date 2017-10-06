@@ -167,7 +167,7 @@ func testTwoServers(t *testing.T, ttConf testTwoServerConf) {
 		tlogAddrs = tlogAddrs[0:1]
 	}
 
-	client, err := New(tlogAddrs, vdiskID)
+	client, _, err := New(tlogAddrs, vdiskID)
 	require.Nil(t, err)
 
 	respChan := client.Recv()

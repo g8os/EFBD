@@ -27,6 +27,8 @@ func (status BlockStatus) String() string {
 		return "RecvFailed"
 	case BlockStatusForceFlushReceived:
 		return "ForceFlushCommandReceived"
+	case BlockStatusReady:
+		return "Ready to receive block"
 	default:
 		return "Unknown"
 	}
@@ -58,6 +60,7 @@ const (
 	BlockStatusForceFlushReceived       BlockStatus = 3
 	BlockStatusWaitNbdSlaveSyncReceived BlockStatus = 4
 	BlockStatusDisconnected             BlockStatus = 5
+	BlockStatusReady                    BlockStatus = 6
 )
 
 // HandshakeStatus is returned by the Tlog server

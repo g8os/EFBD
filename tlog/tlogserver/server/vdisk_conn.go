@@ -27,6 +27,23 @@ func (vd *vdisk) handle(conn *net.TCPConn, br *bufio.Reader, respSegmentBufLen i
 	// start response sender
 	go vd.sendResp(ctx, conn, respSegmentBufLen)
 
+	if !vd.Ready() && vd.coordConnectAddr != "" {
+		lastSeq, err := vd.waitOther()
+		if err != nil {
+			return err
+		}
+
+		vd.mux.Lock()
+		vd.ready = true
+		vd.mux.Unlock()
+
+		// tell client that we are ready
+		vd.respChan <- &BlockResponse{
+			Status:    tlog.BlockStatusReady.Int8(),
+			Sequences: []uint64{lastSeq},
+		}
+	}
+
 	for {
 		// decode message
 		msg, err := capnp.NewDecoder(br).Decode()
@@ -112,8 +129,8 @@ func (vd *vdisk) handleBlock(block *schema.TlogBlock) error {
 
 	seq := block.Sequence()
 
-	vd.expectedSequenceLock.Lock()
-	defer vd.expectedSequenceLock.Unlock()
+	vd.mux.Lock()
+	defer vd.mux.Unlock()
 
 	if seq < vd.expectedSequence {
 		vd.respChan <- &BlockResponse{

@@ -55,7 +55,7 @@ func TestSlaveSyncEndToEnd(t *testing.T) {
 	go s.Listen(ctx)
 
 	// create tlog client
-	client, err := tlogclient.New([]string{s.ListenAddr()}, vdiskID)
+	client, _, err := tlogclient.New([]string{s.ListenAddr()}, vdiskID)
 	require.Nil(t, err)
 
 	// initialize test data
