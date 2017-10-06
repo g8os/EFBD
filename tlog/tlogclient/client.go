@@ -237,6 +237,12 @@ func (c *Client) runReceiver(ctx context.Context, cancelFunc context.CancelFunc)
 					if len(tr.Sequences) > 0 { // should always be true, but we anticipate.
 						c.blockBuffer.SetSent(tr.Sequences[0])
 					}
+				case tlog.BlockStatusReady:
+					seq := tr.Sequences[0]
+					if seq != 0 {
+						c.blockBuffer.SetLastFlushed(seq)
+					}
+					log.Infof("tlogserver is ready")
 				case tlog.BlockStatusFlushOK:
 					c.blockBuffer.SetFlushed(tr.Sequences)
 				case tlog.BlockStatusWaitNbdSlaveSyncReceived:

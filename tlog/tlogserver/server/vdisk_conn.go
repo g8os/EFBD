@@ -16,7 +16,7 @@ import (
 	"github.com/zero-os/0-Disk/tlog/schema"
 )
 
-func (vd *vdisk) handle(conn *net.TCPConn, br *bufio.Reader, respSegmentBufLen int) error {
+func (vd *vdisk) handle(conn *net.TCPConn, br *bufio.Reader, respSegmentBufLen int, coordAddr string) error {
 	ctx, cancelFunc := context.WithCancel(vd.ctx)
 	defer func() {
 		vd.removeConn(conn)
@@ -26,6 +26,21 @@ func (vd *vdisk) handle(conn *net.TCPConn, br *bufio.Reader, respSegmentBufLen i
 
 	// start response sender
 	go vd.sendResp(ctx, conn, respSegmentBufLen)
+
+	lastSeq := vd.expectedSequence
+
+	if coordAddr != "" {
+		var err error
+		lastSeq, err = vd.coordOther(coordAddr)
+		if err != nil {
+			return err
+		}
+		// tell client that we are ready
+		vd.respChan <- &BlockResponse{
+			Status:    tlog.BlockStatusReady.Int8(),
+			Sequences: []uint64{lastSeq},
+		}
+	}
 
 	for {
 		// decode message

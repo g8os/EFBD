@@ -19,14 +19,16 @@ func DefaultConfig() *Config {
 
 // Config used for creating the tlogserver
 type Config struct {
-	DataShards   int
-	ParityShards int
-	BlockSize    int // size of each block, used as hint for the flusher buffer size
-	ListenAddr   string
-	FlushSize    int
-	FlushTime    int
-	PrivKey      string
-	AggMq        *aggmq.MQ
+	DataShards       int
+	ParityShards     int
+	BlockSize        int // size of each block, used as hint for the flusher buffer size
+	ListenAddr       string
+	FlushSize        int
+	FlushTime        int
+	PrivKey          string
+	AggMq            *aggmq.MQ
+	CoordListenAddr  string
+	CoordConnectAddr string
 }
 
 // RequiredDataServers returns how many data servers are required,

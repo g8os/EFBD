@@ -364,6 +364,8 @@ func (tls *tlogStorage) spawnBackgroundGoroutine(ctx context.Context) error {
 						tls.vdiskID)
 				case tlog.BlockStatusDisconnected:
 					log.Info("tlog connection disconnected")
+				case tlog.BlockStatusReady:
+					log.Info("tlog connection is ready")
 				default:
 					panic(fmt.Errorf(
 						"tlog server had fatal failure for vdisk %s: %s",

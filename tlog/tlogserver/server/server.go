@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"time"
 
 	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/config"
@@ -22,6 +23,8 @@ type Server struct {
 	bufSize              int
 	maxRespSegmentBufLen int // max len of response capnp segment buffer
 	listener             net.Listener
+	coordListener        net.Listener
+	coordConnectAddr     string
 	flusherConf          *flusherConfig
 	vdiskMgr             *vdiskManager
 	ctx                  context.Context
@@ -33,9 +36,12 @@ func NewServer(conf *Config, configSource config.Source) (*Server, error) {
 		return nil, errors.New("tlogserver requires a non-nil config")
 	}
 
-	var err error
-	var listener net.Listener
+	var (
+		err                     error
+		coordListener, listener net.Listener
+	)
 
+	// tlog main listen addr
 	if conf.ListenAddr != "" {
 		// listen for tcp requests on given address
 		listener, err = net.Listen("tcp", conf.ListenAddr)
@@ -53,6 +59,17 @@ func NewServer(conf *Config, configSource config.Source) (*Server, error) {
 		log.Infof("Started listening on local address %s", listener.Addr().String())
 	}
 
+	// tlog coord listen address
+	if conf.CoordListenAddr != "" {
+		if conf.CoordListenAddr == "-" {
+			conf.CoordListenAddr = "127.0.0.1:0"
+		}
+		coordListener, err = net.Listen("tcp", conf.CoordListenAddr)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// used to created a flusher on rumtime
 	flusherConf := &flusherConfig{
 		DataShards:   conf.DataShards,
@@ -66,6 +83,8 @@ func NewServer(conf *Config, configSource config.Source) (*Server, error) {
 		conf.AggMq, conf.BlockSize, conf.FlushSize, configSource)
 	return &Server{
 		listener:             listener,
+		coordListener:        coordListener,
+		coordConnectAddr:     conf.CoordConnectAddr,
 		flusherConf:          flusherConf,
 		maxRespSegmentBufLen: schema.RawTlogRespLen(conf.FlushSize),
 		vdiskMgr:             vdiskManager,
@@ -76,6 +95,42 @@ func NewServer(conf *Config, configSource config.Source) (*Server, error) {
 func (s *Server) Listen(ctx context.Context) {
 	s.ctx = ctx
 	defer s.listener.Close()
+
+	if s.coordListener != nil {
+		log.Infof("s.coordListener listen at: %v", s.coordListener.Addr().String())
+		go func() {
+			for {
+				conn, err := s.coordListener.Accept()
+				if err != nil {
+					log.Errorf("couldn't accept coord connection:%v", err)
+					continue
+				}
+				go func(conn net.Conn) {
+					defer func() {
+						conn.Close()
+						log.Infof("COORD SOCKET CLOSED")
+					}()
+					for {
+						select {
+						case <-ctx.Done():
+							return
+						default:
+							b := make([]byte, 1)
+							conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+							_, err := conn.Read(b)
+							if err != nil {
+								nerr, isNetErr := err.(net.Error)
+								if isNetErr && nerr.Timeout() {
+									continue
+								}
+								return
+							}
+						}
+					}
+				}(conn)
+			}
+		}()
+	}
 
 	for {
 		select {
@@ -108,6 +163,10 @@ func (s *Server) Listen(ctx context.Context) {
 // ListenAddr returns the address the (tcp) server is listening on
 func (s *Server) ListenAddr() string {
 	return s.listener.Addr().String()
+}
+
+func (s *Server) CoordListenAddr() string {
+	return s.coordListener.Addr().String()
 }
 
 // handshake stage, required prior to receiving blocks
@@ -203,7 +262,7 @@ func (s *Server) handle(conn *net.TCPConn) error {
 		conn.Close()
 		return err
 	}
-	return vd.handle(conn, br, s.maxRespSegmentBufLen)
+	return vd.handle(conn, br, s.maxRespSegmentBufLen, s.coordConnectAddr)
 }
 
 // read and decode tlog handshake request message from client
