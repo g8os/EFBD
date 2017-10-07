@@ -28,7 +28,6 @@ import (
 func TestCoord(t *testing.T) {
 	tlogConf := DefaultConfig()
 	tlogConf.ListenAddr = ""
-	tlogConf.FlushTime = 7
 
 	const (
 		vdiskID = "12345"

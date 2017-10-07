@@ -6,8 +6,10 @@ import (
 	"github.com/zero-os/0-Disk/log"
 )
 
-func (vd *vdisk) coordOther() (uint64, error) {
-	vd.waitOther()
+// waitOther to finish
+// it returns the new last flushed sequence
+func (vd *vdisk) waitOther() (uint64, error) {
+	vd.waitOtherToFinish()
 
 	if err := vd.createFlusher(); err != nil {
 		return 0, err
@@ -15,10 +17,10 @@ func (vd *vdisk) coordOther() (uint64, error) {
 	return vd.loadLastFlushedSequence()
 }
 
-// waitOther wait for other server to finished
-func (vd *vdisk) waitOther() {
+// wait for other server to be finished
+func (vd *vdisk) waitOtherToFinish() {
 	defer func() {
-		log.Infof("waitOther finished")
+		log.Infof("waitOther %v finished", vd.coordConnectAddr)
 	}()
 
 	conn, err := net.Dial("tcp", vd.coordConnectAddr)
