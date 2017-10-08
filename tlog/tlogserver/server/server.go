@@ -20,6 +20,7 @@ import (
 // Server defines a tlog server
 type Server struct {
 	port                 int
+	acceptAddr           string
 	bufSize              int
 	maxRespSegmentBufLen int // max len of response capnp segment buffer
 	listener             net.Listener
@@ -83,6 +84,7 @@ func NewServer(conf *Config, configSource config.Source) (*Server, error) {
 		conf.AggMq, conf.BlockSize, conf.FlushSize, configSource)
 	return &Server{
 		listener:             listener,
+		acceptAddr:           conf.AcceptAddr,
 		coordListener:        coordListener,
 		coordConnectAddr:     conf.CoordConnectAddr,
 		flusherConf:          flusherConf,
@@ -105,6 +107,9 @@ func (s *Server) Listen(ctx context.Context) {
 					log.Errorf("couldn't accept coord connection:%v", err)
 					continue
 				}
+
+				log.Infof("accepted coordination connection from %s", conn.RemoteAddr().String())
+
 				go func(conn net.Conn) {
 					defer func() {
 						conn.Close()
@@ -141,6 +146,23 @@ func (s *Server) Listen(ctx context.Context) {
 				log.Infof("couldn't accept connection: %v", err)
 				continue
 			}
+
+			remoteAddr := conn.RemoteAddr().String()
+			log.Infof("connection request from %s", remoteAddr)
+			host, _, err := net.SplitHostPort(remoteAddr)
+			if err != nil {
+				log.Errorf("fail to parse remote address: %v", err)
+				conn.Close()
+				continue
+			}
+
+			if s.acceptAddr != host {
+				log.Infof("connection from %s refused, it does not match the accept address configured %s", remoteAddr, s.acceptAddr)
+				conn.Close()
+				continue
+			}
+			log.Infof("connection accepted from %s", remoteAddr)
+
 			tcpConn, ok := conn.(*net.TCPConn)
 			if !ok {
 				log.Info("received conn is not tcp conn")
