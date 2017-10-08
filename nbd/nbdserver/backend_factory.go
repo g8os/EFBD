@@ -15,10 +15,6 @@ import (
 
 // backendFactoryConfig is used to create a new BackendFactory
 type backendFactoryConfig struct {
-	// Redis pool factory used to create the redis (= storage servers) pool
-	// a factory is used, rather than a shared redis pool,
-	// such that each vdisk (session) will get its own redis pool.
-	PoolFactory   ardb.RedisPoolFactory
 	LBACacheLimit int64         // min-capped to LBA.BytesPerSector
 	ConfigSource  config.Source // config source
 }
@@ -26,9 +22,6 @@ type backendFactoryConfig struct {
 // Validate all the parameters of this BackendFactoryConfig,
 // returning an error in case the config is invalid.
 func (cfg *backendFactoryConfig) Validate() error {
-	if cfg.PoolFactory == nil {
-		return errors.New("BackendFactory requires a non-nil RedisPoolFactory")
-	}
 	if cfg.ConfigSource == nil {
 		return errors.New("BackendFactory requires a non-nil config source")
 	}
@@ -46,7 +39,6 @@ func newBackendFactory(cfg backendFactoryConfig) (*backendFactory, error) {
 	}
 
 	return &backendFactory{
-		poolFactory:   cfg.PoolFactory,
 		lbaCacheLimit: cfg.LBACacheLimit,
 		configSource:  cfg.ConfigSource,
 		vdiskComp:     newVdiskCompletion(),
@@ -57,7 +49,6 @@ func newBackendFactory(cfg backendFactoryConfig) (*backendFactory, error) {
 // that can not be passed in the exportconfig like the pool of ardb connections.
 // Its NewBackend method is used as the ardb backend generator.
 type backendFactory struct {
-	poolFactory   ardb.RedisPoolFactory
 	lbaCacheLimit int64
 	configSource  config.Source
 	vdiskComp     *vdiskCompletion
@@ -78,7 +69,7 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	// and the found vdisk config.
 	// The redisProvider takes care of closing the created redisPool.
 	// The redisProvider created here also supports hot reloading.
-	redisPool := f.poolFactory()
+	redisPool := ardb.NewRedisPool(nil)
 	redisProvider, err := ardb.DynamicProvider(ctx, vdiskID, f.configSource, redisPool)
 	if err != nil {
 		log.Error(err)

@@ -7,18 +7,6 @@ import (
 	"github.com/garyburd/redigo/redis"
 )
 
-// NewRedisPoolFactory creates a new redis pool factory,
-// using the given dial func
-func NewRedisPoolFactory(dial DialFunc) RedisPoolFactory {
-	return func() *RedisPool {
-		return NewRedisPool(dial)
-	}
-}
-
-// RedisPoolFactory defines a factory,
-// to be used to create a new redis pool
-type RedisPoolFactory func() *RedisPool
-
 // DialFunc creates a redis.Conn (if possible),
 // based on a given connectionString and database.
 type DialFunc func(connectionString string, database int) (redis.Conn, error)
