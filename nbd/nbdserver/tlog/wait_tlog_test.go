@@ -76,13 +76,16 @@ func TestWaitOtherTlog(t *testing.T) {
 	defer nbd2Clean()
 
 	var (
-		datas = make(map[uint64][]byte)
-		seq   = tlog.FirstSequence
-		wg2   sync.WaitGroup
+		datas         = make(map[uint64][]byte)
+		seq           = tlog.FirstSequence
+		wg2           sync.WaitGroup
+		nbd1Write1Num = tlogConf.FlushSize * 5
+		nbd2Write1Num = tlogConf.FlushSize * 5
+		nbd2Write2Num = tlogConf.FlushSize * 5
 	)
 
 	// write some data to nbd1
-	for i := 1; i <= tlogConf.FlushSize; i++ {
+	for i := 0; i < nbd1Write1Num; i++ {
 		data := make([]byte, blockSize)
 		crand.Read(data)
 		datas[seq] = data
@@ -98,7 +101,7 @@ func TestWaitOtherTlog(t *testing.T) {
 	require.NoError(t, err)
 
 	// write some data to nbd2
-	for i := 1; i <= tlogConf.FlushSize; i++ {
+	for i := 0; i < nbd2Write1Num; i++ {
 		data := make([]byte, blockSize)
 		crand.Read(data)
 		datas[seq] = data
@@ -126,7 +129,7 @@ func TestWaitOtherTlog(t *testing.T) {
 	wg2.Wait()
 
 	// write some data again to nbd2
-	for i := 1; i <= tlogConf.FlushSize; i++ {
+	for i := 0; i < nbd2Write2Num; i++ {
 		data := make([]byte, blockSize)
 		crand.Read(data)
 		datas[seq] = data
