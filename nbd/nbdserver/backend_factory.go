@@ -58,6 +58,8 @@ type backendFactory struct {
 func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (backend nbd.Backend, err error) {
 	vdiskID := ec.Name
 
+	log.Infof("creating new backend for vdisk `%v`", vdiskID)
+
 	// fetch static config
 	staticConfig, err := config.ReadVdiskStaticConfig(f.configSource, vdiskID)
 	if err != nil {
@@ -110,7 +112,7 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 			return nil, err
 		}
 		if vdiskNBDConfig.TlogServerClusterID != "" {
-			log.Debugf("creating tlogStorage for backend %v (%v)", vdiskID, staticConfig.Type)
+			log.Infof("creating tlogStorage for backend %v (%v)", vdiskID, staticConfig.Type)
 			tlogBlockStorage, err := tlog.Storage(ctx,
 				vdiskID, vdiskNBDConfig.TlogServerClusterID,
 				f.configSource, blockSize, blockStorage, redisProvider, nil)

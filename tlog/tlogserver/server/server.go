@@ -235,6 +235,7 @@ func (s *Server) handshake(r io.Reader, w io.Writer, conn *net.TCPConn) (vd *vdi
 		return // error return
 	}
 
+	log.Infof("get vdisk %v", vdiskID)
 	vd, err = s.vdiskMgr.Get(s.ctx, vdiskID, conn, s.flusherConf, s.waitConnectAddr)
 	if err != nil {
 		status = tlog.HandshakeStatusInternalServerError

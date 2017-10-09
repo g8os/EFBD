@@ -49,11 +49,13 @@ func Storage(ctx context.Context, vdiskID, clusterID string, configSource config
 	}
 
 	if client == nil {
+		log.Infof("creating tlogclient for vdisk `%v`", vdiskID)
 		client, err = tlogclient.New(tlogClusterConfig.Servers, vdiskID)
 		if err != nil {
 			cancel()
 			return nil, errors.New("tlogStorage requires valid tlogclient: " + err.Error())
 		}
+		log.Infof("tlogclient for vdisk `%v` created", vdiskID)
 
 		if metadata.lastFlushedSequence < client.LastFlushedSequence() {
 			// TODO call tlog player if last flushed sequence from tlog server is
@@ -379,7 +381,7 @@ func (tls *tlogStorage) spawnBackgroundGoroutine(ctx context.Context) error {
 
 	if !tls.tlogReady { // wait until our server is ready
 		go func() {
-			log.Infof("wait tlogserver for vdisk `%v` to be ready", tls.vdiskID)
+			log.Infof("waiting tlogserver for vdisk `%v` to be ready", tls.vdiskID)
 
 			tls.waitTlogServerReady()
 		}()
