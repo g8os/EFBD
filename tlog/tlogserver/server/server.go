@@ -157,7 +157,7 @@ func (s *Server) Listen(ctx context.Context) {
 				continue
 			}
 
-			if s.acceptAddr != host {
+			if s.acceptAddr != "" && s.acceptAddr != host {
 				log.Infof("connection from %s refused, it does not match the accept address configured %s", remoteAddr, s.acceptAddr)
 				conn.Close()
 				continue
