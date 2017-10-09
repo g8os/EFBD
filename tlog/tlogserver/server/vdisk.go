@@ -15,6 +15,7 @@ import (
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
+	"github.com/zero-os/0-Disk/tlog/flusher"
 	"github.com/zero-os/0-Disk/tlog/schema"
 	"github.com/zero-os/0-Disk/tlog/stor"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/aggmq"
@@ -88,6 +89,7 @@ type vdisk struct {
 	coordConnectAddr string // remote tlog server to coordinate before marking ourself as ready
 
 	storClient *stor.Client
+	flusher    *flusher.Flusher
 }
 
 // ID returns the ID of this vdisk
@@ -212,17 +214,21 @@ func (vd *vdisk) watchConfig() error {
 }
 
 func (vd *vdisk) createFlusher() error {
-	storConf, err := stor.ConfigFromConfigSource(vd.configSource, vd.ID(), vd.flusherConf.PrivKey,
+	// creates stor client
+	storClient, err := stor.NewClientFromConfigSource(vd.configSource, vd.id, vd.flusherConf.PrivKey,
 		vd.flusherConf.DataShards, vd.flusherConf.ParityShards)
 	if err != nil {
 		return err
 	}
+	vd.storClient = storClient
 
-	storClient, err := stor.NewClient(storConf)
+	vdiskConf, err := config.ReadVdiskStaticConfig(vd.configSource, vd.id)
 	if err != nil {
 		return err
 	}
-	vd.storClient = storClient
+
+	// creates flusher
+	vd.flusher = flusher.NewWithStorClient(storClient, vd.flusherConf.FlushSize, int(vdiskConf.BlockSize))
 	return nil
 }
 
@@ -342,27 +348,28 @@ func (vd *vdisk) loadLastFlushedSequence() (uint64, error) {
 func (vd *vdisk) runFlusher() {
 	defer vd.cancelFunc()
 
-	// buffer of all ordered tlog blocks
-	tlogs := []*schema.TlogBlock{}
+	var (
+		// max sequence received by this flusher
+		maxSeq uint64
 
-	// max sequence received by this flusher
-	var maxSeq uint64
+		// last sequence flushed by this flusher
+		lastSeqFlushed uint64
 
-	// last sequence flushed by this flusher
-	var lastSeqFlushed uint64
+		// periodic flush interval
+		pfDur = time.Duration(vd.flusherConf.FlushTime) * time.Second
 
-	// periodic flush interval
-	pfDur := time.Duration(vd.flusherConf.FlushTime) * time.Second
+		// periodic flush timer
+		pfTimer = time.NewTimer(pfDur)
 
-	// periodic flush timer
-	pfTimer := time.NewTimer(pfDur)
+		flusherCmd vdiskFlusherCmd
+		cmdType    int8
 
-	var toFlushLen int
-	var flusherCmd vdiskFlusherCmd
-	var cmdType int8
+		// sequence to be force flushed
+		seqToForceFlush uint64
 
-	var seqToForceFlush uint64 // sequence to be force flushed
-	var needForceFlushSeq bool // true if we wait for a sequence to be force flushed
+		// true if we wait for a sequence to be force flushed
+		needForceFlushSeq bool
+	)
 
 	for {
 		cmdType = -1
@@ -371,7 +378,10 @@ func (vd *vdisk) runFlusher() {
 			return
 		case tlb := <-vd.orderedBlockChan:
 			// we receive tlog block, it already ordered
-			tlogs = append(tlogs, tlb)
+			if err := vd.flusher.AddBlock(tlb); err != nil {
+				log.Errorf("vdisk `%v` failed to add block: %v", vd.id, err)
+				return
+			}
 
 			maxSeq = tlb.Sequence()
 
@@ -379,12 +389,9 @@ func (vd *vdisk) runFlusher() {
 			if needForceFlushSeq && tlb.Sequence() >= seqToForceFlush {
 				// reset the flag and flush right now
 				needForceFlushSeq = false
-				toFlushLen = len(tlogs)
-			} else if len(tlogs) < vd.flusherConf.FlushSize {
-				// only flush if it > f.flushSize
+			} else if !vd.flusher.Full() {
+				// only flush if full
 				continue
-			} else {
-				toFlushLen = vd.flusherConf.FlushSize
 			}
 
 			pfTimer.Stop()
@@ -393,10 +400,9 @@ func (vd *vdisk) runFlusher() {
 		case <-pfTimer.C:
 			// flush by timeout timer
 			pfTimer.Reset(pfDur)
-			if len(tlogs) == 0 {
+			if vd.flusher.Empty() {
 				continue
 			}
-			toFlushLen = len(tlogs)
 
 		case flusherCmd = <-vd.flusherCmdChan:
 			// got command
@@ -414,16 +420,11 @@ func (vd *vdisk) runFlusher() {
 				needForceFlushSeq = false
 
 			case vdiskCmdIgnoreSeqBefore:
-				// ignore sequence before the given sequence value
-				// find last index to remove
-				var idx int
-				var block *schema.TlogBlock
-				for idx, block = range tlogs {
-					if block.Sequence() >= flusherCmd.sequence {
-						break
-					}
+				if err := vd.flusher.IgnoreSeqBefore(flusherCmd.sequence); err != nil {
+					log.Errorf("vdisk `%v` failed to ignore sequence before `%v`: %v",
+						vd.id, flusherCmd.sequence, err)
+					return
 				}
-				tlogs = tlogs[idx:]
 				flusherCmd.respCh <- nil
 				continue
 
@@ -434,34 +435,23 @@ func (vd *vdisk) runFlusher() {
 				continue
 			}
 
-			if len(tlogs) == 0 {
+			if vd.flusher.Empty() {
 				continue
 			}
 
 			pfTimer.Stop()
 			pfTimer.Reset(pfDur)
-
-			toFlushLen = len(tlogs)
 		}
 
 		// get the blocks
-		blocks := tlogs[:toFlushLen]
-		tlogs = tlogs[toFlushLen:]
-
 		status := tlog.BlockStatusFlushOK
 
 		// flush to 0-stor
-		rawAgg, err := vd.storClient.ProcessStore(blocks)
+		rawAgg, seqs, err := vd.flusher.Flush()
 		if err != nil {
 			log.Errorf("flush %v failed: %v", vd.id, err)
 			notifyFlushError(err)
 			status = tlog.BlockStatusFlushFailed
-		}
-
-		// get sequence numbers of the flushed blocks
-		seqs := make([]uint64, len(blocks))
-		for i := 0; i < len(blocks); i++ {
-			seqs[i] = blocks[i].Sequence()
 		}
 
 		// send response

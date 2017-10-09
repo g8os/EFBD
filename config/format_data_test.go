@@ -182,9 +182,17 @@ servers:
   - address: 1.1.1.1:11
   - address: 2.2.2.2:22
     db: 2
-`, `
+`,
+	// the most minimal cluster config
+	`
 servers:
   - address: 1.1.1.1:11
+`, // only disabled servers given
+	`
+servers:
+  - address: localhost:16379
+    disabled: true
+  - disabled: true
 `,
 }
 
@@ -203,12 +211,6 @@ servers:
 	`
 servers:
   address: localhost:16379
-`, // only disabled data storages given
-	`
-servers:
-  - address: localhost:16379
-    disabled: true
-  - disabled: true
 `,
 }
 

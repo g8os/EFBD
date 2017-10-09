@@ -18,11 +18,9 @@ import (
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage/lba"
 	"github.com/zero-os/0-Disk/nbd/gonbdserver/nbd"
-	"github.com/zero-os/0-Disk/redisstub"
 )
 
 func main() {
-	var inMemoryStorage bool
 	var tlsonly bool
 	var verbose bool
 	var lbacachelimit int64
@@ -34,7 +32,6 @@ func main() {
 	var serverID string
 	flag.BoolVar(&verbose, "v", false, "when false, only log warnings and errors")
 	flag.StringVar(&logPath, "logfile", "", "optionally log to the specified file, instead of the stderr")
-	flag.BoolVar(&inMemoryStorage, "memorystorage", false, "Stores the data in memory only, usefull for testing or benchmarking")
 	flag.BoolVar(&tlsonly, "tlsonly", false, "Forces all nbd connections to be tls-enabled")
 	flag.StringVar(&profileAddress, "profile-address", "", "Enables profiling of this server as an http service")
 	flag.StringVar(&protocol, "protocol", "unix", "Protocol to listen on, 'tcp' or 'unix'")
@@ -62,8 +59,8 @@ func main() {
 		log.SetHandlers(logHandlers...)
 	}
 
-	log.Debugf("flags parsed: memorystorage=%t tlsonly=%t profileaddress=%q protocol=%q address=%q config=%q lbacachelimit=%d logfile=%q id=%q",
-		inMemoryStorage, tlsonly,
+	log.Debugf("flags parsed: tlsonly=%t profileaddress=%q protocol=%q address=%q config=%q lbacachelimit=%d logfile=%q id=%q",
+		tlsonly,
 		profileAddress,
 		protocol, address,
 		sourceConfig.String(),
@@ -111,28 +108,7 @@ func main() {
 		DefaultExport: "", // no default export is useful for our usecase
 	}
 
-	// Only when we want to use inmemory (ledis) storage (for dev purposes),
-	// do we define a poolDial func, which will be used in the redis pool.
-	// In production no dial function is defined,
-	// hence the redis pool will simply dial a TCP connection using
-	// a given address and database number.
-	var poolDial ardb.DialFunc
-	if inMemoryStorage {
-		log.Info("Using in-memory block storage")
-		memoryRedis := redisstub.NewMemoryRedis()
-		go memoryRedis.Listen()
-		defer memoryRedis.Close()
-		poolDial = memoryRedis.Dial
-	}
-
-	// A pool factory is used,
-	// such that each Vdisk can get its own redis pool,
-	// rather than having a shared redis pool
-	// between all vdisks ever...
-	redisPoolFactory := ardb.NewRedisPoolFactory(poolDial)
-
 	backendFactory, err := newBackendFactory(backendFactoryConfig{
-		PoolFactory:   redisPoolFactory,
 		ConfigSource:  configSource,
 		LBACacheLimit: lbacachelimit,
 	})

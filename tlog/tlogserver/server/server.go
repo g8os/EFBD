@@ -80,8 +80,7 @@ func NewServer(conf *Config, configSource config.Source) (*Server, error) {
 		PrivKey:      conf.PrivKey,
 	}
 
-	vdiskManager := newVdiskManager(
-		conf.AggMq, conf.BlockSize, conf.FlushSize, configSource)
+	vdiskManager := newVdiskManager(conf.AggMq, conf.FlushSize, configSource)
 	return &Server{
 		listener:             listener,
 		acceptAddr:           conf.AcceptAddr,

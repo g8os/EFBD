@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/zero-os/0-Disk/tlog/flusher"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/aggmq"
 )
 
@@ -16,7 +17,7 @@ func DefaultConfig() *Config {
 		DataShards:   4,
 		ParityShards: 2,
 		ListenAddr:   "0.0.0.0:11211",
-		FlushSize:    25,
+		FlushSize:    flusher.DefaultFlushSize,
 		FlushTime:    25,
 		BlockSize:    4096,
 		PrivKey:      "12345678901234567890123456789012",

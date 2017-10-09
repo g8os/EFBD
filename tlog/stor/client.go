@@ -138,6 +138,27 @@ func (c *Client) ProcessStore(blocks []*schema.TlogBlock) ([]byte, error) {
 		return nil, err
 	}
 
+	lastSequence := blocks[len(blocks)-1].Sequence()
+
+	return data, c.processStoreData(data, lastSequence, timestamp)
+}
+
+func (c *Client) ProcessStoreAgg(agg *tlog.Aggregation) ([]byte, error) {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+
+	timestamp := tlog.TimeNowTimestamp()
+	agg.SetTimestamp(timestamp)
+
+	data, err := agg.Encode()
+	if err != nil {
+		return nil, err
+	}
+	return data, c.processStoreData(data, agg.LastSequence(), timestamp)
+}
+
+func (c *Client) processStoreData(data []byte, lastSequence uint64, timestamp int64) error {
+
 	key := c.hasher.Hash(append([]byte(c.vdiskID), data...))
 
 	// we set our initial meta because
@@ -149,23 +170,23 @@ func (c *Client) ProcessStore(blocks []*schema.TlogBlock) ([]byte, error) {
 	// stor to 0-stor
 	lastMd, err := c.storClient.WriteWithMeta(key, data, c.lastMetaKey, c.lastMd, initialMeta, c.refList)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if lastMd == nil {
-		return nil, fmt.Errorf("empty meta returned by stor client")
+		return fmt.Errorf("empty meta returned by stor client")
 	}
 
 	// it is very first data, save first key to metadata server
 	if c.firstMetaKey == nil {
 		c.firstMetaKey = key
 		if err := c.saveFirstMetaKey(); err != nil {
-			return nil, err
+			return err
 		}
 	}
 
 	c.lastMd = lastMd
 	c.lastMetaKey = key
-	c.lastSequence = blocks[len(blocks)-1].Sequence()
+	c.lastSequence = lastSequence
 
 	c.storeNum++
 	// we don't store last sequence on each iteration because
@@ -175,10 +196,10 @@ func (c *Client) ProcessStore(blocks []*schema.TlogBlock) ([]byte, error) {
 	// on startup.
 	if c.storeNum%25 == 0 {
 		if err := c.saveLastMetaKey(); err != nil {
-			return nil, err
+			return err
 		}
 	}
-	return data, nil
+	return nil
 }
 
 // Store stores the val without doing any pre processing

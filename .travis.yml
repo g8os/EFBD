@@ -27,6 +27,5 @@ jobs:
     - stage: test
       go: 1.9
       install:
-        - go get -u github.com/Jumpscale/go-raml
         - ./scripts/install_capnp_unix.sh
       script: make testcodegen

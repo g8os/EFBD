@@ -339,9 +339,8 @@ func testDeflationBlockFetcher(t *testing.T, srcBS, dstBS, interval, offset int6
 		for u := int64(0); u < ratio; u++ {
 			// getting data (block+index) should be correct
 			pair, err := fetcher.FetchBlock()
-			assert.Equalf((int64(i)+offset)*interval*ratio+u, pair.Index,
-				"i = %d, u = %d", i, u)
-			if assert.NoError(err) {
+			if assert.NoError(err) &&
+				assert.Equalf((int64(i)+offset)*interval*ratio+u, pair.Index, "i = %d, u = %d", i, u) {
 				start := u * dstBS
 				end := start + dstBS
 				assert.Equalf(srcData[start:end], pair.Block,

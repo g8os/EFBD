@@ -11,25 +11,17 @@ import (
 )
 
 type vdiskManager struct {
-	vdisks           map[string]*vdisk
-	lock             sync.Mutex
-	aggMq            *aggmq.MQ
-	configSource     config.Source
-	maxSegmentBufLen int // max len of capnp buffer used by flushing process
+	vdisks       map[string]*vdisk
+	lock         sync.Mutex
+	aggMq        *aggmq.MQ
+	configSource config.Source
 }
 
-func newVdiskManager(aggMq *aggmq.MQ, blockSize, flushSize int, configSource config.Source) *vdiskManager {
-	// the estimation of max segment buf len we will need.
-	// we add it by '1' because:
-	// - the block will also container other data like 'sequenece', 'timestamp', etc..
-	// - overhead of capnp schema
-	segmentBufLen := blockSize * (flushSize + 1)
-
+func newVdiskManager(aggMq *aggmq.MQ, flushSize int, configSource config.Source) *vdiskManager {
 	return &vdiskManager{
-		aggMq:            aggMq,
-		vdisks:           map[string]*vdisk{},
-		maxSegmentBufLen: segmentBufLen,
-		configSource:     configSource,
+		aggMq:        aggMq,
+		vdisks:       map[string]*vdisk{},
+		configSource: configSource,
 	}
 }
 
