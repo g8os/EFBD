@@ -23,13 +23,17 @@ func (vd *vdisk) waitOtherToFinish() {
 		log.Infof("waitOther %v finished", vd.coordConnectAddr)
 	}()
 
+	// connect to the other server
 	conn, err := net.Dial("tcp", vd.coordConnectAddr)
 	if err != nil {
 		log.Errorf("failed to dial %v: %v", vd.coordConnectAddr, err)
 		return
 	}
-	log.Infof("[coord] waiting for %v to dies", vd.coordConnectAddr)
-	b := make([]byte, 10)
+
+	log.Infof("vdisk %v waiting for remote server %v to dies", vd.id, vd.coordConnectAddr)
+
+	// wait for other server to dies
+	b := make([]byte, 1)
 	_, err = conn.Read(b)
 	if err != nil {
 		log.Errorf("failed to read:%v", err)

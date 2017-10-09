@@ -33,7 +33,7 @@ func TestCoord(t *testing.T) {
 		vdiskID = "12345"
 	)
 
-	tlogConf.CoordListenAddr = "-"
+	tlogConf.WaitListenAddr = WaitListenAddrRandom
 
 	cleanFunc, confSource, _ := newZeroStorConfig(t, vdiskID, tlogConf.PrivKey,
 		tlogConf.DataShards, tlogConf.ParityShards)
@@ -58,7 +58,7 @@ func TestCoord(t *testing.T) {
 	go t1.Listen(ctx1)
 
 	// start client 1
-	c1, _, err := tlogclient.New([]string{t1.ListenAddr()}, vdiskID)
+	c1, err := tlogclient.New([]string{t1.ListenAddr()}, vdiskID)
 	require.NoError(t, err)
 
 	resp1Ch := c1.Recv()
@@ -81,8 +81,8 @@ func TestCoord(t *testing.T) {
 	defer cancelFunc2()
 
 	// set t2 to connect to t1
-	tlogConf.CoordConnectAddr = t1.CoordListenAddr()
-	require.NotEmpty(t, tlogConf.CoordConnectAddr)
+	tlogConf.WaitConnectAddr = t1.WaitListenAddr()
+	require.NotEmpty(t, tlogConf.WaitConnectAddr)
 
 	t2, err := NewServer(tlogConf, confSource)
 	require.NoError(t, err)
@@ -90,7 +90,7 @@ func TestCoord(t *testing.T) {
 	go t2.Listen(ctx2)
 
 	// start c2
-	c2, _, err := tlogclient.New([]string{t2.ListenAddr()}, vdiskID)
+	c2, err := tlogclient.New([]string{t2.ListenAddr()}, vdiskID)
 	require.NoError(t, err)
 
 	// wait for t1 finish it flush and kil it
@@ -98,14 +98,9 @@ func TestCoord(t *testing.T) {
 	c1.Close()
 	cancelFunc1()
 
-	// start goroutine for c2 to wait until B flushed
+	// start c2 receiver
 	resp2Ch := c2.Recv()
-	for resp := range resp2Ch {
-		require.NoError(t, resp.Err)
-		if resp.Resp.Status == tlog.BlockStatusReady {
-			break
-		}
-	}
+	c2.WaitReady()
 
 	wg2.Add(1)
 	// start goroutine for c1 to wait until A flushed

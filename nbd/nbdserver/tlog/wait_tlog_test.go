@@ -55,7 +55,7 @@ func TestWaitOtherTlog(t *testing.T) {
 	ctx1, cancelFunc1 := context.WithCancel(parentCtx)
 	defer cancelFunc1()
 
-	tlogConf.CoordListenAddr = "-" // "-" means random port : TODO : make it constant
+	tlogConf.WaitListenAddr = server.WaitListenAddrRandom
 	t1, err := server.NewServer(tlogConf, storSource)
 	require.NoError(t, err)
 	go t1.Listen(ctx1)
@@ -67,7 +67,7 @@ func TestWaitOtherTlog(t *testing.T) {
 	ctx2, cancelFunc2 := context.WithCancel(parentCtx)
 	defer cancelFunc2()
 
-	tlogConf.CoordConnectAddr = t1.CoordListenAddr()
+	tlogConf.WaitConnectAddr = t1.WaitListenAddr()
 	t2, err := server.NewServer(tlogConf, storSource)
 	require.NoError(t, err)
 	go t2.Listen(ctx2)

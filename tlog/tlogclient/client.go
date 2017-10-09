@@ -71,6 +71,8 @@ type Client struct {
 
 	mux                  sync.Mutex
 	stopped              bool
+	serverReady          bool
+	serverReadyCh        chan struct{}
 	curServerFailedFlush bool
 }
 
@@ -78,15 +80,15 @@ type Client struct {
 // Client is going to use first address and then move to next addresses if the first address
 // is failed.
 // The client is not goroutine safe.
-func New(servers []string, vdiskID string) (client *Client, ready bool, err error) {
-	client, ready, err = newClient(servers, vdiskID)
+func New(servers []string, vdiskID string) (client *Client, err error) {
+	client, err = newClient(servers, vdiskID)
 	if err != nil {
 		return
 	}
 	go client.run(client.ctx)
 	return
 }
-func newClient(servers []string, vdiskID string) (*Client, bool, error) {
+func newClient(servers []string, vdiskID string) (*Client, error) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	client := &Client{
 		servers:           servers,
@@ -109,10 +111,11 @@ func newClient(servers []string, vdiskID string) (*Client, bool, error) {
 		// - one for (hopefully) optimization, so we can read from network
 		//	 before needed and then put it to this channel.
 		respCh: make(chan *Result, 3),
+
+		serverReadyCh: make(chan struct{}, 1),
 	}
 
-	ready, err := client.connect()
-	return client, ready, err
+	return client, client.connect()
 }
 
 func (c *Client) run(ctx context.Context) {
@@ -243,6 +246,14 @@ func (c *Client) runReceiver(ctx context.Context, cancelFunc context.CancelFunc)
 					if seq != 0 {
 						c.blockBuffer.SetLastFlushed(seq)
 					}
+					if c.Ready() {
+						continue
+					}
+
+					c.mux.Lock()
+					c.serverReady = true
+					c.mux.Unlock()
+					c.serverReadyCh <- struct{}{}
 					log.Infof("tlogserver is ready")
 				case tlog.BlockStatusFlushOK:
 					c.blockBuffer.SetFlushed(tr.Sequences)
@@ -335,7 +346,7 @@ func (c *Client) reconnect(closedTime time.Time) error {
 		// try other server
 		c.shiftServer()
 
-		if _, err = c.connect(); err == nil {
+		if err = c.connect(); err == nil {
 			// if reconnect success, sent all unflushed blocks
 			// because we don't know what happens in servers.
 			// it might crashed
@@ -347,7 +358,7 @@ func (c *Client) reconnect(closedTime time.Time) error {
 }
 
 // connect to server
-func (c *Client) connect() (ready bool, err error) {
+func (c *Client) connect() error {
 	if c.conn != nil {
 		c.conn.CloseRead() // interrupt the receiver
 	}
@@ -361,20 +372,23 @@ func (c *Client) connect() (ready bool, err error) {
 
 	c.setCurServerFailedFlushStatus(false)
 
-	if err = c.createConn(); err != nil {
-		err = fmt.Errorf("client couldn't be created: %s", err.Error())
-		return
+	if err := c.createConn(); err != nil {
+		return fmt.Errorf("client couldn't be created: %s", err.Error())
 	}
 
-	ready, err = c.handshake()
+	ready, err := c.handshake()
 	if err != nil {
 		if errClose := c.conn.Close(); errClose != nil {
 			log.Debug("couldn't close open connection of invalid client:", errClose)
 		}
-		err = fmt.Errorf("client handshake failed: %s", err.Error())
-		return
+		return fmt.Errorf("client handshake failed: %s", err.Error())
 	}
-	return
+
+	c.mux.Lock()
+	defer c.mux.Unlock()
+	c.serverReady = ready
+
+	return nil
 }
 
 // goroutine which re-send the block.
@@ -573,6 +587,24 @@ func (c *Client) Close() error {
 		return c.conn.Close()
 	}
 	return nil
+}
+
+// Ready returns true if server is ready and thus this client
+// is ready to be used
+func (c *Client) Ready() bool {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+	return c.serverReady
+}
+
+func (c *Client) WaitReady() {
+	if c.Ready() {
+		return
+	}
+	<-c.serverReadyCh
+	c.mux.Lock()
+	c.serverReady = true
+	c.mux.Unlock()
 }
 
 // Disconnect disconnects client gracefully

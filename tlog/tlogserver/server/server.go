@@ -24,7 +24,7 @@ type Server struct {
 	maxRespSegmentBufLen int // max len of response capnp segment buffer
 	listener             net.Listener
 	coordListener        net.Listener
-	coordConnectAddr     string
+	waitConnectAddr      string
 	flusherConf          *flusherConfig
 	vdiskMgr             *vdiskManager
 	ctx                  context.Context
@@ -60,11 +60,11 @@ func NewServer(conf *Config, configSource config.Source) (*Server, error) {
 	}
 
 	// tlog coord listen address
-	if conf.CoordListenAddr != "" {
-		if conf.CoordListenAddr == "-" {
-			conf.CoordListenAddr = "127.0.0.1:0"
+	if conf.WaitListenAddr != "" {
+		if conf.WaitListenAddr == WaitListenAddrRandom {
+			conf.WaitListenAddr = "127.0.0.1:0"
 		}
-		coordListener, err = net.Listen("tcp", conf.CoordListenAddr)
+		coordListener, err = net.Listen("tcp", conf.WaitListenAddr)
 		if err != nil {
 			return nil, err
 		}
@@ -84,7 +84,7 @@ func NewServer(conf *Config, configSource config.Source) (*Server, error) {
 	return &Server{
 		listener:             listener,
 		coordListener:        coordListener,
-		coordConnectAddr:     conf.CoordConnectAddr,
+		waitConnectAddr:      conf.WaitConnectAddr,
 		flusherConf:          flusherConf,
 		maxRespSegmentBufLen: schema.RawTlogRespLen(conf.FlushSize),
 		vdiskMgr:             vdiskManager,
@@ -100,15 +100,16 @@ func (s *Server) Listen(ctx context.Context) {
 		log.Infof("s.coordListener listen at: %v", s.coordListener.Addr().String())
 		go func() {
 			for {
+				// start listener for the coordination (wait-other-tlog) purposes
 				conn, err := s.coordListener.Accept()
 				if err != nil {
 					log.Errorf("couldn't accept coord connection:%v", err)
 					continue
 				}
 				go func(conn net.Conn) {
+					// start handler for tlog waiter
 					defer func() {
 						conn.Close()
-						log.Infof("COORD SOCKET CLOSED")
 					}()
 					for {
 						select {
@@ -165,7 +166,7 @@ func (s *Server) ListenAddr() string {
 	return s.listener.Addr().String()
 }
 
-func (s *Server) CoordListenAddr() string {
+func (s *Server) WaitListenAddr() string {
 	return s.coordListener.Addr().String()
 }
 
@@ -213,7 +214,7 @@ func (s *Server) handshake(r io.Reader, w io.Writer, conn *net.TCPConn) (vd *vdi
 		return // error return
 	}
 
-	vd, err = s.vdiskMgr.Get(s.ctx, vdiskID, conn, s.flusherConf, s.coordConnectAddr)
+	vd, err = s.vdiskMgr.Get(s.ctx, vdiskID, conn, s.flusherConf, s.waitConnectAddr)
 	if err != nil {
 		status = tlog.HandshakeStatusInternalServerError
 		err = fmt.Errorf("couldn't create vdisk %s: %s", vdiskID, err.Error())
