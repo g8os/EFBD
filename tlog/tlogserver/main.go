@@ -42,6 +42,7 @@ func main() {
 	flag.BoolVar(&verbose, "v", false, "log verbose (debug) statements")
 	flag.StringVar(&logPath, "logfile", "", "optionally log to the specified file, instead of the stderr")
 	flag.StringVar(&serverID, "id", "default", "The server ID (default: default)")
+	flag.StringVar(&conf.AcceptAddr, "accept-address", "", "Address from which the tlog server can accept connection from")
 
 	// parse flags
 	flag.Parse()
@@ -61,7 +62,7 @@ func main() {
 		log.SetHandlers(handler)
 	}
 
-	log.Debugf("flags parsed: address=%q flush-size=%d flush-time=%d block-size=%d data-shards=%d parity-shards=%d priv-key=%q profile-address=%q config=%q storage-addresses=%q logfile=%q id=%q",
+	log.Debugf("flags parsed: address=%q flush-size=%d flush-time=%d block-size=%d data-shards=%d parity-shards=%d priv-key=%q profile-address=%q config=%q storage-addresses=%q logfile=%q id=%q accept-address=%q",
 		conf.ListenAddr,
 		conf.FlushSize,
 		conf.FlushTime,
@@ -74,6 +75,7 @@ func main() {
 		storageAddresses,
 		logPath,
 		serverID,
+		conf.AcceptAddr,
 	)
 
 	// let's create the source and defer close it

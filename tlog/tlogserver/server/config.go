@@ -29,6 +29,7 @@ type Config struct {
 	ParityShards    int
 	BlockSize       int // size of each block, used as hint for the flusher buffer size
 	ListenAddr      string
+	AcceptAddr      string // address from which the tlog server can accept connection from
 	FlushSize       int
 	FlushTime       int
 	PrivKey         string
