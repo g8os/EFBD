@@ -48,9 +48,8 @@ func Storage(ctx context.Context, vdiskID, clusterID string, configSource config
 		return nil, errors.New("tlogStorage requires active context")
 	}
 
-	var serverReady bool
 	if client == nil {
-		client, serverReady, err = tlogclient.New(tlogClusterConfig.Servers, vdiskID)
+		client, err = tlogclient.New(tlogClusterConfig.Servers, vdiskID)
 		if err != nil {
 			cancel()
 			return nil, errors.New("tlogStorage requires valid tlogclient: " + err.Error())
@@ -76,8 +75,7 @@ func Storage(ctx context.Context, vdiskID, clusterID string, configSource config
 		toFlushCh:      make(chan []uint64, toFlushChCapacity),
 		cacheEmptyCond: sync.NewCond(&sync.Mutex{}),
 		done:           make(chan struct{}, 1),
-		tlogReadyCh:    make(chan uint64),
-		tlogReady:      serverReady,
+		tlogReady:      client.Ready(),
 	}
 
 	err = tlogStorage.spawnBackgroundGoroutine(ctx)
@@ -119,7 +117,6 @@ type tlogStorage struct {
 
 	done chan struct{}
 
-	tlogReadyCh      chan uint64
 	tlogReadyMux     sync.Mutex
 	tlogReady        bool
 	tlogNotReadyBuff []writeOp
@@ -264,8 +261,8 @@ func (tls *tlogStorage) Flush() error {
 			tls.tlogReadyMux.Unlock()
 			break
 		}
-		time.Sleep(1 * time.Second)
 		tls.tlogReadyMux.Unlock()
+		time.Sleep(1 * time.Second)
 	}
 
 	tls.mux.Lock()
@@ -357,15 +354,14 @@ func (tls *tlogStorage) Close() (err error) {
 
 func (tls *tlogStorage) waitTlogServerReady() {
 	defer log.Infof("tlogServer for %v is ready", tls.vdiskID)
-
-	newLastSeq := <-tls.tlogReadyCh
+	tls.tlog.WaitReady()
 
 	tls.tlogReadyMux.Lock()
 	defer tls.tlogReadyMux.Unlock()
 
 	// update last sequence
 	tls.sequenceMux.Lock()
-	tls.sequence = newLastSeq + 1
+	tls.sequence = tls.tlog.LastFlushedSequence() + 1
 	tls.sequenceMux.Unlock()
 
 	// resume all helds IO
@@ -441,7 +437,6 @@ func (tls *tlogStorage) spawnBackgroundGoroutine(ctx context.Context) error {
 				case tlog.BlockStatusDisconnected:
 					log.Info("tlog connection disconnected")
 				case tlog.BlockStatusReady:
-					tls.tlogReadyCh <- res.Resp.Sequences[0]
 					log.Info("tlog connection is ready")
 				default:
 					panic(fmt.Errorf(
@@ -738,6 +733,8 @@ type tlogClient interface {
 	ChangeServerAddresses([]string)
 	Recv() <-chan *tlogclient.Result
 	LastFlushedSequence() uint64
+	Ready() bool
+	WaitReady()
 	Close() error
 }
 
