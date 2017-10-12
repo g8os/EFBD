@@ -4,7 +4,7 @@ Using the [0-Log library][zerolog] we can log to the `stderr`/`stdout` messages 
 
 ## Broadcasting to 0-Orchestrator
 
-The `Broadcast` function in the `0-Disk/log` package logs messages using the [0-Log library][zeroLog] to broadcast any message the [0-Orchestrator][zeroOrchestrator] should be aware of. While in most cases the 0-disk services won't stop working because of the occured failures, it is none the less very important that [0-Orchestrator][zeroOrchestrator] handles these messages as quickly as possible, in case intervention is required.
+The `Broadcast` function in the `0-Disk/log` package logs messages using the [0-Log library][zeroLog] to broadcast any message the [0-Orchestrator][zeroOrchestrator] should be aware of. While in most cases the 0-disk services won't stop working because of the occurred failures, it is none the less very important that [0-Orchestrator][zeroOrchestrator] handles these messages as quickly as possible, in case intervention is required.
 
 For more in-depth information about the actual implementation in 0-Disk, you can read [the log module Godocs][zeroDiskLogGodcs].
 
@@ -20,7 +20,7 @@ All broadcasted messages are send using [level 20 (loglevel JSON)][loglevels] an
 }
 ```
 
-The (message) subject defines where the message orginates from,
+The (message) subject defines where the message originates from,
 while the (message) status code defines what is happening in that origin.
 
 ```js
@@ -69,7 +69,7 @@ Thanks to the [0-Log library][zerolog] the final output of the example above wou
 | ----- | ------- |
 | `ardb` | (our usage of) an [ardb][ardb] server/cluster |
 | `etcd` | (our usage of) an [etcd][etcd] server/cluster |
-| `zerostor` | (our usage of) an [zerostor][zerostor] server/cluster |
+| `zerostor` | (our usage of) a [zerostor][zerostor] server/cluster |
 
 ### Messages
 
