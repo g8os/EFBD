@@ -433,14 +433,8 @@ func (tls *tlogStorage) tlogRPCReloader(ctx context.Context, vdiskID string, sou
 		return nil, err
 	}
 
-	var vdiskNBDConfig config.VdiskNBDConfig
-	select {
-	case vdiskNBDConfig = <-vdiskNBDUpdate:
-		tls.tlogClusterID = vdiskNBDConfig.TlogServerClusterID
-	case <-ctx.Done():
-		cancel()
-		return nil, errors.New("tlogStorage requires active context")
-	}
+	vdiskNBDConfig := <-vdiskNBDUpdate
+	tls.tlogClusterID = vdiskNBDConfig.TlogServerClusterID
 
 	tlogCfgCtx, tlogCfgCancel := context.WithCancel(ctx)
 	tlogClusterCfgUpdate, err := config.WatchTlogClusterConfig(tlogCfgCtx, source, vdiskNBDConfig.TlogServerClusterID)
@@ -460,7 +454,13 @@ func (tls *tlogStorage) tlogRPCReloader(ctx context.Context, vdiskID string, sou
 	go func() {
 		for {
 			select {
-			case vdiskNBDConfig := <-vdiskNBDUpdate:
+			case vdiskNBDConfig, ok := <-vdiskNBDUpdate:
+				// in case channel is closed
+				// but ctx.Done() wasn't triggered yet
+				if !ok {
+					return
+				}
+
 				if tls.tlogClusterID != vdiskNBDConfig.TlogServerClusterID {
 					if vdiskNBDConfig.TlogServerClusterID == "" {
 						source.MarkInvalidKey(config.Key{ID: vdiskID, Type: config.KeyVdiskNBD}, vdiskID)
@@ -471,8 +471,8 @@ func (tls *tlogStorage) tlogRPCReloader(ctx context.Context, vdiskID string, sou
 						continue
 					}
 
-					newTlogCfgCtx, newTlogCfgCancel := context.WithCancel(ctx)
-					newTlogClusterCfgUpdate, err := config.WatchTlogClusterConfig(newTlogCfgCtx, source, vdiskNBDConfig.TlogServerClusterID)
+					tlogCfgCtx, newTlogCfgCancel := context.WithCancel(ctx)
+					newTlogClusterCfgUpdate, err := config.WatchTlogClusterConfig(tlogCfgCtx, source, vdiskNBDConfig.TlogServerClusterID)
 					if err != nil {
 						log.Errorf(
 							"vdisk %s encountered an error switching to Tlog cluster ID '%s': %s",
@@ -484,7 +484,6 @@ func (tls *tlogStorage) tlogRPCReloader(ctx context.Context, vdiskID string, sou
 
 					log.Debugf("Setting Tlog cluster ID to: %s", vdiskNBDConfig.TlogServerClusterID)
 					tlogCfgCancel()
-					tlogCfgCtx = newTlogCfgCtx
 					tlogCfgCancel = newTlogCfgCancel
 					tls.tlogClusterID = vdiskNBDConfig.TlogServerClusterID
 					tlogClusterCfgUpdate = newTlogClusterCfgUpdate
