@@ -486,9 +486,7 @@ func (tls *tlogStorage) tlogRPCReloader(ctx context.Context, vdiskID string, sou
 					tlogCfgCancel()
 					tlogCfgCtx = newTlogCfgCtx
 					tlogCfgCancel = newTlogCfgCancel
-					tls.mux.Lock()
 					tls.tlogClusterID = vdiskNBDConfig.TlogServerClusterID
-					tls.mux.Unlock()
 					tlogClusterCfgUpdate = newTlogClusterCfgUpdate
 				}
 			case tlogClusterCfg := <-tlogClusterCfgUpdate:

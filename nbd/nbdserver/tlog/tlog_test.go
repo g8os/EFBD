@@ -958,6 +958,13 @@ func TestTlogSwitchClusterID(t *testing.T) {
 		blockSize = 8
 	)
 
+	clusters := []switchCluster{
+		switchCluster{clusterID: "tlogCluster0", servers: []string{"127.0.0.1:1234"}},
+		switchCluster{clusterID: "tlogCluster1", servers: []string{"1.2.3.4:5678"}},
+		switchCluster{clusterID: "", servers: []string{"0.0.0.0:1234"}, invalid: true},
+		switchCluster{clusterID: "tlogCluster2", servers: []string{"5.6.7.8:1234"}},
+	}
+
 	redisProvider := redisstub.NewInMemoryRedisProvider(nil)
 	storage, err := storage.NonDeduped(
 		vdiskID, "", blockSize, false, redisProvider)
@@ -965,55 +972,74 @@ func TestTlogSwitchClusterID(t *testing.T) {
 		return
 	}
 
-	tlogrpc, cleanup := newTlogTestServer(ctx, t, vdiskID)
-	defer cleanup()
-	if !assert.NotEmpty(t, tlogrpc) {
-		return
-	}
-
 	source := config.NewStubSource()
-	originalClusterID := "nbdCluster"
-	source.SetPrimaryStorageCluster(vdiskID, originalClusterID, nil)
-	source.SetTlogServerCluster(vdiskID, originalClusterID, &config.TlogClusterConfig{
-		Servers: []string{tlogrpc},
-	})
 	defer source.Close()
+	source.SetPrimaryStorageCluster(vdiskID, "nbdCluster", nil)
+	source.SetTlogServerCluster(vdiskID, clusters[0].clusterID, &config.TlogClusterConfig{
+		Servers: clusters[0].servers,
+	})
 
 	tlogClient := &stubTlogClient{}
 	tStorage, err := Storage(ctx, vdiskID, source, blockSize, storage, nil, tlogClient)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}
-
 	tlogStorage := tStorage.(*tlogStorage)
-	newClusterID := "anotherTlogcluster"
-	newServers := []string{"1.2.3.4:5678"}
 
-	// change tlog server cluster
-	source.SetTlogServerCluster(vdiskID, newClusterID, &config.TlogClusterConfig{
-		Servers: newServers,
-	})
+	for i, cluster := range clusters {
+		// index 0 is already set at setup
+		if i == 0 {
+			continue
+		}
 
-	// wait for update to propagate
-	timeoutTicker := time.NewTicker(30 * time.Second)
-	pollTicker := time.NewTicker(5 * time.Millisecond)
-	changed := false
-	for !changed {
-		select {
-		case <-pollTicker.C:
-			tlogStorage.mux.Lock()
-			if tlogStorage.tlogClusterID != originalClusterID {
-				log.Debugf("tlog cluster ID changed to: %s", tlogStorage.tlogClusterID)
-				changed = true
+		// change tlog server cluster
+		source.SetTlogServerCluster(vdiskID, cluster.clusterID, &config.TlogClusterConfig{
+			Servers: cluster.servers,
+		})
+
+		// wait for update to propagate
+		timeoutTicker := time.NewTicker(30 * time.Second)
+		pollTicker := time.NewTicker(5 * time.Millisecond)
+		changed := false
+		for !changed {
+			select {
+			case <-pollTicker.C:
+				s := tlogClient.getServers()
+				if clusters[i-1].invalid {
+					// if previous was invalid, check with values 2 indexes below
+					if len(s) > 0 && s[0] != clusters[i-2].servers[0] {
+						changed = true
+					}
+				} else if !cluster.invalid {
+					if len(s) > 0 && s[0] != clusters[i-1].servers[0] {
+						changed = true
+					}
+				} else {
+					// wait to make sure the update has propagated
+					// invalid configs don't update so no way to check if propagated
+					time.Sleep(10 * time.Millisecond)
+					changed = true
+				}
+			case <-timeoutTicker.C:
+				assert.FailNow(t, "Timed out waiting for tlog cluster ID to be updated.")
 			}
-			tlogStorage.mux.Unlock()
-		case <-timeoutTicker.C:
-			assert.FailNow(t, "Timed out waiting for tlog cluster ID to be updated.")
+		}
+
+		if !cluster.invalid {
+			assert.Equal(t, cluster.clusterID, tlogStorage.tlogClusterID)
+			assert.Equal(t, cluster.servers[0], tlogClient.getServers()[0])
+		} else {
+			// if invalid check if values are set to previous valid config
+			assert.Equal(t, clusters[i-1].clusterID, tlogStorage.tlogClusterID)
+			assert.Equal(t, clusters[i-1].servers[0], tlogClient.getServers()[0])
 		}
 	}
+}
 
-	assert.Equal(t, newClusterID, tlogStorage.tlogClusterID)
-	assert.Equal(t, newServers[0], tlogClient.getServers()[0])
+type switchCluster struct {
+	clusterID string
+	servers   []string
+	invalid   bool // cluster should be unchanged after this is pushed
 }
 
 type stubTlogClient struct {
@@ -1034,14 +1060,6 @@ func (stls *stubTlogClient) WaitNbdSlaveSync() error {
 }
 
 func (stls *stubTlogClient) ChangeServerAddresses(servers []string) {
-	/*
-		log.Debugf("stubbed tlog client received ChangeServerAddresses call")
-		if len(servers) > 0 {
-			log.Debugf(servers[0])
-		} else {
-			log.Debug("server list is empty")
-		}
-	*/
 	stls.lock.Lock()
 	stls.servers = servers
 	stls.lock.Unlock()
