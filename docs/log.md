@@ -59,7 +59,6 @@ Thanks to the [0-Log library][zerolog] the final output of the example above wou
 | `400` | generic/unknown error |
 | `401` | cluster time out |
 | `403` | invalid config |
-| `405` | unexpected config |
 | `421` | server timeout |
 | `422` | server disconnect |
 | `423` | server temporary error |
@@ -176,21 +175,6 @@ Or if that is not possible, that it can be replaced by another 0-stor cluster wh
 
 Sent when receiving an invalid config for a certain key, while reading or watching that key. If this happens during an update while watching this key, we'll stick with the config as it was, such that nothing breaks down as the old configuration is still valid for usage. If the old config is no longer usable or we are reading the given key (initially), this will however result in a critical failure and it might potentially shut down the [vdisk][vdisk]'s session it is used for.
 
-This message is send in the hope that the config can be made valid by receiving an(other) update from the [0-Orchestrator][zeroOrchestrator].
-
-#### received an unexpected tlog cluster config
-
-```js
-{
-    "subject": "tlog",  // tlog
-    "status": 405,      // unexpected config
-    "data": {
-        "vdiskID": "vd3",   // ID of the vdisk that received an unexpected config
-    },
-}
-```
-
-Sent when receiving an unexpected config through an update of the configuration. If this happens the config will stay with the old config, such that nothing breaks down as the old configuration is still valid for usage.
 This message is send in the hope that the config can be made valid by receiving an(other) update from the [0-Orchestrator][zeroOrchestrator].
 
 ## Broadcast statistics 

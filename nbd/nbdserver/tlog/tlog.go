@@ -463,7 +463,7 @@ func (tls *tlogStorage) tlogRPCReloader(ctx context.Context, vdiskID string, sou
 			case vdiskNBDConfig := <-vdiskNBDUpdate:
 				if tls.tlogClusterID != vdiskNBDConfig.TlogServerClusterID {
 					if vdiskNBDConfig.TlogServerClusterID == "" {
-						log.Broadcast(log.StatusUnexpectedConfig, log.SubjectTlog, log.UnexpectedConfigBody{VdiskID: vdiskID})
+						source.MarkInvalidKey(config.Key{ID: vdiskID, Type: config.KeyVdiskNBD}, vdiskID)
 						log.Errorf(
 							"vdisk %s encountered an error switching to new Tlog cluster ID: %s",
 							tls.vdiskID,

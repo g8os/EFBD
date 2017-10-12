@@ -85,7 +85,6 @@ const (
 	StatusUnknownError     MessageStatus = 400
 	StatusClusterTimeout   MessageStatus = 401
 	StatusInvalidConfig    MessageStatus = 403
-	StatusUnexpectedConfig MessageStatus = 405
 	StatusServerTimeout    MessageStatus = 421
 	StatusServerDisconnect MessageStatus = 422
 	StatusServerTempError  MessageStatus = 423
@@ -99,11 +98,6 @@ type InvalidConfigBody struct {
 	// because it is used for a specific vdiskID
 	// which has extra requirements the configs does not fullfill.
 	VdiskID string `json:"vdiskID,omitempty"`
-}
-
-// UnexpectedConfigBody is the data given for a StatusUnexpectedConfig message
-type UnexpectedConfigBody struct {
-	VdiskID string `json:"vdiskID"`
 }
 
 // ARDBServerTimeoutBody is the data given
