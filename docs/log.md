@@ -69,7 +69,6 @@ Thanks to the [0-Log library][zerolog] the final output of the example above wou
 | ----- | ------- |
 | `ardb` | (our usage of) an [ardb][ardb] server/cluster |
 | `etcd` | (our usage of) an [etcd][etcd] server/cluster |
-| `tlog` | (our usage of) a [tlog][tlog] server/cluster |
 | `zerostor` | (our usage of) a [zerostor][zerostor] server/cluster |
 
 ### Messages
