@@ -118,7 +118,7 @@ func NewConnection(listener *Listener, logger log.Logger, conn net.Conn) (*Conne
 	}
 
 	params := &ConnectionParameters{
-		ConnectionTimeout: time.Second * 5,
+		ConnectionTimeout: time.Second * 60,
 	}
 	c := &Connection{
 		plainConn: conn,
