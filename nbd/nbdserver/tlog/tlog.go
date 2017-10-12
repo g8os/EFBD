@@ -31,6 +31,7 @@ func Storage(ctx context.Context, vdiskID string, configSource config.Source, bl
 		return nil, errors.New("tlogStorage requires a valid metadata ARDB provider: " + err.Error())
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
 	tlogStorage := &tlogStorage{
 		vdiskID:        vdiskID,
 		storage:        storage,
@@ -40,9 +41,9 @@ func Storage(ctx context.Context, vdiskID string, configSource config.Source, bl
 		transactionCh:  make(chan *transaction, transactionChCapacity),
 		toFlushCh:      make(chan []uint64, toFlushChCapacity),
 		cacheEmptyCond: sync.NewCond(&sync.Mutex{}),
-		done:           make(chan struct{}, 1),
+		cancel:         cancel,
 	}
-	ctx, cancel := context.WithCancel(ctx)
+
 	tlogClusterConfig, err := tlogStorage.tlogRPCReloader(ctx, vdiskID, configSource)
 	if err != nil {
 		cancel()
@@ -103,7 +104,7 @@ type tlogStorage struct {
 	// condition variable used to signal when the cache is empty
 	cacheEmptyCond *sync.Cond
 
-	done chan struct{}
+	cancel context.CancelFunc
 }
 
 type transaction struct {
@@ -280,7 +281,7 @@ func (tls *tlogStorage) Close() (err error) {
 	defer tls.storageMux.Unlock()
 
 	log.Infof("tlog storage closed with cache empty = %v", tls.cache.Empty())
-	close(tls.done)
+	tls.cancel()
 
 	err = tls.storage.Close()
 	if err != nil {
@@ -298,8 +299,8 @@ func (tls *tlogStorage) Close() (err error) {
 	return
 }
 
-func (tls *tlogStorage) spawnBackgroundGoroutine(ctx context.Context) error {
-	ctx, cancelFunc := context.WithCancel(ctx)
+func (tls *tlogStorage) spawnBackgroundGoroutine(parentCtx context.Context) error {
+	ctx, cancelFunc := context.WithCancel(parentCtx)
 	recvCh := tls.tlog.Recv()
 
 	// used for sending our transactions
@@ -359,9 +360,8 @@ func (tls *tlogStorage) spawnBackgroundGoroutine(ctx context.Context) error {
 						tls.vdiskID, res.Resp.Status))
 				}
 
-			case <-tls.done:
-				log.Info("tls.done tlogclient receiver should be finished by now")
-				tls.done = nil
+			case <-parentCtx.Done():
+				log.Info("tlogclient receiver should be finished by now")
 				return
 			}
 		}
@@ -439,6 +439,7 @@ func (tls *tlogStorage) tlogRPCReloader(ctx context.Context, vdiskID string, sou
 	tlogCfgCtx, tlogCfgCancel := context.WithCancel(ctx)
 	tlogClusterCfgUpdate, err := config.WatchTlogClusterConfig(tlogCfgCtx, source, vdiskNBDConfig.TlogServerClusterID)
 	if err != nil {
+		tlogCfgCancel()
 		cancel()
 		return nil, err
 	}
@@ -447,11 +448,17 @@ func (tls *tlogStorage) tlogRPCReloader(ctx context.Context, vdiskID string, sou
 	select {
 	case tlogClusterConfig = <-tlogClusterCfgUpdate:
 	case <-ctx.Done():
+		tlogCfgCancel()
 		cancel()
 		return nil, errors.New("tlogStorage requires active context")
 	}
 
 	go func() {
+		defer func() {
+			tlogCfgCancel()
+			cancel()
+		}()
+
 		for {
 			select {
 			case vdiskNBDConfig, ok := <-vdiskNBDUpdate:
@@ -474,6 +481,7 @@ func (tls *tlogStorage) tlogRPCReloader(ctx context.Context, vdiskID string, sou
 					tlogCfgCtx, newTlogCfgCancel := context.WithCancel(ctx)
 					newTlogClusterCfgUpdate, err := config.WatchTlogClusterConfig(tlogCfgCtx, source, vdiskNBDConfig.TlogServerClusterID)
 					if err != nil {
+						newTlogCfgCancel()
 						log.Errorf(
 							"vdisk %s encountered an error switching to Tlog cluster ID '%s': %s",
 							tls.vdiskID,

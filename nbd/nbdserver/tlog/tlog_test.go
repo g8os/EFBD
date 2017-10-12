@@ -947,9 +947,12 @@ func newZeroStorConfig(t *testing.T, vdiskID string, tlogConf *server.Config) (*
 	return stubSource, storConf, cleanFunc
 }
 
-// Added this test for this issue (VdiskNBDConfig not watched for updates on tlog storage cluster ID)
+// Added this test for this issue (tlog storage didn't watch for updates on tlog storage cluster ID)
 // https://github.com/zero-os/0-Disk/issues/526
 func TestTlogSwitchClusterID(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
@@ -958,87 +961,107 @@ func TestTlogSwitchClusterID(t *testing.T) {
 		blockSize = 8
 	)
 
+	// initil cluster, and later on the last valid cluster
+	lastValidClusterID := "initTlogCluster"
+	lastValidCluster := config.TlogClusterConfig{
+		Servers: []string{"localhost:2345"},
+	}
+	// clusters we'll switch to, one by one, in order
 	clusters := []switchCluster{
-		switchCluster{clusterID: "tlogCluster0", servers: []string{"127.0.0.1:1234"}},
-		switchCluster{clusterID: "tlogCluster1", servers: []string{"1.2.3.4:5678"}},
-		switchCluster{clusterID: "", servers: []string{"0.0.0.0:1234"}, invalid: true},
-		switchCluster{clusterID: "tlogCluster2", servers: []string{"5.6.7.8:1234"}},
+		switchCluster{clusterID: "", config: config.TlogClusterConfig{
+			Servers: []string{"1.1.1.1:4321"},
+		}, invalid: true},
+		switchCluster{clusterID: "tlogCluster0", config: config.TlogClusterConfig{
+			Servers: []string{"127.0.0.1:1234"},
+		}},
+		switchCluster{clusterID: "tlogCluster0", config: config.TlogClusterConfig{
+			Servers: []string{"128.3.1.2:1234"},
+		}},
+		switchCluster{clusterID: "tlogCluster1", config: config.TlogClusterConfig{
+			Servers: []string{"1.2.3.4:5678"},
+		}},
+		switchCluster{clusterID: "", config: config.TlogClusterConfig{
+			Servers: []string{"0.0.0.0:1234"},
+		}, invalid: true},
+		switchCluster{clusterID: "tlogCluster2", config: config.TlogClusterConfig{
+			Servers: []string{"5.6.7.8:1234"},
+		}},
+		switchCluster{clusterID: "tlogCluster3", config: config.TlogClusterConfig{
+			Servers: []string{"11.12.13.14:1234"},
+		}},
+		switchCluster{clusterID: lastValidClusterID, config: config.TlogClusterConfig{
+			Servers: lastValidCluster.Servers,
+		}},
+		switchCluster{clusterID: lastValidClusterID, config: config.TlogClusterConfig{
+			Servers: []string{"5.6.7.8:1234"},
+		}},
 	}
 
-	redisProvider := redisstub.NewInMemoryRedisProvider(nil)
-	storage, err := storage.NonDeduped(
-		vdiskID, "", blockSize, false, redisProvider)
-	if !assert.NoError(t, err) {
-		return
-	}
+	storage := storage.NewInMemoryStorage(vdiskID, blockSize)
 
 	source := config.NewStubSource()
 	defer source.Close()
 	source.SetPrimaryStorageCluster(vdiskID, "nbdCluster", nil)
-	source.SetTlogServerCluster(vdiskID, clusters[0].clusterID, &config.TlogClusterConfig{
-		Servers: clusters[0].servers,
-	})
+	source.SetTlogServerCluster(vdiskID, lastValidClusterID, &lastValidCluster)
 
-	tlogClient := &stubTlogClient{}
-	tStorage, err := Storage(ctx, vdiskID, source, blockSize, storage, nil, tlogClient)
-	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
-		return
-	}
-	tlogStorage := tStorage.(*tlogStorage)
+	tlogClient := new(stubTlogClient)
 
-	for i, cluster := range clusters {
-		// index 0 is already set at setup
-		if i == 0 {
-			continue
-		}
+	storage, err := Storage(ctx, vdiskID, source, blockSize, storage, nil, tlogClient)
+	require.NoError(err)
 
+	defer storage.Close()
+	require.NotNil(storage)
+	tlogStorage := storage.(*tlogStorage)
+
+	for _, cluster := range clusters {
 		// change tlog server cluster
-		source.SetTlogServerCluster(vdiskID, cluster.clusterID, &config.TlogClusterConfig{
-			Servers: cluster.servers,
-		})
+		if cluster.clusterID != lastValidClusterID {
+			source.SetTlogServerCluster(vdiskID, cluster.clusterID, &cluster.config)
+		} else { // only update the tlog cluster, not the vdisk config
+			source.SetTlogCluster(cluster.clusterID, &cluster.config)
+		}
 
 		// wait for update to propagate
 		timeoutTicker := time.NewTicker(30 * time.Second)
 		pollTicker := time.NewTicker(5 * time.Millisecond)
-		changed := false
-		for !changed {
+
+	TickLoop:
+		for {
 			select {
 			case <-pollTicker.C:
 				s := tlogClient.getServers()
-				if clusters[i-1].invalid {
-					// if previous was invalid, check with values 2 indexes below
-					if len(s) > 0 && s[0] != clusters[i-2].servers[0] {
-						changed = true
-					}
-				} else if !cluster.invalid {
-					if len(s) > 0 && s[0] != clusters[i-1].servers[0] {
-						changed = true
-					}
-				} else {
-					// wait to make sure the update has propagated
-					// invalid configs don't update so no way to check if propagated
-					time.Sleep(10 * time.Millisecond)
-					changed = true
+				require.Len(s, 1)
+
+				if cluster.invalid {
+					require.Equal(lastValidCluster.Servers[0], s[0],
+						"servers should still be equal to last valid server")
+					break TickLoop
 				}
+
+				if cluster.config.Servers[0] == s[0] {
+					lastValidClusterID = cluster.clusterID
+					lastValidCluster = cluster.config
+					break TickLoop
+				}
+
 			case <-timeoutTicker.C:
-				assert.FailNow(t, "Timed out waiting for tlog cluster ID to be updated.")
+				assert.FailNow("Timed out waiting for tlog cluster ID to be updated.")
 			}
 		}
 
+		s := tlogClient.getServers()
+		require.Len(s, 1)
+		require.Equal(lastValidCluster.Servers[0], s[0],
+			"servers should still be equal to last valid server")
 		if !cluster.invalid {
-			assert.Equal(t, cluster.clusterID, tlogStorage.tlogClusterID)
-			assert.Equal(t, cluster.servers[0], tlogClient.getServers()[0])
-		} else {
-			// if invalid check if values are set to previous valid config
-			assert.Equal(t, clusters[i-1].clusterID, tlogStorage.tlogClusterID)
-			assert.Equal(t, clusters[i-1].servers[0], tlogClient.getServers()[0])
+			require.Equal(lastValidClusterID, tlogStorage.tlogClusterID)
 		}
 	}
 }
 
 type switchCluster struct {
 	clusterID string
-	servers   []string
+	config    config.TlogClusterConfig
 	invalid   bool // cluster should be unchanged after this is pushed
 }
 
