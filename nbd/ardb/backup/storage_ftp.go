@@ -1,9 +1,12 @@
 package backup
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"path"
 	"regexp"
 	"strings"
@@ -17,9 +20,15 @@ import (
 	"github.com/secsy/goftp"
 )
 
-// NewFTPStorageConfig creates a new FTP Storage Config,
+// FTPStorageDriverConfig is used to configure and create a FTP (Storage) Driver.
+type FTPStorageDriverConfig struct {
+	ServerConfig FTPServerConfig
+	TLSConfig    *TLSClientConfig
+}
+
+// NewFTPServerConfig creates a new FTP Server Config,
 // based on a given string
-func NewFTPStorageConfig(data string) (cfg FTPStorageConfig, err error) {
+func NewFTPServerConfig(data string) (cfg FTPServerConfig, err error) {
 	parts := ftpURLRegexp.FindStringSubmatch(data)
 	if len(parts) != 6 {
 		err = fmt.Errorf("'%s' is not a valid FTP URL", data)
@@ -43,8 +52,8 @@ func NewFTPStorageConfig(data string) (cfg FTPStorageConfig, err error) {
 	return
 }
 
-// FTPStorageConfig is used to configure and create an FTP (Storage) Driver.
-type FTPStorageConfig struct {
+// FTPServerConfig is used to configure and create an FTP (Storage) Driver.
+type FTPServerConfig struct {
 	// Address of the FTP Server
 	Address string
 
@@ -59,7 +68,7 @@ type FTPStorageConfig struct {
 }
 
 // String implements Stringer.String
-func (cfg *FTPStorageConfig) String() string {
+func (cfg *FTPServerConfig) String() string {
 	if cfg.validate() != nil {
 		return "" // invalid config
 	}
@@ -85,15 +94,64 @@ func (cfg *FTPStorageConfig) String() string {
 }
 
 // Set implements flag.Value.Set
-func (cfg *FTPStorageConfig) Set(str string) error {
+func (cfg *FTPServerConfig) Set(str string) error {
 	var err error
-	*cfg, err = NewFTPStorageConfig(str)
+	*cfg, err = NewFTPServerConfig(str)
 	return err
 }
 
 // Type implements PFlag.Type
-func (cfg *FTPStorageConfig) Type() string {
-	return "FTPStorageConfig"
+func (cfg *FTPServerConfig) Type() string {
+	return "FTPServerConfig"
+}
+
+// TLSClientConfig is used to configure client authentication with mutual TLS.
+type TLSClientConfig struct {
+	Certificate        string
+	Key                string
+	CA                 string
+	ServerName         string
+	InsecureSkipVerify bool
+}
+
+// tlsClientAuth creates a tls.Config for mutual auth
+func tlsClientAuth(cfg TLSClientConfig) (*tls.Config, error) {
+	// create client tls config
+	tlsCfg := new(tls.Config)
+
+	// load client cert if specified
+	if cfg.Certificate != "" {
+		cert, err := tls.LoadX509KeyPair(cfg.Certificate, cfg.Key)
+		if err != nil {
+			return nil, fmt.Errorf("tls client cert: %v", err)
+		}
+		tlsCfg.Certificates = []tls.Certificate{cert}
+	}
+
+	tlsCfg.InsecureSkipVerify = cfg.InsecureSkipVerify
+
+	// When no CA certificate is provided, default to the system cert pool
+	// that way when a request is made to a server known by the system trust store,
+	// the name is still verified
+	if cfg.CA != "" {
+		// load ca cert
+		caCert, err := ioutil.ReadFile(cfg.CA)
+		if err != nil {
+			return nil, fmt.Errorf("tls client ca: %v", err)
+		}
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+		tlsCfg.RootCAs = caCertPool
+	}
+
+	// apply servername overrride
+	if cfg.ServerName != "" {
+		tlsCfg.InsecureSkipVerify = false
+		tlsCfg.ServerName = cfg.ServerName
+	}
+
+	tlsCfg.BuildNameToCertificate()
+	return tlsCfg, nil
 }
 
 // ftpURLRegexp is a simplistic ftp URL regexp,
@@ -102,7 +160,7 @@ func (cfg *FTPStorageConfig) Type() string {
 var ftpURLRegexp = regexp.MustCompile(`^(?:ftp://)?(?:([^:@]+)(?::([^:@]+))?@)?(?:([^@/:]+)(:[0-9]+)?(/.*)?)$`)
 
 // validate the FTP Storage Config.
-func (cfg *FTPStorageConfig) validate() error {
+func (cfg *FTPServerConfig) validate() error {
 	if cfg == nil {
 		return nil
 	}
@@ -128,21 +186,30 @@ func (cfg *FTPStorageConfig) validate() error {
 
 // FTPStorageDriver ceates a driver which allows you
 // to read/write deduped blocks/map from/to a FTP server.
-func FTPStorageDriver(cfg FTPStorageConfig) (StorageDriver, error) {
-	err := cfg.validate()
+func FTPStorageDriver(cfg FTPStorageDriverConfig) (StorageDriver, error) {
+	err := cfg.ServerConfig.validate()
 	if err != nil {
 		return nil, err
 	}
 
 	config := goftp.Config{
-		User:               cfg.Username,
-		Password:           cfg.Password,
+		User:               cfg.ServerConfig.Username,
+		Password:           cfg.ServerConfig.Password,
 		ConnectionsPerHost: 10,
 		Timeout:            10 * time.Second,
-		Logger:             newFTPLogger(cfg.Address),
+		Logger:             newFTPLogger(cfg.ServerConfig.Address),
 	}
 
-	address := strings.TrimPrefix(cfg.Address, "ftp://")
+	// if a tls config is specified,
+	// create an actual TLS Config, and pass it onto the goftp Config
+	if cfg.TLSConfig != nil {
+		config.TLSConfig, err = tlsClientAuth(*cfg.TLSConfig)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	address := strings.TrimPrefix(cfg.ServerConfig.Address, "ftp://")
 	client, err := goftp.DialConfig(config, address)
 	if err != nil {
 		return nil, err
@@ -151,7 +218,7 @@ func FTPStorageDriver(cfg FTPStorageConfig) (StorageDriver, error) {
 	return &ftpStorageDriver{
 		client:    client,
 		knownDirs: newDirCache(),
-		rootDir:   strings.Trim(cfg.RootDir, "/"),
+		rootDir:   strings.Trim(cfg.ServerConfig.RootDir, "/"),
 	}, nil
 }
 
