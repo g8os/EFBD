@@ -133,7 +133,7 @@ func (c *Client) run(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			default:
-				err := c.reconnect(5 * time.Second)
+				err := c.reconnect()
 				if err != nil {
 					log.Errorf("reconnect failed : %v", err)
 				} else {
@@ -322,32 +322,28 @@ func (c *Client) getCurServerFailedFlushStatus() bool {
 
 // reconnect to server
 // if timeout is 0 it will take the default timeout
-func (c *Client) reconnect(timeout time.Duration) error {
+func (c *Client) reconnect() error {
 	var err error
-	if timeout == 0 {
-		timeout = 1 * time.Minute
-	}
-	timeoutTick := time.After(timeout)
 
 	log.Info("tlogclient reconnect")
 
-	for {
-		select {
-		case <-timeoutTick:
-			return fmt.Errorf("timed out reconnecting to tlog servers")
-		default:
-			// try other server
-			c.shiftServer()
+	// try each server 5 times
+	attempts := len(c.servers) * 5
+	for i := 0; i < attempts; i++ {
+		// try other server
+		c.shiftServer()
 
-			if err = c.connect(); err == nil {
-				// if reconnect success, sent all unflushed blocks
-				// because we don't know what happens in servers.
-				// it might crashed
-				c.blockBuffer.SetResendAll()
-				return nil
-			}
+		if err = c.connect(); err == nil {
+			// if reconnect success, sent all unflushed blocks
+			// because we don't know what happens in servers.
+			// it might crashed
+			c.blockBuffer.SetResendAll()
+			return nil
 		}
+
 	}
+
+	return fmt.Errorf("reconnecting to tlog server timed out")
 }
 
 // connect to server
