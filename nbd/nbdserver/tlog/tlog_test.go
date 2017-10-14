@@ -1004,7 +1004,7 @@ func TestTlogSwitchClusterID(t *testing.T) {
 	source.SetPrimaryStorageCluster(vdiskID, "nbdCluster", nil)
 	source.SetTlogServerCluster(vdiskID, lastValidClusterID, &lastValidCluster)
 
-	tlogClient := new(stubTlogClient)
+	tlogClient := &stubTlogClient{servers: lastValidCluster.Servers}
 
 	storage, err := Storage(ctx, vdiskID, source, blockSize, storage, nil, tlogClient)
 	require.NoError(err)
