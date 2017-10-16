@@ -9,7 +9,7 @@ import (
 
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
-	tlogServer "github.com/zero-os/0-Disk/tlog/tlogserver/server"
+	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
 )
 
 // TestReconnect test client can connect again after getting disconnected
@@ -26,7 +26,7 @@ func TestReconnectFromSend(t *testing.T) {
 	clean, configSource, _ := newZeroStorDefaultConfig(t, vdisk)
 	defer clean()
 
-	serv, err := tlogServer.NewServer(testConf, configSource)
+	serv, err := server.NewServer(testConf, configSource)
 	require.Nil(t, err)
 	go serv.Listen(ctx)
 
@@ -64,7 +64,7 @@ func TestReconnectFromForceFlush(t *testing.T) {
 	clean, configSource, _ := newZeroStorDefaultConfig(t, vdisk)
 	defer clean()
 
-	s, err := tlogServer.NewServer(testConf, configSource)
+	s, err := server.NewServer(testConf, configSource)
 	require.Nil(t, err)
 	go s.Listen(ctx)
 

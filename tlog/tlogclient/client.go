@@ -19,7 +19,10 @@ const (
 	readTimeout          = 2 * time.Second
 	resendTimeoutDur     = 2 * time.Second // duration to wait before re-send the tlog.
 	failedFlushSleepTime = 10 * time.Second
-	retryReconnectAfter  = 10 * time.Second
+)
+
+var (
+	retryReconnectAfter = 2 * time.Minute
 )
 
 var (
@@ -32,6 +35,10 @@ var (
 
 	// ErrFlushFailed returned when client failed to do flush
 	ErrFlushFailed = errors.New("tlogserver failed to flush")
+
+	// ErrServersExhausted respresnets an error where all servers have been exhausted
+	// trying to (re)connect to them
+	errServersExhausted = errors.New("all servers have been exhausted")
 )
 
 // Response defines a response from tlog server
@@ -49,7 +56,7 @@ type Result struct {
 	Err  error
 }
 
-type server struct {
+type serverContext struct {
 	address   string
 	failed    bool
 	lastTried time.Time
@@ -58,7 +65,7 @@ type server struct {
 // Client defines a Tlog Client.
 // This client is not thread/goroutine safe.
 type Client struct {
-	servers         []server
+	servers         []serverContext
 	vdiskID         string
 	conn            *net.TCPConn
 	bw              writerFlusher
@@ -124,8 +131,8 @@ func newClient(serverAddresses []string, vdiskID string) (*Client, error) {
 }
 
 // Inits a server slice with provided server addresses
-func initServer(addresses []string) []server {
-	servers := make([]server, len(addresses))
+func initServer(addresses []string) []serverContext {
+	servers := make([]serverContext, len(addresses))
 	for i := 0; i < len(addresses); i++ {
 		servers[i].address = addresses[i]
 	}
@@ -343,7 +350,6 @@ func (c *Client) getCurServerFailedFlushStatus() bool {
 func (c *Client) reconnect() error {
 	var err error
 
-	// reset fails on servers
 	for i := range c.servers {
 		c.servers[i].failed = false
 	}
@@ -351,13 +357,10 @@ func (c *Client) reconnect() error {
 	log.Info("tlogclient reconnect")
 
 	for {
-		// try other server
-		c.shiftServer()
-
-		// if shifted server has already failed we have exhausted all servers
+		// if current server has already failed we have exhausted all servers
 		// if it's been too long it can be tried again
 		if c.servers[0].failed && time.Now().Sub(c.servers[0].lastTried) < retryReconnectAfter {
-			return fmt.Errorf("all servers have been exhausted")
+			return errServersExhausted
 		}
 
 		if err = c.connect(); err == nil {
@@ -369,8 +372,12 @@ func (c *Client) reconnect() error {
 		}
 
 		// failed to reconnect
+		log.Debugf("failed to reconnect to %v", c.servers[0].address)
 		c.servers[0].failed = true
 		c.servers[0].lastTried = time.Now()
+
+		// try another server
+		c.shiftServer()
 	}
 }
 
