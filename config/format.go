@@ -278,17 +278,6 @@ func (cfg *StorageClusterConfig) Equal(other *StorageClusterConfig) bool {
 	return true
 }
 
-// FirstAvailableServer returns the first available server.
-func (cfg *StorageClusterConfig) FirstAvailableServer() (*StorageServerConfig, error) {
-	for _, serverCfg := range cfg.Servers {
-		if !serverCfg.Disabled {
-			return &serverCfg, nil
-		}
-	}
-
-	return nil, errNoDataServersAvailable
-}
-
 // NewZeroStorClusterConfig creates a new ZeroStorClusterConfig from a given YAML slice.
 func NewZeroStorClusterConfig(data []byte) (*ZeroStorClusterConfig, error) {
 	clustercfg := new(ZeroStorClusterConfig)
@@ -452,15 +441,15 @@ type StorageServerConfig struct {
 	Address string `yaml:"address" valid:"optional"`
 	// Database '0' is assumed, in case no value is given.
 	Database int `yaml:"db" valid:"optional"`
-	// Disabled defines a storage server as non-usable/offline,
-	// making the rest of this storage server config irrelevant.
-	Disabled bool `yaml:"disabled" valid:"optional"`
+	// State defines a storage server's state.
+	// Depending on the state, the properties above become optional.
+	State StorageServerState `yaml:"state" valid:"optional"`
 }
 
 // Validate this Storage Server Config,
 // returning an error in case this config is invalid.
 func (cfg *StorageServerConfig) Validate() error {
-	if cfg == nil || cfg.Disabled {
+	if cfg == nil || cfg.State == StorageServerStateRIP {
 		return nil // nothing to validate here
 	}
 
@@ -468,8 +457,11 @@ func (cfg *StorageServerConfig) Validate() error {
 		return errInvalidStorageDatabase
 	}
 
+	if cfg.Address == "" {
+		return errors.New("storage server address not given while it is required")
+	}
 	if !valid.IsDialString(cfg.Address) {
-		return fmt.Errorf("'%s' is an invalid dialstring", cfg.Address)
+		return fmt.Errorf("storage server address '%s' is an invalid dialstring", cfg.Address)
 	}
 
 	// all checks out
@@ -492,8 +484,8 @@ func (cfg *StorageServerConfig) Equal(other *StorageServerConfig) bool {
 
 	// both configs are given
 
-	// are one of them disabled, while the other is not?
-	if cfg.Disabled != other.Disabled {
+	// are their states equal?!
+	if cfg.State != other.State {
 		return false
 	}
 

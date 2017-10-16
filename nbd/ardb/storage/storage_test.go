@@ -8,10 +8,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/garyburd/redigo/redis"
 	"github.com/stretchr/testify/assert"
-	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/redisstub"
 )
 
@@ -346,10 +345,6 @@ func testBlockStorageDeadlock(t *testing.T, blockSize, blockCount int64, storage
 	wg.Wait()
 }
 
-func TestBockStorageConfig(t *testing.T) {
-	// todo
-}
-
 func TestPipelineErrors(t *testing.T) {
 	assert := assert.New(t)
 
@@ -415,12 +410,12 @@ func testStorageDeleteOp(key string) storageOp {
 		cmd:  "DEL",
 		args: []interface{}{key},
 		validator: func(reply interface{}, err error) error {
-			n, err := redis.Int(reply, err)
+			deleted, err := ardb.Bool(reply, err)
 			if err != nil {
 				return err
 			}
 
-			if n == 0 {
+			if !deleted {
 				return fmt.Errorf("%v was not deleted, as it didn't exist", key)
 			}
 
@@ -442,9 +437,9 @@ func testStorageGetOp(key string, expected interface{}) storageOp {
 
 			switch expected.(type) {
 			case int:
-				value, err = redis.Int(reply, err)
+				value, err = ardb.Int(reply, err)
 			case string:
-				value, err = redis.String(reply, err)
+				value, err = ardb.String(reply, err)
 			}
 
 			if err != nil {
@@ -462,10 +457,8 @@ func testStorageGetOp(key string, expected interface{}) storageOp {
 
 func TestStorageOpPipeline(t *testing.T) {
 	memRedis := redisstub.NewMemoryRedis()
-	go memRedis.Listen()
 	defer memRedis.Close()
-
-	cfg := config.StorageServerConfig{Address: memRedis.Address()}
+	cfg := memRedis.StorageServerConfig()
 
 	var pipeline storageOpPipeline
 

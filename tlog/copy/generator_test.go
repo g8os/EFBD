@@ -40,9 +40,8 @@ func TestGenerate(t *testing.T) {
 	require.NoError(t, err)
 	defer mdServer.Stop()
 
-	// redis provider
-	redisProvider := redisstub.NewInMemoryRedisProvider(nil)
-	defer redisProvider.Close()
+	cluster := redisstub.NewUniCluster(true)
+	defer cluster.Close()
 
 	// config source
 	confSource := config.NewStubSource()
@@ -65,11 +64,7 @@ func TestGenerate(t *testing.T) {
 	confSource.SetVdiskConfig(targetVdiskID, &staticConf)
 
 	storageClusterConf := &config.StorageClusterConfig{
-		Servers: []config.StorageServerConfig{
-			config.StorageServerConfig{
-				Address: redisProvider.PrimaryAddress(),
-			},
-		},
+		Servers: []config.StorageServerConfig{cluster.StorageServerConfig()},
 	}
 
 	confSource.SetPrimaryStorageCluster(sourceVdiskID, nbdClusterID, storageClusterConf)
@@ -91,7 +86,7 @@ func TestGenerate(t *testing.T) {
 	// 1. Create block storages and fill with data
 	sourceBlockStorage, err := storage.Deduped(
 		sourceVdiskID, blockSize,
-		ardb.DefaultLBACacheLimit, false, redisProvider)
+		ardb.DefaultLBACacheLimit, cluster, nil)
 	require.NoError(t, err)
 
 	contents := make(map[int64][]byte, blockCount)
@@ -137,7 +132,7 @@ func TestGenerate(t *testing.T) {
 	// 4. Check the replayed data
 	targetBlockStorage, err := storage.Deduped(
 		targetVdiskID, blockSize,
-		ardb.DefaultLBACacheLimit, false, redisProvider)
+		ardb.DefaultLBACacheLimit, cluster, nil)
 	require.NoError(t, err)
 
 	for idx, content := range contents {

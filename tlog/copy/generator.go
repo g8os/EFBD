@@ -56,17 +56,11 @@ func (g *Generator) GenerateFromStorage(parentCtx context.Context) (uint64, erro
 		return 0, fmt.Errorf("ListBlockIndices failed for vdisk `%v`: %v", g.sourceVdiskID, err)
 	}
 
-	ardbProv, err := ardb.StaticProvider(*storageConf, nil)
-	if err != nil {
-		return 0, err
-	}
+	pool := ardb.NewPool(nil)
+	defer pool.Close()
 
-	sourceStorage, err := storage.NewBlockStorage(storage.BlockStorageConfig{
-		VdiskID:         g.sourceVdiskID,
-		TemplateVdiskID: staticConf.TemplateVdiskID,
-		VdiskType:       staticConf.Type,
-		BlockSize:       int64(staticConf.BlockSize),
-	}, ardbProv)
+	sourceStorage, err := storage.BlockStorageFromConfig(
+		g.sourceVdiskID, *staticConf, *storageConf, pool)
 	if err != nil {
 		return 0, err
 	}

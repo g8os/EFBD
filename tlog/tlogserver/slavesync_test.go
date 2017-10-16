@@ -35,11 +35,12 @@ func TestSlaveSyncEndToEnd(t *testing.T) {
 	defer cancelFunc()
 
 	// redis provider for the ardb
-	redisProvider := redisstub.NewInMemoryRedisProvider(nil)
+	mr := redisstub.NewMemoryRedis()
+	defer mr.Close()
 
 	// 0-stor
 	stubSource, _, cleanFunc := newZeroStorConfig(t, vdiskID, conf.PrivKey, conf.DataShards,
-		conf.ParityShards, redisProvider.PrimaryAddress())
+		conf.ParityShards, mr.StorageServerConfig().Address)
 	defer cleanFunc()
 
 	// Slave syncer
@@ -98,8 +99,14 @@ func TestSlaveSyncEndToEnd(t *testing.T) {
 	err = client.WaitNbdSlaveSync()
 	require.Nil(t, err)
 
+	pool := ardb.NewPool(nil)
+	defer pool.Close()
+
+	cluster, err := ardb.NewUniCluster(mr.StorageServerConfig(), pool)
+	require.NoError(t, err)
+
 	// check it from the storage
-	storage, err := storage.Deduped(vdiskID, blockSize, ardb.DefaultLBACacheLimit, false, redisProvider)
+	storage, err := storage.Deduped(vdiskID, blockSize, ardb.DefaultLBACacheLimit, cluster, nil)
 	require.NoError(t, err)
 
 	for i := 0; i < numLogs; i++ {

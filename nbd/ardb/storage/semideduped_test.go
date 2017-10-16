@@ -21,11 +21,14 @@ func TestSemiDedupedContentBasic(t *testing.T) {
 		templateContentA = []byte{1, 2, 3, 4, 5, 6, 7, 8}
 		templateContentB = []byte{8, 7, 6, 5, 4, 3, 2, 1}
 	)
-	templateProvider := func() *redisstub.InMemoryRedisProvider {
-		redisProvider := redisstub.NewInMemoryRedisProvider(nil)
+
+	templateCluster := redisstub.NewUniCluster(false)
+	defer templateCluster.Close()
+
+	func() {
 		template, err := Deduped(
 			"template", blockCount,
-			ardb.DefaultLBACacheLimit, false, redisProvider)
+			ardb.DefaultLBACacheLimit, templateCluster, nil)
 		if err != nil || template == nil {
 			t.Fatalf("template storage could not be created: %v", err)
 		}
@@ -44,19 +47,16 @@ func TestSemiDedupedContentBasic(t *testing.T) {
 		if err != nil {
 			t.Fatalf("flushing template failed: %v", err)
 		}
-
-		return redisProvider
 	}()
-	if templateProvider == nil {
-		t.Fatal("templateProvider is nil")
-	}
 
-	redisProvider := redisstub.NewInMemoryRedisProvider(templateProvider)
-	copyTestMetaData(t, "template", "a", templateProvider, redisProvider)
+	cluster := redisstub.NewUniCluster(false)
+	defer cluster.Close()
+
+	copyTestMetaData(t, "template", "a", templateCluster, cluster)
 
 	storage, err := SemiDeduped(
 		"a", blockSize,
-		ardb.DefaultLBACacheLimit, redisProvider)
+		ardb.DefaultLBACacheLimit, cluster, templateCluster)
 	if err != nil || storage == nil {
 		t.Fatalf("creating SemiDedupedStorage failed: %v", err)
 	}

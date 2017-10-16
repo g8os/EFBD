@@ -46,12 +46,26 @@ func newBackendFactory(cfg backendFactoryConfig) (*backendFactory, error) {
 }
 
 // backendFactory holds some variables
-// that can not be passed in the exportconfig like the pool of ardb connections.
+// that can not be passed in the exportconfig like the config source.
 // Its NewBackend method is used as the ardb backend generator.
 type backendFactory struct {
 	lbaCacheLimit int64
 	configSource  config.Source
 	vdiskComp     *vdiskCompletion
+}
+
+type closers []Closer
+
+func (cs closers) Close() error {
+	var err error
+	for _, c := range cs {
+		err = c.Close()
+		if err != nil {
+			log.Errorf("error while closing closer: %v", err)
+		}
+	}
+
+	return nil
 }
 
 // NewBackend generates a new ardb backend
@@ -65,22 +79,30 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 		return
 	}
 
-	// Create a redis provider (with a unique pool),
-	// and the found vdisk config.
-	// The redisProvider takes care of closing the created redisPool.
-	// The redisProvider created here also supports hot reloading.
-	redisPool := ardb.NewRedisPool(nil)
-	redisProvider, err := ardb.DynamicProvider(ctx, vdiskID, f.configSource, redisPool)
+	blockSize := int64(staticConfig.BlockSize)
+
+	var resourceCloser closers
+
+	// create primary cluster
+	primaryCluster, err := storage.NewPrimaryCluster(ctx, vdiskID, f.configSource)
 	if err != nil {
 		log.Error(err)
 		return
 	}
+	resourceCloser = append(resourceCloser, primaryCluster)
 
-	blockSize := int64(staticConfig.BlockSize)
-
-	// The NBDServer config defines the vdisk size in GiB,
-	// (go)nbdserver however expects it in bytes, thus we have to convert it.
-	vdiskSize := int64(staticConfig.Size) * ardb.GibibyteAsBytes
+	// create template cluster if supported by vdisk
+	// NOTE: internal template cluster may be nil, this is OK
+	var templateCluster *storage.TemplateCluster
+	if staticConfig.Type.TemplateSupport() {
+		templateCluster, err = storage.NewTemplateCluster(ctx, vdiskID, f.configSource)
+		if err != nil {
+			resourceCloser.Close()
+			log.Error(err)
+			return
+		}
+		resourceCloser = append(resourceCloser, templateCluster)
+	}
 
 	blockStorage, err := storage.NewBlockStorage(
 		storage.BlockStorageConfig{
@@ -89,9 +111,9 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 			VdiskType:       staticConfig.Type,
 			BlockSize:       blockSize,
 			LBACacheLimit:   f.lbaCacheLimit,
-		}, redisProvider)
+		}, primaryCluster, templateCluster)
 	if err != nil {
-		redisProvider.Close()
+		resourceCloser.Close()
 		log.Error(err)
 		return
 	}
@@ -105,7 +127,7 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 		vdiskNBDConfig, err := config.ReadVdiskNBDConfig(f.configSource, vdiskID)
 		if err != nil {
 			blockStorage.Close()
-			redisProvider.Close()
+			resourceCloser.Close()
 			log.Infof("couldn't vdisk %s's NBD config: %s", vdiskID, err.Error())
 			return nil, err
 		}
@@ -113,10 +135,10 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 			log.Debugf("creating tlogStorage for backend %v (%v)", vdiskID, staticConfig.Type)
 			tlogBlockStorage, err := tlog.Storage(ctx,
 				vdiskID,
-				f.configSource, blockSize, blockStorage, redisProvider, nil)
+				f.configSource, blockSize, blockStorage, primaryCluster, nil)
 			if err != nil {
 				blockStorage.Close()
-				redisProvider.Close()
+				resourceCloser.Close()
 				log.Infof("couldn't create tlog storage: %s", err.Error())
 				return nil, err
 			}
@@ -128,7 +150,7 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	vdiskLogger, err := statistics.NewVdiskLogger(ctx, f.configSource, vdiskID)
 	if err != nil {
 		blockStorage.Close()
-		redisProvider.Close()
+		resourceCloser.Close()
 		log.Infof("couldn't create vdisk logger: %s", err.Error())
 		return nil, err
 	}
@@ -136,10 +158,11 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	// Create the actual ARDB backend
 	backend = newBackend(
 		vdiskID,
-		uint64(vdiskSize), blockSize,
+		staticConfig.Size*uint64(ardb.GibibyteAsBytes),
+		blockSize,
 		blockStorage,
 		f.vdiskComp,
-		redisProvider,
+		resourceCloser,
 		vdiskLogger,
 	)
 

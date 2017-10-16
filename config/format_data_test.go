@@ -191,8 +191,8 @@ servers:
 	`
 servers:
   - address: localhost:16379
-    disabled: true
-  - disabled: true
+    state: rip
+  - state: rip
 `,
 }
 
@@ -219,7 +219,7 @@ var validStorageServerConfigYAML = []string{
 	`
 address: localhost:16379
 db: 1
-disabled: false
+state: online
 `, // complete example (2)
 	`
 address: 127.0.0.1:16379
@@ -235,9 +235,9 @@ db: 3
 	`
    address: "[2001:db8:0:3:3:3:3:3]:33"
 `,
-	// when disabled is true, the other properties are irrelevant
+	// when state is RIP, the other properties are irrelevant
 	`
-disabled: true
+state: rip
 `,
 }
 

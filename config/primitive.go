@@ -172,3 +172,87 @@ func (st StorageType) String() string {
 		return "unknown"
 	}
 }
+
+// StorageServerState represents the states a storage server can be in
+type StorageServerState int8
+
+// Different types of public storage server states.
+// Negative values can be used for custom/private states.
+const (
+	StorageServerStateOnline StorageServerState = iota
+	StorageServerStateOffline
+	StorageServerStateRepair
+	StorageServerStateRespread
+	StorageServerStateRIP
+	StorageServerStateUnknown StorageServerState = -1
+)
+
+// String returns the storage type as a string value
+func (state StorageServerState) String() string {
+	switch state {
+	case StorageServerStateOnline:
+		return storageServerStateOnlineStr
+	case StorageServerStateOffline:
+		return storageServerStateOfflineStr
+	case StorageServerStateRepair:
+		return storageServerStateRepairStr
+	case StorageServerStateRespread:
+		return storageServerStateRespreadStr
+	case StorageServerStateRIP:
+		return storageServerStateRIPStr
+	default:
+		return ""
+	}
+}
+
+// SetString allows you to set this StorageServerState using
+// the correct string representation.
+func (state *StorageServerState) SetString(s string) error {
+	switch s {
+	case storageServerStateOnlineStr:
+		*state = StorageServerStateOnline
+	case storageServerStateOfflineStr:
+		*state = StorageServerStateOffline
+	case storageServerStateRepairStr:
+		*state = StorageServerStateRepair
+	case storageServerStateRespreadStr:
+		*state = StorageServerStateRespread
+	case storageServerStateRIPStr:
+		*state = StorageServerStateRIP
+	default:
+		return fmt.Errorf("%q is not a valid StorageServerState", s)
+	}
+
+	return nil
+}
+
+// MarshalYAML implements yaml.Marshaler.MarshalYAML
+func (state StorageServerState) MarshalYAML() (interface{}, error) {
+	// ignore invalid StorageServerState
+	str := state.String()
+	if str == "" {
+		return nil, nil
+	}
+	return str, nil
+}
+
+// UnmarshalYAML implements yaml.Unmarshaler.UnmarshalYAML
+func (state *StorageServerState) UnmarshalYAML(unmarshal func(interface{}) error) (err error) {
+	var rawState string
+	err = unmarshal(&rawState)
+	if err != nil {
+		return fmt.Errorf("%q is not a valid StorageServerState: %s", rawState, err)
+	}
+
+	err = state.SetString(rawState)
+	return err
+}
+
+// The public storage server states as a string.
+const (
+	storageServerStateOnlineStr   = "online"
+	storageServerStateOfflineStr  = "offline"
+	storageServerStateRepairStr   = "repair"
+	storageServerStateRespreadStr = "respread"
+	storageServerStateRIPStr      = "rip"
+)

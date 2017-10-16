@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/nbd/nbdserver/tlog"
 	cmdconfig "github.com/zero-os/0-Disk/zeroctl/cmd/config"
@@ -121,11 +122,11 @@ func getAndSortVdisks(vdiskIDs []string, configSource config.Source) (data vdisk
 
 	addVdiskCluster := func(cfg config.StorageClusterConfig, vdiskID string, vdiskType config.VdiskType) {
 		if vdiskType.TlogSupport() || vdiskType.StorageType() == config.StorageSemiDeduped {
-			storageServerCfg, err := cfg.FirstAvailableServer()
+			storageServerCfg, err := ardb.FindFirstAvailableServerConfig(cfg)
 			// TODO: fix this properly
 			// see https://github.com/zero-os/0-Disk/issues/481
-			if err != nil {
-				metadata.AddVdisk(*storageServerCfg, vdiskID, vdiskType)
+			if err == nil {
+				metadata.AddVdisk(storageServerCfg, vdiskID, vdiskType)
 			}
 		}
 
