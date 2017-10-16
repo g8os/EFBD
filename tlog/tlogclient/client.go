@@ -19,6 +19,7 @@ const (
 	readTimeout          = 2 * time.Second
 	resendTimeoutDur     = 2 * time.Second // duration to wait before re-send the tlog.
 	failedFlushSleepTime = 10 * time.Second
+	retryReconnectAfter  = 10 * time.Second
 )
 
 var (
@@ -48,10 +49,16 @@ type Result struct {
 	Err  error
 }
 
+type server struct {
+	address   string
+	failed    bool
+	lastTried time.Time
+}
+
 // Client defines a Tlog Client.
 // This client is not thread/goroutine safe.
 type Client struct {
-	servers         []string
+	servers         []server
 	vdiskID         string
 	conn            *net.TCPConn
 	bw              writerFlusher
@@ -78,16 +85,18 @@ type Client struct {
 // Client is going to use first address and then move to next addresses if the first address
 // is failed.
 // The client is not goroutine safe.
-func New(servers []string, vdiskID string) (*Client, error) {
-	client, err := newClient(servers, vdiskID)
+func New(serverAddresses []string, vdiskID string) (*Client, error) {
+	client, err := newClient(serverAddresses, vdiskID)
 	if err != nil {
 		return nil, err
 	}
 	go client.run(client.ctx)
 	return client, nil
 }
-func newClient(servers []string, vdiskID string) (*Client, error) {
+
+func newClient(serverAddresses []string, vdiskID string) (*Client, error) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
+	servers := initServer(serverAddresses)
 	client := &Client{
 		servers:           servers,
 		vdiskID:           vdiskID,
@@ -112,6 +121,16 @@ func newClient(servers []string, vdiskID string) (*Client, error) {
 	}
 
 	return client, client.connect()
+}
+
+// Inits a server slice with provided server addresses
+func initServer(addresses []string) []server {
+	servers := make([]server, len(addresses))
+	for i := 0; i < len(addresses); i++ {
+		servers[i].address = addresses[i]
+	}
+
+	return servers
 }
 
 func (c *Client) run(ctx context.Context) {
@@ -275,13 +294,13 @@ func (c *Client) ChangeServerAddresses(servers []string) {
 	// new addresses
 	curExist := func() bool {
 		for _, server := range servers {
-			if c.servers[0] == server {
+			if c.servers[0].address == server {
 				return true
 			}
 		}
 		return false
 	}()
-	c.servers = servers
+	c.servers = initServer(servers)
 
 	if !curExist {
 		log.Infof("tlogclient vdisk '%v' current server is not in new address, close it", c.vdiskID)
@@ -295,7 +314,6 @@ func (c *Client) ChangeServerAddresses(servers []string) {
 func (c *Client) shiftServer() {
 	c.mux.Lock()
 	defer c.mux.Unlock()
-
 	c.servers = append(c.servers[1:], c.servers[0])
 }
 
@@ -303,7 +321,7 @@ func (c *Client) curServerAddress() string {
 	c.mux.Lock()
 	defer c.mux.Unlock()
 
-	return c.servers[0]
+	return c.servers[0].address
 }
 
 func (c *Client) setCurServerFailedFlushStatus(status bool) {
@@ -325,13 +343,22 @@ func (c *Client) getCurServerFailedFlushStatus() bool {
 func (c *Client) reconnect() error {
 	var err error
 
+	// reset fails on servers
+	for i := range c.servers {
+		c.servers[i].failed = false
+	}
+
 	log.Info("tlogclient reconnect")
 
-	// try each server 5 times
-	attempts := len(c.servers) * 5
-	for i := 0; i < attempts; i++ {
+	for {
 		// try other server
 		c.shiftServer()
+
+		// if shifted server has already failed we have exhausted all servers
+		// if it's been too long it can be tried again
+		if c.servers[0].failed && time.Now().Sub(c.servers[0].lastTried) < retryReconnectAfter {
+			return fmt.Errorf("all servers have been exhausted")
+		}
 
 		if err = c.connect(); err == nil {
 			// if reconnect success, sent all unflushed blocks
@@ -341,9 +368,10 @@ func (c *Client) reconnect() error {
 			return nil
 		}
 
+		// failed to reconnect
+		c.servers[0].failed = true
+		c.servers[0].lastTried = time.Now()
 	}
-
-	return fmt.Errorf("reconnecting to tlog server timed out")
 }
 
 // connect to server

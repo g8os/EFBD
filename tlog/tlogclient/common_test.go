@@ -13,11 +13,11 @@ import (
 	"github.com/zero-os/0-Disk/tlog/schema"
 	"github.com/zero-os/0-Disk/tlog/stor"
 	"github.com/zero-os/0-Disk/tlog/stor/embeddedserver"
-	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
+	tlogServer "github.com/zero-os/0-Disk/tlog/tlogserver/server"
 )
 
 var (
-	testConf = server.DefaultConfig()
+	testConf = tlogServer.DefaultConfig()
 )
 
 func init() {

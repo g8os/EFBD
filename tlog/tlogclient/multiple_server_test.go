@@ -11,7 +11,7 @@ import (
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/stor"
 	"github.com/zero-os/0-Disk/tlog/stor/embeddedserver"
-	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
+	tlogServer "github.com/zero-os/0-Disk/tlog/tlogserver/server"
 )
 
 type testTwoServerConf struct {
@@ -242,14 +242,14 @@ func validateWithDecoder(t *testing.T, seqs map[uint64]struct{}, storConf stor.C
 	require.Equal(t, 0, len(seqs))
 }
 
-func createTestTlogServer(ctx context.Context, t *testing.T, conf *server.Config,
+func createTestTlogServer(ctx context.Context, t *testing.T, conf *tlogServer.Config,
 	storCluster *embeddedserver.ZeroStorCluster,
-	mdServer *embedserver.Server, vdiskID string) (*server.Server, stor.Config) {
+	mdServer *embedserver.Server, vdiskID string) (*tlogServer.Server, stor.Config) {
 
 	_, configSource, storConf := newZeroStorConfigFromCluster(t, storCluster, mdServer, vdiskID,
 		conf.PrivKey, conf.DataShards, conf.ParityShards)
 
-	tlogServer, err := server.NewServer(conf, configSource)
+	tlogServer, err := tlogServer.NewServer(conf, configSource)
 	require.Nil(t, err)
 
 	go tlogServer.Listen(ctx)
