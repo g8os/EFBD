@@ -594,12 +594,8 @@ func (c *Client) Close() error {
 // See https://github.com/zero-os/0-Disk/issues/426 for the progress
 func (c *Client) Disconnect() error {
 	c.mux.Lock()
-	stopped := c.stopped
 	c.stopped = true
 	c.mux.Unlock()
-	if stopped {
-		return nil // nothing to do
-	}
 
 	doneCh := c.waitCond(c.disconnectedCond)
 
