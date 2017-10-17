@@ -19,9 +19,9 @@ const (
 	readTimeout          = 2 * time.Second
 	resendTimeoutDur     = 2 * time.Second // duration to wait before re-send the tlog.
 	failedFlushSleepTime = 10 * time.Second
-)
 
-var (
+	// Duration to wait before trying to
+	// reconnect to a previously failed server again.
 	retryReconnectAfter = 2 * time.Minute
 )
 
@@ -153,19 +153,10 @@ func (c *Client) run(ctx context.Context) {
 		<-recvDoneCh
 
 		// reconnect
-		reconnected := false
-		for !reconnected && !c.isStopped() {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				err := c.reconnect()
-				if err != nil {
-					log.Errorf("reconnect failed : %v", err)
-				} else {
-					reconnected = true
-				}
-			}
+		err := c.reconnect()
+		if err != nil {
+			log.Errorf("reconnect failed : %v", err)
+			cancelFunc()
 		}
 	}
 }
@@ -350,19 +341,9 @@ func (c *Client) getCurServerFailedFlushStatus() bool {
 func (c *Client) reconnect() error {
 	var err error
 
-	for i := range c.servers {
-		c.servers[i].failed = false
-	}
-
 	log.Info("tlogclient reconnect")
 
 	for {
-		// if current server has already failed we have exhausted all servers
-		// if it's been too long it can be tried again
-		if c.servers[0].failed && time.Now().Sub(c.servers[0].lastTried) < retryReconnectAfter {
-			return errServersExhausted
-		}
-
 		if err = c.connect(); err == nil {
 			// if reconnect success, sent all unflushed blocks
 			// because we don't know what happens in servers.
@@ -378,6 +359,12 @@ func (c *Client) reconnect() error {
 
 		// try another server
 		c.shiftServer()
+
+		// if current server has already failed we have exhausted all servers
+		// if it's been too long it can be tried again
+		if c.servers[0].failed && time.Now().Sub(c.servers[0].lastTried) < retryReconnectAfter {
+			return errServersExhausted
+		}
 	}
 }
 
@@ -607,8 +594,12 @@ func (c *Client) Close() error {
 // See https://github.com/zero-os/0-Disk/issues/426 for the progress
 func (c *Client) Disconnect() error {
 	c.mux.Lock()
+	stopped := c.stopped
 	c.stopped = true
 	c.mux.Unlock()
+	if stopped {
+		return nil // nothing to do
+	}
 
 	doneCh := c.waitCond(c.disconnectedCond)
 
