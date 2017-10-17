@@ -13,7 +13,7 @@ import (
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
-	tlogServer "github.com/zero-os/0-Disk/tlog/tlogserver/server"
+	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
 )
 
 func init() {
@@ -61,7 +61,7 @@ func (prt pipeReaderTimeout) Read(data []byte) (int, error) {
 // and give response.
 // It use io.Pipe to simulate TCP connection.
 type dummyServer struct {
-	serv          *tlogServer.Server
+	serv          *server.Server
 	reqPipeWriter pipeWriterFlush
 	reqPipeReader *io.PipeReader
 
@@ -69,7 +69,7 @@ type dummyServer struct {
 	respPipeReader pipeReaderTimeout
 }
 
-func newDummyServer(s *tlogServer.Server) *dummyServer {
+func newDummyServer(s *server.Server) *dummyServer {
 	reqRd, reqW := io.Pipe()
 	respRd, respW := io.Pipe()
 	return &dummyServer{
@@ -124,7 +124,7 @@ func (ds *dummyServer) run(t *testing.T, logsToIgnore map[uint64]struct{}) error
 		}
 
 		// send resp
-		resp := tlogServer.BlockResponse{
+		resp := server.BlockResponse{
 			Status:    int8(tlog.BlockStatusRecvOK),
 			Sequences: []uint64{block.Sequence()},
 		}
@@ -149,7 +149,7 @@ func TestResendTimeout(t *testing.T) {
 	defer clean()
 	// only used in client.connect
 	// TODO : remove the need to this unused server
-	unusedServer, err := tlogServer.NewServer(testConf, configSource)
+	unusedServer, err := server.NewServer(testConf, configSource)
 	assert.Nil(t, err)
 	go unusedServer.Listen(ctx)
 
