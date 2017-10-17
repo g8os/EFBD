@@ -203,9 +203,13 @@ func (agg *vdiskAggregator) TrackBytes(bytes int64) {
 // Reset returns the aggregate values as an average over the active duration,
 // and reset the aggregator's internal values.
 func (agg *vdiskAggregator) Reset(duration time.Duration) (iops, throughput float64) {
-	if agg.iops == 0 || duration < MinVdiskAggregationDuration {
+	if agg.iops == 0 {
 		return
 	}
+	if duration < time.Second {
+		duration = time.Second
+	}
+
 	dursecs := big.NewFloat(duration.Seconds())
 
 	// compute IOPS
@@ -229,9 +233,6 @@ const (
 	// MaxVdiskAggregationDuration defines the maximum aggregation duration
 	// used for vdisk operation (average) statistics.
 	MaxVdiskAggregationDuration = time.Second * 30
-	// MinVdiskAggregationDuration defines the minimum aggregation duration
-	// used for vdisk operation (average) statistics.
-	MinVdiskAggregationDuration = time.Second
 )
 
 const (
