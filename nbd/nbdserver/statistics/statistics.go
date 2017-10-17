@@ -33,6 +33,7 @@ func NewVdiskLogger(ctx context.Context, configSource config.Source, vdiskID str
 		cancel()
 		return nil, err
 	}
+	cfg := <-configCh
 
 	logger := &vdiskLogger{
 		// context-related values
@@ -45,8 +46,7 @@ func NewVdiskLogger(ctx context.Context, configSource config.Source, vdiskID str
 		writeThroughputKey: "vdisk.throughput.write@virt." + vdiskID,
 		writeIOPSKey:       "vdisk.iops.write@virt." + vdiskID,
 
-		// empty tags for now
-		tags: log.MetricTags{},
+		tags: log.MetricTags{clusterKey: cfg.StorageClusterID},
 		// configCh to keep track of incoming config changes,
 		// and used as the input for the metric tags of this logger
 		configCh: configCh,
@@ -135,8 +135,8 @@ func (vl *vdiskLogger) background() {
 			log.Debug("logging last minute vdisks statistics")
 			end = time.Now()
 			duration = end.Sub(start)
-			vl.broadcastReadStatistics(duration)
-			vl.broadcastWriteStatistics(duration)
+			vl.broadcastReadStatistics(duration, false)
+			vl.broadcastWriteStatistics(duration, false)
 
 			log.Debug("exit vdiskLogger because context is done")
 			return
@@ -148,8 +148,8 @@ func (vl *vdiskLogger) background() {
 			duration = end.Sub(start)
 			start = end
 
-			vl.broadcastReadStatistics(duration)
-			vl.broadcastWriteStatistics(duration)
+			vl.broadcastReadStatistics(duration, true)
+			vl.broadcastWriteStatistics(duration, true)
 
 		// config has updated, check if our tags change
 		case cfg = <-vl.configCh:
@@ -171,16 +171,24 @@ func (vl *vdiskLogger) background() {
 
 // internal func to reset the read aggregator
 // and broadcast its aggregated iops/throughput values.
-func (vl *vdiskLogger) broadcastReadStatistics(duration time.Duration) {
+func (vl *vdiskLogger) broadcastReadStatistics(duration time.Duration, allowZero bool) {
 	iops, throughput := vl.readAggregator.Reset(duration)
+	if iops == 0 && !allowZero {
+		return
+	}
+
 	broadcastStatistic(vl.readIOPSKey, iops, vl.tags)
 	broadcastStatistic(vl.readThroughputKey, throughput, vl.tags)
 }
 
 // internal func to reset the write aggregator
 // and broadcast its aggregated iops/throughput values.
-func (vl *vdiskLogger) broadcastWriteStatistics(duration time.Duration) {
+func (vl *vdiskLogger) broadcastWriteStatistics(duration time.Duration, allowZero bool) {
 	iops, throughput := vl.writeAggregator.Reset(duration)
+	if iops == 0 && !allowZero {
+		return
+	}
+
 	broadcastStatistic(vl.writeIOPSKey, iops, vl.tags)
 	broadcastStatistic(vl.writeThroughputKey, throughput, vl.tags)
 }

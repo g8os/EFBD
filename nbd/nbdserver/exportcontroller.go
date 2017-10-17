@@ -58,7 +58,7 @@ func (c *ExportController) GetConfig(name string) (*nbd.ExportConfig, error) {
 
 	return &nbd.ExportConfig{
 		Name:               name,
-		Description:        "Deduped g8os zerodisk",
+		Description:        cfg.Type.String() + " vdisk",
 		Driver:             "ardb",
 		ReadOnly:           cfg.ReadOnly,
 		TLSOnly:            c.tlsOnly,
