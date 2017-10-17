@@ -73,10 +73,12 @@ func TestTlogStorageWithDeduped(t *testing.T) {
 		blockCount = 8
 	)
 
-	redisProvider := redisstub.NewInMemoryRedisProvider(nil)
+	cluster := redisstub.NewUniCluster(true)
+	defer cluster.Close()
+
 	storage, err := storage.Deduped(
 		vdiskID, blockSize,
-		ardb.DefaultLBACacheLimit, false, redisProvider)
+		ardb.DefaultLBACacheLimit, cluster, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -94,10 +96,11 @@ func TestTlogStorageForceFlushWithDeduped(t *testing.T) {
 		blockCount = 8
 	)
 
-	redisProvider := redisstub.NewInMemoryRedisProvider(nil)
+	cluster := redisstub.NewUniCluster(true)
+	defer cluster.Close()
 	storage, err := storage.Deduped(
 		vdiskID, blockSize,
-		ardb.DefaultLBACacheLimit, false, redisProvider)
+		ardb.DefaultLBACacheLimit, cluster, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -114,9 +117,11 @@ func TestTlogStorageWithNondeduped(t *testing.T) {
 		blockSize = 8
 	)
 
-	redisProvider := redisstub.NewInMemoryRedisProvider(nil)
+	cluster := redisstub.NewUniCluster(true)
+	defer cluster.Close()
+
 	storage, err := storage.NonDeduped(
-		vdiskID, "", blockSize, false, redisProvider)
+		vdiskID, "", blockSize, cluster, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -133,9 +138,11 @@ func TestTlogStorageForceFlushWithNondeduped(t *testing.T) {
 		blockSize = 8
 	)
 
-	redisProvider := redisstub.NewInMemoryRedisProvider(nil)
+	cluster := redisstub.NewUniCluster(true)
+	defer cluster.Close()
+
 	storage, err := storage.NonDeduped(
-		vdiskID, "", blockSize, false, redisProvider)
+		vdiskID, "", blockSize, cluster, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -211,43 +218,31 @@ func newTlogTestServer(ctx context.Context, t *testing.T, vdiskID string) (strin
 }
 
 func TestTlogDedupedStorageReplay(t *testing.T) {
-	var connProvider ardb.ConnProvider
-	defer func() {
-		if connProvider != nil {
-			connProvider.Close()
-		}
-	}()
+	var cluster *redisstub.UniCluster
+	defer cluster.Close()
 
 	createDedupedStorage := func(vdiskID string, vdiskSize, blockSize int64) (storage.BlockStorage, error) {
-		if connProvider != nil {
-			connProvider.Close()
-		}
+		cluster.Close()
+		cluster = redisstub.NewUniCluster(true)
 
-		connProvider = redisstub.NewInMemoryRedisProvider(nil)
 		return storage.Deduped(
 			vdiskID, blockSize,
-			ardb.DefaultLBACacheLimit, false, connProvider)
+			ardb.DefaultLBACacheLimit, cluster, nil)
 	}
 
 	testTlogStorageReplay(t, createDedupedStorage)
 }
 
 func TestTlogNonDedupedStorageReplay(t *testing.T) {
-	var connProvider ardb.ConnProvider
-	defer func() {
-		if connProvider != nil {
-			connProvider.Close()
-		}
-	}()
+	var cluster *redisstub.UniCluster
+	defer cluster.Close()
 
 	createNonDedupedStorage := func(vdiskID string, vdiskSize, blockSize int64) (storage.BlockStorage, error) {
-		if connProvider != nil {
-			connProvider.Close()
-		}
+		cluster.Close()
+		cluster = redisstub.NewUniCluster(true)
 
-		connProvider = redisstub.NewInMemoryRedisProvider(nil)
 		return storage.NonDeduped(
-			vdiskID, "", blockSize, false, connProvider)
+			vdiskID, "", blockSize, cluster, nil)
 	}
 
 	testTlogStorageReplay(t, createNonDedupedStorage)

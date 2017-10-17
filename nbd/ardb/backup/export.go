@@ -24,18 +24,18 @@ func Export(ctx context.Context, cfg Config) error {
 		return err
 	}
 
-	storageConfig, err := createBlockStorage(cfg.VdiskID, cfg.BlockStorageConfig, true)
+	storageConfig, err := createStorageConfig(cfg.VdiskID, cfg.BlockStorageConfig, true)
 	if err != nil {
 		return err
 	}
 
-	ardbProvider, err := ardb.StaticProvider(storageConfig.NBD, nil)
-	if err != nil {
-		return err
-	}
-	defer ardbProvider.Close()
+	pool := ardb.NewPool(nil)
+	defer pool.Close()
 
-	blockStorage, err := storage.NewBlockStorage(storageConfig.BlockStorage, ardbProvider)
+	blockStorage, err := storage.BlockStorageFromConfig(
+		cfg.VdiskID,
+		storageConfig.Vdisk, storageConfig.NBD,
+		pool)
 	if err != nil {
 		return err
 	}
@@ -49,9 +49,9 @@ func Export(ctx context.Context, cfg Config) error {
 
 	exportConfig := exportConfig{
 		JobCount:        cfg.JobCount,
-		SrcBlockSize:    storageConfig.BlockStorage.BlockSize,
+		SrcBlockSize:    int64(storageConfig.Vdisk.BlockSize),
 		DstBlockSize:    cfg.BlockSize,
-		VdiskSize:       storageConfig.VdiskSize,
+		VdiskSize:       storageConfig.Vdisk.Size * 1024 * 1024 * 1024, // GiB -> bytes
 		CompressionType: cfg.CompressionType,
 		CryptoKey:       cfg.CryptoKey,
 		VdiskID:         cfg.VdiskID,

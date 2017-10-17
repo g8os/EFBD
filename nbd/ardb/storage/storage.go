@@ -3,6 +3,7 @@ package storage
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -63,8 +64,69 @@ func (cfg *BlockStorageConfig) Validate() error {
 	return nil
 }
 
+// BlockStorageFromConfigSource creates a block storage
+// from the config retrieved from the given config source.
+// It is the simplest way to create a BlockStorage,
+// but it also has the disadvantage that
+// it does not support SelfHealing or HotReloading of the used configuration.
+func BlockStorageFromConfigSource(vdiskID string, cs config.Source, dialer ardb.ConnectionDialer) (BlockStorage, error) {
+	// get configs from source
+	vdiskConfig, err := config.ReadVdiskStaticConfig(cs, vdiskID)
+	if err != nil {
+		return nil, err
+	}
+	nbdStorageConfig, err := config.ReadNBDStorageConfig(cs, vdiskID)
+	if err != nil {
+		return nil, err
+	}
+
+	return BlockStorageFromConfig(vdiskID, *vdiskConfig, *nbdStorageConfig, dialer)
+}
+
+// BlockStorageFromConfig creates a block storage from the given config.
+// It is the simplest way to create a BlockStorage,
+// but it also has the disadvantage that
+// it does not support SelfHealing or HotReloading of the used configuration.
+func BlockStorageFromConfig(vdiskID string, vdiskConfig config.VdiskStaticConfig, nbdConfig config.NBDStorageConfig, dialer ardb.ConnectionDialer) (BlockStorage, error) {
+	err := vdiskConfig.Validate()
+	if err != nil {
+		return nil, err
+	}
+	err = nbdConfig.Validate()
+	if err != nil {
+		return nil, err
+	}
+
+	// create primary cluster
+	cluster, err := ardb.NewCluster(nbdConfig.StorageCluster, dialer)
+	if err != nil {
+		return nil, err
+	}
+
+	// create template cluster if needed
+	var templateCluster ardb.StorageCluster
+	if vdiskConfig.Type.TemplateSupport() && nbdConfig.TemplateStorageCluster != nil {
+		templateCluster, err = ardb.NewCluster(*nbdConfig.TemplateStorageCluster, dialer)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// create block storage config
+	cfg := BlockStorageConfig{
+		VdiskID:         vdiskID,
+		TemplateVdiskID: vdiskConfig.TemplateVdiskID,
+		VdiskType:       vdiskConfig.Type,
+		BlockSize:       int64(vdiskConfig.BlockSize),
+		LBACacheLimit:   ardb.DefaultLBACacheLimit,
+	}
+
+	// try to create actual block storage
+	return NewBlockStorage(cfg, cluster, templateCluster)
+}
+
 // NewBlockStorage returns the correct block storage based on the given VdiskConfig.
-func NewBlockStorage(cfg BlockStorageConfig, provider ardb.ConnProvider) (storage BlockStorage, err error) {
+func NewBlockStorage(cfg BlockStorageConfig, cluster, templateCluster ardb.StorageCluster) (storage BlockStorage, err error) {
 	err = cfg.Validate()
 	if err != nil {
 		return
@@ -72,29 +134,36 @@ func NewBlockStorage(cfg BlockStorageConfig, provider ardb.ConnProvider) (storag
 
 	vdiskType := cfg.VdiskType
 
+	// templateCluster gets disabled,
+	// if vdisk type has no template support.
+	if !vdiskType.TemplateSupport() {
+		templateCluster = nil
+	}
+
 	switch storageType := vdiskType.StorageType(); storageType {
 	case config.StorageDeduped:
 		return Deduped(
 			cfg.VdiskID,
 			cfg.BlockSize,
 			cfg.LBACacheLimit,
-			vdiskType.TemplateSupport(),
-			provider)
+			cluster,
+			templateCluster)
 
 	case config.StorageNonDeduped:
 		return NonDeduped(
 			cfg.VdiskID,
 			cfg.TemplateVdiskID,
 			cfg.BlockSize,
-			vdiskType.TemplateSupport(),
-			provider)
+			cluster,
+			templateCluster)
 
 	case config.StorageSemiDeduped:
 		return SemiDeduped(
 			cfg.VdiskID,
 			cfg.BlockSize,
 			cfg.LBACacheLimit,
-			provider)
+			cluster,
+			templateCluster)
 
 	default:
 		return nil, fmt.Errorf(
@@ -144,7 +213,7 @@ func ListBlockIndices(id string, t config.VdiskType, ccfg *config.StorageCluster
 func ScanForAvailableVdisks(cfg config.StorageServerConfig) ([]string, error) {
 	log.Debugf("connection to ardb at %s (db: %d)",
 		cfg.Address, cfg.Database)
-	conn, err := ardb.GetConnection(cfg)
+	conn, err := ardb.Dial(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't connect to the ardb: %s", err.Error())
 	}
@@ -338,7 +407,7 @@ func (ops storageOpPipeline) Apply(cfg config.StorageServerConfig) error {
 		return nil
 	}
 
-	conn, err := ardb.GetConnection(cfg)
+	conn, err := ardb.Dial(cfg)
 	if err != nil {
 		return err
 	}
@@ -453,4 +522,15 @@ func dedupInt64s(s []int64) []int64 {
 	}
 
 	return s
+}
+
+// a slightly expensive helper function which allows
+// us to test if an interface value is nil or not
+func isInterfaceValueNil(v interface{}) bool {
+	if v == nil {
+		return true
+	}
+
+	rv := reflect.ValueOf(v)
+	return rv.Kind() == reflect.Ptr && rv.IsNil()
 }

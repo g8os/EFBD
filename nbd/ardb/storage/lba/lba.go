@@ -24,12 +24,12 @@ func StorageKey(vdiskID string) string {
 }
 
 // NewLBA creates a new LBA
-func NewLBA(vdiskID string, cacheLimitInBytes int64, provider ardb.DataConnProvider) (lba *LBA, err error) {
+func NewLBA(vdiskID string, cacheLimitInBytes int64, cluster ardb.StorageCluster) (lba *LBA, err error) {
 	if vdiskID == "" {
 		return nil, errors.New("NewLBA requires non-empty vdiskID")
 	}
-	if provider == nil {
-		return nil, errors.New("NewLBA requires a non-nil MetaRedisProvider")
+	if cluster == nil {
+		return nil, errors.New("NewLBA requires a non-nil ARDB StorageCluster")
 	}
 	if cacheLimitInBytes < MinimumBucketSizeLimit {
 		return nil, fmt.Errorf(
@@ -46,7 +46,7 @@ func NewLBA(vdiskID string, cacheLimitInBytes int64, provider ardb.DataConnProvi
 	log.Debugf("creating LBA for vdisk %s with %d bucket(s)", vdiskID, bucketCount)
 
 	return newLBAWithStorageFactory(int32(bucketCount), bucketLimitInBytes, func() SectorStorage {
-		return ARDBSectorStorage(vdiskID, provider)
+		return ARDBSectorStorage(vdiskID, cluster)
 	}), nil
 }
 

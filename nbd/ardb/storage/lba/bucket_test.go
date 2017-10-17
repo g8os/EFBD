@@ -81,9 +81,10 @@ func TestBucketWithEmptyARDBStorage(t *testing.T) {
 		bucketSize        = bucketSectorCount * BytesPerSector
 	)
 
-	provider := redisstub.NewInMemoryRedisProvider(nil)
-	defer provider.Close()
-	ardbStorage := ARDBSectorStorage("foo", provider)
+	cluster := redisstub.NewUniCluster(false)
+	defer cluster.Close()
+
+	ardbStorage := ARDBSectorStorage("foo", cluster)
 
 	bucket := createTestSectorBucket(bucketSize, ardbStorage)
 	if bucket == nil {
