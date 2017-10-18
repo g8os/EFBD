@@ -1077,10 +1077,11 @@ func (stls *stubTlogClient) WaitNbdSlaveSync() error {
 	return nil
 }
 
-func (stls *stubTlogClient) ChangeServerAddresses(servers []string) {
+func (stls *stubTlogClient) ChangeServerAddresses(servers []string) error {
 	stls.lock.Lock()
 	stls.servers = servers
 	stls.lock.Unlock()
+	return nil
 }
 
 func (stls *stubTlogClient) getServers() []string {

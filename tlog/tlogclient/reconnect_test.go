@@ -6,14 +6,13 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
 )
 
 // TestReconnect test client can connect again after getting disconnected
-func TestReconnectFromSend(t *testing.T) {
+func testReconnectFromSend(t *testing.T) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
@@ -53,7 +52,7 @@ func TestReconnectFromSend(t *testing.T) {
 	waitForBlockReceivedResponse(t, client, 1, uint64(numLogs))
 }
 
-func TestReconnectFromForceFlush(t *testing.T) {
+func testReconnectFromForceFlush(t *testing.T) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
@@ -71,6 +70,7 @@ func TestReconnectFromForceFlush(t *testing.T) {
 	// Create client
 	client, err := New([]string{s.ListenAddr()}, vdisk)
 	require.Nil(t, err)
+	defer client.Close()
 
 	// Simulate closed connection
 	client.conn.Close()

@@ -706,7 +706,7 @@ type tlogClient interface {
 	Send(op uint8, seq uint64, index int64, timestamp int64, data []byte) error
 	ForceFlushAtSeq(uint64) error
 	WaitNbdSlaveSync() error
-	ChangeServerAddresses([]string)
+	ChangeServerAddresses([]string) error
 	Recv() <-chan *tlogclient.Result
 	LastFlushedSequence() uint64
 	Close() error

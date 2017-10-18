@@ -38,7 +38,7 @@ var (
 
 	// ErrServersExhausted respresnets an error where all servers have been exhausted
 	// trying to (re)connect to them
-	errServersExhausted = errors.New("all servers have been exhausted")
+	ErrServersExhausted = errors.New("all servers have been exhausted")
 )
 
 // Response defines a response from tlog server
@@ -86,6 +86,9 @@ type Client struct {
 	mux                  sync.Mutex
 	stopped              bool
 	curServerFailedFlush bool
+
+	failedState    bool
+	failedStateErr error
 }
 
 // New creates a new tlog client for a vdisk with 'addrs' is the tlogserver addresses.
@@ -157,6 +160,12 @@ func (c *Client) run(ctx context.Context) {
 		if err != nil {
 			log.Errorf("reconnect failed : %v", err)
 			cancelFunc()
+
+			// shutdown client
+			c.failedState = true
+			c.failedStateErr = err
+			c.Close()
+			return
 		}
 	}
 }
@@ -279,12 +288,16 @@ func (c *Client) runReceiver(ctx context.Context, cancelFunc context.CancelFunc)
 }
 
 // ChangeServerAddresses change servers to the given servers
-func (c *Client) ChangeServerAddresses(servers []string) {
+func (c *Client) ChangeServerAddresses(servers []string) error {
+	if c.failedState {
+		return c.failedStateErr
+	}
+
 	c.mux.Lock()
 	defer c.mux.Unlock()
 
 	if len(servers) == 0 {
-		return
+		return nil
 	}
 	log.Infof("tlogclient vdisk '%v' change server addrs to '%v'", c.vdiskID, servers)
 
@@ -304,7 +317,7 @@ func (c *Client) ChangeServerAddresses(servers []string) {
 		log.Infof("tlogclient vdisk '%v' current server is not in new address, close it", c.vdiskID)
 		c.conn.Close()
 	}
-
+	return nil
 }
 
 // shift server address move current active client to the back
@@ -363,7 +376,7 @@ func (c *Client) reconnect() error {
 		// if current server has already failed we have exhausted all servers
 		// if it's been too long it can be tried again
 		if c.servers[0].failed && time.Now().Sub(c.servers[0].lastTried) < retryReconnectAfter {
-			return errServersExhausted
+			return ErrServersExhausted
 		}
 	}
 }
@@ -502,6 +515,10 @@ func (c *Client) createConn() error {
 
 // ForceFlushAtSeq force flush at given sequence
 func (c *Client) ForceFlushAtSeq(seq uint64) error {
+	if c.failedState {
+		return c.failedStateErr
+	}
+
 	c.commandCh <- cmdForceFlushAtSeq{seq: seq}
 	return nil
 }
@@ -509,6 +526,10 @@ func (c *Client) ForceFlushAtSeq(seq uint64) error {
 // WaitNbdSlaveSync commands tlog server to wait
 // for nbd slave to be fully synced
 func (c *Client) WaitNbdSlaveSync() error {
+	if c.failedState {
+		return c.failedStateErr
+	}
+
 	// start the waiter now, so we don't miss the reply
 	doneCh := c.waitCond(c.waitSlaveSyncCond)
 
@@ -557,6 +578,10 @@ func (c *Client) signalCond(cond *sync.Cond) {
 // - failed to encode the capnp.
 // - failed to recover from broken network connection.
 func (c *Client) Send(op uint8, seq uint64, index int64, timestamp int64, data []byte) error {
+	if c.failedState {
+		return c.failedStateErr
+	}
+
 	cmd := cmdBlock{
 		op:         op,
 		seq:        seq,
