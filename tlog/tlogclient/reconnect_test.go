@@ -91,3 +91,63 @@ func testReconnectFromForceFlush(t *testing.T) {
 		require.Equal(t, resp.Resp.Status, tlog.BlockStatusForceFlushReceived)
 	}
 }
+
+func TestFailedState(t *testing.T) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
+	const (
+		vdisk = "12345"
+	)
+
+	// test server
+	clean, configSource, _ := newZeroStorDefaultConfig(t, vdisk)
+	defer clean()
+
+	s1, err := server.NewServer(testConf, configSource)
+	require.Nil(t, err)
+	go s1.Listen(ctx)
+
+	// Create client
+	client, err := New([]string{s1.ListenAddr()}, vdisk)
+	require.Nil(t, err)
+	defer client.Close()
+
+	data := make([]byte, 4096)
+
+	// test if can send
+	err = client.Send(schema.OpSet, 1, 2, 3, data)
+	require.Nil(t, err)
+
+	// stop server
+	cancelFunc()
+
+	// wait for server to die
+	timeout := time.After(5 * time.Second)
+	exitloop := false
+	for !exitloop {
+		select {
+		case <-timeout:
+			require.FailNow(t, "timed out waiting for error from sending to closed tlog server")
+		default:
+			time.Sleep(100 * time.Millisecond)
+			err = client.Send(schema.OpSet, 1, 2, 3, data)
+			if err != nil {
+				exitloop = true
+			}
+		}
+	}
+
+	// replace server with new one
+	ctx, cancelFunc = context.WithCancel(context.Background())
+	defer cancelFunc()
+	s2, err := server.NewServer(testConf, configSource)
+	require.Nil(t, err)
+	go s2.Listen(ctx)
+
+	client.ChangeServerAddresses([]string{s2.ListenAddr()})
+
+	// test if recovered from failed state
+	err = client.Send(schema.OpSet, 1, 2, 3, data)
+	require.Nil(t, err)
+}
