@@ -87,8 +87,10 @@ type Client struct {
 	stopped              bool
 	curServerFailedFlush bool
 
+	failedStateMux sync.Mutex
 	failedState    bool
-	failedStateErr error
+	retryCh        chan struct{}
+	retryErrCh     chan error
 }
 
 // New creates a new tlog client for a vdisk with 'addrs' is the tlogserver addresses.
@@ -128,6 +130,9 @@ func newClient(serverAddresses []string, vdiskID string) (*Client, error) {
 		// - one for (hopefully) optimization, so we can read from network
 		//	 before needed and then put it to this channel.
 		respCh: make(chan *Result, 3),
+
+		// channel for retry signal
+		retryCh: make(chan struct{}),
 	}
 
 	return client, client.connect()
@@ -146,6 +151,11 @@ func initServer(addresses []string) []serverContext {
 func (c *Client) run(ctx context.Context) {
 	go c.resender()
 	for !c.isStopped() {
+		// if failed state, wait till retry signal
+		if c.isFailedState() {
+			<-c.retryCh
+		}
+
 		curCtx, cancelFunc := context.WithCancel(ctx)
 		// run receiver and sender
 		sendDoneCh := c.runSender(curCtx, cancelFunc)
@@ -161,11 +171,16 @@ func (c *Client) run(ctx context.Context) {
 			log.Errorf("reconnect failed : %v", err)
 			cancelFunc()
 
-			// shutdown client
-			c.failedState = true
-			c.failedStateErr = err
-			c.Close()
-			return
+			if c.isFailedState() {
+				c.retryErrCh <- err
+			}
+			c.setFailedState(true)
+		} else {
+
+			if c.isFailedState() {
+				c.retryErrCh <- nil
+			}
+			c.setFailedState(false)
 		}
 	}
 }
@@ -289,8 +304,9 @@ func (c *Client) runReceiver(ctx context.Context, cancelFunc context.CancelFunc)
 
 // ChangeServerAddresses change servers to the given servers
 func (c *Client) ChangeServerAddresses(servers []string) error {
-	if c.failedState {
-		return c.failedStateErr
+	err := c.retryIfFailedState()
+	if err != nil {
+		return err
 	}
 
 	c.mux.Lock()
@@ -515,8 +531,9 @@ func (c *Client) createConn() error {
 
 // ForceFlushAtSeq force flush at given sequence
 func (c *Client) ForceFlushAtSeq(seq uint64) error {
-	if c.failedState {
-		return c.failedStateErr
+	err := c.retryIfFailedState()
+	if err != nil {
+		return err
 	}
 
 	c.commandCh <- cmdForceFlushAtSeq{seq: seq}
@@ -526,8 +543,9 @@ func (c *Client) ForceFlushAtSeq(seq uint64) error {
 // WaitNbdSlaveSync commands tlog server to wait
 // for nbd slave to be fully synced
 func (c *Client) WaitNbdSlaveSync() error {
-	if c.failedState {
-		return c.failedStateErr
+	err := c.retryIfFailedState()
+	if err != nil {
+		return err
 	}
 
 	// start the waiter now, so we don't miss the reply
@@ -578,8 +596,9 @@ func (c *Client) signalCond(cond *sync.Cond) {
 // - failed to encode the capnp.
 // - failed to recover from broken network connection.
 func (c *Client) Send(op uint8, seq uint64, index int64, timestamp int64, data []byte) error {
-	if c.failedState {
-		return c.failedStateErr
+	err := c.retryIfFailedState()
+	if err != nil {
+		return err
 	}
 
 	cmd := cmdBlock{
@@ -639,4 +658,26 @@ func (c *Client) isStopped() bool {
 	c.mux.Lock()
 	defer c.mux.Unlock()
 	return c.stopped
+}
+
+func (c *Client) isFailedState() bool {
+	c.failedStateMux.Lock()
+	defer c.failedStateMux.Unlock()
+	return c.failedState
+}
+
+func (c *Client) setFailedState(failed bool) {
+	c.failedStateMux.Lock()
+	defer c.failedStateMux.Unlock()
+	c.failedState = failed
+}
+
+// retry sends a retry signal and returns the error from retrying
+func (c *Client) retryIfFailedState() error {
+	if !c.isFailedState() {
+		return nil
+	}
+
+	c.retryCh <- struct{}{}
+	return <-c.retryErrCh
 }
