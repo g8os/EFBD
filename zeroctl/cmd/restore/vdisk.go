@@ -19,12 +19,11 @@ import (
 
 // vdiskCfg is the configuration used for the restore vdisk command
 var vdiskCmdCfg struct {
-	SourceConfig             config.SourceConfig
-	DataShards, ParityShards int
-	PrivKey                  string
-	StartTs                  int64 // start timestamp
-	EndTs                    int64 // end timestamp
-	Force                    bool
+	SourceConfig config.SourceConfig
+	PrivKey      string
+	StartTs      int64 // start timestamp
+	EndTs        int64 // end timestamp
+	Force        bool
 }
 
 // VdiskCmd represents the restore vdisk subcommand
@@ -66,8 +65,7 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 
 	ctx := context.Background()
 
-	player, err := player.NewPlayer(ctx, configSource, vdiskID,
-		vdiskCmdCfg.PrivKey, vdiskCmdCfg.DataShards, vdiskCmdCfg.ParityShards)
+	player, err := player.NewPlayer(ctx, configSource, vdiskID, vdiskCmdCfg.PrivKey)
 	if err != nil {
 		return err
 	}
@@ -162,14 +160,6 @@ func init() {
 	VdiskCmd.Flags().Var(
 		&vdiskCmdCfg.SourceConfig, "config",
 		"config resource: dialstrings (etcd cluster) or path (yaml file)")
-	VdiskCmd.Flags().IntVar(
-		&vdiskCmdCfg.DataShards,
-		"data-shards", 4,
-		"data shards (K) variable of erasure encoding")
-	VdiskCmd.Flags().IntVar(
-		&vdiskCmdCfg.ParityShards,
-		"parity-shards", 2,
-		"parity shards (M) variable of erasure encoding")
 	VdiskCmd.Flags().StringVar(
 		&vdiskCmdCfg.PrivKey,
 		"priv-key", "12345678901234567890123456789012",

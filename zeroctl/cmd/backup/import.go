@@ -32,10 +32,8 @@ var ImportVdiskCmd = &cobra.Command{
 // see `init` for more information
 // about the meaning of each config property.
 var importVdiskCmdCfg struct {
-	DataShards   int
-	ParityShards int
-	TlogPrivKey  string
-	FlushSize    int
+	TlogPrivKey string
+	FlushSize   int
 }
 
 func importVdisk(cmd *cobra.Command, args []string) error {
@@ -105,8 +103,6 @@ func importVdisk(cmd *cobra.Command, args []string) error {
 		SourceVdiskID: vdiskCmdCfg.VdiskID,
 		TargetVdiskID: vdiskCmdCfg.VdiskID,
 		FlushSize:     importVdiskCmdCfg.FlushSize,
-		DataShards:    importVdiskCmdCfg.DataShards,
-		ParityShards:  importVdiskCmdCfg.ParityShards,
 		PrivKey:       importVdiskCmdCfg.TlogPrivKey,
 		JobCount:      vdiskCmdCfg.JobCount,
 	})
@@ -276,14 +272,6 @@ This is also the default in case the --storage flag is not specified.
 		"force", "f", false,
 		"when given, delete the vdisk if it already existed")
 
-	ImportVdiskCmd.Flags().IntVar(
-		&importVdiskCmdCfg.DataShards,
-		"data-shards", 4,
-		"data shards (K) variable of erasure encoding")
-	ImportVdiskCmd.Flags().IntVar(
-		&importVdiskCmdCfg.ParityShards,
-		"parity-shards", 2,
-		"parity shards (M) variable of erasure encoding")
 	ImportVdiskCmd.Flags().StringVar(
 		&importVdiskCmdCfg.TlogPrivKey,
 		"tlog-priv-key", "12345678901234567890123456789012",

@@ -39,8 +39,7 @@ func TestSlaveSyncEndToEnd(t *testing.T) {
 	defer mr.Close()
 
 	// 0-stor
-	stubSource, _, cleanFunc := newZeroStorConfig(t, vdiskID, conf.PrivKey, conf.DataShards,
-		conf.ParityShards, mr.StorageServerConfig().Address)
+	stubSource, _, cleanFunc := newZeroStorConfig(t, vdiskID, conf.PrivKey, 1, 1, mr.StorageServerConfig().Address)
 	defer cleanFunc()
 
 	// Slave syncer
@@ -158,12 +157,14 @@ func newZeroStorConfig(t *testing.T, vdiskID, privKey string,
 			ClientID:  storConf.IyoClientID,
 			Secret:    storConf.IyoSecret,
 		},
-		Servers: servers,
 		MetadataServers: []config.ServerConfig{
 			config.ServerConfig{
 				Address: mdServer.ListenAddr(),
 			},
 		},
+		DataServers:  servers,
+		DataShards:   data,
+		ParityShards: parity,
 	})
 
 	storageClusterID := "cluster_id_for_slave"

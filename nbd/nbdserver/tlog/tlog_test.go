@@ -198,15 +198,13 @@ func testTlogStorageForceFlush(ctx context.Context, t *testing.T, vdiskID string
 
 func newTlogTestServer(ctx context.Context, t *testing.T, vdiskID string) (string, func()) {
 	testConf := &server.Config{
-		DataShards:   4,
-		ParityShards: 2,
-		ListenAddr:   "",
-		FlushSize:    25,
-		FlushTime:    25,
-		PrivKey:      "12345678901234567890123456789012",
+		ListenAddr: "",
+		FlushSize:  25,
+		FlushTime:  25,
+		PrivKey:    "12345678901234567890123456789012",
 	}
 
-	configSource, _, cleanup := newZeroStorConfig(t, vdiskID, testConf)
+	configSource, _, cleanup := newZeroStorConfig(t, vdiskID, testConf, 4, 2)
 
 	// start the server
 	s, err := server.NewServer(testConf, configSource)
@@ -264,15 +262,13 @@ func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
 	t.Log("1. Start a tlogserver;")
 
 	testConf := &server.Config{
-		DataShards:   4,
-		ParityShards: 2,
-		ListenAddr:   "",
-		FlushSize:    1,
-		FlushTime:    1,
-		PrivKey:      "12345678901234567890123456789012",
+		ListenAddr: "",
+		FlushSize:  1,
+		FlushTime:  1,
+		PrivKey:    "12345678901234567890123456789012",
 	}
 
-	configSource, _, cleanup := newZeroStorConfig(t, vdiskID, testConf)
+	configSource, _, cleanup := newZeroStorConfig(t, vdiskID, testConf, 4, 2)
 	defer cleanup()
 
 	t.Log("start the server")
@@ -403,8 +399,7 @@ func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
 	t.Log("7. Replay the tlog aggregations;")
 
 	t.Log("replay from tlog except the last block")
-	player, err := player.NewPlayerWithStorage(ctx, configSource, nil, storage, vdiskID,
-		testConf.PrivKey, testConf.DataShards, testConf.ParityShards)
+	player, err := player.NewPlayerWithStorage(ctx, configSource, nil, storage, vdiskID, testConf.PrivKey)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -887,10 +882,10 @@ func TestDataHistory(t *testing.T) {
 	}
 }
 
-func newZeroStorConfig(t *testing.T, vdiskID string, tlogConf *server.Config) (*config.StubSource, stor.Config, func()) {
+func newZeroStorConfig(t *testing.T, vdiskID string, tlogConf *server.Config, k, m int) (*config.StubSource, stor.Config, func()) {
 
 	// stor server
-	storCluster, err := embeddedserver.NewZeroStorCluster(tlogConf.DataShards + tlogConf.ParityShards)
+	storCluster, err := embeddedserver.NewZeroStorCluster(k + m)
 	require.Nil(t, err)
 
 	var servers []config.ServerConfig
@@ -912,8 +907,8 @@ func newZeroStorConfig(t *testing.T, vdiskID string, tlogConf *server.Config) (*
 		IyoSecret:       "",
 		ZeroStorShards:  storCluster.Addrs(),
 		MetaShards:      []string{mdServer.ListenAddr()},
-		DataShardsNum:   tlogConf.DataShards,
-		ParityShardsNum: tlogConf.ParityShards,
+		DataShardsNum:   k,
+		ParityShardsNum: m,
 		EncryptPrivKey:  tlogConf.PrivKey,
 	}
 
@@ -927,12 +922,14 @@ func newZeroStorConfig(t *testing.T, vdiskID string, tlogConf *server.Config) (*
 			ClientID:  storConf.IyoClientID,
 			Secret:    storConf.IyoSecret,
 		},
-		Servers: servers,
+		DataServers: servers,
 		MetadataServers: []config.ServerConfig{
 			config.ServerConfig{
 				Address: mdServer.ListenAddr(),
 			},
 		},
+		DataShards:   k,
+		ParityShards: m,
 	})
 
 	cleanFunc := func() {

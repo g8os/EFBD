@@ -29,8 +29,7 @@ type Player struct {
 type OnReplayCb func(seq uint64) error
 
 // NewPlayer creates new tlog player
-func NewPlayer(ctx context.Context, source config.Source,
-	vdiskID, privKey string, dataShards, parityShards int) (*Player, error) {
+func NewPlayer(ctx context.Context, source config.Source, vdiskID, privKey string) (*Player, error) {
 
 	ardbPool := ardb.NewPool(nil)
 	blockStorage, err := storage.BlockStorageFromConfigSource(vdiskID, source, ardbPool)
@@ -39,16 +38,16 @@ func NewPlayer(ctx context.Context, source config.Source,
 		return nil, err
 	}
 
-	return NewPlayerWithStorage(ctx, source, ardbPool, blockStorage, vdiskID, privKey, dataShards, parityShards)
+	return NewPlayerWithStorage(ctx, source, ardbPool, blockStorage, vdiskID, privKey)
 }
 
 // NewPlayerWithStorage create new tlog player
 // with given BlockStorage
 func NewPlayerWithStorage(ctx context.Context, source config.Source,
 	ardbPool *ardb.Pool, storage storage.BlockStorage,
-	vdiskID, privKey string, dataShards, parityShards int) (*Player, error) {
+	vdiskID, privKey string) (*Player, error) {
 
-	storConf, err := stor.ConfigFromConfigSource(source, vdiskID, privKey, dataShards, parityShards)
+	storConf, err := stor.ConfigFromConfigSource(source, vdiskID, privKey)
 	if err != nil {
 		return nil, err
 	}

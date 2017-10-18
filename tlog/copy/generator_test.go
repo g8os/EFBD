@@ -75,12 +75,14 @@ func TestGenerate(t *testing.T) {
 			Org:       "testorg",
 			Namespace: "thedisk",
 		},
-		Servers: serverConf,
 		MetadataServers: []config.ServerConfig{
 			config.ServerConfig{
 				Address: mdServer.ListenAddr(),
 			},
 		},
+		DataServers:  serverConf,
+		DataShards:   dataShards,
+		ParityShards: parityShards,
 	})
 
 	// 1. Create block storages and fill with data
@@ -109,8 +111,6 @@ func TestGenerate(t *testing.T) {
 	generator, err := NewGenerator(confSource, Config{
 		SourceVdiskID: sourceVdiskID,
 		TargetVdiskID: targetVdiskID,
-		DataShards:    dataShards,
-		ParityShards:  parityShards,
 		PrivKey:       privKey,
 		JobCount:      runtime.NumCPU(),
 	})
@@ -123,7 +123,7 @@ func TestGenerate(t *testing.T) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
-	player, err := player.NewPlayer(ctx, confSource, targetVdiskID, privKey, dataShards, parityShards)
+	player, err := player.NewPlayer(ctx, confSource, targetVdiskID, privKey)
 	require.NoError(t, err)
 
 	_, err = player.Replay(decoder.NewLimitByTimestamp(0, 0))

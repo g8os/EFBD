@@ -291,8 +291,12 @@ func NewZeroStorClusterConfig(data []byte) (*ZeroStorClusterConfig, error) {
 // ZeroStorClusterConfig defines the config for a ZeroStor server cluster
 type ZeroStorClusterConfig struct {
 	IYO             IYOCredentials `yaml:"iyo" valid:"required"`
-	Servers         []ServerConfig `yaml:"servers" valid:"required"`
 	MetadataServers []ServerConfig `yaml:"metadataServers" valid:"required"`
+	DataServers     []ServerConfig `yaml:"dataServers" valid:"required"`
+	// data shards (K) variable of the erasure encoding
+	DataShards int `yaml:"dataShards" valid:"required"`
+	// parity shards (M) variable of the erasure encoding
+	ParityShards int `yaml:"parityShards" valid:"required"`
 }
 
 // Validate implements FormatValidator.Validate.
@@ -304,6 +308,20 @@ func (cfg *ZeroStorClusterConfig) Validate() error {
 	_, err := valid.ValidateStruct(cfg)
 	if err != nil {
 		return fmt.Errorf("invalid ZeroStorClusterConfig: %v", err)
+	}
+
+	if cfg.DataShards < 1 {
+		return errors.New("invalid ZeroStorClusterConfig: dataShards has to be at least 1")
+	}
+	if cfg.ParityShards < 1 {
+		return errors.New("invalid ZeroStorClusterConfig: parityShards has to be at least 1")
+	}
+
+	expectedServeCount := cfg.DataShards + cfg.ParityShards
+	if len(cfg.DataServers) != expectedServeCount {
+		return fmt.Errorf(
+			"invalid ZeroStorClusterConfig: expected %d (data+parity) servers, while %d servers were defined",
+			expectedServeCount, len(cfg.DataServers))
 	}
 
 	return nil
@@ -318,11 +336,14 @@ func (cfg *ZeroStorClusterConfig) Clone() ZeroStorClusterConfig {
 
 	clone.IYO = cfg.IYO
 
-	clone.Servers = make([]ServerConfig, len(cfg.Servers))
-	copy(clone.Servers, cfg.Servers)
-
 	clone.MetadataServers = make([]ServerConfig, len(cfg.MetadataServers))
 	copy(clone.MetadataServers, cfg.MetadataServers)
+
+	clone.DataServers = make([]ServerConfig, len(cfg.DataServers))
+	copy(clone.DataServers, cfg.DataServers)
+
+	clone.DataShards = cfg.DataShards
+	clone.ParityShards = cfg.ParityShards
 
 	return clone
 }
@@ -334,8 +355,13 @@ func (cfg *ZeroStorClusterConfig) Equal(other ZeroStorClusterConfig) bool {
 		return false
 	}
 
+	// compare data/parity shard count
+	if cfg.DataShards != other.DataShards || cfg.ParityShards != other.ParityShards {
+		return false
+	}
+
 	// check length Servers
-	if len(cfg.Servers) != len(other.Servers) ||
+	if len(cfg.DataServers) != len(other.DataServers) ||
 		len(cfg.MetadataServers) != len(other.MetadataServers) {
 		return false
 	}
@@ -346,8 +372,8 @@ func (cfg *ZeroStorClusterConfig) Equal(other ZeroStorClusterConfig) bool {
 	}
 
 	// check if servers are equal
-	for i := range cfg.Servers {
-		if cfg.Servers[i] != other.Servers[i] {
+	for i := range cfg.DataServers {
+		if cfg.DataServers[i] != other.DataServers[i] {
 			return false
 		}
 	}

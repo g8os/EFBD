@@ -179,8 +179,10 @@ See the [StorageClusterConfig Godoc][StorageClusterConfigGodoc] for more informa
 Stores [0-Stor][zerostorserver] cluster information, referenced by one or multiple [vdisks][vdisk]:
 
 * iyo: itsyou.online credentials used for [namespacing of the the 0-stor][zeroStorNamespacing];
-* servers: 0-stor server addresses;
 * metadataServers: metadata server addresses;
+* dataServers: 0-stor server addresses (dataShards+parityShards required);
+* dataShards: data shards (K) variable of the erasure encoding;
+* parityShards: parity shards (M) variable of the erasure encoding;
 
 Example Config:
 ```yaml
@@ -189,11 +191,17 @@ iyo: #all iyo fields are required
   namespace: "foo namespace" #iyo namespace 
   clientID: "foo client" #iyo client id
   secret: "foo secret" #iyo secret
-servers: # required, at least 1 server is required
-  - address: "1.1.1.1:11" # has to be valid dial string
-  - address: "2.2.2.2:22"
 metadataServers: # required, at least 1 server is required
   - address: "3.3.3.3:33" # has to be valid dial string
+dataServers: # dataShards+parityShards server required
+  - address: "1.1.1.1:11" # has to be valid dial string
+  - address: "2.2.2.2:22"
+  - address: "2.2.2.2:33"
+  - address: "2.2.2.2:44"
+  - address: "2.2.2.2:55"
+  - address: "2.2.2.2:66"
+dataShards: 4
+parityShards: 2
 ```
 
 Used by the [TLog Server][tlogServerConfig].

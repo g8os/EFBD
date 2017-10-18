@@ -25,7 +25,7 @@ type Generator struct {
 
 // NewGenerator creates new tlog generator
 func NewGenerator(configSource config.Source, conf Config) (*Generator, error) {
-	flusher, err := flusher.New(configSource, conf.DataShards, conf.ParityShards, conf.FlushSize,
+	flusher, err := flusher.New(configSource, conf.FlushSize,
 		conf.TargetVdiskID, conf.PrivKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create flusher: %v", err)
