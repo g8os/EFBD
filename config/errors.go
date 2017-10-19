@@ -35,8 +35,8 @@ var (
 )
 
 var (
-	// ErrInvalidStorageServerConfig is returned when a storage server config in invalid
-	ErrInvalidStorageServerConfig = errors.New("invalid storage server config")
+	// ErrNilConfig is returned when a config was nil
+	ErrNilConfig = errors.New("config is nil")
 )
 
 // NewInvalidConfigError creates a new InvalidConfigError from a given error

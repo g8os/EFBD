@@ -146,7 +146,7 @@ func TestReadStorageClusterConfig(t *testing.T) {
 
 	outputCfg, err := ReadStorageClusterConfig(source, "foo")
 	if assert.NoError(err, "should be ok") {
-		assert.Equal(inputCfg, outputCfg)
+		assert.Equal(inputCfg, *outputCfg)
 	}
 
 	_, err = ReadStorageClusterConfig(source, "bar")
@@ -163,7 +163,7 @@ func TestReadStorageClusterConfig(t *testing.T) {
 
 	outputCfg, err = ReadStorageClusterConfig(source, "bar")
 	if assert.NoError(err, "should be ok") {
-		assert.Equal(inputCfg, outputCfg)
+		assert.Equal(inputCfg, *outputCfg)
 	}
 }
 

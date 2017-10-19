@@ -1042,8 +1042,8 @@ func MetadataKey(vdiskID string) string {
 }
 
 // CreateMetadata creates all metadata of a tlog-enabled storage.
-func CreateMetadata(vdiskID string, lastFlushedSequence uint64, clusterCfg *config.StorageClusterConfig) error {
-	cluster, err := ardb.NewCluster(*clusterCfg, nil)
+func CreateMetadata(vdiskID string, lastFlushedSequence uint64, clusterCfg config.StorageClusterConfig) error {
+	cluster, err := ardb.NewCluster(clusterCfg, nil)
 	if err != nil {
 		return err
 	}
@@ -1096,20 +1096,15 @@ func DeleteMetadata(serverCfg config.StorageServerConfig, vdiskIDs ...string) er
 
 // CopyMetadata copies all metadata of a tlog-enabled storage
 // from a sourceID to a targetID, within the same cluster or between different clusters.
-func CopyMetadata(sourceID, targetID string, sourceClusterCfg, targetClusterCfg *config.StorageClusterConfig) error {
-	// validate source cluster
-	if sourceClusterCfg == nil {
-		return errors.New("no source cluster given")
-	}
-
+func CopyMetadata(sourceID, targetID string, sourceClusterCfg config.StorageClusterConfig, targetClusterCfg *config.StorageClusterConfig) error {
 	// define whether or not we're copying between different servers.
 	if targetClusterCfg == nil {
-		targetClusterCfg = sourceClusterCfg
+		targetClusterCfg = &sourceClusterCfg
 	}
 
 	// get first available storage server
 
-	metaSourceCfg, err := ardb.FindFirstAvailableServerConfig(*sourceClusterCfg)
+	metaSourceCfg, err := ardb.FindFirstAvailableServerConfig(sourceClusterCfg)
 	if err != nil {
 		return err
 	}

@@ -101,9 +101,10 @@ func TestNewStorageClusterConfig(t *testing.T) {
 	}
 
 	for _, invalidCase := range invalidStorageClusterConfigYAML {
-		_, err := NewStorageClusterConfig([]byte(invalidCase))
+		cfg, err := NewStorageClusterConfig([]byte(invalidCase))
 		if assert.Error(err, invalidCase) {
 			t.Logf("NewStorageClusterConfig error: %v", err)
+			assert.Nil(cfg, invalidCase)
 		}
 	}
 }
@@ -156,10 +157,10 @@ func TestStorageServerConfigEqual(t *testing.T) {
 	assert := assert.New(t)
 
 	var a, b StorageServerConfig
-	assert.True(a.Equal(b), "both are empty")
+	assert.True(a.Equal(b), "both are nil")
 
 	a = StorageServerConfig{Address: "localhost:16379"}
-	assert.False(a.Equal(b), "a isn't empty")
+	assert.False(a.Equal(b), "a isn't nil")
 
 	b = a
 	assert.True(a.Equal(b), "should be equal")

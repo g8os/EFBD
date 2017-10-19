@@ -76,16 +76,16 @@ func ReadVdiskTlogConfig(source Source, vdiskID string) (*VdiskTlogConfig, error
 
 // ReadStorageClusterConfig returns the requested StorageClusterConfig
 // from a given config source.
-func ReadStorageClusterConfig(source Source, clusterID string) (StorageClusterConfig, error) {
+func ReadStorageClusterConfig(source Source, clusterID string) (*StorageClusterConfig, error) {
 	bytes, err := ReadConfig(source, clusterID, KeyClusterStorage)
 	if err != nil {
-		return StorageClusterConfig{}, err
+		return nil, err
 	}
 
 	cfg, err := NewStorageClusterConfig(bytes)
 	if err != nil {
 		source.MarkInvalidKey(Key{ID: clusterID, Type: KeyClusterStorage}, "")
-		return StorageClusterConfig{}, err
+		return nil, err
 	}
 
 	return cfg, nil
@@ -371,7 +371,7 @@ func WatchStorageClusterConfig(ctx context.Context, source Source, clusterID str
 
 	// setup channel and send initial config value
 	updater := make(chan StorageClusterConfig, 1)
-	updater <- cfg
+	updater <- *cfg
 
 	ctx = watchContext(ctx)
 	configKey := Key{ID: clusterID, Type: KeyClusterStorage}
@@ -409,7 +409,7 @@ func WatchStorageClusterConfig(ctx context.Context, source Source, clusterID str
 				}
 
 				select {
-				case updater <- cfg:
+				case updater <- *cfg:
 				// ensure we can't get stuck in a deadlock for this goroutine
 				case <-ctx.Done():
 					log.Errorf("timed out (ctx) while sending update for %v",

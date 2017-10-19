@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/garyburd/redigo/redis"
@@ -197,11 +196,7 @@ func (ds *dedupedStorage) Close() error { return nil }
 
 // DedupedVdiskExists returns if the deduped vdisk in question
 // exists in the given ardb storage cluster.
-func DedupedVdiskExists(vdiskID string, cluster *config.StorageClusterConfig) (bool, error) {
-	if cluster == nil {
-		return false, errors.New("no cluster config given")
-	}
-
+func DedupedVdiskExists(vdiskID string, cluster config.StorageClusterConfig) (bool, error) {
 	// storage key used on all data servers for this vdisk
 	key := lba.StorageKey(vdiskID)
 
@@ -232,11 +227,7 @@ func dedupedVdiskExistsOnServer(key string, server config.StorageServerConfig) (
 // ListDedupedBlockIndices returns all indices stored for the given deduped storage.
 // This function will always either return an error OR indices.
 // If this function returns indices, they are guaranteed to be in order from smallest to biggest.
-func ListDedupedBlockIndices(vdiskID string, cluster *config.StorageClusterConfig) ([]int64, error) {
-	if cluster == nil {
-		return nil, errors.New("no cluster config given")
-	}
-
+func ListDedupedBlockIndices(vdiskID string, cluster config.StorageClusterConfig) ([]int64, error) {
 	var vdiskIndices []int64
 	key := lba.StorageKey(vdiskID)
 
@@ -280,15 +271,10 @@ func listDedupedBlockIndices(key string, server config.StorageServerConfig) ([]i
 
 // CopyDeduped copies all metadata of a deduped storage
 // from a sourceID to a targetID, within the same cluster or between different clusters.
-func CopyDeduped(sourceID, targetID string, sourceCluster, targetCluster *config.StorageClusterConfig) error {
-	// validate source cluster
-	if sourceCluster == nil {
-		return errors.New("no source cluster given")
-	}
-
+func CopyDeduped(sourceID, targetID string, sourceCluster config.StorageClusterConfig, targetCluster *config.StorageClusterConfig) error {
 	// copy the source LBA to a target LBA within the same cluster
 	if targetCluster == nil {
-		return copyDedupedSameServerCount(sourceID, targetID, sourceCluster, sourceCluster)
+		return copyDedupedSameServerCount(sourceID, targetID, sourceCluster, &sourceCluster)
 	}
 
 	// copy the source LBA to a target LBA,
@@ -302,7 +288,7 @@ func CopyDeduped(sourceID, targetID string, sourceCluster, targetCluster *config
 	return copyDedupedDifferentServerCount(sourceID, targetID, sourceCluster, targetCluster)
 }
 
-func copyDedupedSameServerCount(sourceID, targetID string, sourceCluster, targetCluster *config.StorageClusterConfig) error {
+func copyDedupedSameServerCount(sourceID, targetID string, sourceCluster config.StorageClusterConfig, targetCluster *config.StorageClusterConfig) error {
 	var err error
 	var targetCfg config.StorageServerConfig
 
@@ -344,7 +330,7 @@ func copyDedupedSameServerCount(sourceID, targetID string, sourceCluster, target
 	return nil
 }
 
-func copyDedupedDifferentServerCount(sourceID, targetID string, sourceCluster, targetCluster *config.StorageClusterConfig) error {
+func copyDedupedDifferentServerCount(sourceID, targetID string, sourceCluster config.StorageClusterConfig, targetCluster *config.StorageClusterConfig) error {
 	// create the target LBA sector storage,
 	// which will be used to store the source LBA sectors into the target ARDB cluster.
 	targetStorageCluster, err := ardb.NewCluster(*targetCluster, nil)

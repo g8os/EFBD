@@ -94,7 +94,7 @@ func checkVdiskExists(vdiskID string, configSource config.Source) error {
 	}
 
 	exists, err := storage.VdiskExists(
-		vdiskID, staticConfig.Type, &nbdStorageConfig.StorageCluster)
+		vdiskID, staticConfig.Type, nbdStorageConfig.StorageCluster)
 	if !exists {
 		return nil // vdisk doesn't exist, so nothing to do
 	}

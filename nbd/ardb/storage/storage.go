@@ -174,16 +174,16 @@ func NewBlockStorage(cfg BlockStorageConfig, cluster, templateCluster ardb.Stora
 
 // VdiskExists returns true if the vdisk question exists in the given ardb storage cluster.
 // An error is returned in case this couldn't be verified for whatever reason.
-func VdiskExists(id string, t config.VdiskType, ccfg *config.StorageClusterConfig) (bool, error) {
+func VdiskExists(id string, t config.VdiskType, cfg config.StorageClusterConfig) (bool, error) {
 	switch st := t.StorageType(); st {
 	case config.StorageDeduped:
-		return DedupedVdiskExists(id, ccfg)
+		return DedupedVdiskExists(id, cfg)
 
 	case config.StorageNonDeduped:
-		return NonDedupedVdiskExists(id, ccfg)
+		return NonDedupedVdiskExists(id, cfg)
 
 	case config.StorageSemiDeduped:
-		return SemiDedupedVdiskExists(id, ccfg)
+		return SemiDedupedVdiskExists(id, cfg)
 
 	default:
 		return false, fmt.Errorf("%v is not a supported storage type", st)
@@ -192,7 +192,7 @@ func VdiskExists(id string, t config.VdiskType, ccfg *config.StorageClusterConfi
 
 // ListBlockIndices returns all indices stored for the given storage.
 // This function will always either return an error OR indices.
-func ListBlockIndices(id string, t config.VdiskType, ccfg *config.StorageClusterConfig) ([]int64, error) {
+func ListBlockIndices(id string, t config.VdiskType, ccfg config.StorageClusterConfig) ([]int64, error) {
 	switch st := t.StorageType(); st {
 	case config.StorageDeduped:
 		return ListDedupedBlockIndices(id, ccfg)

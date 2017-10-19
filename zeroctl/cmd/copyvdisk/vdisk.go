@@ -64,7 +64,8 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 		targetClusterID = args[2]
 	}
 
-	var sourceClusterConfig, targetClusterConfig *config.StorageClusterConfig
+	var sourceClusterConfig config.StorageClusterConfig
+	var targetClusterConfig *config.StorageClusterConfig
 
 	// try to read the Vdisk+NBD config of source vdisk
 	sourceStaticConfig, err := config.ReadVdiskStaticConfig(configSource, sourceVdiskID)
@@ -79,7 +80,7 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 			"couldn't read source vdisk %s's storage config: %v", sourceVdiskID, err)
 	}
 
-	sourceClusterConfig = &sourceStorageConfig.StorageCluster
+	sourceClusterConfig = sourceStorageConfig.StorageCluster
 
 	// if a targetClusterID is given, check if it's not the same as the source cluster ID,
 	// and if it is not, get its config
@@ -91,12 +92,11 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 		}
 
 		if sourceVdiskNBDConfig.StorageClusterID != targetClusterID {
-			targetClusterConfigBuf, err := config.ReadStorageClusterConfig(configSource, targetClusterID)
+			targetClusterConfig, err = config.ReadStorageClusterConfig(configSource, targetClusterID)
 			if err != nil {
 				return fmt.Errorf(
 					"couldn't read target vdisk %s's storage config: %v", targetVdiskID, err)
 			}
-			targetClusterConfig = &targetClusterConfigBuf
 		}
 	}
 

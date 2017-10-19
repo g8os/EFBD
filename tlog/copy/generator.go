@@ -51,7 +51,7 @@ func (g *Generator) GenerateFromStorage(parentCtx context.Context) (uint64, erro
 		return 0, fmt.Errorf("failed to ReadNBDStorageConfig: %v", err)
 	}
 
-	indices, err := storage.ListBlockIndices(g.sourceVdiskID, staticConf.Type, &storageConf.StorageCluster)
+	indices, err := storage.ListBlockIndices(g.sourceVdiskID, staticConf.Type, storageConf.StorageCluster)
 	if err != nil {
 		return 0, fmt.Errorf("ListBlockIndices failed for vdisk `%v`: %v", g.sourceVdiskID, err)
 	}

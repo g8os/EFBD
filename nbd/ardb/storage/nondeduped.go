@@ -157,11 +157,7 @@ func (ss *nonDedupedStorage) isZeroContent(content []byte) bool {
 
 // NonDedupedVdiskExists returns if the non deduped vdisk in question
 // exists in the given ardb storage cluster.
-func NonDedupedVdiskExists(vdiskID string, cluster *config.StorageClusterConfig) (bool, error) {
-	if cluster == nil {
-		return false, errors.New("no cluster config given")
-	}
-
+func NonDedupedVdiskExists(vdiskID string, cluster config.StorageClusterConfig) (bool, error) {
 	// storage key used on all data servers for this vdisk
 	key := nonDedupedStorageKey(vdiskID)
 
@@ -194,11 +190,7 @@ func nonDedupedVdiskExistsOnServer(key string, server config.StorageServerConfig
 // ListNonDedupedBlockIndices returns all indices stored for the given nondeduped storage.
 // This function will always either return an error OR indices.
 // If this function returns indices, they are guaranteed to be in order from smallest to biggest.
-func ListNonDedupedBlockIndices(vdiskID string, cluster *config.StorageClusterConfig) ([]int64, error) {
-	if cluster == nil {
-		return nil, errors.New("no cluster config given")
-	}
-
+func ListNonDedupedBlockIndices(vdiskID string, cluster config.StorageClusterConfig) ([]int64, error) {
 	key := nonDedupedStorageKey(vdiskID)
 
 	var indices []int64
@@ -240,11 +232,7 @@ func listNonDedupedBlockIndicesOnDataServer(key string, server config.StorageSer
 
 // CopyNonDeduped copies a non-deduped storage
 // within the same or between different storage clusters.
-func CopyNonDeduped(sourceID, targetID string, sourceCluster, targetCluster *config.StorageClusterConfig) error {
-	// validate source cluster
-	if sourceCluster == nil {
-		return errors.New("no source cluster given")
-	}
+func CopyNonDeduped(sourceID, targetID string, sourceCluster config.StorageClusterConfig, targetCluster *config.StorageClusterConfig) error {
 	sourceDataServerCount := len(sourceCluster.Servers)
 	if sourceDataServerCount == 0 {
 		return errors.New("no data server configs given for source")
@@ -253,7 +241,7 @@ func CopyNonDeduped(sourceID, targetID string, sourceCluster, targetCluster *con
 	// define whether or not we're copying between different clusters,
 	// and if the target cluster is given, make sure to validate it.
 	if targetCluster == nil {
-		targetCluster = sourceCluster
+		targetCluster = &sourceCluster
 	} else {
 		targetDataServerCount := len(targetCluster.Servers)
 		// [TODO]

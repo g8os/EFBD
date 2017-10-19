@@ -189,17 +189,17 @@ func (cfg *VdiskTlogConfig) Validate() error {
 }
 
 // NewStorageClusterConfig creates a new StorageClusterConfig from a given YAML slice.
-func NewStorageClusterConfig(data []byte) (StorageClusterConfig, error) {
-	var clustercfg StorageClusterConfig
+func NewStorageClusterConfig(data []byte) (*StorageClusterConfig, error) {
+	clustercfg := new(StorageClusterConfig)
 
-	err := yaml.Unmarshal(data, &clustercfg)
+	err := yaml.Unmarshal(data, clustercfg)
 	if err != nil {
-		return clustercfg, NewInvalidConfigError(err)
+		return nil, NewInvalidConfigError(err)
 	}
 
 	err = clustercfg.Validate()
 	if err != nil {
-		return clustercfg, NewInvalidConfigError(err)
+		return nil, NewInvalidConfigError(err)
 	}
 
 	return clustercfg, nil
@@ -450,8 +450,9 @@ type StorageServerConfig struct {
 // returning an error in case this config is invalid.
 func (cfg *StorageServerConfig) Validate() error {
 	if cfg == nil {
-		return ErrInvalidStorageServerConfig
-	} else if cfg.State == StorageServerStateRIP {
+		return ErrNilConfig
+	}
+	if cfg.State == StorageServerStateRIP {
 		return nil // nothing to validate here
 	}
 
@@ -473,7 +474,11 @@ func (cfg *StorageServerConfig) Validate() error {
 // Equal checks if the 2 configs are equal.
 // Note that the order of data storage servers matters,
 // as this order defines where vdisk's data will end up being.
-func (cfg StorageServerConfig) Equal(other StorageServerConfig) bool {
+func (cfg *StorageServerConfig) Equal(other StorageServerConfig) bool {
+	if cfg == nil {
+		return false
+	}
+
 	// are their states equal?!
 	if cfg.State != other.State {
 		return false

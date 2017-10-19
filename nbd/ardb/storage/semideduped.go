@@ -175,7 +175,7 @@ func combineErrorPair(e1, e2 error) error {
 
 // SemiDedupedVdiskExists returns if the semi deduped vdisk in question
 // exists in the given ardb storage cluster.
-func SemiDedupedVdiskExists(vdiskID string, cluster *config.StorageClusterConfig) (bool, error) {
+func SemiDedupedVdiskExists(vdiskID string, cluster config.StorageClusterConfig) (bool, error) {
 	// it's just an alias for DedupedVdiskExists,
 	// as a semi deduped vdisk has always deduped data,
 	// while non-deduped is optional in case it's a fresh vdisk.
@@ -184,7 +184,7 @@ func SemiDedupedVdiskExists(vdiskID string, cluster *config.StorageClusterConfig
 
 // ListSemiDedupedBlockIndices returns all indices stored for the given semi deduped storage.
 // This function will always either return an error OR indices.
-func ListSemiDedupedBlockIndices(vdiskID string, cluster *config.StorageClusterConfig) ([]int64, error) {
+func ListSemiDedupedBlockIndices(vdiskID string, cluster config.StorageClusterConfig) ([]int64, error) {
 	// get deduped' indices
 	indices, err := ListDedupedBlockIndices(vdiskID, cluster)
 	if err != nil {
@@ -213,11 +213,7 @@ func ListSemiDedupedBlockIndices(vdiskID string, cluster *config.StorageClusterC
 
 // CopySemiDeduped copies a semi deduped storage
 // within the same or between different storage clusters.
-func CopySemiDeduped(sourceID, targetID string, sourceCluster, targetCluster *config.StorageClusterConfig) error {
-	// validate source cluster
-	if sourceCluster == nil {
-		return errors.New("no source cluster given")
-	}
+func CopySemiDeduped(sourceID, targetID string, sourceCluster config.StorageClusterConfig, targetCluster *config.StorageClusterConfig) error {
 	sourceDataServerCount := len(sourceCluster.Servers)
 	if sourceDataServerCount == 0 {
 		return errors.New("no data server configs given for source")
@@ -226,7 +222,7 @@ func CopySemiDeduped(sourceID, targetID string, sourceCluster, targetCluster *co
 	// define whether or not we're copying between different clusters,
 	// and if the target cluster is given, make sure to validate it.
 	if targetCluster == nil {
-		targetCluster = sourceCluster
+		targetCluster = &sourceCluster
 	} else {
 		targetDataServerCount := len(targetCluster.Servers)
 		// [TODO]
@@ -240,7 +236,7 @@ func CopySemiDeduped(sourceID, targetID string, sourceCluster, targetCluster *co
 		}
 	}
 
-	metaSourceCfg, err := ardb.FindFirstAvailableServerConfig(*sourceCluster)
+	metaSourceCfg, err := ardb.FindFirstAvailableServerConfig(sourceCluster)
 	if err != nil {
 		return err
 	}
