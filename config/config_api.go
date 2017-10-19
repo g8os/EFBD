@@ -76,19 +76,19 @@ func ReadVdiskTlogConfig(source Source, vdiskID string) (*VdiskTlogConfig, error
 
 // ReadStorageClusterConfig returns the requested StorageClusterConfig
 // from a given config source.
-func ReadStorageClusterConfig(source Source, clusterID string) (*StorageClusterConfig, error) {
+func ReadStorageClusterConfig(source Source, clusterID string) (StorageClusterConfig, error) {
 	bytes, err := ReadConfig(source, clusterID, KeyClusterStorage)
 	if err != nil {
-		return nil, err
+		return StorageClusterConfig{}, err
 	}
 
 	cfg, err := NewStorageClusterConfig(bytes)
 	if err != nil {
 		source.MarkInvalidKey(Key{ID: clusterID, Type: KeyClusterStorage}, "")
-		return nil, err
+		return StorageClusterConfig{}, err
 	}
 
-	return &cfg, nil
+	return cfg, nil
 }
 
 // ReadZeroStoreClusterConfig returns requested ZeroStorClusterConfig
@@ -371,7 +371,7 @@ func WatchStorageClusterConfig(ctx context.Context, source Source, clusterID str
 
 	// setup channel and send initial config value
 	updater := make(chan StorageClusterConfig, 1)
-	updater <- *cfg
+	updater <- cfg
 
 	ctx = watchContext(ctx)
 	configKey := Key{ID: clusterID, Type: KeyClusterStorage}

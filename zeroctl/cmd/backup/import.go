@@ -120,7 +120,7 @@ func importVdisk(cmd *cobra.Command, args []string) error {
 	}
 
 	// copy nbd's tlog metadata
-	return nbdtlog.CreateMetadata(vdiskCmdCfg.VdiskID, lastFlushedSeq, clusterConf)
+	return nbdtlog.CreateMetadata(vdiskCmdCfg.VdiskID, lastFlushedSeq, &clusterConf)
 }
 
 // checkVdiskExists checks if the vdisk in question already/still exists,

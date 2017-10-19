@@ -36,28 +36,30 @@ func ReadNBDStorageConfig(source Source, vdiskID string) (*NBDStorageConfig, err
 		log.Debugf("ReadNBDStorageConfig failed, invalid StorageClusterConfig: %v", err)
 		return nil, err
 	}
-	nbdStorageConfig.StorageCluster = *storageClusterConfig
+	nbdStorageConfig.StorageCluster = storageClusterConfig
 
 	// if template storage ID is given, fetch it
 	if nbdConfig.TemplateStorageClusterID != "" {
 		// Fetch Template Storage Cluster Config
-		nbdStorageConfig.TemplateStorageCluster, err = ReadStorageClusterConfig(
+		templateStorageCluster, err := ReadStorageClusterConfig(
 			source, nbdConfig.TemplateStorageClusterID)
 		if err != nil {
 			log.Debugf("ReadNBDStorageConfig failed, invalid TemplateStorageClusterConfig: %v", err)
 			return nil, err
 		}
+		nbdStorageConfig.TemplateStorageCluster = &templateStorageCluster
 	}
 
 	// if slave storage ID is given, fetch it
 	if nbdConfig.SlaveStorageClusterID != "" {
 		// Fetch Template Storage Cluster Config
-		nbdStorageConfig.SlaveStorageCluster, err = ReadStorageClusterConfig(
+		slaveStorageCluster, err := ReadStorageClusterConfig(
 			source, nbdConfig.SlaveStorageClusterID)
 		if err != nil {
 			log.Debugf("ReadNBDStorageConfig failed, invalid SlaveStorageClusterConfig: %v", err)
 			return nil, err
 		}
+		nbdStorageConfig.SlaveStorageCluster = &slaveStorageCluster
 	}
 
 	return nbdStorageConfig, nil
@@ -94,12 +96,13 @@ func ReadTlogStorageConfig(source Source, vdiskID string) (*TlogStorageConfig, e
 
 	// if slave storage ID is given, fetch it
 	if tlogConfig.SlaveStorageClusterID != "" {
-		tlogStorageConfig.SlaveStorageCluster, err = ReadStorageClusterConfig(
+		slaveStorageCluster, err := ReadStorageClusterConfig(
 			source, tlogConfig.SlaveStorageClusterID)
 		if err != nil {
 			log.Debugf("ReadTlogStorageConfig failed, invalid SlaveStorageCluster: %v", err)
 			return nil, err
 		}
+		tlogStorageConfig.SlaveStorageCluster = &slaveStorageCluster
 	}
 
 	return tlogStorageConfig, nil

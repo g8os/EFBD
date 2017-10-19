@@ -91,11 +91,12 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 		}
 
 		if sourceVdiskNBDConfig.StorageClusterID != targetClusterID {
-			targetClusterConfig, err = config.ReadStorageClusterConfig(configSource, targetClusterID)
+			targetClusterConfigBuf, err := config.ReadStorageClusterConfig(configSource, targetClusterID)
 			if err != nil {
 				return fmt.Errorf(
 					"couldn't read target vdisk %s's storage config: %v", targetVdiskID, err)
 			}
+			targetClusterConfig = &targetClusterConfigBuf
 		}
 	}
 
