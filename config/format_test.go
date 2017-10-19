@@ -155,26 +155,22 @@ func TestStorageClusterConfigEqual(t *testing.T) {
 func TestStorageServerConfigEqual(t *testing.T) {
 	assert := assert.New(t)
 
-	a := new(StorageServerConfig)
-	b := new(StorageServerConfig)
-	assert.True(a.Equal(*b), "both are empty")
+	var a, b StorageServerConfig
+	assert.True(a.Equal(b), "both are empty")
 
-	a = &StorageServerConfig{Address: "localhost:16379"}
-	assert.False(a.Equal(*b), "a isn't empty")
+	a = StorageServerConfig{Address: "localhost:16379"}
+	assert.False(a.Equal(b), "a isn't empty")
 
 	b = a
-	assert.True(a.Equal(*b), "should be equal")
+	assert.True(a.Equal(b), "should be equal")
 
-	a = nil
-	assert.False(a.Equal(*b), "a is nil")
-
-	a = &StorageServerConfig{Address: "localhost:16379"}
-	assert.True(a.Equal(*b), "should be equal")
+	a = StorageServerConfig{Address: "localhost:16379"}
+	assert.True(a.Equal(b), "should be equal")
 
 	a.Database = 42
-	assert.False(a.Equal(*b), "a has different database")
+	assert.False(a.Equal(b), "a has different database")
 	b.Database = 42
-	assert.True(a.Equal(*b), "should be equal")
+	assert.True(a.Equal(b), "should be equal")
 }
 
 func TestStorageClusterConfigClone(t *testing.T) {

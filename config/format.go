@@ -471,11 +471,7 @@ func (cfg *StorageServerConfig) Validate() error {
 // Equal checks if the 2 configs are equal.
 // Note that the order of data storage servers matters,
 // as this order defines where vdisk's data will end up being.
-func (cfg *StorageServerConfig) Equal(other StorageServerConfig) bool {
-	if cfg == nil {
-		cfg = new(StorageServerConfig)
-	}
-
+func (cfg StorageServerConfig) Equal(other StorageServerConfig) bool {
 	// are their states equal?!
 	if cfg.State != other.State {
 		return false
