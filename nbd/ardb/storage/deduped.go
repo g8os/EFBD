@@ -309,7 +309,7 @@ func copyDedupedSameServerCount(sourceID, targetID string, sourceCluster, target
 	for index, sourceCfg := range sourceCluster.Servers {
 		targetCfg = targetCluster.Servers[index]
 
-		if sourceCfg.Equal(&targetCfg) {
+		if sourceCfg.Equal(targetCfg) {
 			// within same storage server
 			err = func() error {
 				conn, err := ardb.Dial(sourceCfg)

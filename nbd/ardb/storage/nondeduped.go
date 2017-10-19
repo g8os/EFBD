@@ -274,7 +274,7 @@ func CopyNonDeduped(sourceID, targetID string, sourceCluster, targetCluster *con
 		sourceCfg = sourceCluster.Servers[i]
 		targetCfg = targetCluster.Servers[i]
 
-		if sourceCfg.Equal(&targetCfg) {
+		if sourceCfg.Equal(targetCfg) {
 			// within same storage server
 			err = func() error {
 				conn, err := ardb.Dial(sourceCfg)

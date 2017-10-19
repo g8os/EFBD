@@ -250,7 +250,7 @@ func CopySemiDeduped(sourceID, targetID string, sourceCluster, targetCluster *co
 	}
 
 	var hasBitMask bool
-	if metaSourceCfg.Equal(&metaTargetCfg) {
+	if metaSourceCfg.Equal(metaTargetCfg) {
 		hasBitMask, err = func() (bool, error) {
 			conn, err := ardb.Dial(metaSourceCfg)
 			if err != nil {
@@ -281,7 +281,7 @@ func CopySemiDeduped(sourceID, targetID string, sourceCluster, targetCluster *co
 		sourceCfg = sourceCluster.Servers[i]
 		targetCfg = targetCluster.Servers[i]
 
-		if sourceCfg.Equal(&targetCfg) {
+		if sourceCfg.Equal(targetCfg) {
 			// within same storage server
 			err = func() error {
 				conn, err := ardb.Dial(sourceCfg)

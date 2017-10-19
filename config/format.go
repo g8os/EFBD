@@ -269,7 +269,7 @@ func (cfg *StorageClusterConfig) Equal(other *StorageClusterConfig) bool {
 	}
 	// check if all data storages are equal
 	for i := range cfg.Servers {
-		if !cfg.Servers[i].Equal(&other.Servers[i]) {
+		if !cfg.Servers[i].Equal(other.Servers[i]) {
 			return false
 		}
 	}
@@ -471,18 +471,10 @@ func (cfg *StorageServerConfig) Validate() error {
 // Equal checks if the 2 configs are equal.
 // Note that the order of data storage servers matters,
 // as this order defines where vdisk's data will end up being.
-func (cfg *StorageServerConfig) Equal(other *StorageServerConfig) bool {
-	// check if both configs are given or not
+func (cfg *StorageServerConfig) Equal(other StorageServerConfig) bool {
 	if cfg == nil {
-		if other == nil {
-			return true
-		}
-		return false
-	} else if other == nil {
-		return false
+		cfg = new(StorageServerConfig)
 	}
-
-	// both configs are given
 
 	// are their states equal?!
 	if cfg.State != other.State {

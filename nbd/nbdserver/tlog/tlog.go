@@ -1124,7 +1124,7 @@ func CopyMetadata(sourceID, targetID string, sourceClusterCfg, targetClusterCfg 
 		return err
 	}
 
-	if metaSourceCfg.Equal(&metaTargetCfg) {
+	if metaSourceCfg.Equal(metaTargetCfg) {
 		conn, err := ardb.Dial(metaSourceCfg)
 		if err != nil {
 			return fmt.Errorf("couldn't connect to ardb: %s", err.Error())
