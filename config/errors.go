@@ -34,6 +34,11 @@ var (
 	ErrInvalidKey = errors.New("config key is invalid or not supported")
 )
 
+var (
+	// ErrNilConfig is returned when a config was nil
+	ErrNilConfig = errors.New("config is nil")
+)
+
 // NewInvalidConfigError creates a new InvalidConfigError from a given error
 func NewInvalidConfigError(err error) *InvalidConfigError {
 	return &InvalidConfigError{err}

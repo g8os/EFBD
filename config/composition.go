@@ -33,10 +33,12 @@ func (cfg *NBDStorageConfig) Validate() error {
 	}
 
 	// ensure that if the template cluster is given, it is valid
-	err = cfg.TemplateStorageCluster.Validate()
-	if err != nil {
-		return fmt.Errorf(
-			"invalid NBDStorageConfig, invalid template storage cluster: %v", err)
+	if cfg.TemplateStorageCluster != nil {
+		err = cfg.TemplateStorageCluster.Validate()
+		if err != nil {
+			return fmt.Errorf(
+				"invalid NBDStorageConfig, invalid template storage cluster: %v", err)
+		}
 	}
 
 	// ensure that if the slave cluster is given, it is valid
@@ -108,10 +110,12 @@ func (cfg *TlogStorageConfig) Validate() error {
 	}
 
 	// validate optional slave storage cluster
-	err = cfg.SlaveStorageCluster.Validate()
-	if err != nil {
-		return fmt.Errorf(
-			"invalid TlogStorageConfig, invalid slave storage cluster: %v", err)
+	if cfg.SlaveStorageCluster != nil {
+		err = cfg.SlaveStorageCluster.Validate()
+		if err != nil {
+			return fmt.Errorf(
+				"invalid TlogStorageConfig, invalid slave storage cluster: %v", err)
+		}
 	}
 
 	// all valid

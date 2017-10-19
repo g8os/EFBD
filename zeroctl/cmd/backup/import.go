@@ -120,7 +120,7 @@ func importVdisk(cmd *cobra.Command, args []string) error {
 	}
 
 	// copy nbd's tlog metadata
-	return nbdtlog.CreateMetadata(vdiskCmdCfg.VdiskID, lastFlushedSeq, clusterConf)
+	return nbdtlog.CreateMetadata(vdiskCmdCfg.VdiskID, lastFlushedSeq, *clusterConf)
 }
 
 // checkVdiskExists checks if the vdisk in question already/still exists,
@@ -145,7 +145,7 @@ func checkVdiskExists(vdiskID string) error {
 	}
 
 	exists, err := storage.VdiskExists(
-		vdiskID, staticConfig.Type, &nbdStorageConfig.StorageCluster)
+		vdiskID, staticConfig.Type, nbdStorageConfig.StorageCluster)
 	if err != nil {
 		return fmt.Errorf("couldn't check if vdisk %s already exists: %v", vdiskID, err)
 	}

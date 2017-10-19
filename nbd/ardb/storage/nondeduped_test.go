@@ -382,7 +382,7 @@ func TestListNonDedupedBlockIndices(t *testing.T) {
 		t.Fatalf("storage could not be created: %v", err)
 	}
 
-	indices, err := ListNonDedupedBlockIndices(vdiskID, &clusterConfig)
+	indices, err := ListNonDedupedBlockIndices(vdiskID, clusterConfig)
 	if err == nil {
 		t.Fatalf("expected an error, as no indices exist yet: %v", indices)
 	}
@@ -418,7 +418,7 @@ func TestListNonDedupedBlockIndices(t *testing.T) {
 		}
 
 		// now test if listing the indices is correct
-		indices, err := ListNonDedupedBlockIndices(vdiskID, &clusterConfig)
+		indices, err := ListNonDedupedBlockIndices(vdiskID, clusterConfig)
 		if err != nil {
 			t.Fatalf("couldn't list deduped block indices (step %d): %v", i, err)
 		}
@@ -455,7 +455,7 @@ func TestListNonDedupedBlockIndices(t *testing.T) {
 		expectedIndices = append(expectedIndices[:ci], expectedIndices[ci+1:]...)
 
 		// now test if listing the indices is still correct
-		indices, err := ListNonDedupedBlockIndices(vdiskID, &clusterConfig)
+		indices, err := ListNonDedupedBlockIndices(vdiskID, clusterConfig)
 		if err != nil {
 			t.Fatalf("couldn't list deduped block indices (step %d): %v", i, err)
 		}
