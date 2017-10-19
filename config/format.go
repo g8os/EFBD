@@ -189,17 +189,17 @@ func (cfg *VdiskTlogConfig) Validate() error {
 }
 
 // NewStorageClusterConfig creates a new StorageClusterConfig from a given YAML slice.
-func NewStorageClusterConfig(data []byte) (*StorageClusterConfig, error) {
-	clustercfg := new(StorageClusterConfig)
+func NewStorageClusterConfig(data []byte) (StorageClusterConfig, error) {
+	var clustercfg StorageClusterConfig
 
-	err := yaml.Unmarshal(data, clustercfg)
+	err := yaml.Unmarshal(data, &clustercfg)
 	if err != nil {
-		return nil, NewInvalidConfigError(err)
+		return clustercfg, NewInvalidConfigError(err)
 	}
 
 	err = clustercfg.Validate()
 	if err != nil {
-		return nil, NewInvalidConfigError(err)
+		return clustercfg, NewInvalidConfigError(err)
 	}
 
 	return clustercfg, nil

@@ -101,10 +101,9 @@ func TestNewStorageClusterConfig(t *testing.T) {
 	}
 
 	for _, invalidCase := range invalidStorageClusterConfigYAML {
-		cfg, err := NewStorageClusterConfig([]byte(invalidCase))
+		_, err := NewStorageClusterConfig([]byte(invalidCase))
 		if assert.Error(err, invalidCase) {
 			t.Logf("NewStorageClusterConfig error: %v", err)
-			assert.Nil(cfg, invalidCase)
 		}
 	}
 }

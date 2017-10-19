@@ -88,7 +88,7 @@ func ReadStorageClusterConfig(source Source, clusterID string) (*StorageClusterC
 		return nil, err
 	}
 
-	return cfg, nil
+	return &cfg, nil
 }
 
 // ReadZeroStoreClusterConfig returns requested ZeroStorClusterConfig
@@ -409,7 +409,7 @@ func WatchStorageClusterConfig(ctx context.Context, source Source, clusterID str
 				}
 
 				select {
-				case updater <- *cfg:
+				case updater <- cfg:
 				// ensure we can't get stuck in a deadlock for this goroutine
 				case <-ctx.Done():
 					log.Errorf("timed out (ctx) while sending update for %v",
