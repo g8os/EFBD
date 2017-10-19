@@ -449,7 +449,9 @@ type StorageServerConfig struct {
 // Validate this Storage Server Config,
 // returning an error in case this config is invalid.
 func (cfg *StorageServerConfig) Validate() error {
-	if cfg == nil || cfg.State == StorageServerStateRIP {
+	if cfg == nil {
+		return ErrInvalidStorageServerConfig
+	} else if cfg.State == StorageServerStateRIP {
 		return nil // nothing to validate here
 	}
 

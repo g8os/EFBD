@@ -34,6 +34,11 @@ var (
 	ErrInvalidKey = errors.New("config key is invalid or not supported")
 )
 
+var (
+	// ErrInvalidStorageServerConfig is returned when a storage server config in invalid
+	ErrInvalidStorageServerConfig = errors.New("invalid storage server config")
+)
+
 // NewInvalidConfigError creates a new InvalidConfigError from a given error
 func NewInvalidConfigError(err error) *InvalidConfigError {
 	return &InvalidConfigError{err}
