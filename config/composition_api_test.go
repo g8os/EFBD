@@ -343,12 +343,22 @@ func TestWatchNBDStorageConfig_ChangeClusterReference(t *testing.T) {
 	testValue := func() {
 		select {
 		case output := <-ch:
-			assert.True(output.StorageCluster.Equal(primaryStorageCluster),
-				"unexpected primary cluster: %v", output.StorageCluster)
-			assert.True(output.TemplateStorageCluster.Equal(templateStoragecluster),
-				"unexpected template cluster: %v", output.TemplateStorageCluster)
-			assert.True(output.SlaveStorageCluster.Equal(slaveStoragecluster),
-				"unexpected slave cluster: %v", output.SlaveStorageCluster)
+			if assert.NotNil(primaryStorageCluster) {
+				assert.True(output.StorageCluster.Equal(*primaryStorageCluster),
+					"unexpected primary cluster: %v", output.StorageCluster)
+			}
+			if output.TemplateStorageCluster == nil {
+				assert.Nil(templateStoragecluster)
+			} else if assert.NotNil(templateStoragecluster) {
+				assert.True(output.TemplateStorageCluster.Equal(*templateStoragecluster),
+					"unexpected template cluster: %v", output.TemplateStorageCluster)
+			}
+			if output.SlaveStorageCluster == nil {
+				assert.Nil(slaveStoragecluster)
+			} else if assert.NotNil(slaveStoragecluster) {
+				assert.True(output.SlaveStorageCluster.Equal(*slaveStoragecluster),
+					"unexpected slave cluster: %v", output.SlaveStorageCluster)
+			}
 		case invalidKey := <-invalidKeyCh:
 			assert.FailNow("received unexpected invalid key", "%v", invalidKey)
 		}
@@ -581,9 +591,13 @@ func TestWatchTlogStorageConfig_ChangeClusterReference(t *testing.T) {
 	testValue := func() {
 		select {
 		case output := <-ch:
-			assert.True(output.SlaveStorageCluster.Equal(slaveStoragecluster),
-				"unexpected slave cluster: %v", output.SlaveStorageCluster)
-			assert.True(output.ZeroStorCluster.Equal(&zeroStorCluster),
+			if output.SlaveStorageCluster == nil {
+				assert.Nil(slaveStoragecluster)
+			} else if assert.NotNil(slaveStoragecluster) {
+				assert.True(output.SlaveStorageCluster.Equal(*slaveStoragecluster),
+					"unexpected slave cluster: %v", output.SlaveStorageCluster)
+			}
+			assert.True(output.ZeroStorCluster.Equal(zeroStorCluster),
 				"unexpected zeroStor cluster: %v", output.ZeroStorCluster)
 		case invalidKey := <-invalidKeyCh:
 			assert.FailNow("received unexpected invalid key", "%v", invalidKey)

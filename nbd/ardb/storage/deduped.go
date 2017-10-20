@@ -274,21 +274,21 @@ func listDedupedBlockIndices(key string, server config.StorageServerConfig) ([]i
 func CopyDeduped(sourceID, targetID string, sourceCluster config.StorageClusterConfig, targetCluster *config.StorageClusterConfig) error {
 	// copy the source LBA to a target LBA within the same cluster
 	if targetCluster == nil {
-		return copyDedupedSameServerCount(sourceID, targetID, sourceCluster, &sourceCluster)
+		return copyDedupedSameServerCount(sourceID, targetID, sourceCluster, sourceCluster)
 	}
 
 	// copy the source LBA to a target LBA,
 	// between clusters with an equal server count
 	if len(sourceCluster.Servers) == len(targetCluster.Servers) {
-		return copyDedupedSameServerCount(sourceID, targetID, sourceCluster, targetCluster)
+		return copyDedupedSameServerCount(sourceID, targetID, sourceCluster, *targetCluster)
 	}
 
 	// copy the source LBA to a target LBA,
 	// between clusters with a different server count
-	return copyDedupedDifferentServerCount(sourceID, targetID, sourceCluster, targetCluster)
+	return copyDedupedDifferentServerCount(sourceID, targetID, sourceCluster, *targetCluster)
 }
 
-func copyDedupedSameServerCount(sourceID, targetID string, sourceCluster config.StorageClusterConfig, targetCluster *config.StorageClusterConfig) error {
+func copyDedupedSameServerCount(sourceID, targetID string, sourceCluster, targetCluster config.StorageClusterConfig) error {
 	var err error
 	var targetCfg config.StorageServerConfig
 
@@ -330,10 +330,10 @@ func copyDedupedSameServerCount(sourceID, targetID string, sourceCluster config.
 	return nil
 }
 
-func copyDedupedDifferentServerCount(sourceID, targetID string, sourceCluster config.StorageClusterConfig, targetCluster *config.StorageClusterConfig) error {
+func copyDedupedDifferentServerCount(sourceID, targetID string, sourceCluster, targetCluster config.StorageClusterConfig) error {
 	// create the target LBA sector storage,
 	// which will be used to store the source LBA sectors into the target ARDB cluster.
-	targetStorageCluster, err := ardb.NewCluster(*targetCluster, nil)
+	targetStorageCluster, err := ardb.NewCluster(targetCluster, nil)
 	if err != nil {
 		return err
 	}

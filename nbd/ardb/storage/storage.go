@@ -192,16 +192,16 @@ func VdiskExists(id string, t config.VdiskType, cfg config.StorageClusterConfig)
 
 // ListBlockIndices returns all indices stored for the given storage.
 // This function will always either return an error OR indices.
-func ListBlockIndices(id string, t config.VdiskType, ccfg config.StorageClusterConfig) ([]int64, error) {
+func ListBlockIndices(id string, t config.VdiskType, cfg config.StorageClusterConfig) ([]int64, error) {
 	switch st := t.StorageType(); st {
 	case config.StorageDeduped:
-		return ListDedupedBlockIndices(id, ccfg)
+		return ListDedupedBlockIndices(id, cfg)
 
 	case config.StorageNonDeduped:
-		return ListNonDedupedBlockIndices(id, ccfg)
+		return ListNonDedupedBlockIndices(id, cfg)
 
 	case config.StorageSemiDeduped:
-		return ListSemiDedupedBlockIndices(id, ccfg)
+		return ListSemiDedupedBlockIndices(id, cfg)
 
 	default:
 		return nil, fmt.Errorf("%v is not a supported storage type", st)

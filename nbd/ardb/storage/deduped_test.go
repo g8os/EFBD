@@ -612,7 +612,7 @@ func testCopyDedupedDifferentServerCount(assert *assert.Assertions, indices []in
 	targetStorageConfig := targetCluster.StorageClusterConfig()
 
 	// copy the sectors
-	err := copyDedupedDifferentServerCount(sourceID, targetID, sourceCluster, &targetStorageConfig)
+	err := copyDedupedDifferentServerCount(sourceID, targetID, sourceCluster, targetStorageConfig)
 	if !assert.NoError(err) {
 		return
 	}

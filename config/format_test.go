@@ -112,16 +112,18 @@ func TestNewStorageClusterConfig(t *testing.T) {
 func TestStorageClusterConfigEqual(t *testing.T) {
 	assert := assert.New(t)
 
-	var a, b *StorageClusterConfig
-	assert.True(a.Equal(b), "both are nil")
+	var a *StorageClusterConfig
+	var b StorageClusterConfig
+
+	assert.False(a.Equal(b), "a is nil")
 
 	a = &StorageClusterConfig{
 		Servers: []StorageServerConfig{
 			StorageServerConfig{Address: "localhost:16379"},
 		},
 	}
-	assert.False(a.Equal(b), "a isn't nil")
-	b = a
+	assert.False(a.Equal(b), "b is different")
+	b = *a
 	assert.True(a.Equal(b), "should be equal")
 
 	a = nil
@@ -149,8 +151,8 @@ func TestStorageClusterConfigEqual(t *testing.T) {
 	assert.False(a.Equal(b), "almost equal servers, one has different database")
 	b.Servers[0].Database = 5
 
-	b = nil
-	assert.False(a.Equal(b), "b is nil")
+	b = StorageClusterConfig{}
+	assert.False(a.Equal(b), "b is different")
 }
 
 func TestStorageServerConfigEqual(t *testing.T) {
@@ -189,13 +191,13 @@ func TestStorageClusterConfigClone(t *testing.T) {
 	}
 
 	b := a.Clone()
-	assert.True(a.Equal(&b), "should be equal")
+	assert.True(a.Equal(b), "should be equal")
 
 	// as b is a clone, we should be able to modify it, without modifying a
 	b.Servers[0].Address = "localhost:300"
-	assert.False(a.Equal(&b), "shouldn't be equal")
+	assert.False(a.Equal(b), "shouldn't be equal")
 	a.Servers[0].Address = "localhost:300"
-	assert.True(a.Equal(&b), "should be equal")
+	assert.True(a.Equal(b), "should be equal")
 }
 
 // tests StorageServerConfig manual unmarshalling
@@ -269,16 +271,17 @@ func TestNewZeroStorClusterConfig(t *testing.T) {
 func TestZeroStorClusterConfigEqual(t *testing.T) {
 	assert := assert.New(t)
 
-	var a, b *ZeroStorClusterConfig
-	assert.True(a.Equal(b), "both are nil")
+	var a *ZeroStorClusterConfig
+	var b ZeroStorClusterConfig
+	assert.False(a.Equal(b), "a is nil")
 
 	a = &ZeroStorClusterConfig{
 		IYO: IYOCredentials{
 			Org: "foo organisation",
 		},
 	}
-	assert.False(a.Equal(b), "a is not nil")
-	b = a
+	assert.False(a.Equal(b), "b is different")
+	b = *a
 	assert.True(a.Equal(b), "should be equal")
 
 	a = nil
