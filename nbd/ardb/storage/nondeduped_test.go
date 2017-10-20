@@ -111,7 +111,7 @@ func TestGetNondedupedTemplateContent(t *testing.T) {
 	clusterA := redisstub.NewUniCluster(false)
 	defer clusterA.Close()
 
-	storageA, err := NonDeduped(vdiskID, "", 8, clusterA, ardb.NopCluster{})
+	storageA, err := NonDeduped(vdiskID, "", 8, clusterA, ardb.ErrorCluster{Error: ardb.ErrNoServersAvailable})
 	if err != nil || storageA == nil {
 		t.Fatalf("storageA could not be created: %v", err)
 	}
@@ -278,7 +278,7 @@ func TestNonDedupedStorageTemplateServerDown(t *testing.T) {
 	}
 
 	// now mark template invalid, and that should make it return an expected error instead
-	storageB.(*nonDedupedStorage).templateCluster = ardb.NopCluster{}
+	storageB.(*nonDedupedStorage).templateCluster = ardb.ErrorCluster{Error: ardb.ErrNoServersAvailable}
 	content, err = storageB.GetBlock(someIndexPlusOne)
 	if len(content) != 0 {
 		t.Fatalf("content should be empty but was was: %v",

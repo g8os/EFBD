@@ -11,7 +11,6 @@ import (
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
-	"github.com/zero-os/0-Disk/nbd/nbdserver/tlog"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/player"
 	cmdConf "github.com/zero-os/0-Disk/zeroctl/cmd/config"
@@ -153,7 +152,7 @@ func deleteTlogMetadata(serverCfg config.StorageServerConfig, vdiskMap map[strin
 	// TODO: also delete actual tlog meta(data) from 0-Stor cluster for the supported vdisks
 	//       https://github.com/zero-os/0-Disk/issues/147
 
-	return tlog.DeleteMetadata(serverCfg, vdisks...)
+	return storage.DeleteTlogMetadata(serverCfg, vdisks...)
 }
 
 func init() {

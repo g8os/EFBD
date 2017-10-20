@@ -10,7 +10,6 @@ import (
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
-	"github.com/zero-os/0-Disk/nbd/nbdserver/tlog"
 	"github.com/zero-os/0-Disk/tlog/copy"
 	tlogserver "github.com/zero-os/0-Disk/tlog/tlogserver/server"
 	cmdconfig "github.com/zero-os/0-Disk/zeroctl/cmd/config"
@@ -142,7 +141,7 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 	// support tlog and have enabled it
 	// TODO: only try to do this if both source and target vdiskID have tlog configured
 	// TODO: also fork/copy the actual tlog (meta)data, see https://github.com/zero-os/0-Disk/issues/147
-	return tlog.CopyMetadata(sourceVdiskID, targetVdiskID, sourceClusterConfig, targetClusterConfig)
+	return storage.CopyTlogMetadata(sourceVdiskID, targetVdiskID, sourceClusterConfig, targetClusterConfig)
 }
 
 func init() {

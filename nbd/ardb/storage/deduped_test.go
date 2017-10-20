@@ -139,7 +139,7 @@ func TestGetPrimaryOrTemplateContent(t *testing.T) {
 	defer clusterA.Close()
 
 	storageA, err := Deduped(
-		vdiskIDA, 8, ardb.DefaultLBACacheLimit, clusterA, ardb.NopCluster{})
+		vdiskIDA, 8, ardb.DefaultLBACacheLimit, clusterA, ardb.ErrorCluster{Error: ardb.ErrNoServersAvailable})
 	if err != nil || storageA == nil {
 		t.Fatalf("storageA could not be created: %v", err)
 	}
@@ -370,7 +370,7 @@ func TestDedupedStorageTemplateServerDown(t *testing.T) {
 	}
 
 	// now mark template invalid, and that should make it return an expected error instead
-	storageB.(*dedupedStorage).templateCluster = ardb.NopCluster{}
+	storageB.(*dedupedStorage).templateCluster = ardb.ErrorCluster{Error: ardb.ErrNoServersAvailable}
 	content, err = storageB.GetBlock(someIndexPlusOne)
 	if len(content) != 0 {
 		t.Fatalf("content should be empty but was was: %v",

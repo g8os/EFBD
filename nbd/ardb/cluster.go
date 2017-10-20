@@ -156,19 +156,36 @@ func (cluster *Cluster) serverOperational(index int64) (bool, error) {
 	return ok, nil
 }
 
+// ErrorCluster is a Cluster which can be used for
+// scenarios where you want to specify a StorageCluster,
+// which only ever returns a given error.
+type ErrorCluster struct {
+	Error error
+}
+
+// Do implements StorageCluster.Do
+func (cluster ErrorCluster) Do(action StorageAction) (reply interface{}, err error) {
+	return nil, cluster.Error
+}
+
+// DoFor implements StorageCluster.DoFor
+func (cluster ErrorCluster) DoFor(objectIndex int64, action StorageAction) (reply interface{}, err error) {
+	return nil, cluster.Error
+}
+
 // NopCluster is a Cluster which can be used for
 // scenarios where you want to specify a StorageCluster,
-// which only ever returns NoServersAvailable error.
+// which returns no errors and no content.
 type NopCluster struct{}
 
 // Do implements StorageCluster.Do
-func (cluster NopCluster) Do(action StorageAction) (reply interface{}, err error) {
-	return nil, ErrNoServersAvailable
+func (cluster NopCluster) Do(_ StorageAction) (reply interface{}, err error) {
+	return nil, nil
 }
 
 // DoFor implements StorageCluster.DoFor
 func (cluster NopCluster) DoFor(objectIndex int64, action StorageAction) (reply interface{}, err error) {
-	return nil, ErrNoServersAvailable
+	return nil, nil
 }
 
 // ServerIndexPredicate is a predicate

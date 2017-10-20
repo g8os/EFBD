@@ -13,7 +13,6 @@ import (
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb/backup"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
-	nbdtlog "github.com/zero-os/0-Disk/nbd/nbdserver/tlog"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/copy"
 	tlogserver "github.com/zero-os/0-Disk/tlog/tlogserver/server"
@@ -110,13 +109,18 @@ func importVdisk(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	lastFlushedSeq, err := generator.GenerateFromStorage(ctx)
+	var tlogMetadata storage.TlogMetadata
+	tlogMetadata.LastFlushedSequence, err = generator.GenerateFromStorage(ctx)
 	if err != nil {
 		return err
 	}
 
-	// copy nbd's tlog metadata
-	return nbdtlog.CreateMetadata(vdiskCmdCfg.VdiskID, lastFlushedSeq, *clusterConf)
+	// store nbd's tlog metadata
+	cluster, err := ardb.NewCluster(*clusterConf, nil)
+	if err != nil {
+		return err
+	}
+	return storage.StoreTlogMetadata(vdiskCmdCfg.VdiskID, cluster, tlogMetadata)
 }
 
 // checkVdiskExists checks if the vdisk in question already/still exists,
@@ -202,7 +206,7 @@ func deleteTlogMetadata(serverCfg config.StorageServerConfig, vdiskMap map[strin
 	// TODO: also delete actual tlog meta(data) from 0-Stor cluster for the supported vdisks
 	//       https://github.com/zero-os/0-Disk/issues/147
 
-	return nbdtlog.DeleteMetadata(serverCfg, vdisks...)
+	return storage.DeleteTlogMetadata(serverCfg, vdisks...)
 }
 
 func parseImportPosArguments(args []string) error {
