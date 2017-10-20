@@ -135,7 +135,7 @@ func (s *Server) handshake(r io.Reader, w io.Writer, conn *net.TCPConn) (vd *vdi
 	log.Debug("received handshake request from incoming connection")
 
 	// get the version from the handshake req and validate it
-	clientVersion := zerodisk.Version(req.Version())
+	clientVersion := zerodisk.VersionFromUInt32(req.Version())
 	if clientVersion.Compare(tlog.MinSupportedVersion) < 0 {
 		status = tlog.HandshakeStatusInvalidVersion
 		err = fmt.Errorf("client version (%s) is not supported by this server", clientVersion)

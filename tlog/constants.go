@@ -10,5 +10,5 @@ const (
 var (
 	// MinSupportedVersion is the minimum supported version
 	// that the tlog client and server of this version supports
-	MinSupportedVersion = zerodisk.NewVersion(1, 1, 0, zerodisk.VersionStageAlpha)
+	MinSupportedVersion = zerodisk.NewVersion(1, 1, 0, nil)
 )
