@@ -15,6 +15,9 @@ type StorageCluster interface {
 	// DoFor applies a given action
 	// to a server within this cluster which maps to the given objectIndex.
 	DoFor(objectIndex int64, action StorageAction) (reply interface{}, err error)
+
+	// ServerIterator returns a server iterator for this Cluster.
+	ServerIterator() (ServerIterator, error)
 }
 
 // NewUniCluster creates a new (ARDB) uni-cluster.
@@ -71,6 +74,11 @@ func (cluster *UniCluster) Do(action StorageAction) (interface{}, error) {
 // DoFor implements StorageCluster.DoFor
 func (cluster *UniCluster) DoFor(_ int64, action StorageAction) (interface{}, error) {
 	return cluster.Do(action)
+}
+
+// ServerIterator implements StorageCluster.ServerIterator
+func (cluster *UniCluster) ServerIterator() (ServerIterator, error) {
+	return uniClusterServerIterator{cluster: cluster}, nil
 }
 
 // NewCluster creates a new (ARDB) cluster.
@@ -135,6 +143,19 @@ func (cluster *Cluster) DoFor(objectIndex int64, action StorageAction) (interfac
 	return cluster.doAt(serverIndex, action)
 }
 
+// ServerIterator implements StorageCluster.ServerIterator
+func (cluster *Cluster) ServerIterator() (ServerIterator, error) {
+	it := &clusterServerIterator{cluster: cluster}
+	var ok bool
+	for ; it.cursor < cluster.serverCount; it.cursor++ {
+		if ok, _ = cluster.serverOperational(it.cursor); ok {
+			it.cursor--
+			break
+		}
+	}
+	return it, nil
+}
+
 func (cluster *Cluster) doAt(serverIndex int64, action StorageAction) (interface{}, error) {
 	// establish a connection for that serverIndex
 	conn, err := cluster.dialer.Dial(cluster.servers[serverIndex])
@@ -156,6 +177,34 @@ func (cluster *Cluster) serverOperational(index int64) (bool, error) {
 	return ok, nil
 }
 
+// clusterServerIterator implement a server iterator,
+// for a normal cluster with multiple servers.
+type clusterServerIterator struct {
+	cluster *Cluster
+	cursor  int64
+}
+
+// Do implements ServerIterator.Do
+func (it *clusterServerIterator) Do(action StorageAction) (reply interface{}, err error) {
+	return it.cluster.doAt(it.cursor, action)
+}
+
+// Next implements ServerIterator.Next
+func (it *clusterServerIterator) Next() bool {
+	if it.cursor >= it.cluster.serverCount {
+		return false
+	}
+
+	var ok bool
+	for it.cursor++; it.cursor < it.cluster.serverCount; it.cursor++ {
+		if ok, _ = it.cluster.serverOperational(it.cursor); ok {
+			return true
+		}
+	}
+
+	return true
+}
+
 // ErrorCluster is a Cluster which can be used for
 // scenarios where you want to specify a StorageCluster,
 // which only ever returns a given error.
@@ -173,6 +222,11 @@ func (cluster ErrorCluster) DoFor(objectIndex int64, action StorageAction) (repl
 	return nil, cluster.Error
 }
 
+// ServerIterator implements StorageCluster.ServerIterator
+func (cluster ErrorCluster) ServerIterator() (ServerIterator, error) {
+	return uniClusterServerIterator{cluster: cluster}, nil
+}
+
 // NopCluster is a Cluster which can be used for
 // scenarios where you want to specify a StorageCluster,
 // which returns no errors and no content.
@@ -186,6 +240,45 @@ func (cluster NopCluster) Do(_ StorageAction) (reply interface{}, err error) {
 // DoFor implements StorageCluster.DoFor
 func (cluster NopCluster) DoFor(objectIndex int64, action StorageAction) (reply interface{}, err error) {
 	return nil, nil
+}
+
+// ServerIterator implements StorageCluster.ServerIterator
+func (cluster NopCluster) ServerIterator() (ServerIterator, error) {
+	return uniClusterServerIterator{cluster: cluster}, nil
+}
+
+// ServerIterator defines the interface of an iterator
+// which allows you to apply an action to the servers of a cluster, one by one.
+// NOTE: Next always has to be called before you can start using the Iterator!
+type ServerIterator interface {
+	// Do applies a given action
+	// to the current server interation within the cluster.
+	Do(action StorageAction) (reply interface{}, err error)
+	// Next moves the iterator's cursor to the next server,
+	// returning false if there was a next server.
+	Next() bool
+}
+
+// uniClusterServerIterator is a simple iterator which can be used
+// to provide an iterator for a cluster which only has one server.
+type uniClusterServerIterator struct {
+	cluster StorageCluster
+	active  bool
+}
+
+// Do implements ServerIterator.Do
+func (it uniClusterServerIterator) Do(action StorageAction) (reply interface{}, err error) {
+	return it.cluster.Do(action)
+}
+
+// Next implements ServerIterator.Next
+func (it uniClusterServerIterator) Next() bool {
+	if it.active {
+		return false
+	}
+
+	it.active = true
+	return true
 }
 
 // ServerIndexPredicate is a predicate
@@ -275,6 +368,14 @@ var (
 	_ StorageCluster = (*UniCluster)(nil)
 	_ StorageCluster = (*Cluster)(nil)
 	_ StorageCluster = NopCluster{}
+	_ StorageCluster = ErrorCluster{}
+)
+
+// enforces that our std ServerIterators
+// are actually ServerIterators
+var (
+	_ ServerIterator = uniClusterServerIterator{}
+	_ ServerIterator = (*clusterServerIterator)(nil)
 )
 
 var (

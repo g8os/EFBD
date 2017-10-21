@@ -77,6 +77,22 @@ func (pc *PrimaryCluster) DoFor(objectIndex int64, action ardb.StorageAction) (r
 	return pc.doAt(serverIndex, cfg, action)
 }
 
+// ServerIterator implements StorageCluster.ServerIterator.
+// The returned ServerIterator has be used within a single goroutine!
+func (pc *PrimaryCluster) ServerIterator() (ardb.ServerIterator, error) {
+	pc.mux.RLock()
+	serverIndex, err := ardb.FindFirstServerIndex(pc.serverCount, pc.serverOperational)
+	pc.mux.RUnlock()
+	if err != nil {
+		return nil, err
+	}
+
+	return &primaryClusterServerIterator{
+		cluster: pc,
+		cursor:  serverIndex - 1,
+	}, nil
+}
+
 // execute an exuction at a given primary server
 func (pc *PrimaryCluster) doAt(serverIndex int64, cfg config.StorageServerConfig, action ardb.StorageAction) (reply interface{}, err error) {
 	// establish a connection for the given config
@@ -278,6 +294,40 @@ func (pc *PrimaryCluster) updatePrimaryStorageConfig(cfg config.StorageClusterCo
 	return nil
 }
 
+// primaryClusterServerIterator implement a server iterator,
+// for a primary cluster with multiple servers.
+type primaryClusterServerIterator struct {
+	cluster *PrimaryCluster
+	cursor  int64
+}
+
+// Do implements ServerIterator.Do
+func (it *primaryClusterServerIterator) Do(action ardb.StorageAction) (reply interface{}, err error) {
+	it.cluster.mux.RLock()
+	cfg := it.cluster.servers[it.cursor]
+	it.cluster.mux.RUnlock()
+	return it.cluster.doAt(it.cursor, cfg, action)
+}
+
+// Next implements ServerIterator.Next
+func (it *primaryClusterServerIterator) Next() bool {
+	it.cluster.mux.RLock()
+	defer it.cluster.mux.RUnlock()
+
+	if it.cursor >= it.cluster.serverCount {
+		return false
+	}
+
+	var ok bool
+	for it.cursor++; it.cursor < it.cluster.serverCount; it.cursor++ {
+		if ok, _ = it.cluster.serverOperational(it.cursor); ok {
+			return true
+		}
+	}
+
+	return true
+}
+
 // NewTemplateCluster creates a new TemplateCluster.
 // See `TemplateCluster` for more information.
 func NewTemplateCluster(ctx context.Context, vdiskID string, cs config.Source) (*TemplateCluster, error) {
@@ -321,7 +371,38 @@ func (tsc *TemplateCluster) DoFor(objectIndex int64, action ardb.StorageAction) 
 	if err != nil {
 		return nil, err
 	}
+	return tsc.doAt(serverIndex, cfg, action)
+}
 
+// ServerIterator implements StorageCluster.ServerIterator.
+// The returned ServerIterator has be used within a single goroutine!
+func (tsc *TemplateCluster) ServerIterator() (ardb.ServerIterator, error) {
+	tsc.mux.RLock()
+	defer tsc.mux.RUnlock()
+
+	if tsc.serverCount == 0 {
+		return nil, ErrClusterNotDefined
+	}
+
+	serverIndex, err := ardb.FindFirstServerIndex(tsc.serverCount, tsc.serverOperational)
+	if err != nil {
+		return nil, err
+	}
+
+	return &templateClusterServerIterator{
+		cluster: tsc,
+		cursor:  serverIndex - 1,
+	}, nil
+}
+
+// Close any open resources
+func (tsc *TemplateCluster) Close() error {
+	tsc.cancel()
+	tsc.pool.Close()
+	return nil
+}
+
+func (tsc *TemplateCluster) doAt(serverIndex int64, cfg config.StorageServerConfig, action ardb.StorageAction) (reply interface{}, err error) {
 	conn, err := tsc.pool.Dial(cfg)
 	if err == nil {
 		defer conn.Close()
@@ -352,13 +433,6 @@ func (tsc *TemplateCluster) DoFor(objectIndex int64, action ardb.StorageAction) 
 	}
 
 	return nil, ardb.ErrServerUnavailable
-}
-
-// Close any open resources
-func (tsc *TemplateCluster) Close() error {
-	tsc.cancel()
-	tsc.pool.Close()
-	return nil
 }
 
 // spawnConfigReloader starts all needed config watchers,
@@ -514,6 +588,41 @@ func (tsc *TemplateCluster) serverOperational(index int64) (bool, error) {
 	}
 }
 
+// templateClusterServerIterator implement a server iterator,
+// for a template cluster with multiple servers.
+type templateClusterServerIterator struct {
+	cluster *TemplateCluster
+	cursor  int64
+}
+
+// Do implements ServerIterator.Do
+func (it *templateClusterServerIterator) Do(action ardb.StorageAction) (reply interface{}, err error) {
+	it.cluster.mux.RLock()
+	cfg := it.cluster.servers[it.cursor]
+	it.cluster.mux.RUnlock()
+
+	return it.cluster.doAt(it.cursor, cfg, action)
+}
+
+// Next implements ServerIterator.Next
+func (it *templateClusterServerIterator) Next() bool {
+	it.cluster.mux.RLock()
+	defer it.cluster.mux.RUnlock()
+
+	if it.cursor >= it.cluster.serverCount {
+		return false
+	}
+
+	var ok bool
+	for it.cursor++; it.cursor < it.cluster.serverCount; it.cursor++ {
+		if ok, _ = it.cluster.serverOperational(it.cursor); ok {
+			return true
+		}
+	}
+
+	return true
+}
+
 // storageClusterWatcher is a small helper struct,
 // used to (un)set a storage cluster watcher for a given clusterID.
 // By centralizing this logic,
@@ -608,6 +717,20 @@ func mapErrorToBroadcastStatus(err error) log.MessageStatus {
 
 	return log.StatusUnknownError
 }
+
+// enforces that our StorageClusters
+// are actually StorageClusters
+var (
+	_ ardb.StorageCluster = (*PrimaryCluster)(nil)
+	_ ardb.StorageCluster = (*TemplateCluster)(nil)
+)
+
+// enforces that our ServerIterators
+// are actually ServerIterators
+var (
+	_ ardb.ServerIterator = (*primaryClusterServerIterator)(nil)
+	_ ardb.ServerIterator = (*templateClusterServerIterator)(nil)
+)
 
 var (
 	// ErrMethodNotSupported is an error returned
