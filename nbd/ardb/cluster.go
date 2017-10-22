@@ -1,6 +1,7 @@
 package ardb
 
 import (
+	"context"
 	"errors"
 
 	"github.com/zero-os/0-Disk/config"
@@ -17,7 +18,7 @@ type StorageCluster interface {
 	DoFor(objectIndex int64, action StorageAction) (reply interface{}, err error)
 
 	// ServerIterator returns a server iterator for this Cluster.
-	ServerIterator() (ServerIterator, error)
+	ServerIterator(ctx context.Context) (<-chan StorageServer, error)
 }
 
 // NewUniCluster creates a new (ARDB) uni-cluster.
@@ -77,8 +78,10 @@ func (cluster *UniCluster) DoFor(_ int64, action StorageAction) (interface{}, er
 }
 
 // ServerIterator implements StorageCluster.ServerIterator
-func (cluster *UniCluster) ServerIterator() (ServerIterator, error) {
-	return uniClusterServerIterator{cluster: cluster}, nil
+func (cluster *UniCluster) ServerIterator(context.Context) (<-chan StorageServer, error) {
+	ch := make(chan StorageServer, 1)
+	ch <- cluster
+	return ch, nil
 }
 
 // NewCluster creates a new (ARDB) cluster.
@@ -144,16 +147,29 @@ func (cluster *Cluster) DoFor(objectIndex int64, action StorageAction) (interfac
 }
 
 // ServerIterator implements StorageCluster.ServerIterator
-func (cluster *Cluster) ServerIterator() (ServerIterator, error) {
-	it := &clusterServerIterator{cluster: cluster}
-	var ok bool
-	for ; it.cursor < cluster.serverCount; it.cursor++ {
-		if ok, _ = cluster.serverOperational(it.cursor); ok {
-			it.cursor--
-			break
+func (cluster *Cluster) ServerIterator(ctx context.Context) (<-chan StorageServer, error) {
+	ch := make(chan StorageServer)
+	go func() {
+		defer close(ch)
+
+		for index := int64(0); index < cluster.serverCount; index++ {
+			if ok, _ := cluster.serverOperational(index); !ok {
+				continue
+			}
+
+			server := storageServer{
+				cfg:    cluster.servers[index],
+				dialer: cluster.dialer,
+			}
+
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- server:
+			}
 		}
-	}
-	return it, nil
+	}()
+	return ch, nil
 }
 
 func (cluster *Cluster) doAt(serverIndex int64, action StorageAction) (interface{}, error) {
@@ -177,37 +193,28 @@ func (cluster *Cluster) serverOperational(index int64) (bool, error) {
 	return ok, nil
 }
 
-// clusterServerIterator implement a server iterator,
-// for a normal cluster with multiple servers.
-type clusterServerIterator struct {
-	cluster *Cluster
-	cursor  int64
+// storageServer is the std storage server.
+type storageServer struct {
+	cfg    config.StorageServerConfig
+	dialer ConnectionDialer
 }
 
-// Do implements ServerIterator.Do
-func (it *clusterServerIterator) Do(action StorageAction) (reply interface{}, err error) {
-	return it.cluster.doAt(it.cursor, action)
-}
-
-// Next implements ServerIterator.Next
-func (it *clusterServerIterator) Next() bool {
-	if it.cursor >= it.cluster.serverCount {
-		return false
+// Do implements StorageServer.Do
+func (server storageServer) Do(action StorageAction) (reply interface{}, err error) {
+	// establish a connection for that serverIndex
+	conn, err := server.dialer.Dial(server.cfg)
+	if err != nil {
+		return nil, err
 	}
+	defer conn.Close()
 
-	var ok bool
-	for it.cursor++; it.cursor < it.cluster.serverCount; it.cursor++ {
-		if ok, _ = it.cluster.serverOperational(it.cursor); ok {
-			return true
-		}
-	}
-
-	return true
+	// apply the given action to the established connection
+	return action.Do(conn)
 }
 
 // ErrorCluster is a Cluster which can be used for
 // scenarios where you want to specify a StorageCluster,
-// which only ever returns a given error.
+// which only ever returns a static error.
 type ErrorCluster struct {
 	Error error
 }
@@ -223,8 +230,22 @@ func (cluster ErrorCluster) DoFor(objectIndex int64, action StorageAction) (repl
 }
 
 // ServerIterator implements StorageCluster.ServerIterator
-func (cluster ErrorCluster) ServerIterator() (ServerIterator, error) {
-	return uniClusterServerIterator{cluster: cluster}, nil
+func (cluster ErrorCluster) ServerIterator(context.Context) (<-chan StorageServer, error) {
+	ch := make(chan StorageServer, 1)
+	ch <- errorStorageServer{Error: cluster.Error}
+	return ch, nil
+}
+
+// errorStorageServer is a server which can be used for
+// scenarios where you want to specify a StorageServer,
+// which only ever returns a static error.
+type errorStorageServer struct {
+	Error error
+}
+
+// Do implements StorageServer.Do
+func (server errorStorageServer) Do(action StorageAction) (reply interface{}, err error) {
+	return nil, server.Error
 }
 
 // NopCluster is a Cluster which can be used for
@@ -243,42 +264,27 @@ func (cluster NopCluster) DoFor(objectIndex int64, action StorageAction) (reply 
 }
 
 // ServerIterator implements StorageCluster.ServerIterator
-func (cluster NopCluster) ServerIterator() (ServerIterator, error) {
-	return uniClusterServerIterator{cluster: cluster}, nil
+func (cluster NopCluster) ServerIterator(context.Context) (<-chan StorageServer, error) {
+	ch := make(chan StorageServer, 1)
+	ch <- nopStorageServer{}
+	return ch, nil
 }
 
-// ServerIterator defines the interface of an iterator
-// which allows you to apply an action to the servers of a cluster, one by one.
-// NOTE: Next always has to be called before you can start using the Iterator!
-type ServerIterator interface {
-	// Do applies a given action
-	// to the current server interation within the cluster.
+// nopStorageServer is a server which can be used for
+// scenarios where you want to specify a StorageServer,
+// which returns no errors and no content.
+type nopStorageServer struct{}
+
+// Do implements StorageServer.Do
+func (server nopStorageServer) Do(action StorageAction) (reply interface{}, err error) {
+	return nil, nil
+}
+
+// StorageServer defines the interface of an
+// object which allows you to interact with an ARDB Storage Server.
+type StorageServer interface {
+	// Do applies a given action to this storage server.
 	Do(action StorageAction) (reply interface{}, err error)
-	// Next moves the iterator's cursor to the next server,
-	// returning false if there was a next server.
-	Next() bool
-}
-
-// uniClusterServerIterator is a simple iterator which can be used
-// to provide an iterator for a cluster which only has one server.
-type uniClusterServerIterator struct {
-	cluster StorageCluster
-	active  bool
-}
-
-// Do implements ServerIterator.Do
-func (it uniClusterServerIterator) Do(action StorageAction) (reply interface{}, err error) {
-	return it.cluster.Do(action)
-}
-
-// Next implements ServerIterator.Next
-func (it uniClusterServerIterator) Next() bool {
-	if it.active {
-		return false
-	}
-
-	it.active = true
-	return true
 }
 
 // ServerIndexPredicate is a predicate
@@ -371,11 +377,12 @@ var (
 	_ StorageCluster = ErrorCluster{}
 )
 
-// enforces that our std ServerIterators
-// are actually ServerIterators
+// enforces that our std StorageServers
+// are actually StorageServers
 var (
-	_ ServerIterator = uniClusterServerIterator{}
-	_ ServerIterator = (*clusterServerIterator)(nil)
+	_ StorageServer = storageServer{}
+	_ StorageServer = errorStorageServer{}
+	_ StorageServer = nopStorageServer{}
 )
 
 var (

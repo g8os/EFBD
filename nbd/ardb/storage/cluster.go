@@ -12,10 +12,6 @@ import (
 	"github.com/zero-os/0-Disk/nbd/ardb"
 )
 
-// TODO:
-// add server states (and stub handling)
-// https://github.com/zero-os/0-Disk/issues/455
-
 // NewPrimaryCluster creates a new PrimaryCluster.
 // See `PrimaryCluster` for more information.
 func NewPrimaryCluster(ctx context.Context, vdiskID string, cs config.Source) (*PrimaryCluster, error) {
@@ -78,19 +74,32 @@ func (pc *PrimaryCluster) DoFor(objectIndex int64, action ardb.StorageAction) (r
 }
 
 // ServerIterator implements StorageCluster.ServerIterator.
-// The returned ServerIterator has be used within a single goroutine!
-func (pc *PrimaryCluster) ServerIterator() (ardb.ServerIterator, error) {
-	pc.mux.RLock()
-	serverIndex, err := ardb.FindFirstServerIndex(pc.serverCount, pc.serverOperational)
-	pc.mux.RUnlock()
-	if err != nil {
-		return nil, err
-	}
+func (pc *PrimaryCluster) ServerIterator(ctx context.Context) (<-chan ardb.StorageServer, error) {
+	pc.mux.Lock()
+	ch := make(chan ardb.StorageServer)
+	go func() {
+		defer pc.mux.Unlock()
+		defer close(ch)
 
-	return &primaryClusterServerIterator{
-		cluster: pc,
-		cursor:  serverIndex - 1,
-	}, nil
+		for index := int64(0); index < pc.serverCount; index++ {
+			operational, _ := pc.serverOperational(index)
+			if !operational {
+				continue
+			}
+
+			server := primaryStorageServer{
+				index:   index,
+				cluster: pc,
+			}
+
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- server:
+			}
+		}
+	}()
+	return ch, nil
 }
 
 // execute an exuction at a given primary server
@@ -294,38 +303,16 @@ func (pc *PrimaryCluster) updatePrimaryStorageConfig(cfg config.StorageClusterCo
 	return nil
 }
 
-// primaryClusterServerIterator implement a server iterator,
-// for a primary cluster with multiple servers.
-type primaryClusterServerIterator struct {
+// primaryStorageServer defines a primary storage server.
+type primaryStorageServer struct {
+	index   int64
 	cluster *PrimaryCluster
-	cursor  int64
 }
 
-// Do implements ServerIterator.Do
-func (it *primaryClusterServerIterator) Do(action ardb.StorageAction) (reply interface{}, err error) {
-	it.cluster.mux.RLock()
-	cfg := it.cluster.servers[it.cursor]
-	it.cluster.mux.RUnlock()
-	return it.cluster.doAt(it.cursor, cfg, action)
-}
-
-// Next implements ServerIterator.Next
-func (it *primaryClusterServerIterator) Next() bool {
-	it.cluster.mux.RLock()
-	defer it.cluster.mux.RUnlock()
-
-	if it.cursor >= it.cluster.serverCount {
-		return false
-	}
-
-	var ok bool
-	for it.cursor++; it.cursor < it.cluster.serverCount; it.cursor++ {
-		if ok, _ = it.cluster.serverOperational(it.cursor); ok {
-			return true
-		}
-	}
-
-	return true
+// Do implements StorageServer.Do
+func (server primaryStorageServer) Do(action ardb.StorageAction) (reply interface{}, err error) {
+	cfg := server.cluster.servers[server.index]
+	return server.cluster.doAt(server.index, cfg, action)
 }
 
 // NewTemplateCluster creates a new TemplateCluster.
@@ -375,24 +362,8 @@ func (tsc *TemplateCluster) DoFor(objectIndex int64, action ardb.StorageAction) 
 }
 
 // ServerIterator implements StorageCluster.ServerIterator.
-// The returned ServerIterator has be used within a single goroutine!
-func (tsc *TemplateCluster) ServerIterator() (ardb.ServerIterator, error) {
-	tsc.mux.RLock()
-	defer tsc.mux.RUnlock()
-
-	if tsc.serverCount == 0 {
-		return nil, ErrClusterNotDefined
-	}
-
-	serverIndex, err := ardb.FindFirstServerIndex(tsc.serverCount, tsc.serverOperational)
-	if err != nil {
-		return nil, err
-	}
-
-	return &templateClusterServerIterator{
-		cluster: tsc,
-		cursor:  serverIndex - 1,
-	}, nil
+func (tsc *TemplateCluster) ServerIterator(context.Context) (<-chan ardb.StorageServer, error) {
+	return nil, ErrMethodNotSupported
 }
 
 // Close any open resources
@@ -728,8 +699,7 @@ var (
 // enforces that our ServerIterators
 // are actually ServerIterators
 var (
-	_ ardb.ServerIterator = (*primaryClusterServerIterator)(nil)
-	_ ardb.ServerIterator = (*templateClusterServerIterator)(nil)
+	_ ardb.StorageServer = primaryStorageServer{}
 )
 
 var (
