@@ -470,11 +470,8 @@ func TestListDedupedBlockIndices(t *testing.T) {
 		blockIndexInterval = lba.NumberOfRecordsPerLBASector / 3
 	)
 
-	cluster := redisstub.NewUniCluster(false)
+	cluster := redisstub.NewCluster(4, false)
 	defer cluster.Close()
-	clusterConfig := config.StorageClusterConfig{
-		Servers: []config.StorageServerConfig{cluster.StorageServerConfig()},
-	}
 
 	storage, err := Deduped(
 		vdiskID, blockSize, ardb.DefaultLBACacheLimit, cluster, nil)
@@ -482,9 +479,12 @@ func TestListDedupedBlockIndices(t *testing.T) {
 		t.Fatalf("storage could not be created: %v", err)
 	}
 
-	indices, err := ListDedupedBlockIndices(vdiskID, clusterConfig)
-	if err == nil {
-		t.Fatalf("expected an error, as no indices exist yet: %v", indices)
+	indices, err := listDedupedBlockIndices(vdiskID, cluster)
+	if err != nil {
+		t.Fatalf("expected no error: %v", err)
+	}
+	if len(indices) > 0 {
+		t.Fatalf("expexted no indices: %v", indices)
 	}
 
 	var expectedIndices []int64
@@ -517,7 +517,7 @@ func TestListDedupedBlockIndices(t *testing.T) {
 		}
 
 		// now test if listing the indices is correct
-		indices, err := ListDedupedBlockIndices(vdiskID, clusterConfig)
+		indices, err := listDedupedBlockIndices(vdiskID, cluster)
 		if err != nil {
 			t.Fatalf("couldn't list deduped block indices (step %d): %v", i, err)
 		}
@@ -552,7 +552,7 @@ func TestListDedupedBlockIndices(t *testing.T) {
 		expectedIndices = append(expectedIndices[:ci], expectedIndices[ci+1:]...)
 
 		// now test if listing the indices is still correct
-		indices, err := ListDedupedBlockIndices(vdiskID, clusterConfig)
+		indices, err := listDedupedBlockIndices(vdiskID, cluster)
 		if err != nil {
 			t.Fatalf("couldn't list deduped block indices (step %d): %v", i, err)
 		}

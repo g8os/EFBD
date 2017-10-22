@@ -77,82 +77,63 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 }
 
 // checkVdiskExists checks if the vdisk in question already/still exists,
-// and if so, and the force flag is specified, delete the (meta)data.
+// and if so, and the force flag is specified, delete the vdisk.
 func checkVdiskExists(vdiskID string, configSource config.Source) error {
+	// gather configs
 	staticConfig, err := config.ReadVdiskStaticConfig(configSource, vdiskID)
 	if err != nil {
 		return fmt.Errorf(
 			"cannot read static vdisk config for vdisk %s: %v", vdiskID, err)
 	}
-	nbdStorageConfig, err := config.ReadNBDStorageConfig(configSource, vdiskID)
+	nbdStorageConfig, err := config.ReadVdiskNBDConfig(configSource, vdiskID)
 	if err != nil {
 		return fmt.Errorf(
 			"cannot read nbd storage config for vdisk %s: %v", vdiskID, err)
 	}
+	clusterConfig, err := config.ReadStorageClusterConfig(configSource, nbdStorageConfig.StorageClusterID)
+	if err != nil {
+		return fmt.Errorf(
+			"cannot read storage cluster config for cluster %s: %v",
+			nbdStorageConfig.StorageClusterID, err)
+	}
 
-	exists, err := storage.VdiskExists(
-		vdiskID, staticConfig.Type, nbdStorageConfig.StorageCluster)
+	// create (primary) storage cluster
+	cluster, err := ardb.NewCluster(*clusterConfig, nil) // not pooled
+	if err != nil {
+		return fmt.Errorf(
+			"cannot create storage cluster model for cluster %s: %v",
+			nbdStorageConfig.StorageClusterID, err)
+	}
+
+	// check if vdisk exists
+	exists, err := storage.VdiskExists(vdiskID, staticConfig.Type, cluster)
 	if !exists {
 		return nil // vdisk doesn't exist, so nothing to do
 	}
 	if err != nil {
 		return fmt.Errorf("couldn't check if vdisk %s already exists: %v", vdiskID, err)
 	}
-
 	if !vdiskCmdCfg.Force {
 		return fmt.Errorf("cannot restore vdisk %s as it already exists", vdiskID)
 	}
 
-	vdisks := map[string]config.VdiskType{vdiskID: staticConfig.Type}
-
-	// delete metadata
-	serverConfig, err := ardb.FindFirstAvailableServerConfig(nbdStorageConfig.StorageCluster)
+	// delete vdisk, as it exists and `--force` is specified
+	deleted, err := storage.DeleteVdisk(vdiskID, staticConfig.Type, cluster)
 	if err != nil {
-		return err
+		return fmt.Errorf("couldn't delete vdisk %s: %v", vdiskID, err)
 	}
-	err = storage.DeleteMetadata(serverConfig, vdisks)
-	if err != nil {
-		return fmt.Errorf(
-			"couldn't delete metadata for vdisks from %s@%d: %v",
-			serverConfig.Address, serverConfig.Database, err)
-	}
-	// make this easier
-	// see: https://github.com/zero-os/0-Disk/issues/481
-	err = deleteTlogMetadata(serverConfig, vdisks)
-	if err != nil {
-		return fmt.Errorf(
-			"couldn't delete tlog metadata for vdisks from %s@%d: %v",
-			serverConfig.Address, serverConfig.Database, err)
+	if !deleted {
+		return fmt.Errorf("couldn't delete vdisk %s for an unknown reason", vdiskID)
 	}
 
-	// delete data
-	for _, serverConfig := range nbdStorageConfig.StorageCluster.Servers {
-		err := storage.DeleteData(serverConfig, vdisks)
-		if err != nil {
-			return fmt.Errorf(
-				"couldn't delete data for vdisk %s from %s@%d: %v",
-				vdiskID, serverConfig.Address, serverConfig.Database, err)
-		}
+	// delete 0-Stor (meta)data for this vdisk
+	if staticConfig.Type.TlogSupport() {
+		// TODO: also delete actual tlog meta(data) from 0-Stor cluster for the supported vdisks ?!?!
+		//       https://github.com/zero-os/0-Disk/issues/147
 	}
 
 	// vdisk did exist, but we were able to delete all the exiting (meta)data
 	return nil
-}
-
-func deleteTlogMetadata(serverCfg config.StorageServerConfig, vdiskMap map[string]config.VdiskType) error {
-	var vdisks []string
-	for vdiskID, vdiskType := range vdiskMap {
-		if vdiskType.TlogSupport() {
-			vdisks = append(vdisks, vdiskID)
-		}
-	}
-
-	// TODO: ensure that vdisk also have an active tlog configuration,
-	//       as this is still optional even though it might support it type-wise.
-	// TODO: also delete actual tlog meta(data) from 0-Stor cluster for the supported vdisks
-	//       https://github.com/zero-os/0-Disk/issues/147
-
-	return storage.DeleteTlogMetadata(serverCfg, vdisks...)
 }
 
 func init() {

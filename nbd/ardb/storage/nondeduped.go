@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -155,79 +156,138 @@ func (ss *nonDedupedStorage) isZeroContent(content []byte) bool {
 	return true
 }
 
-// NonDedupedVdiskExists returns if the non deduped vdisk in question
-// exists in the given ardb storage cluster.
-func NonDedupedVdiskExists(vdiskID string, cluster config.StorageClusterConfig) (bool, error) {
-	// storage key used on all data servers for this vdisk
-	key := nonDedupedStorageKey(vdiskID)
+// nonDedupedVdiskExists checks if a non-deduped vdisks exists on a given cluster
+func nonDedupedVdiskExists(vdiskID string, cluster ardb.StorageCluster) (bool, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	// go through each server to check if the vdisKID exists there
-	// the first vdisk which has data for this vdisk,
-	// we'll take as a sign that the vdisk exists
-	for _, serverConfig := range cluster.Servers {
-		exists, err := nonDedupedVdiskExistsOnServer(key, serverConfig)
-		if exists || err != nil {
-			return exists, err
+	serverCh, err := cluster.ServerIterator(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	type serverResult struct {
+		exists bool
+		err    error
+	}
+	resultCh := make(chan serverResult)
+
+	var count int
+	action := ardb.Command(command.Exists, nonDedupedStorageKey(vdiskID))
+	for server := range serverCh {
+		server := server
+		go func() {
+			var result serverResult
+			result.exists, result.err = ardb.Bool(server.Do(action))
+			select {
+			case resultCh <- result:
+			case <-ctx.Done():
+			}
+		}()
+		count++
+	}
+
+	var result serverResult
+	for i := 0; i < count; i++ {
+		result = <-resultCh
+		if result.exists || result.err != nil {
+			return result.exists, result.err
 		}
 	}
 
-	// no errors occured, but no server had the given storage key,
-	// which means the vdisk doesn't exist
 	return false, nil
 }
 
-func nonDedupedVdiskExistsOnServer(key string, server config.StorageServerConfig) (bool, error) {
-	conn, err := ardb.Dial(server)
+// deleteNonDedupedData deletes the non-deduped data of a given vdisk from a given cluster.
+func deleteNonDedupedData(vdiskID string, cluster ardb.StorageCluster) (bool, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	serverCh, err := cluster.ServerIterator(ctx)
 	if err != nil {
-		return false, fmt.Errorf(
-			"couldn't connect to data ardb %s@%d: %s",
-			server.Address, server.Database, err.Error())
+		return false, err
 	}
-	defer conn.Close()
-	return ardb.Bool(conn.Do("EXISTS", key))
+
+	type serverResult struct {
+		count int
+		err   error
+	}
+	resultCh := make(chan serverResult)
+
+	var serverCount int
+	action := ardb.Command(command.Delete, nonDedupedStorageKey(vdiskID))
+	for server := range serverCh {
+		server := server
+		go func() {
+			var result serverResult
+			result.count, result.err = ardb.Int(server.Do(action))
+			select {
+			case resultCh <- result:
+			case <-ctx.Done():
+			}
+		}()
+		serverCount++
+	}
+
+	var deleteCount int
+	var result serverResult
+	for i := 0; i < serverCount; i++ {
+		result = <-resultCh
+		if result.err != nil {
+			return false, result.err
+		}
+		deleteCount += result.count
+	}
+	return deleteCount > 0, nil
 }
 
-// ListNonDedupedBlockIndices returns all indices stored for the given nondeduped storage.
-// This function will always either return an error OR indices.
-// If this function returns indices, they are guaranteed to be in order from smallest to biggest.
-func ListNonDedupedBlockIndices(vdiskID string, cluster config.StorageClusterConfig) ([]int64, error) {
-	key := nonDedupedStorageKey(vdiskID)
+// listNonDedupedBlockIndices lists all the block indices (sorted)
+// from a non-deduped vdisk stored on a given cluster.
+func listNonDedupedBlockIndices(vdiskID string, cluster ardb.StorageCluster) ([]int64, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	var indices []int64
-	// collect the indices found on each data server
-	for _, serverConfig := range cluster.Servers {
-		serverIndices, err := listNonDedupedBlockIndicesOnDataServer(key, serverConfig)
-		if err == ardb.ErrNil {
-			log.Infof(
-				"ardb server %s@%d doesn't contain any data for nondeduped vdisk %s",
-				serverConfig.Address, serverConfig.Database, vdiskID)
-			continue // it's ok if a server doesn't have anything stored
-			// even though this might indicate a problem
-			// in our sharding algorithm
-		}
-		if err != nil {
-			return nil, err
-		}
-		// add it to the list of indices already found
-		indices = append(indices, serverIndices...)
+	serverCh, err := cluster.ServerIterator(ctx)
+	if err != nil {
+		return nil, err
 	}
 
-	// if no indices could be found, we concider that as an error
-	if len(indices) == 0 {
-		return nil, ardb.ErrNil
+	type serverResult struct {
+		indices []int64
+		err     error
+	}
+	resultCh := make(chan serverResult)
+
+	var serverCount int
+	action := ardb.Command(command.HashKeys, nonDedupedStorageKey(vdiskID))
+	for server := range serverCh {
+		server := server
+		go func() {
+			var result serverResult
+			result.indices, result.err = ardb.Int64s(server.Do(action))
+			if result.err == ardb.ErrNil {
+				result.err = nil
+			}
+			select {
+			case resultCh <- result:
+			case <-ctx.Done():
+			}
+		}()
+		serverCount++
+	}
+
+	var indices []int64
+	var result serverResult
+	for i := 0; i < serverCount; i++ {
+		result = <-resultCh
+		if result.err != nil {
+			return nil, result.err
+		}
+		indices = append(indices, result.indices...)
 	}
 
 	sortInt64s(indices)
 	return indices, nil
-}
-
-func listNonDedupedBlockIndicesOnDataServer(key string, server config.StorageServerConfig) ([]int64, error) {
-	conn, err := ardb.Dial(server)
-	if err != nil {
-		return nil, fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
-	}
-	defer conn.Close()
-	return ardb.Int64s(conn.Do("HKEYS", key))
 }
 
 // CopyNonDeduped copies a non-deduped storage
@@ -364,27 +424,6 @@ func copyNonDedupedDifferentConnections(sourceID, targetID string, connA, connB 
 	}
 
 	return
-}
-
-func newDeleteNonDedupedDataOp(vdiskID string) storageOp {
-	return &deleteNonDedupedDataOp{vdiskID}
-}
-
-type deleteNonDedupedDataOp struct {
-	vdiskID string
-}
-
-func (op *deleteNonDedupedDataOp) Send(sender storageOpSender) error {
-	log.Debugf("batch deletion of nondeduped data for: %v", op.vdiskID)
-	return sender.Send("DEL", nonDedupedStorageKey(op.vdiskID))
-}
-
-func (op *deleteNonDedupedDataOp) Receive(receiver storageOpReceiver) error {
-	return ardb.Error(receiver.Receive())
-}
-
-func (op *deleteNonDedupedDataOp) Label() string {
-	return "delete nondeduped data of " + op.vdiskID
 }
 
 // nonDedupedStorageKey returns the storage key that can/will be

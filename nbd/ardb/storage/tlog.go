@@ -45,48 +45,6 @@ func tlogMetadataKey(vdiskID string) string {
 	return tlogMetadataKeyPrefix + vdiskID
 }
 
-// DeleteTlogMetadata deletes all metadata of a tlog-enabled storage,
-// from a given metadata server using the given vdiskID.
-func DeleteTlogMetadata(serverCfg config.StorageServerConfig, vdiskIDs ...string) error {
-	// get connection to metadata storage server
-	conn, err := ardb.Dial(serverCfg)
-	if err != nil {
-		return fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
-	}
-	defer conn.Close()
-
-	for _, vdiskID := range vdiskIDs {
-		// delete the actual metadata (if it existed)
-		err = conn.Send("DEL", tlogMetadataKey(vdiskID))
-		if err != nil {
-			return fmt.Errorf(
-				"couldn't add %s to the delete tlog metadata batch: %v",
-				vdiskID, err)
-		}
-	}
-
-	err = conn.Flush()
-	if err != nil {
-		return fmt.Errorf(
-			"couldn't flush the delete tlog metadata batch: %v", err)
-	}
-
-	var errors pipelineErrors
-	for _, vdiskID := range vdiskIDs {
-		_, err = conn.Receive()
-		if err != nil {
-			errors = append(errors, fmt.Errorf(
-				"couldn't delete tlog metadata for %s: %v", vdiskID, err))
-		}
-	}
-
-	if len(errors) > 0 {
-		return errors
-	}
-
-	return nil
-}
-
 // CopyTlogMetadata copies all metadata of a tlog-enabled storage
 // from a sourceID to a targetID, within the same cluster or between different clusters.
 func CopyTlogMetadata(sourceID, targetID string, sourceClusterCfg config.StorageClusterConfig, targetClusterCfg *config.StorageClusterConfig) error {

@@ -173,26 +173,55 @@ func combineErrorPair(e1, e2 error) error {
 	return fmt.Errorf("%v; %v", e1, e2)
 }
 
-// SemiDedupedVdiskExists returns if the semi deduped vdisk in question
-// exists in the given ardb storage cluster.
-func SemiDedupedVdiskExists(vdiskID string, cluster config.StorageClusterConfig) (bool, error) {
-	// it's just an alias for DedupedVdiskExists,
-	// as a semi deduped vdisk has always deduped data,
-	// while non-deduped is optional in case it's a fresh vdisk.
-	return DedupedVdiskExists(vdiskID, cluster)
+// semiDedupedVdiskExists checks if a semi deduped vdisks exists on a given cluster
+func semiDedupedVdiskExists(vdiskID string, cluster ardb.StorageCluster) (bool, error) {
+	// first check if deduped content exists (probably does if this semi-deduped vdisk exists)
+	exists, err := dedupedVdiskExists(vdiskID, cluster)
+	if exists || err != nil {
+		return exists, err
+	}
+
+	// no deduped vdisk exists, this probably means that the semi-deduped vdisk does not exists.
+	// before we give up however, let's try if the semi deduped bitmap exists,
+	// if it does, than somehow it does exists, with only non-deduped content.
+	command := ardb.Command(command.Exists, semiDedupBitMapKey(vdiskID))
+	return ardb.Bool(cluster.Do(command))
 }
 
-// ListSemiDedupedBlockIndices returns all indices stored for the given semi deduped storage.
-// This function will always either return an error OR indices.
-func ListSemiDedupedBlockIndices(vdiskID string, cluster config.StorageClusterConfig) ([]int64, error) {
+// deleteSemiDedupedData deletes the semi-deduped data of a given vdisk from a given cluster.
+func deleteSemiDedupedData(vdiskID string, cluster ardb.StorageCluster) (bool, error) {
+	// delete deduped data
+	deletedDeduped, err := deleteDedupedData(vdiskID, cluster)
+	if err != nil {
+		return false, err
+	}
+
+	// delete nondeduped bitmap
+	command := ardb.Command(command.Delete, semiDedupBitMapKey(vdiskID))
+	deleted, err := ardb.Bool(cluster.Do(command))
+	if err != nil {
+		return false, err
+	}
+	if !deleted {
+		return deletedDeduped, nil
+	}
+
+	// we have deleted the semi deduped bitmap,
+	// so now let's also delete the non-deduped content.
+	return deleteNonDedupedData(vdiskID, cluster)
+}
+
+// listSemiDedupedBlockIndices lists all the block indices (sorted)
+// from a semi-deduped vdisk stored on a given cluster.
+func listSemiDedupedBlockIndices(vdiskID string, cluster ardb.StorageCluster) ([]int64, error) {
 	// get deduped' indices
-	indices, err := ListDedupedBlockIndices(vdiskID, cluster)
+	indices, err := listDedupedBlockIndices(vdiskID, cluster)
 	if err != nil {
 		return nil, err
 	}
 
 	// try to get nondeduped' indices
-	ndIndices, err := ListNonDedupedBlockIndices(vdiskID, cluster)
+	ndIndices, err := listNonDedupedBlockIndices(vdiskID, cluster)
 	if err == ardb.ErrNil {
 		// no nondeduped' (user) indices found,
 		// so early exit with a sorted slice containing only deduped' indices
@@ -391,30 +420,6 @@ func copySemiDedupedDifferentConnections(sourceID, targetID string, connA, connB
 
 	hasBitMask = true
 	return
-}
-
-func newDeleteSemiDedupedMetaDataOp(vdiskID string) storageOp {
-	return &deleteSemiDedupedMetaDataOp{
-		vdiskID: vdiskID,
-	}
-}
-
-type deleteSemiDedupedMetaDataOp struct {
-	vdiskID string
-}
-
-func (op *deleteSemiDedupedMetaDataOp) Send(sender storageOpSender) error {
-	log.Debugf("batch deletion of semideduped metadata for: %v", op.vdiskID)
-	return sender.Send("DEL", semiDedupBitMapKey(op.vdiskID))
-}
-
-func (op *deleteSemiDedupedMetaDataOp) Receive(receiver storageOpReceiver) error {
-	_, err := receiver.Receive()
-	return err
-}
-
-func (op *deleteSemiDedupedMetaDataOp) Label() string {
-	return "delete semideduped metadata of " + op.vdiskID
 }
 
 // semiDedupBitMapKey returns the storage key which is used

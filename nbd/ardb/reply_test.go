@@ -267,3 +267,38 @@ func TestReply(t *testing.T) {
 		}
 	}
 }
+<<<<<<< 94d515495f2338f810b0c351e9aa6061ac4b655b
+=======
+
+func ExampleBool() {
+	c, err := dial()
+	if err != nil {
+		panic(err)
+	}
+	defer c.Close()
+
+	c.Do("SET", "foo", 1)
+	exists, err := Bool(c.Do("EXISTS", "foo"))
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("%#v\n", exists)
+	// Output:
+	// true
+}
+
+// TODO:
+// Add more examples:
+// ExampleError, ExampleBytes, ExampleOptBytes, ExampleInt64,
+// ExampleBools, ExampleStrings, ExampleInt64ToBytesMapping
+// part of https://github.com/zero-os/0-Disk/issues/543
+
+// dial creates an inmemory ledisdb server, and dials it.
+func dial() (redis.Conn, error) {
+	server := ledisdb.NewServer()
+	return Dial(config.StorageServerConfig{
+		Address: server.Address(),
+	})
+}
+>>>>>>> add+use new storage primitives (except copy)

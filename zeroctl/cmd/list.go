@@ -13,6 +13,6 @@ var ListCmd = &cobra.Command{
 
 func init() {
 	ListCmd.AddCommand(
-		list.VdiskCmd,
+		list.VdisksCmd,
 	)
 }

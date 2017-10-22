@@ -51,7 +51,17 @@ func (g *Generator) GenerateFromStorage(parentCtx context.Context) (uint64, erro
 		return 0, fmt.Errorf("failed to ReadNBDStorageConfig: %v", err)
 	}
 
-	indices, err := storage.ListBlockIndices(g.sourceVdiskID, staticConf.Type, storageConf.StorageCluster)
+	// create (primary) storage cluster
+	// TODO: support optional slave cluster here
+	// see: https://github.com/zero-os/0-Disk/issues/445
+	cluster, err := ardb.NewCluster(storageConf.StorageCluster, nil) // not pooled
+	if err != nil {
+		return 0, fmt.Errorf(
+			"cannot create storage cluster model for primary cluster of vdisk %s: %v",
+			g.sourceVdiskID, err)
+	}
+
+	indices, err := storage.ListBlockIndices(g.sourceVdiskID, staticConf.Type, cluster)
 	if err != nil {
 		return 0, fmt.Errorf("ListBlockIndices failed for vdisk `%v`: %v", g.sourceVdiskID, err)
 	}
