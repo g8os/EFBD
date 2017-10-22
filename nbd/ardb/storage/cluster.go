@@ -102,6 +102,21 @@ func (pc *PrimaryCluster) ServerIterator(ctx context.Context) (<-chan ardb.Stora
 	return ch, nil
 }
 
+// ServerCount implements StorageCluster.ServerCount.
+func (pc *PrimaryCluster) ServerCount() int64 {
+	pc.mux.RLock()
+	defer pc.mux.RUnlock()
+
+	count := pc.serverCount
+	for _, server := range pc.servers {
+		if server.State != config.StorageServerStateOnline {
+			count--
+		}
+	}
+
+	return count
+}
+
 // execute an exuction at a given primary server
 func (pc *PrimaryCluster) doAt(serverIndex int64, cfg config.StorageServerConfig, action ardb.StorageAction) (reply interface{}, err error) {
 	// establish a connection for the given config
@@ -369,6 +384,21 @@ func (tsc *TemplateCluster) DoFor(objectIndex int64, action ardb.StorageAction) 
 // ServerIterator implements StorageCluster.ServerIterator.
 func (tsc *TemplateCluster) ServerIterator(context.Context) (<-chan ardb.StorageServer, error) {
 	return nil, ErrMethodNotSupported
+}
+
+// ServerCount implements StorageCluster.ServerCount.
+func (tsc *TemplateCluster) ServerCount() int64 {
+	tsc.mux.RLock()
+	defer tsc.mux.RUnlock()
+
+	count := tsc.serverCount
+	for _, server := range tsc.servers {
+		if server.State != config.StorageServerStateOnline {
+			count--
+		}
+	}
+
+	return count
 }
 
 // Close any open resources

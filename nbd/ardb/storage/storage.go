@@ -254,6 +254,9 @@ func ListVdisks(cluster ardb.StorageCluster) ([]string, error) {
 			log.Infof("listing all vdisks stored on %v", server.Config())
 			reply, result.err = server.Do(action)
 			if result.err == nil && reply != nil {
+				// [NOTE] this line of code relies on the fact that our
+				// custom `listVdisksAction` type returns a `[]string` value as a reply,
+				// as soon as that logic changes, this line will start causing trouble.
 				result.ids = reply.([]string)
 			}
 			select {

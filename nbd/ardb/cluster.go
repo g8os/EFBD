@@ -19,6 +19,9 @@ type StorageCluster interface {
 
 	// ServerIterator returns a server iterator for this Cluster.
 	ServerIterator(ctx context.Context) (<-chan StorageServer, error)
+
+	// ServerCount returns the amount of currently available servers within this cluster.
+	ServerCount() int64
 }
 
 // NewUniCluster creates a new (ARDB) uni-cluster.
@@ -87,6 +90,11 @@ func (cluster *UniCluster) ServerIterator(context.Context) (<-chan StorageServer
 	return ch, nil
 }
 
+// ServerCount implements StorageCluster.ServerCount
+func (cluster *UniCluster) ServerCount() int64 {
+	return 1
+}
+
 // NewCluster creates a new (ARDB) cluster.
 // ErrNoServersAvailable is returned in case no given server is available.
 // ErrServerStateNotSupported is returned in case at least one server
@@ -97,6 +105,9 @@ func NewCluster(cfg config.StorageClusterConfig, dialer ConnectionDialer) (*Clus
 	}
 
 	var clusterOperational bool
+	serverCount := int64(len(cfg.Servers))
+	availableServerCount := serverCount
+
 	for _, server := range cfg.Servers {
 		if server.State == config.StorageServerStateOnline {
 			clusterOperational = true
@@ -105,6 +116,7 @@ func NewCluster(cfg config.StorageClusterConfig, dialer ConnectionDialer) (*Clus
 		if server.State != config.StorageServerStateRIP {
 			return nil, ErrServerStateNotSupported
 		}
+		availableServerCount--
 	}
 	if !clusterOperational {
 		return nil, ErrNoServersAvailable
@@ -115,16 +127,18 @@ func NewCluster(cfg config.StorageClusterConfig, dialer ConnectionDialer) (*Clus
 	}
 
 	return &Cluster{
-		servers:     cfg.Servers,
-		serverCount: int64(len(cfg.Servers)),
-		dialer:      dialer,
+		servers:              cfg.Servers,
+		serverCount:          serverCount,
+		availableServerCount: availableServerCount,
+		dialer:               dialer,
 	}, nil
 }
 
 // Cluster defines the in memory cluster model for a single cluster.
 type Cluster struct {
-	servers     []config.StorageServerConfig
-	serverCount int64
+	servers              []config.StorageServerConfig
+	serverCount          int64
+	availableServerCount int64
 
 	dialer ConnectionDialer
 }
@@ -155,13 +169,13 @@ func (cluster *Cluster) ServerIterator(ctx context.Context) (<-chan StorageServe
 	go func() {
 		defer close(ch)
 
-		for index := int64(0); index < cluster.serverCount; index++ {
-			if ok, _ := cluster.serverOperational(index); !ok {
+		for _, cfg := range cluster.servers {
+			if cfg.State != config.StorageServerStateOnline {
 				continue
 			}
 
 			server := storageServer{
-				cfg:    cluster.servers[index],
+				cfg:    cfg,
 				dialer: cluster.dialer,
 			}
 
@@ -173,6 +187,11 @@ func (cluster *Cluster) ServerIterator(ctx context.Context) (<-chan StorageServe
 		}
 	}()
 	return ch, nil
+}
+
+// ServerCount implements StorageCluster.ServerCount
+func (cluster *Cluster) ServerCount() int64 {
+	return cluster.availableServerCount
 }
 
 func (cluster *Cluster) doAt(serverIndex int64, action StorageAction) (interface{}, error) {
@@ -244,6 +263,11 @@ func (cluster ErrorCluster) ServerIterator(context.Context) (<-chan StorageServe
 	return ch, nil
 }
 
+// ServerCount implements StorageCluster.ServerCount
+func (cluster ErrorCluster) ServerCount() int64 {
+	return 0
+}
+
 // errorStorageServer is a server which can be used for
 // scenarios where you want to specify a StorageServer,
 // which only ever returns a static error.
@@ -281,6 +305,11 @@ func (cluster NopCluster) ServerIterator(context.Context) (<-chan StorageServer,
 	ch := make(chan StorageServer, 1)
 	ch <- nopStorageServer{}
 	return ch, nil
+}
+
+// ServerCount implements StorageCluster.ServerCount
+func (cluster NopCluster) ServerCount() int64 {
+	return 1
 }
 
 // nopStorageServer is a server which can be used for
