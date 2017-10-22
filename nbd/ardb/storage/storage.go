@@ -203,6 +203,9 @@ func DeleteVdisk(id string, t config.VdiskType, cluster ardb.StorageCluster) (bo
 		if err != nil {
 			return false, err
 		}
+		if deletedTlogMetadata {
+			log.Infof("deleted tlog metadata stored for vdisk %s on first available server", id)
+		}
 	}
 
 	var deletedStorage bool
@@ -248,6 +251,7 @@ func ListVdisks(cluster ardb.StorageCluster) ([]string, error) {
 		server := server
 		go func() {
 			var result serverResult
+			log.Infof("listing all vdisks stored on %v", server.Config())
 			reply, result.err = server.Do(action)
 			if result.err == nil && reply != nil {
 				result.ids = reply.([]string)

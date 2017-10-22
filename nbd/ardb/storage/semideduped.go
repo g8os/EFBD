@@ -184,6 +184,9 @@ func semiDedupedVdiskExists(vdiskID string, cluster ardb.StorageCluster) (bool, 
 	// no deduped vdisk exists, this probably means that the semi-deduped vdisk does not exists.
 	// before we give up however, let's try if the semi deduped bitmap exists,
 	// if it does, than somehow it does exists, with only non-deduped content.
+	log.Infof(
+		"checking if semi-deduped vdisk %s's bitmap exists on first available server",
+		vdiskID)
 	command := ardb.Command(command.Exists, semiDedupBitMapKey(vdiskID))
 	return ardb.Bool(cluster.Do(command))
 }

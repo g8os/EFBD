@@ -217,6 +217,7 @@ func dedupedVdiskExists(vdiskID string, cluster ardb.StorageCluster) (bool, erro
 		server := server
 		go func() {
 			var result serverResult
+			log.Infof("checking if deduped vdisk %s exists on %v", vdiskID, server.Config())
 			result.exists, result.err = ardb.Bool(server.Do(action))
 			select {
 			case resultCh <- result:
@@ -260,6 +261,7 @@ func deleteDedupedData(vdiskID string, cluster ardb.StorageCluster) (bool, error
 	for server := range serverCh {
 		server := server
 		go func() {
+			log.Infof("deleting deduped data from vdisk %s on %v", vdiskID, server.Config())
 			var result serverResult
 			result.count, result.err = ardb.Int(server.Do(action))
 			select {
@@ -305,6 +307,7 @@ func listDedupedBlockIndices(vdiskID string, cluster ardb.StorageCluster) ([]int
 		server := server
 		go func() {
 			var result serverResult
+			log.Infof("listing block indices from deduped vdisk %s on %v", vdiskID, server.Config())
 			result.indices, result.err = ardb.Int64s(server.Do(action))
 			if result.err == ardb.ErrNil {
 				result.err = nil

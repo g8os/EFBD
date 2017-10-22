@@ -80,7 +80,10 @@ func (cluster *UniCluster) DoFor(_ int64, action StorageAction) (interface{}, er
 // ServerIterator implements StorageCluster.ServerIterator
 func (cluster *UniCluster) ServerIterator(context.Context) (<-chan StorageServer, error) {
 	ch := make(chan StorageServer, 1)
-	ch <- cluster
+	ch <- storageServer{
+		cfg:    cluster.server,
+		dialer: cluster.dialer,
+	}
 	return ch, nil
 }
 
@@ -212,6 +215,11 @@ func (server storageServer) Do(action StorageAction) (reply interface{}, err err
 	return action.Do(conn)
 }
 
+// Config implements StorageServer.Config
+func (server storageServer) Config() config.StorageServerConfig {
+	return server.cfg
+}
+
 // ErrorCluster is a Cluster which can be used for
 // scenarios where you want to specify a StorageCluster,
 // which only ever returns a static error.
@@ -248,6 +256,11 @@ func (server errorStorageServer) Do(action StorageAction) (reply interface{}, er
 	return nil, server.Error
 }
 
+// Config implements StorageServer.Config
+func (server errorStorageServer) Config() config.StorageServerConfig {
+	return config.StorageServerConfig{}
+}
+
 // NopCluster is a Cluster which can be used for
 // scenarios where you want to specify a StorageCluster,
 // which returns no errors and no content.
@@ -280,11 +293,19 @@ func (server nopStorageServer) Do(action StorageAction) (reply interface{}, err 
 	return nil, nil
 }
 
+// Config implements StorageServer.Config
+func (server nopStorageServer) Config() config.StorageServerConfig {
+	return config.StorageServerConfig{}
+}
+
 // StorageServer defines the interface of an
 // object which allows you to interact with an ARDB Storage Server.
 type StorageServer interface {
 	// Do applies a given action to this storage server.
 	Do(action StorageAction) (reply interface{}, err error)
+
+	// Config returns the storage server config used for this storage server.
+	Config() config.StorageServerConfig
 }
 
 // ServerIndexPredicate is a predicate

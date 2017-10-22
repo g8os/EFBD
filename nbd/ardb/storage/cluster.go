@@ -315,6 +315,11 @@ func (server primaryStorageServer) Do(action ardb.StorageAction) (reply interfac
 	return server.cluster.doAt(server.index, cfg, action)
 }
 
+// Config implements StorageServer.Config
+func (server primaryStorageServer) Config() config.StorageServerConfig {
+	return server.cluster.servers[server.index]
+}
+
 // NewTemplateCluster creates a new TemplateCluster.
 // See `TemplateCluster` for more information.
 func NewTemplateCluster(ctx context.Context, vdiskID string, cs config.Source) (*TemplateCluster, error) {
