@@ -12,11 +12,13 @@ import (
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
+	v "github.com/zero-os/0-Disk/tlog/tlogserver/version"
 )
 
 func main() {
 	conf := server.DefaultConfig()
 
+	var version bool
 	var verbose bool
 	var profileAddr string
 	var storageAddresses string
@@ -38,9 +40,16 @@ func main() {
 	flag.BoolVar(&verbose, "v", false, "log verbose (debug) statements")
 	flag.StringVar(&logPath, "logfile", "", "optionally log to the specified file, instead of the stderr")
 	flag.StringVar(&serverID, "id", "default", "The server ID (default: default)")
+	flag.BoolVar(&version, "version", false, "prints build version")
 
 	// parse flags
 	flag.Parse()
+
+	// print version and exit
+	if version {
+		zerodisk.PrintVersion(v.CommitHash, v.BuildDate)
+		return
+	}
 
 	// config logger (verbose or not)
 	if verbose {

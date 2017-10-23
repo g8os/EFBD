@@ -18,9 +18,11 @@ import (
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage/lba"
 	"github.com/zero-os/0-Disk/nbd/gonbdserver/nbd"
+	v "github.com/zero-os/0-Disk/nbd/nbdserver/version"
 )
 
 func main() {
+	var version bool
 	var tlsonly bool
 	var verbose bool
 	var lbacachelimit int64
@@ -30,6 +32,7 @@ func main() {
 	var sourceConfig config.SourceConfig
 	var logPath string
 	var serverID string
+
 	flag.BoolVar(&verbose, "v", false, "when false, only log warnings and errors")
 	flag.StringVar(&logPath, "logfile", "", "optionally log to the specified file, instead of the stderr")
 	flag.BoolVar(&tlsonly, "tlsonly", false, "Forces all nbd connections to be tls-enabled")
@@ -40,7 +43,15 @@ func main() {
 	flag.Int64Var(&lbacachelimit, "lbacachelimit", ardb.DefaultLBACacheLimit,
 		fmt.Sprintf("Cache limit of LBA in bytes, needs to be higher then %d (bytes in 1 sector)", lba.BytesPerSector))
 	flag.StringVar(&serverID, "id", "default", "The server ID (default: default)")
+	flag.BoolVar(&version, "version", false, "prints build version")
+
 	flag.Parse()
+
+	// print version and exit
+	if version {
+		zerodisk.PrintVersion(v.CommitHash, v.BuildDate)
+		return
+	}
 
 	logLevel := log.InfoLevel
 	if verbose {

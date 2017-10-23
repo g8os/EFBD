@@ -3,6 +3,7 @@ package zerodisk
 import (
 	"bytes"
 	"fmt"
+	"runtime"
 )
 
 var (
@@ -10,6 +11,26 @@ var (
 	// version of the zerodisk modules
 	CurrentVersion = NewVersion(1, 1, 0, versionLabel("beta-1"))
 )
+
+// PrintVersion prints the current version
+func PrintVersion(CommitHash, BuildDate string) {
+	version := "Version: " + CurrentVersion.String()
+
+	// Build (Git) Commit Hash
+	if CommitHash != "" {
+		version += "\r\nBuild: " + CommitHash
+		if BuildDate != "" {
+			version += " " + BuildDate
+		}
+	}
+
+	// Output version and runtime information
+	fmt.Printf("%s\r\nRuntime: %s %s\r\n",
+		version,
+		runtime.Version(), // Go Version
+		runtime.GOOS,      // OS Name
+	)
+}
 
 // VersionFromUInt32 creates a version from a given uint32 number.
 func VersionFromUInt32(v uint32) Version {
