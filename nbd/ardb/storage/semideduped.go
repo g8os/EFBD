@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/garyburd/redigo/redis"
-	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/command"
@@ -243,129 +242,10 @@ func listSemiDedupedBlockIndices(vdiskID string, cluster ardb.StorageCluster) ([
 	return indices, nil
 }
 
-// CopySemiDeduped copies a semi deduped storage
+// copySemiDeduped copies a semi deduped storage
 // within the same or between different storage clusters.
-func CopySemiDeduped(sourceID, targetID string, sourceCluster config.StorageClusterConfig, targetCluster *config.StorageClusterConfig) error {
-	sourceDataServerCount := len(sourceCluster.Servers)
-	if sourceDataServerCount == 0 {
-		return errors.New("no data server configs given for source")
-	}
-
-	// define whether or not we're copying between different clusters,
-	// and if the target cluster is given, make sure to validate it.
-	if targetCluster == nil {
-		targetCluster = &sourceCluster
-	} else {
-		targetDataServerCount := len(targetCluster.Servers)
-		// [TODO]
-		// Currently the result will be WRONG in case targetDataServerCount != sourceDataServerCount,
-		// as the storage data spread will not be the same,
-		// to what the nbdserver read calls will expect.
-		// See open issue for more information:
-		// https://github.com/zero-os/0-Disk/issues/206
-		if targetDataServerCount != sourceDataServerCount {
-			return errors.New("target data server count has to equal the source data server count")
-		}
-	}
-
-	metaSourceCfg, err := ardb.FindFirstAvailableServerConfig(sourceCluster)
-	if err != nil {
-		return err
-	}
-	metaTargetCfg, err := ardb.FindFirstAvailableServerConfig(*targetCluster)
-	if err != nil {
-		return err
-	}
-
-	var hasBitMask bool
-	if metaSourceCfg.Equal(metaTargetCfg) {
-		hasBitMask, err = func() (bool, error) {
-			conn, err := ardb.Dial(metaSourceCfg)
-			if err != nil {
-				return false, fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
-			}
-			defer conn.Close()
-
-			return copySemiDedupedSameConnection(sourceID, targetID, conn)
-		}()
-	} else {
-		hasBitMask, err = func() (bool, error) {
-			conns, err := ardb.DialAll(metaSourceCfg, metaTargetCfg)
-			if err != nil {
-				return false, fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
-			}
-			defer func() {
-				conns[0].Close()
-				conns[1].Close()
-			}()
-
-			return copySemiDedupedDifferentConnections(sourceID, targetID, conns[0], conns[1])
-		}()
-	}
-
-	var sourceCfg, targetCfg config.StorageServerConfig
-
-	for i := 0; i < sourceDataServerCount; i++ {
-		sourceCfg = sourceCluster.Servers[i]
-		targetCfg = targetCluster.Servers[i]
-
-		if sourceCfg.Equal(targetCfg) {
-			// within same storage server
-			err = func() error {
-				conn, err := ardb.Dial(sourceCfg)
-				if err != nil {
-					return fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
-				}
-				defer conn.Close()
-
-				err = copyDedupedSameConnection(sourceID, targetID, conn)
-				if err != nil {
-					return fmt.Errorf("couldn't copy deduped data on same connection: %v", err)
-				}
-
-				if hasBitMask {
-					err = copyNonDedupedSameConnection(sourceID, targetID, conn)
-					if err != nil {
-						return fmt.Errorf("couldn't copy non-deduped (meta)data on same connection: %v", err)
-					}
-				}
-
-				return nil
-			}()
-		} else {
-			// between different storage servers
-			err = func() error {
-				conns, err := ardb.DialAll(sourceCfg, targetCfg)
-				if err != nil {
-					return fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
-				}
-				defer func() {
-					conns[0].Close()
-					conns[1].Close()
-				}()
-
-				err = copyDedupedDifferentConnections(sourceID, targetID, conns[0], conns[1])
-				if err != nil {
-					return fmt.Errorf("couldn't copy deduped data between connections: %v", err)
-				}
-
-				if hasBitMask {
-					err = copyNonDedupedDifferentConnections(sourceID, targetID, conns[0], conns[1])
-					if err != nil {
-						return fmt.Errorf("couldn't copy non-deduped (meta)data between connections: %v", err)
-					}
-				}
-
-				return nil
-			}()
-		}
-
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+func copySemiDeduped(sourceID, targetID string, sourceCluster, targetCluster ardb.StorageCluster) error {
+	return errors.New("TODO")
 }
 
 // NOTE: copies bitmask only

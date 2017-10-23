@@ -145,6 +145,73 @@ func (cmds *StorageCommands) KeysModified() (keys []string, ok bool) {
 	return
 }
 
+// Transaction creates a transaction of commands on the fly,
+// ready to be used as a(n) (ARDB) StorageAction.
+// NOTE: it cannot be used as part of another multi-command action!
+func Transaction(cmds ...StorageAction) *StorageTransaction {
+	if len(cmds) == 0 {
+		panic("no commands given")
+	}
+
+	return &StorageTransaction{commands: cmds}
+}
+
+// StorageTransaction defines a structure which allows you
+// to encapsulate a slice of commands (see: StorageCommand),
+// such that it can be (re)used as a StorageAction.
+// The difference with StorageCommands is that a transaction
+// guarantees that either all actions succeed or they all fail.
+type StorageTransaction struct {
+	commands []StorageAction
+}
+
+// Do implements StorageAction.Do
+func (tx *StorageTransaction) Do(conn Conn) (replies interface{}, err error) {
+	if tx == nil || tx.commands == nil {
+		return nil, errNoCommandsDefined
+	}
+
+	// 1. start the transaction
+	err = conn.Send("MULTI")
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. send all commands
+	for _, cmd := range tx.commands {
+		err = cmd.Send(conn)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// 3. flush all commands and receive all replies
+	return conn.Do("EXEC")
+}
+
+// Send implements StorageAction.Send
+func (tx *StorageTransaction) Send(Conn) error {
+	panic("a StorageTransaction cannot be used as part of another multi-command")
+}
+
+// KeysModified implements StorageAction.KeysModified
+func (tx *StorageTransaction) KeysModified() (keys []string, ok bool) {
+	if tx == nil {
+		return nil, false
+	}
+
+	var cmdKeys []string
+	for _, cmd := range tx.commands {
+		cmdKeys, ok = cmd.KeysModified()
+		if ok {
+			keys = append(keys, cmdKeys...)
+		}
+	}
+
+	ok = (keys != nil)
+	return
+}
+
 // Script creates a single script on the fly,
 // ready to be used as a(n) (ARDB) StorageAction.
 func Script(keyCount int, src string, valueKeys []string, keysAndArgs ...interface{}) *StorageScript {
@@ -193,6 +260,7 @@ func (cmd *StorageScript) KeysModified() ([]string, bool) {
 var (
 	_ StorageAction = (*StorageCommand)(nil)
 	_ StorageAction = (*StorageCommands)(nil)
+	_ StorageAction = (*StorageTransaction)(nil)
 	_ StorageAction = (*StorageScript)(nil)
 )
 
