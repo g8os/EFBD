@@ -1,14 +1,8 @@
 package ardb
 
 import (
-	"fmt"
 	"reflect"
 	"testing"
-
-	"github.com/zero-os/0-Disk/config"
-	"github.com/zero-os/0-Disk/redisstub/ledisdb"
-
-	"github.com/garyburd/redigo/redis"
 )
 
 type valueError struct {
@@ -272,35 +266,4 @@ func TestReply(t *testing.T) {
 			t.Errorf("%s=%+v, want %+v", rt.name, rt.actual.v, rt.expected.v)
 		}
 	}
-}
-
-func ExampleBool() {
-	c, err := dial()
-	if err != nil {
-		panic(err)
-	}
-	defer c.Close()
-
-	c.Do("SET", "foo", 1)
-	exists, err := Bool(c.Do("EXISTS", "foo"))
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Printf("%#v\n", exists)
-	// Output:
-	// true
-}
-
-// TODO:
-// Add more examples:
-// ExampleError, ExampleBytes, ExampleOptBytes, ExampleInt64, ExampleInt64ToBytesMapping
-// part of https://github.com/zero-os/0-Disk/issues/543
-
-// dial creates an inmemory ledisdb server, and dials it.
-func dial() (redis.Conn, error) {
-	server := ledisdb.NewServer()
-	return Dial(config.StorageServerConfig{
-		Address: server.Address(),
-	})
 }
