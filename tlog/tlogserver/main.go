@@ -17,6 +17,7 @@ import (
 func main() {
 	conf := server.DefaultConfig()
 
+	var version bool
 	var verbose bool
 	var profileAddr string
 	var storageAddresses string
@@ -38,9 +39,14 @@ func main() {
 	flag.BoolVar(&verbose, "v", false, "log verbose (debug) statements")
 	flag.StringVar(&logPath, "logfile", "", "optionally log to the specified file, instead of the stderr")
 	flag.StringVar(&serverID, "id", "default", "The server ID (default: default)")
+	flag.BoolVar(&version, "version", false, "prints build version and exits")
 
-	// parse flags
 	flag.Parse()
+
+	if version {
+		zerodisk.PrintVersion()
+		return
+	}
 
 	// config logger (verbose or not)
 	if verbose {
@@ -56,6 +62,8 @@ func main() {
 		}
 		log.SetHandlers(handler)
 	}
+
+	zerodisk.LogVersion()
 
 	log.Debugf("flags parsed: address=%q flush-size=%d flush-time=%d block-size=%d data-shards=%d parity-shards=%d priv-key=%q profile-address=%q config=%q storage-addresses=%q logfile=%q id=%q",
 		conf.ListenAddr,

@@ -3,13 +3,57 @@ package zerodisk
 import (
 	"bytes"
 	"fmt"
+	"runtime"
+
+	"github.com/zero-os/0-Disk/log"
 )
 
 var (
 	// CurrentVersion represents the current global
 	// version of the zerodisk modules
 	CurrentVersion = NewVersion(1, 1, 0, versionLabel("beta-1"))
+	// CommitHash represents the Git commit hash at built time
+	CommitHash string
+	// BuildDate represents the date when this tool suite was built
+	BuildDate string
 )
+
+// PrintVersion prints the current version
+func PrintVersion() {
+	version := "Version: " + CurrentVersion.String()
+
+	// Build (Git) Commit Hash
+	if CommitHash != "" {
+		version += "\r\nBuild: " + CommitHash
+		if BuildDate != "" {
+			version += " " + BuildDate
+		}
+	}
+
+	// Output version and runtime information
+	fmt.Printf("%s\r\nRuntime: %s %s\r\n",
+		version,
+		runtime.Version(), // Go Version
+		runtime.GOOS,      // OS Name
+	)
+}
+
+// LogVersion prints the version at log level info
+// meant to log the version at startup of a server
+func LogVersion() {
+	// log version
+	log.Info("Version: " + CurrentVersion.String())
+
+	// log build (Git) Commit Hash
+	if CommitHash != "" {
+		build := "Build: " + CommitHash
+		if BuildDate != "" {
+			build += " " + BuildDate
+		}
+
+		log.Info(build)
+	}
+}
 
 // VersionFromUInt32 creates a version from a given uint32 number.
 func VersionFromUInt32(v uint32) Version {
