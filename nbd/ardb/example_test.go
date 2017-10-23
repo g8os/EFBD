@@ -5,6 +5,7 @@ import (
 
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/nbd/ardb"
+	"github.com/zero-os/0-Disk/nbd/ardb/command"
 	"github.com/zero-os/0-Disk/redisstub/ledisdb"
 )
 
@@ -134,4 +135,36 @@ func ExampleInt64ToBytesMapping() {
 	// Output:
 	// [4 5 6]
 	// [10 11 12]
+}
+
+func ExampleNewCluster() {
+	server := ledisdb.NewServer()
+	defer server.Close()
+
+	cfg := config.StorageClusterConfig{
+		Servers: []config.StorageServerConfig{
+			config.StorageServerConfig{Address: server.Address()},
+		},
+	}
+
+	// providing a nil dialer will make
+	// the ardb cluster use a default dialer
+	cluster, err := ardb.NewCluster(cfg, nil)
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = cluster.Do(ardb.Command(command.Set, "answer", 42))
+	if err != nil {
+		panic(err)
+	}
+
+	reply, err := cluster.Do(ardb.Command(command.Get, "answer"))
+	if err != nil {
+		panic(err)
+	}
+
+	replyStr := string(reply.([]byte))
+	fmt.Print(replyStr)
+	// Output: 42
 }
