@@ -42,7 +42,7 @@ func main() {
 	flag.Int64Var(&lbacachelimit, "lbacachelimit", ardb.DefaultLBACacheLimit,
 		fmt.Sprintf("Cache limit of LBA in bytes, needs to be higher then %d (bytes in 1 sector)", lba.BytesPerSector))
 	flag.StringVar(&serverID, "id", "default", "The server ID (default: default)")
-	flag.BoolVar(&version, "version", false, "prints build version")
+	flag.BoolVar(&version, "version", false, "prints build version and exits")
 
 	flag.Parse()
 
@@ -50,8 +50,6 @@ func main() {
 		zerodisk.PrintVersion()
 		return
 	}
-
-	zerodisk.LogVersion()
 
 	logLevel := log.InfoLevel
 	if verbose {
@@ -69,6 +67,8 @@ func main() {
 		logHandlers = append(logHandlers, handler)
 		log.SetHandlers(logHandlers...)
 	}
+
+	zerodisk.LogVersion()
 
 	log.Debugf("flags parsed: tlsonly=%t profileaddress=%q protocol=%q address=%q config=%q lbacachelimit=%d logfile=%q id=%q",
 		tlsonly,
