@@ -28,7 +28,7 @@ func (status BlockStatus) String() string {
 	case BlockStatusForceFlushReceived:
 		return "ForceFlushCommandReceived"
 	case BlockStatusReady:
-		return "Ready to receive block"
+		return "ReadyToReceiveBlock"
 	default:
 		return "Unknown"
 	}

@@ -17,7 +17,8 @@ import (
 
 // Test that include waiting for other tlog to be finished
 // see : https://github.com/zero-os/0-Disk/issues/527
-// it tests the idea described at  https://github.com/zero-os/0-Disk/issues/527#issuecomment-334711480
+// it tests the idea described at  https://github.com/zero-os/0-Disk/issues/527#issuecomment-334711480:
+// 		new tlog hold all write operations until old tlog finished
 // Test scenario :
 // - create 0-stor clusters
 // - create nbdserver 1 (nb1) and tlogserver 1 (t1)
@@ -162,7 +163,7 @@ func TestWaitOtherTlog(t *testing.T) {
 
 			seq := blocks.At(i).Sequence()
 
-			require.Equal(t, datas[seq], data)
+			require.Equal(t, datas[seq], data, "data for sequence %v is not valid", seq)
 			delete(datas, seq)
 		}
 	}

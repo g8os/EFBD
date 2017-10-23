@@ -17,9 +17,14 @@ import (
 
 const (
 	capnpBufLen = 4096 * 4
+
+	// description of this constant can be found in the place where this constant
+	// is being used
+	lastMetaKeyStoreInterval = 25
 )
 
 var (
+	// ErrNoFlushedBlock returned when there is no flushed block for a vdisk
 	ErrNoFlushedBlock = errors.New("no flushed block")
 )
 
@@ -194,7 +199,7 @@ func (c *Client) processStoreData(data []byte, lastSequence uint64, timestamp in
 	// processing time.
 	// We still store it because otherwise we need to walk the entire disk
 	// on startup.
-	if c.storeNum%25 == 0 {
+	if c.storeNum%lastMetaKeyStoreInterval == 0 {
 		if err := c.saveLastMetaKey(); err != nil {
 			return err
 		}

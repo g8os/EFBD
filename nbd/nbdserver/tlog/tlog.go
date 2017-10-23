@@ -57,7 +57,7 @@ func Storage(ctx context.Context, vdiskID string, configSource config.Source, bl
 			cancel()
 			return nil, errors.New("tlogStorage requires valid tlogclient: " + err.Error())
 		}
-		log.Infof("tlogclient for vdisk `%v` created", vdiskID)
+		log.Debugf("tlogclient for vdisk `%v` created", vdiskID)
 
 		if metadata.lastFlushedSequence < client.LastFlushedSequence() {
 			// TODO call tlog player if last flushed sequence from tlog server is
@@ -108,7 +108,6 @@ type tlogStorage struct {
 	// condition variable used to signal when the cache is empty
 	cacheEmptyCond *sync.Cond
 
-	tlogReadyMux     sync.Mutex
 	tlogReady        bool
 	tlogNotReadyBuff []writeOp
 	cancel           context.CancelFunc
@@ -123,6 +122,7 @@ type transaction struct {
 }
 
 type writeOp struct {
+	sequence   uint64
 	blockIndex int64
 	content    []byte
 }
@@ -131,17 +131,6 @@ type writeOp struct {
 func (tls *tlogStorage) SetBlock(blockIndex int64, content []byte) error {
 	tls.mux.Lock()
 	defer tls.mux.Unlock()
-
-	// insert to buffer if tlog not ready yet
-	tls.tlogReadyMux.Lock()
-	defer tls.tlogReadyMux.Unlock()
-	if !tls.tlogReady {
-		tls.tlogNotReadyBuff = append(tls.tlogNotReadyBuff, writeOp{
-			blockIndex: blockIndex,
-			content:    content,
-		})
-		return nil
-	}
 
 	return tls.set(blockIndex, content)
 }
@@ -179,17 +168,25 @@ func (tls *tlogStorage) set(blockIndex int64, content []byte) error {
 			blockIndex, sequence, err)
 	}
 
-	// copy the content to avoid race condition with value in cache
-	transactionContent := make([]byte, len(content))
-	copy(transactionContent, content)
+	if tls.tlogReady {
+		// copy the content to avoid race condition with value in cache
+		transactionContent := make([]byte, len(content))
+		copy(transactionContent, content)
 
-	// scheduele tlog transaction, to be sent to the server
-	tls.transactionCh <- &transaction{
-		Operation: op,
-		Sequence:  sequence,
-		Index:     blockIndex,
-		Timestamp: tlog.TimeNowTimestamp(),
-		Content:   transactionContent,
+		// scheduele tlog transaction, to be sent to the server
+		tls.transactionCh <- &transaction{
+			Operation: op,
+			Sequence:  sequence,
+			Index:     blockIndex,
+			Timestamp: tlog.TimeNowTimestamp(),
+			Content:   transactionContent,
+		}
+	} else {
+		tls.tlogNotReadyBuff = append(tls.tlogNotReadyBuff, writeOp{
+			sequence:   sequence,
+			blockIndex: blockIndex,
+			content:    content,
+		})
 	}
 
 	// success!
@@ -228,36 +225,35 @@ func (tls *tlogStorage) DeleteBlock(blockIndex int64) (err error) {
 	tls.mux.Lock()
 	defer tls.mux.Unlock()
 
-	// insert to buffer if tlog not ready yet
-	tls.tlogReadyMux.Lock()
-	defer tls.tlogReadyMux.Unlock()
-	if !tls.tlogReady {
-		tls.tlogNotReadyBuff = append(tls.tlogNotReadyBuff, writeOp{
-			blockIndex: blockIndex,
-			content:    nil,
-		})
-		return nil
-	}
-
 	err = tls.set(blockIndex, nil)
 	return
 }
 
 // Flush implements BlockStorage.Flush
 func (tls *tlogStorage) Flush() error {
-	// wait for tlog to be ready
-	// TODO : find a way without waiting
-	for {
-		tls.tlogReadyMux.Lock()
-		if tls.tlogReady {
-			tls.tlogReadyMux.Unlock()
-			break
+	tls.mux.Lock()
+
+	if !tls.tlogReady {
+		// wait for tlog to be ready
+		// TODO : find a way without waiting
+		waitTlogReadyUntil := time.Now().Add(FlushWaitRetryNum * FlushWaitRetry)
+		for {
+			tls.mux.Unlock()
+
+			time.Sleep(time.Second)
+			tls.mux.Lock()
+
+			if tls.tlogReady {
+				break
+			}
+
+			if time.Now().After(waitTlogReadyUntil) {
+				tls.mux.Unlock()
+				return errFlushTimeout
+			}
 		}
-		tls.tlogReadyMux.Unlock()
-		time.Sleep(1 * time.Second)
 	}
 
-	tls.mux.Lock()
 	defer tls.mux.Unlock()
 
 	// ForceFlush at the latest sequence
@@ -348,8 +344,9 @@ func (tls *tlogStorage) waitTlogServerReady() {
 	defer log.Infof("tlogServer for %v is ready", tls.vdiskID)
 	tls.tlog.WaitReady()
 
-	tls.tlogReadyMux.Lock()
-	defer tls.tlogReadyMux.Unlock()
+	tls.mux.Lock()
+	defer tls.mux.Unlock()
+	tls.tlogReady = true
 
 	// update last sequence
 	tls.sequenceMux.Lock()
@@ -358,12 +355,14 @@ func (tls *tlogStorage) waitTlogServerReady() {
 
 	// resume all helds IO
 	for _, op := range tls.tlogNotReadyBuff {
+		tls.cache.Evict(op.sequence)
+	}
+
+	for _, op := range tls.tlogNotReadyBuff {
 		tls.set(op.blockIndex, op.content)
 	}
 
-	// mark tlog server as ready
-	tls.tlogNotReadyBuff = []writeOp{}
-	tls.tlogReady = true
+	tls.tlogNotReadyBuff = nil
 }
 
 func (tls *tlogStorage) spawnBackgroundGoroutine(parentCtx context.Context) error {
