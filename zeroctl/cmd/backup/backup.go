@@ -19,9 +19,10 @@ var vdiskCmdCfg struct {
 	PrivateKey      backup.CryptoKey       // optional
 	CompressionType backup.CompressionType // optional
 	JobCount        int                    // optional
-	Force           bool                   //optional
+	Force           bool                   // optional
 
-	BackupStorageConfig storageConfig // optional
+	BackupStorageConfig storageConfig          // optional
+	TLSConfig           backup.TLSClientConfig // optional
 }
 
 var (

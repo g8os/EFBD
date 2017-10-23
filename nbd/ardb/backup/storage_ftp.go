@@ -107,9 +107,9 @@ func (cfg *FTPServerConfig) Type() string {
 
 // TLSClientConfig is used to configure client authentication with mutual TLS.
 type TLSClientConfig struct {
-	Certificate        string
-	Key                string
-	CA                 string
+	CertFile           string
+	KeyFile            string
+	CAFile             string
 	ServerName         string
 	InsecureSkipVerify bool
 }
@@ -120,8 +120,8 @@ func tlsClientAuth(cfg TLSClientConfig) (*tls.Config, error) {
 	tlsCfg := new(tls.Config)
 
 	// load client cert if specified
-	if cfg.Certificate != "" {
-		cert, err := tls.LoadX509KeyPair(cfg.Certificate, cfg.Key)
+	if cfg.CertFile != "" {
+		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
 		if err != nil {
 			return nil, fmt.Errorf("tls client cert: %v", err)
 		}
@@ -133,9 +133,9 @@ func tlsClientAuth(cfg TLSClientConfig) (*tls.Config, error) {
 	// When no CA certificate is provided, default to the system cert pool
 	// that way when a request is made to a server known by the system trust store,
 	// the name is still verified
-	if cfg.CA != "" {
+	if cfg.CAFile != "" {
 		// load ca cert
-		caCert, err := ioutil.ReadFile(cfg.CA)
+		caCert, err := ioutil.ReadFile(cfg.CAFile)
 		if err != nil {
 			return nil, fmt.Errorf("tls client ca: %v", err)
 		}
@@ -144,13 +144,14 @@ func tlsClientAuth(cfg TLSClientConfig) (*tls.Config, error) {
 		tlsCfg.RootCAs = caCertPool
 	}
 
-	// apply servername overrride
+	// apply servername override
 	if cfg.ServerName != "" {
 		tlsCfg.InsecureSkipVerify = false
 		tlsCfg.ServerName = cfg.ServerName
 	}
 
 	tlsCfg.BuildNameToCertificate()
+
 	return tlsCfg, nil
 }
 
@@ -184,6 +185,20 @@ func (cfg *FTPServerConfig) validate() error {
 	return nil
 }
 
+// validate the TLS Client Config.
+func (tlsConfig *TLSClientConfig) validate() error {
+	if tlsConfig.CertFile != "" && tlsConfig.KeyFile == "" {
+		return fmt.Errorf("when certificate is given, key must be given")
+	}
+	if tlsConfig.CertFile == "" && tlsConfig.KeyFile != "" {
+		return fmt.Errorf("when key is given, certificate must be given")
+	}
+	if !tlsConfig.InsecureSkipVerify && tlsConfig.ServerName == "" {
+		return fmt.Errorf("server name must be given")
+	}
+	return nil
+}
+
 // FTPStorageDriver ceates a driver which allows you
 // to read/write deduped blocks/map from/to a FTP server.
 func FTPStorageDriver(cfg FTPStorageDriverConfig) (StorageDriver, error) {
@@ -203,6 +218,10 @@ func FTPStorageDriver(cfg FTPStorageDriverConfig) (StorageDriver, error) {
 	// if a tls config is specified,
 	// create an actual TLS Config, and pass it onto the goftp Config
 	if cfg.TLSConfig != nil {
+		err = cfg.TLSConfig.validate()
+		if err != nil {
+			return nil, err
+		}
 		config.TLSConfig, err = tlsClientAuth(*cfg.TLSConfig)
 		if err != nil {
 			return nil, err

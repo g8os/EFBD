@@ -44,8 +44,10 @@ func describeSnapshot(cmd *cobra.Command, args []string) error {
 	if vdiskCmdCfg.BackupStorageConfig.StorageType == ftpStorageType {
 		var ftpStorageConfig backup.FTPStorageDriverConfig
 		ftpStorageConfig.ServerConfig = vdiskCmdCfg.BackupStorageConfig.Resource.(backup.FTPServerConfig)
-		// TODO: optionally set TLSConfig (if the right flags are given)
-
+		if vdiskCmdCfg.TLSConfig.InsecureSkipVerify || vdiskCmdCfg.TLSConfig.CertFile != "" ||
+			vdiskCmdCfg.TLSConfig.CAFile != "" || vdiskCmdCfg.TLSConfig.ServerName != "" {
+			ftpStorageConfig.TLSConfig = &vdiskCmdCfg.TLSConfig
+		}
 		storageDriver, err = backup.FTPStorageDriver(ftpStorageConfig)
 		if err != nil {
 			return err
@@ -155,6 +157,13 @@ here are some examples of valid values for that flag:
 Alternatively you can also give a local directory path to the --storage flag,
 to backup to the local file system instead.
 This is also the default in case the --storage flag is not specified.
+
+  When the --storage flag contains an FTP storage config and at least one of 
+--tls-server/--tls-cert/--tls-insecure/--tls-ca flags are given, 
+FTPS (FTP over SSL) is used instead of a plain FTP connection. 
+This enables describing backups in a private and secure fashion,
+discouraging eavesdropping, tampering, and message forgery.
+When the configured server does not support FTPS an error will be returned.
 `
 
 	DescribeSnapshotCmd.Flags().VarP(
@@ -171,4 +180,26 @@ This is also the default in case the --storage flag is not specified.
 	DescribeSnapshotCmd.Flags().BoolVar(
 		&describeVdiskCmdCfg.PrettyPrint, "pretty", false,
 		"pretty print output when this flag is specified")
+
+	DescribeSnapshotCmd.Flags().BoolVar(
+		&vdiskCmdCfg.TLSConfig.InsecureSkipVerify,
+		"tls-insecure", false,
+		"when given FTP over SSL will be used without cert verification")
+	DescribeSnapshotCmd.Flags().StringVar(
+		&vdiskCmdCfg.TLSConfig.ServerName,
+		"tls-server", "",
+		"certs will be verified when given (required when --tls-insecure is not used)")
+	DescribeSnapshotCmd.Flags().StringVar(
+		&vdiskCmdCfg.TLSConfig.CertFile,
+		"tls-cert", "",
+		"PEM-encoded file containing the TLS Client cert (FTPS will be used when given)")
+	DescribeSnapshotCmd.Flags().StringVar(
+		&vdiskCmdCfg.TLSConfig.KeyFile,
+		"tls-key", "",
+		"PEM-encoded file containing the private TLS client key")
+	DescribeSnapshotCmd.Flags().StringVar(
+		&vdiskCmdCfg.TLSConfig.CAFile,
+		"tls-ca", "",
+		"optional PEM-encoded file containing the TLS CA Pool (defaults to system pool when not given)")
+
 }
