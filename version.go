@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"runtime"
+
+	"github.com/zero-os/0-Disk/log"
 )
 
 var (
@@ -30,6 +32,26 @@ func PrintVersion(CommitHash, BuildDate string) {
 		runtime.Version(), // Go Version
 		runtime.GOOS,      // OS Name
 	)
+}
+
+// LogVersion prints the version at log level info
+// meant to log the version at startup of a server
+func LogVersion(CommitHash, BuildDate string) {
+	version := "Version: " + CurrentVersion.String()
+	var build string
+
+	// Build (Git) Commit Hash
+	if CommitHash != "" {
+		build = "Build: " + CommitHash
+		if BuildDate != "" {
+			build += " " + BuildDate
+		}
+	}
+
+	log.Info(version)
+	if build != "" {
+		log.Info(build)
+	}
 }
 
 // VersionFromUInt32 creates a version from a given uint32 number.

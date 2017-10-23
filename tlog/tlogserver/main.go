@@ -42,14 +42,15 @@ func main() {
 	flag.StringVar(&serverID, "id", "default", "The server ID (default: default)")
 	flag.BoolVar(&version, "version", false, "prints build version")
 
-	// parse flags
 	flag.Parse()
 
-	// print version and exit
 	if version {
 		zerodisk.PrintVersion(v.CommitHash, v.BuildDate)
 		return
 	}
+
+	// log version
+	zerodisk.LogVersion(v.CommitHash, v.BuildDate)
 
 	// config logger (verbose or not)
 	if verbose {

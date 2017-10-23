@@ -47,11 +47,13 @@ func main() {
 
 	flag.Parse()
 
-	// print version and exit
 	if version {
 		zerodisk.PrintVersion(v.CommitHash, v.BuildDate)
 		return
 	}
+
+	// log version
+	zerodisk.LogVersion(v.CommitHash, v.BuildDate)
 
 	logLevel := log.InfoLevel
 	if verbose {
