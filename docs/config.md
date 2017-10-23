@@ -35,10 +35,9 @@ Who uses what:
   * [NBDVdisksConfig](#NBDVdisksConfig): required;
   * for each [VDisk][vdisk]:
     * [VdiskTlogConfig](#VdiskTlogConfig): required (some fields are optional);
-  * for each referenced storage cluster:
-    * [StorageClusterConfig](#StorageClusterConfig):
-      * required for [tlog storage (1)][storage] (some fields are not used);
-      * optional for [slave storage][slave] (some fields are optional);
+    * [ZeroStorClusterConfig](#ZeroStorClusterConfig): required;
+  * for optional referenced [storage slave][slave] cluster:
+    * [StorageClusterConfig](#StorageClusterConfig);
 * [zeroctl][zeroctl] uses:
   * for most [VDisk][vdisk] operations:
     * [VdiskStaticConfig](#VdiskStaticConfig): required (some fields are optional);

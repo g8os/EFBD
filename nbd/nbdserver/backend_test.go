@@ -18,11 +18,12 @@ func TestDedupedBackendReadWrite(t *testing.T) {
 		blockCount = size / blockSize
 	)
 
-	provider := redisstub.NewInMemoryRedisProvider(nil)
+	cluster := redisstub.NewUniCluster(true)
+	defer cluster.Close()
 
 	storage, err := storage.Deduped(
 		vdiskID, blockCount,
-		ardb.DefaultLBACacheLimit, false, provider)
+		ardb.DefaultLBACacheLimit, cluster, nil)
 	if err != nil || storage == nil {
 		t.Fatalf("storage could not be created: %v", err)
 	}
@@ -38,9 +39,10 @@ func TestNonDedupedBackendReadWrite(t *testing.T) {
 		blockSize = 8
 	)
 
-	provider := redisstub.NewInMemoryRedisProvider(nil)
+	cluster := redisstub.NewUniCluster(true)
+	defer cluster.Close()
 
-	storage, err := storage.NonDeduped(vdiskID, "", blockSize, false, provider)
+	storage, err := storage.NonDeduped(vdiskID, "", blockSize, cluster, nil)
 	if err != nil || storage == nil {
 		t.Fatalf("storage could not be created: %v", err)
 	}

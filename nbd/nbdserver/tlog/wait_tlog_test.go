@@ -179,8 +179,9 @@ func newTestTlogStorage(ctx context.Context, t *testing.T, vdiskID, tlogServerAd
 	source.SetTlogServerCluster(vdiskID, "tlogcluster", &config.TlogClusterConfig{
 		Servers: []string{tlogServerAddr},
 	})
+	source.SetPrimaryStorageCluster(vdiskID, "nbdcluster", nil)
 
-	tlogStorage, err := Storage(ctx, vdiskID, "tlogcluster", source, blockSize,
+	tlogStorage, err := Storage(ctx, vdiskID, source, blockSize,
 		blockStorage, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, tlogStorage)

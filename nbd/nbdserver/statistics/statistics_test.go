@@ -18,6 +18,20 @@ func TestVdiskAggregator(t *testing.T) {
 	assert.Zero(iops)
 	assert.Zero(throughput)
 
+	// because we average on one second
+	// and we do not want to start to predict
+	// we cap the duration at 1 second, if it's lower than that
+
+	va.TrackBytes(2048)
+	iops, throughput = va.Reset(0)
+	assert.Equal(1.0, iops)
+	assert.Equal(2.0, throughput)
+
+	va.TrackBytes(2048)
+	iops, throughput = va.Reset(time.Millisecond * 100)
+	assert.Equal(1.0, iops)
+	assert.Equal(2.0, throughput)
+
 	// let's test some different possibilities
 
 	va.TrackBytes(2048)

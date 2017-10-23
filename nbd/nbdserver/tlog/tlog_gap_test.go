@@ -42,13 +42,14 @@ func TestTlogStorageSlow(t *testing.T) {
 	}
 
 	source := config.NewStubSource()
+	source.SetPrimaryStorageCluster(vdiskID, "nbdCluster", nil)
 	source.SetTlogServerCluster(vdiskID, "tlogcluster", &config.TlogClusterConfig{
 		Servers: []string{tlogrpc},
 	})
 	defer source.Close()
 
 	storage, err := Storage(
-		ctx, vdiskID, "tlogcluster", source, blockSize, slowStorage, nil, nil)
+		ctx, vdiskID, source, blockSize, slowStorage, nil, nil)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}

@@ -8,16 +8,17 @@ import (
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
+	"github.com/zero-os/0-Disk/nbd/ardb/command"
 )
 
 // SemiDeduped returns a semi deduped BlockStorage
-func SemiDeduped(vdiskID string, blockSize, lbaCacheLimit int64, provider ardb.ConnProvider) (BlockStorage, error) {
-	templateStorage, err := Deduped(vdiskID, blockSize, lbaCacheLimit, true, provider)
+func SemiDeduped(vdiskID string, blockSize, lbaCacheLimit int64, cluster, templateCluster ardb.StorageCluster) (BlockStorage, error) {
+	templateStorage, err := Deduped(vdiskID, blockSize, lbaCacheLimit, cluster, templateCluster)
 	if err != nil {
 		return nil, err
 	}
 
-	userStorage, err := NonDeduped(vdiskID, "", blockSize, false, provider)
+	userStorage, err := NonDeduped(vdiskID, "", blockSize, cluster, nil)
 	if err != nil {
 		templateStorage.Close()
 		return nil, err
@@ -28,7 +29,7 @@ func SemiDeduped(vdiskID string, blockSize, lbaCacheLimit int64, provider ardb.C
 		userStorage:     userStorage,
 		vdiskID:         vdiskID,
 		blockSize:       blockSize,
-		provider:        provider,
+		cluster:         cluster,
 	}
 
 	err = storage.readBitMap()
@@ -52,7 +53,7 @@ type semiDedupedStorage struct {
 	userStorage BlockStorage
 
 	// used to store the semi deduped metadata
-	provider ardb.MetadataConnProvider
+	cluster ardb.StorageCluster
 
 	// bitmap used to indicate if the data is available as userdata or not
 	userStorageBitMap bitMap
@@ -141,57 +142,11 @@ func (sds *semiDedupedStorage) Close() error {
 
 // readBitMap reads and decompresses (gzip) the bitmap from the ardb
 func (sds *semiDedupedStorage) readBitMap() error {
-	conn, err := sds.provider.MetadataConnection()
+	cmd := ardb.Command(command.Get, semiDedupBitMapKey(sds.vdiskID))
+	bytes, err := ardb.Bytes(sds.cluster.Do(cmd))
 	if err != nil {
-		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
-			log.Errorf("primary server network error for vdisk %s: %v", sds.vdiskID, err)
-			// disable data connection,
-			// so the server remains disabled until next config reload.
-			if sds.provider.DisableMetadataConnection(conn.ServerIndex()) {
-				// only if the data connection wasn't already disabled,
-				// we'll broadcast the failure
-				cfg := conn.ConnectionConfig()
-				log.Broadcast(
-					status,
-					log.SubjectStorage,
-					log.ARDBServerTimeoutBody{
-						Address:  cfg.Address,
-						Database: cfg.Database,
-						Type:     log.ARDBPrimaryServer,
-						VdiskID:  sds.vdiskID,
-					},
-				)
-			}
-		}
 		return err
 	}
-	defer conn.Close()
-
-	bytes, err := redis.Bytes(conn.Do("GET", semiDedupBitMapKey(sds.vdiskID)))
-	if err != nil {
-		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
-			log.Errorf("primary server network error for vdisk %s: %v", sds.vdiskID, err)
-			// disable data connection,
-			// so the server remains disabled until next config reload.
-			if sds.provider.DisableMetadataConnection(conn.ServerIndex()) {
-				// only if the data connection wasn't already disabled,
-				// we'll broadcast the failure
-				cfg := conn.ConnectionConfig()
-				log.Broadcast(
-					status,
-					log.SubjectStorage,
-					log.ARDBServerTimeoutBody{
-						Address:  cfg.Address,
-						Database: cfg.Database,
-						Type:     log.ARDBPrimaryServer,
-						VdiskID:  sds.vdiskID,
-					},
-				)
-			}
-		}
-		return err
-	}
-
 	return sds.userStorageBitMap.SetBytes(bytes)
 }
 
@@ -202,56 +157,8 @@ func (sds *semiDedupedStorage) writeBitMap() error {
 		return err
 	}
 
-	conn, err := sds.provider.MetadataConnection()
-	if err != nil {
-		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
-			log.Errorf("primary server network error for vdisk %s: %v", sds.vdiskID, err)
-			// disable data connection,
-			// so the server remains disabled until next config reload.
-			if sds.provider.DisableMetadataConnection(conn.ServerIndex()) {
-				// only if the data connection wasn't already disabled,
-				// we'll broadcast the failure
-				cfg := conn.ConnectionConfig()
-				log.Broadcast(
-					status,
-					log.SubjectStorage,
-					log.ARDBServerTimeoutBody{
-						Address:  cfg.Address,
-						Database: cfg.Database,
-						Type:     log.ARDBPrimaryServer,
-						VdiskID:  sds.vdiskID,
-					},
-				)
-			}
-		}
-		return err
-	}
-	defer conn.Close()
-
-	_, err = conn.Do("SET", semiDedupBitMapKey(sds.vdiskID), bytes)
-	if err != nil {
-		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
-			log.Errorf("primary server network error for vdisk %s: %v", sds.vdiskID, err)
-			// disable data connection,
-			// so the server remains disabled until next config reload.
-			if sds.provider.DisableMetadataConnection(conn.ServerIndex()) {
-				// only if the data connection wasn't already disabled,
-				// we'll broadcast the failure
-				cfg := conn.ConnectionConfig()
-				log.Broadcast(
-					status,
-					log.SubjectStorage,
-					log.ARDBServerTimeoutBody{
-						Address:  cfg.Address,
-						Database: cfg.Database,
-						Type:     log.ARDBPrimaryServer,
-						VdiskID:  sds.vdiskID,
-					},
-				)
-			}
-		}
-	}
-	return err
+	cmd := ardb.Command(command.Set, semiDedupBitMapKey(sds.vdiskID), bytes)
+	return ardb.Error(sds.cluster.Do(cmd))
 }
 
 func combineErrorPair(e1, e2 error) error {
@@ -268,7 +175,7 @@ func combineErrorPair(e1, e2 error) error {
 
 // SemiDedupedVdiskExists returns if the semi deduped vdisk in question
 // exists in the given ardb storage cluster.
-func SemiDedupedVdiskExists(vdiskID string, cluster *config.StorageClusterConfig) (bool, error) {
+func SemiDedupedVdiskExists(vdiskID string, cluster config.StorageClusterConfig) (bool, error) {
 	// it's just an alias for DedupedVdiskExists,
 	// as a semi deduped vdisk has always deduped data,
 	// while non-deduped is optional in case it's a fresh vdisk.
@@ -277,7 +184,7 @@ func SemiDedupedVdiskExists(vdiskID string, cluster *config.StorageClusterConfig
 
 // ListSemiDedupedBlockIndices returns all indices stored for the given semi deduped storage.
 // This function will always either return an error OR indices.
-func ListSemiDedupedBlockIndices(vdiskID string, cluster *config.StorageClusterConfig) ([]int64, error) {
+func ListSemiDedupedBlockIndices(vdiskID string, cluster config.StorageClusterConfig) ([]int64, error) {
 	// get deduped' indices
 	indices, err := ListDedupedBlockIndices(vdiskID, cluster)
 	if err != nil {
@@ -286,7 +193,7 @@ func ListSemiDedupedBlockIndices(vdiskID string, cluster *config.StorageClusterC
 
 	// try to get nondeduped' indices
 	ndIndices, err := ListNonDedupedBlockIndices(vdiskID, cluster)
-	if err == redis.ErrNil {
+	if err == ardb.ErrNil {
 		// no nondeduped' (user) indices found,
 		// so early exit with a sorted slice containing only deduped' indices
 		sortInt64s(indices)
@@ -306,11 +213,7 @@ func ListSemiDedupedBlockIndices(vdiskID string, cluster *config.StorageClusterC
 
 // CopySemiDeduped copies a semi deduped storage
 // within the same or between different storage clusters.
-func CopySemiDeduped(sourceID, targetID string, sourceCluster, targetCluster *config.StorageClusterConfig) error {
-	// validate source cluster
-	if sourceCluster == nil {
-		return errors.New("no source cluster given")
-	}
+func CopySemiDeduped(sourceID, targetID string, sourceCluster config.StorageClusterConfig, targetCluster *config.StorageClusterConfig) error {
 	sourceDataServerCount := len(sourceCluster.Servers)
 	if sourceDataServerCount == 0 {
 		return errors.New("no data server configs given for source")
@@ -319,7 +222,7 @@ func CopySemiDeduped(sourceID, targetID string, sourceCluster, targetCluster *co
 	// define whether or not we're copying between different clusters,
 	// and if the target cluster is given, make sure to validate it.
 	if targetCluster == nil {
-		targetCluster = sourceCluster
+		targetCluster = &sourceCluster
 	} else {
 		targetDataServerCount := len(targetCluster.Servers)
 		// [TODO]
@@ -333,11 +236,11 @@ func CopySemiDeduped(sourceID, targetID string, sourceCluster, targetCluster *co
 		}
 	}
 
-	metaSourceCfg, err := sourceCluster.FirstAvailableServer()
+	metaSourceCfg, err := ardb.FindFirstAvailableServerConfig(sourceCluster)
 	if err != nil {
 		return err
 	}
-	metaTargetCfg, err := targetCluster.FirstAvailableServer()
+	metaTargetCfg, err := ardb.FindFirstAvailableServerConfig(*targetCluster)
 	if err != nil {
 		return err
 	}
@@ -345,7 +248,7 @@ func CopySemiDeduped(sourceID, targetID string, sourceCluster, targetCluster *co
 	var hasBitMask bool
 	if metaSourceCfg.Equal(metaTargetCfg) {
 		hasBitMask, err = func() (bool, error) {
-			conn, err := ardb.GetConnection(*metaSourceCfg)
+			conn, err := ardb.Dial(metaSourceCfg)
 			if err != nil {
 				return false, fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
 			}
@@ -355,7 +258,7 @@ func CopySemiDeduped(sourceID, targetID string, sourceCluster, targetCluster *co
 		}()
 	} else {
 		hasBitMask, err = func() (bool, error) {
-			conns, err := ardb.GetConnections(*metaSourceCfg, *metaTargetCfg)
+			conns, err := ardb.DialAll(metaSourceCfg, metaTargetCfg)
 			if err != nil {
 				return false, fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
 			}
@@ -374,10 +277,10 @@ func CopySemiDeduped(sourceID, targetID string, sourceCluster, targetCluster *co
 		sourceCfg = sourceCluster.Servers[i]
 		targetCfg = targetCluster.Servers[i]
 
-		if sourceCfg.Equal(&targetCfg) {
+		if sourceCfg.Equal(targetCfg) {
 			// within same storage server
 			err = func() error {
-				conn, err := ardb.GetConnection(sourceCfg)
+				conn, err := ardb.Dial(sourceCfg)
 				if err != nil {
 					return fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
 				}
@@ -400,7 +303,7 @@ func CopySemiDeduped(sourceID, targetID string, sourceCluster, targetCluster *co
 		} else {
 			// between different storage servers
 			err = func() error {
-				conns, err := ardb.GetConnections(sourceCfg, targetCfg)
+				conns, err := ardb.DialAll(sourceCfg, targetCfg)
 				if err != nil {
 					return fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
 				}
@@ -434,7 +337,7 @@ func CopySemiDeduped(sourceID, targetID string, sourceCluster, targetCluster *co
 }
 
 // NOTE: copies bitmask only
-func copySemiDedupedSameConnection(sourceID, targetID string, conn redis.Conn) (hasBitMask bool, err error) {
+func copySemiDedupedSameConnection(sourceID, targetID string, conn ardb.Conn) (hasBitMask bool, err error) {
 	script := redis.NewScript(0, `
 local source = ARGV[1]
 local destination = ARGV[2]
@@ -457,17 +360,17 @@ return 1
 	sourceKey := semiDedupBitMapKey(sourceID)
 	targetKey := semiDedupBitMapKey(targetID)
 
-	hasBitMask, err = redis.Bool(script.Do(conn, sourceKey, targetKey))
+	hasBitMask, err = ardb.Bool(script.Do(conn, sourceKey, targetKey))
 	return
 }
 
 // NOTE: copies bitmask only
-func copySemiDedupedDifferentConnections(sourceID, targetID string, connA, connB redis.Conn) (hasBitMask bool, err error) {
+func copySemiDedupedDifferentConnections(sourceID, targetID string, connA, connB ardb.Conn) (hasBitMask bool, err error) {
 	sourceKey := semiDedupBitMapKey(sourceID)
 
 	log.Infof("collecting semidedup bitmask from source vdisk %q...", sourceID)
-	bytes, err := redis.Bytes(connA.Do("GET", sourceKey))
-	if err == redis.ErrNil {
+	bytes, err := ardb.Bytes(connA.Do("GET", sourceKey))
+	if err == ardb.ErrNil {
 		err = nil
 		log.Infof("no semidedup bitmask found for source vdisk %q...", sourceID)
 		return // nothing to do, as there is no bitmask

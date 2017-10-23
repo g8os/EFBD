@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"runtime"
 
+	"github.com/zero-os/0-Disk/nbd/ardb"
+
 	"github.com/spf13/cobra"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
@@ -118,7 +120,7 @@ func importVdisk(cmd *cobra.Command, args []string) error {
 	}
 
 	// copy nbd's tlog metadata
-	return nbdtlog.CreateMetadata(vdiskCmdCfg.VdiskID, lastFlushedSeq, clusterConf)
+	return nbdtlog.CreateMetadata(vdiskCmdCfg.VdiskID, lastFlushedSeq, *clusterConf)
 }
 
 // checkVdiskExists checks if the vdisk in question already/still exists,
@@ -143,12 +145,12 @@ func checkVdiskExists(vdiskID string) error {
 	}
 
 	exists, err := storage.VdiskExists(
-		vdiskID, staticConfig.Type, &nbdStorageConfig.StorageCluster)
-	if !exists {
-		return nil // vdisk doesn't exist, so nothing to do
-	}
+		vdiskID, staticConfig.Type, nbdStorageConfig.StorageCluster)
 	if err != nil {
 		return fmt.Errorf("couldn't check if vdisk %s already exists: %v", vdiskID, err)
+	}
+	if !exists {
+		return nil // vdisk doesn't exist, so nothing to do
 	}
 
 	if !vdiskCmdCfg.Force {
@@ -158,11 +160,11 @@ func checkVdiskExists(vdiskID string) error {
 	vdisks := map[string]config.VdiskType{vdiskID: staticConfig.Type}
 
 	// delete metadata
-	serverConfig, err := nbdStorageConfig.StorageCluster.FirstAvailableServer()
+	serverConfig, err := ardb.FindFirstAvailableServerConfig(nbdStorageConfig.StorageCluster)
 	if err != nil {
 		return err
 	}
-	err = storage.DeleteMetadata(*serverConfig, vdisks)
+	err = storage.DeleteMetadata(serverConfig, vdisks)
 	if err != nil {
 		return fmt.Errorf(
 			"couldn't delete metadata for vdisks from %s@%d: %v",
@@ -170,7 +172,7 @@ func checkVdiskExists(vdiskID string) error {
 	}
 	// make this easier
 	// see: https://github.com/zero-os/0-Disk/issues/481
-	err = deleteTlogMetadata(*serverConfig, vdisks)
+	err = deleteTlogMetadata(serverConfig, vdisks)
 	if err != nil {
 		return fmt.Errorf(
 			"couldn't delete tlog metadata for vdisks from %s@%d: %v",

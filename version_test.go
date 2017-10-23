@@ -11,17 +11,17 @@ func TestVersionString(t *testing.T) {
 		version  Version
 		expected string
 	}{
-		{NewVersion(0, 0, 0, 0), "0.0.0-" + strVersionStageDev},
-		{NewVersion(0, 0, 1, 0), "0.0.1-" + strVersionStageDev},
-		{NewVersion(0, 1, 0, 0), "0.1.0-" + strVersionStageDev},
-		{NewVersion(1, 0, 0, 0), "1.0.0-" + strVersionStageDev},
-		{NewVersion(1, 1, 0, VersionStageDev), "1.1.0-" + strVersionStageDev},
-		{NewVersion(1, 1, 0, VersionStageAlpha), "1.1.0-" + strVersionStageAlpha},
-		{NewVersion(1, 1, 0, VersionStageBeta), "1.1.0-" + strVersionStageBeta},
-		{NewVersion(1, 1, 0, VersionStageRC), "1.1.0-" + strVersionStageRC},
-		{NewVersion(1, 1, 0, VersionStageLive), "1.1.0"},
-		{NewVersion(1, 2, 3, VersionStageLive), "1.2.3"},
-		{NewVersion(4, 2, 0, VersionStageLive), "4.2.0"},
+		{NewVersion(0, 0, 0, nil), "0.0.0"},
+		{NewVersion(0, 0, 1, nil), "0.0.1"},
+		{NewVersion(0, 1, 0, nil), "0.1.0"},
+		{NewVersion(1, 0, 0, nil), "1.0.0"},
+		{NewVersion(1, 0, 0, versionLabel("beta-1")), "1.0.0-beta-1"},
+		{NewVersion(1, 1, 0, nil), "1.1.0"},
+		{NewVersion(1, 1, 0, versionLabel("abcdefgh")), "1.1.0-abcdefgh"},
+		{NewVersion(1, 1, 0, nil), "1.1.0"},
+		{NewVersion(1, 2, 3, nil), "1.2.3"},
+		{NewVersion(1, 2, 3, versionLabel("alpha-8")), "1.2.3-alpha-8"},
+		{NewVersion(4, 2, 0, nil), "4.2.0"},
 	}
 
 	for _, testCase := range testCases {
@@ -36,37 +36,34 @@ func TestVersionCompare(t *testing.T) {
 		expected   int
 	}{
 		// equal
-		{NewVersion(0, 0, 0, 0), NewVersion(0, 0, 0, 0), 0},
-		{NewVersion(0, 0, 1, 0), NewVersion(0, 0, 1, 0), 0},
-		{NewVersion(0, 1, 0, 0), NewVersion(0, 1, 0, 0), 0},
-		{NewVersion(1, 0, 0, 0), NewVersion(1, 0, 0, 0), 0},
-		{NewVersion(1, 1, 0, VersionStageAlpha), NewVersion(1, 1, 0, VersionStageAlpha), 0},
-		// equal, even though version non-live-stage is different
-		{NewVersion(0, 0, 0, VersionStageAlpha), NewVersion(0, 0, 0, VersionStageDev), 0},
-		{NewVersion(0, 0, 0, VersionStageAlpha), NewVersion(0, 0, 0, VersionStageBeta), 0},
-		{NewVersion(0, 0, 0, VersionStageRC), NewVersion(0, 0, 0, VersionStageBeta), 0},
-		// different because of version stage
-		{NewVersion(0, 0, 0, VersionStageLive), NewVersion(0, 0, 0, 0), 1},
-		{NewVersion(0, 0, 0, 0), NewVersion(0, 0, 0, VersionStageLive), -1},
-		// different because of actual version
-		{NewVersion(2, 0, 0, 0), NewVersion(1, 12, 19, 0), 1},
-		{NewVersion(1, 0, 0, 0), NewVersion(0, 1, 1, 0), 1},
-		{NewVersion(1, 0, 1, 0), NewVersion(1, 0, 0, 0), 1},
-		{NewVersion(1, 1, 1, 0), NewVersion(1, 1, 0, 0), 1},
-		{NewVersion(0, 1, 0, 0), NewVersion(0, 0, 1, 0), 1},
-		{NewVersion(0, 1, 1, 0), NewVersion(0, 1, 0, 0), 1},
-		{NewVersion(0, 0, 1, 0), NewVersion(0, 0, 0, 0), 1},
-		{NewVersion(1, 12, 19, 0), NewVersion(2, 0, 0, 0), -1},
-		{NewVersion(0, 1, 1, 0), NewVersion(1, 0, 0, 0), -1},
-		{NewVersion(1, 0, 0, 0), NewVersion(1, 0, 1, 0), -1},
-		{NewVersion(1, 1, 0, 0), NewVersion(1, 1, 1, 0), -1},
-		{NewVersion(0, 0, 1, 0), NewVersion(0, 1, 0, 0), -1},
-		{NewVersion(0, 1, 0, 0), NewVersion(0, 1, 1, 0), -1},
-		{NewVersion(0, 0, 0, 0), NewVersion(0, 0, 1, 0), -1},
+		{NewVersion(0, 0, 0, nil), NewVersion(0, 0, 0, nil), 0},
+		{NewVersion(0, 0, 1, nil), NewVersion(0, 0, 1, nil), 0},
+		{NewVersion(0, 1, 0, nil), NewVersion(0, 1, 0, nil), 0},
+		{NewVersion(0, 1, 0, versionLabel("foo")), NewVersion(0, 1, 0, nil), 0},
+		{NewVersion(0, 1, 0, nil), NewVersion(0, 1, 0, versionLabel("foo")), 0},
+		{NewVersion(0, 1, 0, versionLabel("foo")), NewVersion(0, 1, 0, versionLabel("foo")), 0},
+		{NewVersion(1, 0, 0, nil), NewVersion(1, 0, 0, nil), 0},
+		{NewVersion(1, 1, 0, nil), NewVersion(1, 1, 0, nil), 0},
+		{NewVersion(3, 2, 1, nil), NewVersion(3, 2, 1, nil), 0},
+		// different
+		{NewVersion(2, 0, 0, nil), NewVersion(1, 12, 19, nil), 1},
+		{NewVersion(1, 0, 0, nil), NewVersion(0, 1, 1, nil), 1},
+		{NewVersion(1, 0, 1, nil), NewVersion(1, 0, 0, nil), 1},
+		{NewVersion(1, 1, 1, nil), NewVersion(1, 1, 0, nil), 1},
+		{NewVersion(0, 1, 0, nil), NewVersion(0, 0, 1, nil), 1},
+		{NewVersion(0, 1, 1, nil), NewVersion(0, 1, 0, nil), 1},
+		{NewVersion(0, 0, 1, nil), NewVersion(0, 0, 0, nil), 1},
+		{NewVersion(1, 12, 19, nil), NewVersion(2, 0, 0, nil), -1},
+		{NewVersion(0, 1, 1, nil), NewVersion(1, 0, 0, nil), -1},
+		{NewVersion(1, 0, 0, nil), NewVersion(1, 0, 1, nil), -1},
+		{NewVersion(1, 1, 0, nil), NewVersion(1, 1, 1, nil), -1},
+		{NewVersion(0, 0, 1, nil), NewVersion(0, 1, 0, nil), -1},
+		{NewVersion(0, 1, 0, nil), NewVersion(0, 1, 1, nil), -1},
+		{NewVersion(0, 0, 0, nil), NewVersion(0, 0, 1, nil), -1},
 	}
 
 	for _, testCase := range testCases {
 		result := testCase.verA.Compare(testCase.verB)
-		assert.Equal(t, testCase.expected, result)
+		assert.Equalf(t, testCase.expected, result, "%s v %s", testCase.verA, testCase.verB)
 	}
 }

@@ -48,8 +48,8 @@ func (bm *bitMap) Test(pos int) bool {
 // Bytes returns the bitMap as a byte slice.
 // NOTE that returned content will be gzipped.
 func (bm *bitMap) Bytes() ([]byte, error) {
-	bm.mux.Lock()
-	defer bm.mux.Unlock()
+	bm.mux.RLock()
+	defer bm.mux.RUnlock()
 
 	// get uncompressed bytes
 	input := bm.val.Bytes()
@@ -75,8 +75,8 @@ func (bm *bitMap) Bytes() ([]byte, error) {
 // SetBytes as the new internal value of this bit map.
 // NOTE that this method expects the input bytes to be gzipped.
 func (bm *bitMap) SetBytes(b []byte) error {
-	bm.mux.RLock()
-	defer bm.mux.RUnlock()
+	bm.mux.Lock()
+	defer bm.mux.Unlock()
 
 	decomp, err := gzip.NewReader(bytes.NewReader(b))
 	if err != nil {

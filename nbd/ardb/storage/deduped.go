@@ -1,9 +1,7 @@
 package storage
 
 import (
-	"errors"
 	"fmt"
-	"strconv"
 
 	"github.com/garyburd/redigo/redis"
 
@@ -11,11 +9,12 @@ import (
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
+	"github.com/zero-os/0-Disk/nbd/ardb/command"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage/lba"
 )
 
 // Deduped returns a deduped BlockStorage
-func Deduped(vdiskID string, blockSize, lbaCacheLimit int64, templateSupport bool, provider ardb.ConnProvider) (BlockStorage, error) {
+func Deduped(vdiskID string, blockSize, lbaCacheLimit int64, cluster, templateCluster ardb.StorageCluster) (BlockStorage, error) {
 	// define the LBA cache limit
 	cacheLimit := lbaCacheLimit
 	if cacheLimit < lba.BytesPerSector {
@@ -29,7 +28,7 @@ func Deduped(vdiskID string, blockSize, lbaCacheLimit int64, templateSupport boo
 	vlba, err := lba.NewLBA(
 		vdiskID,
 		cacheLimit,
-		provider,
+		cluster,
 	)
 	if err != nil {
 		log.Errorf("couldn't create the LBA: %s", err.Error())
@@ -40,17 +39,18 @@ func Deduped(vdiskID string, blockSize, lbaCacheLimit int64, templateSupport boo
 		blockSize:       blockSize,
 		vdiskID:         vdiskID,
 		zeroContentHash: zerodisk.HashBytes(make([]byte, blockSize)),
-		provider:        provider,
+		cluster:         cluster,
 		lba:             vlba,
 	}
 
 	// getContent is ALWAYS defined,
 	// but the actual function used depends on
 	// whether or not this storage has template support.
-	if templateSupport {
-		dedupedStorage.getContent = dedupedStorage.getPrimaryOrTemplateContent
-	} else {
+	if isInterfaceValueNil(templateCluster) {
 		dedupedStorage.getContent = dedupedStorage.getPrimaryContent
+	} else {
+		dedupedStorage.getContent = dedupedStorage.getPrimaryOrTemplateContent
+		dedupedStorage.templateCluster = templateCluster
 	}
 
 	return dedupedStorage, nil
@@ -65,7 +65,8 @@ type dedupedStorage struct {
 	blockSize       int64                // block size in bytes
 	vdiskID         string               // ID of the vdisk
 	zeroContentHash zerodisk.Hash        // a hash of a nil-block of blockSize
-	provider        ardb.ConnProvider    // used to get a connection to a storage server
+	cluster         ardb.StorageCluster  // used to interact with the ARDB (StorageEngine) Cluster
+	templateCluster ardb.StorageCluster  // used to interact with the ARDB (StorageEngine) Template Cluster
 	lba             *lba.LBA             // the LBA used to get/set/modify the metadata (content hashes)
 	getContent      dedupedContentGetter // getContent function used to get content, is always defined
 }
@@ -78,9 +79,6 @@ type dedupedContentGetter func(hash zerodisk.Hash) (content []byte, err error)
 func (ds *dedupedStorage) SetBlock(blockIndex int64, content []byte) (err error) {
 	hash := zerodisk.HashBytes(content)
 	if ds.zeroContentHash.Equals(hash) {
-		log.Debugf(
-			"deleting hash @ %d from LBA for deduped vdisk %s as it's an all zeroes block",
-			blockIndex, ds.vdiskID)
 		err = ds.lba.Delete(blockIndex)
 		return
 	}
@@ -125,67 +123,11 @@ func (ds *dedupedStorage) Flush() (err error) {
 	return
 }
 
-func (ds *dedupedStorage) getDataConnection(hash zerodisk.Hash) (ardb.Connection, error) {
-	return ds.provider.DataConnection(int64(hash[0]))
-}
-
-func (ds *dedupedStorage) getTemplateConnection(hash zerodisk.Hash) (ardb.Connection, error) {
-	return ds.provider.TemplateConnection(int64(hash[0]))
-}
-
 // getPrimaryContent gets content from the primary storage.
 // Assigned to (*dedupedStorage).getContent in case this storage has no template support.
 func (ds *dedupedStorage) getPrimaryContent(hash zerodisk.Hash) (content []byte, err error) {
-	conn, err := ds.getDataConnection(hash)
-	if err != nil {
-		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
-			log.Errorf("primary server network error for vdisk %s: %v", ds.vdiskID, err)
-			// disable data connection,
-			// so the server remains disabled until next config reload.
-			if ds.provider.DisableDataConnection(conn.ServerIndex()) {
-				// only if the data connection wasn't already disabled,
-				// we'll broadcast the failure
-				cfg := conn.ConnectionConfig()
-				log.Broadcast(
-					status,
-					log.SubjectStorage,
-					log.ARDBServerTimeoutBody{
-						Address:  cfg.Address,
-						Database: cfg.Database,
-						Type:     log.ARDBPrimaryServer,
-						VdiskID:  ds.vdiskID,
-					},
-				)
-			}
-		}
-		return
-	}
-	defer conn.Close()
-
-	content, err = ardb.RedisBytes(conn.Do("GET", hash.Bytes()))
-	if err != nil {
-		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
-			log.Errorf("primary server network error for vdisk %s: %v", ds.vdiskID, err)
-			// disable data connection,
-			// so the server remains disabled until next config reload.
-			if ds.provider.DisableDataConnection(conn.ServerIndex()) {
-				// only if the data connection wasn't already disabled,
-				// we'll broadcast the failure
-				cfg := conn.ConnectionConfig()
-				log.Broadcast(
-					status,
-					log.SubjectStorage,
-					log.ARDBServerTimeoutBody{
-						Address:  cfg.Address,
-						Database: cfg.Database,
-						Type:     log.ARDBPrimaryServer,
-						VdiskID:  ds.vdiskID,
-					},
-				)
-			}
-		}
-	}
-	return
+	cmd := ardb.Command(command.Get, hash.Bytes())
+	return ardb.OptBytes(ds.cluster.DoFor(int64(hash[0]), cmd))
 }
 
 // getPrimaryOrTemplateContent gets content from the primary storage,
@@ -195,97 +137,47 @@ func (ds *dedupedStorage) getPrimaryContent(hash zerodisk.Hash) (content []byte,
 // we'll also try to store it in the primary storage before returning that content.
 // Assigned to (*dedupedStorage).getContent in case this storage has template support.
 func (ds *dedupedStorage) getPrimaryOrTemplateContent(hash zerodisk.Hash) (content []byte, err error) {
-	// try to fetch it from the primary storage
+	// try to fetch it from the primary/slave storage
 	content, err = ds.getPrimaryContent(hash)
 	if err != nil || content != nil {
 		return // critical err, or content is found
 	}
 
-	// try to fetch it from the template storage if available
-	content, err = func() (content []byte, err error) {
-		conn, err := ds.getTemplateConnection(hash)
-		if err != nil {
-			log.Debugf(
-				"content not available in primary storage for %v and no template storage available: %s",
-				hash, err.Error())
-			if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
-				log.Errorf("template server network error for vdisk %s: %v", ds.vdiskID, err)
-				// disable template data connection,
-				// so the server remains disabled until next config reload.
-				if ds.provider.DisableTemplateConnection(conn.ServerIndex()) {
-					// only if the template data connection wasn't already disabled,
-					// we'll broadcast the failure
-					cfg := conn.ConnectionConfig()
-					log.Broadcast(
-						status,
-						log.SubjectStorage,
-						log.ARDBServerTimeoutBody{
-							Address:  cfg.Address,
-							Database: cfg.Database,
-							Type:     log.ARDBTemplateServer,
-							VdiskID:  ds.vdiskID,
-						},
-					)
-				}
-			} else if err == ardb.ErrTemplateClusterNotSpecified {
-				err = nil
-			}
-
-			return
+	// try to fetch it from the template storage
+	cmd := ardb.Command(command.Get, hash.Bytes())
+	content, err = ardb.OptBytes(ds.templateCluster.DoFor(int64(hash[0]), cmd))
+	if err != nil {
+		// this error is returned, in case the cluster is simply not defined,
+		// which is an error we'll ignore, as it means we cannot use the template cluster,
+		// and thus no content is returned, and neither an error.
+		if err == ErrClusterNotDefined {
+			return nil, nil
 		}
-		defer conn.Close()
-
-		content, err = ardb.RedisBytes(conn.Do("GET", hash.Bytes()))
-		if err != nil {
-			content = nil
-			if err == redis.ErrNil {
-				log.Debugf(
-					"content for %v not available in primary-, nor in template storage: %s",
-					hash, err.Error())
-			} else if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
-				log.Errorf("template server network error for vdisk %s: %v", ds.vdiskID, err)
-				// disable template data connection,
-				// so the server remains disabled until next config reload.
-				if ds.provider.DisableTemplateConnection(conn.ServerIndex()) {
-					// only if the template data connection wasn't already disabled,
-					// we'll broadcast the failure
-					cfg := conn.ConnectionConfig()
-					log.Broadcast(
-						status,
-						log.SubjectStorage,
-						log.ARDBServerTimeoutBody{
-							Address:  cfg.Address,
-							Database: cfg.Database,
-							Type:     log.ARDBTemplateServer,
-							VdiskID:  ds.vdiskID,
-						},
-					)
-				}
-			}
-		}
-
-		return
-	}()
-	if content == nil || err != nil {
-		return
+		// no content to return,
+		// exit with an error
+		return nil, err
+	}
+	if content == nil {
+		// no content or error to return
+		return nil, nil
 	}
 
-	// store template content in primary storage asynchronously
+	// store template content in primary/slave storage asynchronously
 	go func() {
 		err := ds.setContent(hash, content)
 		if err != nil {
 			// we won't return error however, but just log it
-			log.Errorf("couldn't store template content in primary storage: %s", err.Error())
+			log.Errorf("couldn't store template content in primary/slave storage: %s", err.Error())
 			return
 		}
 
 		log.Debugf(
-			"stored template content for %v in primary storage (asynchronously)",
+			"stored template content for %v in primary/slave storage (asynchronously)",
 			hash)
 	}()
 
 	log.Debugf(
-		"content not available in primary storage for %v, but did find it in template storage",
+		"content not available in primary/slave storage for %v, but did find it in template storage",
 		hash)
 
 	// err = nil, content != nil
@@ -295,56 +187,8 @@ func (ds *dedupedStorage) getPrimaryOrTemplateContent(hash zerodisk.Hash) (conte
 // setContent if it doesn't exist yet,
 // and increase the reference counter, by adding this vdiskID
 func (ds *dedupedStorage) setContent(hash zerodisk.Hash, content []byte) error {
-	conn, err := ds.getDataConnection(hash)
-	if err != nil {
-		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
-			log.Errorf("primary server network error for vdisk %s: %v", ds.vdiskID, err)
-			// disable data connection,
-			// so the server remains disabled until next config reload.
-			if ds.provider.DisableDataConnection(conn.ServerIndex()) {
-				// only if the data connection wasn't already disabled,
-				// we'll broadcast the failure
-				cfg := conn.ConnectionConfig()
-				log.Broadcast(
-					status,
-					log.SubjectStorage,
-					log.ARDBServerTimeoutBody{
-						Address:  cfg.Address,
-						Database: cfg.Database,
-						Type:     log.ARDBPrimaryServer,
-						VdiskID:  ds.vdiskID,
-					},
-				)
-			}
-		}
-		return err
-	}
-	defer conn.Close()
-
-	_, err = conn.Do("SET", hash.Bytes(), content)
-	if err != nil {
-		if status, ok := ardb.MapErrorToBroadcastStatus(err); ok {
-			log.Errorf("primary server network error for vdisk %s: %v", ds.vdiskID, err)
-			// disable data connection,
-			// so the server remains disabled until next config reload.
-			if ds.provider.DisableDataConnection(conn.ServerIndex()) {
-				// only if the data connection wasn't already disabled,
-				// we'll broadcast the failure
-				cfg := conn.ConnectionConfig()
-				log.Broadcast(
-					status,
-					log.SubjectStorage,
-					log.ARDBServerTimeoutBody{
-						Address:  cfg.Address,
-						Database: cfg.Database,
-						Type:     log.ARDBPrimaryServer,
-						VdiskID:  ds.vdiskID,
-					},
-				)
-			}
-		}
-	}
-	return err
+	cmd := ardb.Command(command.Set, hash.Bytes(), content)
+	return ardb.Error(ds.cluster.DoFor(int64(hash[0]), cmd))
 }
 
 // Close implements BlockStorage.Close
@@ -352,11 +196,7 @@ func (ds *dedupedStorage) Close() error { return nil }
 
 // DedupedVdiskExists returns if the deduped vdisk in question
 // exists in the given ardb storage cluster.
-func DedupedVdiskExists(vdiskID string, cluster *config.StorageClusterConfig) (bool, error) {
-	if cluster == nil {
-		return false, errors.New("no cluster config given")
-	}
-
+func DedupedVdiskExists(vdiskID string, cluster config.StorageClusterConfig) (bool, error) {
 	// storage key used on all data servers for this vdisk
 	key := lba.StorageKey(vdiskID)
 
@@ -376,22 +216,18 @@ func DedupedVdiskExists(vdiskID string, cluster *config.StorageClusterConfig) (b
 }
 
 func dedupedVdiskExistsOnServer(key string, server config.StorageServerConfig) (bool, error) {
-	conn, err := ardb.GetConnection(server)
+	conn, err := ardb.Dial(server)
 	if err != nil {
 		return false, fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
 	}
 	defer conn.Close()
-	return redis.Bool(conn.Do("EXISTS", key))
+	return ardb.Bool(conn.Do("EXISTS", key))
 }
 
 // ListDedupedBlockIndices returns all indices stored for the given deduped storage.
 // This function will always either return an error OR indices.
 // If this function returns indices, they are guaranteed to be in order from smallest to biggest.
-func ListDedupedBlockIndices(vdiskID string, cluster *config.StorageClusterConfig) ([]int64, error) {
-	if cluster == nil {
-		return nil, errors.New("no cluster config given")
-	}
-
+func ListDedupedBlockIndices(vdiskID string, cluster config.StorageClusterConfig) ([]int64, error) {
 	var vdiskIndices []int64
 	key := lba.StorageKey(vdiskID)
 
@@ -402,7 +238,7 @@ func ListDedupedBlockIndices(vdiskID string, cluster *config.StorageClusterConfi
 	for _, server := range cluster.Servers {
 		serverIndices, err = listDedupedBlockIndices(key, server)
 		if err != nil {
-			if err == redis.ErrNil {
+			if err == ardb.ErrNil {
 				continue
 			}
 			return nil, err
@@ -415,7 +251,7 @@ func ListDedupedBlockIndices(vdiskID string, cluster *config.StorageClusterConfi
 	// we'll return a redis nil-error, such that the user can decide
 	// if they want to threat it as an error or not
 	if len(vdiskIndices) == 0 {
-		return nil, redis.ErrNil
+		return nil, ardb.ErrNil
 	}
 
 	// at least one index is found,
@@ -425,22 +261,17 @@ func ListDedupedBlockIndices(vdiskID string, cluster *config.StorageClusterConfi
 }
 
 func listDedupedBlockIndices(key string, server config.StorageServerConfig) ([]int64, error) {
-	conn, err := ardb.GetConnection(server)
+	conn, err := ardb.Dial(server)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
 	}
 	defer conn.Close()
-	return ardb.RedisInt64s(listDedupedBlockIndicesScript.Do(conn, key))
+	return ardb.Int64s(listDedupedBlockIndicesScript.Do(conn, key))
 }
 
 // CopyDeduped copies all metadata of a deduped storage
 // from a sourceID to a targetID, within the same cluster or between different clusters.
-func CopyDeduped(sourceID, targetID string, sourceCluster, targetCluster *config.StorageClusterConfig) error {
-	// validate source cluster
-	if sourceCluster == nil {
-		return errors.New("no source cluster given")
-	}
-
+func CopyDeduped(sourceID, targetID string, sourceCluster config.StorageClusterConfig, targetCluster *config.StorageClusterConfig) error {
 	// copy the source LBA to a target LBA within the same cluster
 	if targetCluster == nil {
 		return copyDedupedSameServerCount(sourceID, targetID, sourceCluster, sourceCluster)
@@ -449,25 +280,25 @@ func CopyDeduped(sourceID, targetID string, sourceCluster, targetCluster *config
 	// copy the source LBA to a target LBA,
 	// between clusters with an equal server count
 	if len(sourceCluster.Servers) == len(targetCluster.Servers) {
-		return copyDedupedSameServerCount(sourceID, targetID, sourceCluster, targetCluster)
+		return copyDedupedSameServerCount(sourceID, targetID, sourceCluster, *targetCluster)
 	}
 
 	// copy the source LBA to a target LBA,
 	// between clusters with a different server count
-	return copyDedupedDifferentServerCount(sourceID, targetID, sourceCluster, targetCluster)
+	return copyDedupedDifferentServerCount(sourceID, targetID, sourceCluster, *targetCluster)
 }
 
-func copyDedupedSameServerCount(sourceID, targetID string, sourceCluster, targetCluster *config.StorageClusterConfig) error {
+func copyDedupedSameServerCount(sourceID, targetID string, sourceCluster, targetCluster config.StorageClusterConfig) error {
 	var err error
 	var targetCfg config.StorageServerConfig
 
 	for index, sourceCfg := range sourceCluster.Servers {
 		targetCfg = targetCluster.Servers[index]
 
-		if sourceCfg.Equal(&targetCfg) {
+		if sourceCfg.Equal(targetCfg) {
 			// within same storage server
 			err = func() error {
-				conn, err := ardb.GetConnection(sourceCfg)
+				conn, err := ardb.Dial(sourceCfg)
 				if err != nil {
 					return fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
 				}
@@ -478,7 +309,7 @@ func copyDedupedSameServerCount(sourceID, targetID string, sourceCluster, target
 		} else {
 			// between different storage servers
 			err = func() error {
-				conns, err := ardb.GetConnections(sourceCfg, targetCfg)
+				conns, err := ardb.DialAll(sourceCfg, targetCfg)
 				if err != nil {
 					return fmt.Errorf("couldn't connect to data ardb: %s", err.Error())
 				}
@@ -499,14 +330,14 @@ func copyDedupedSameServerCount(sourceID, targetID string, sourceCluster, target
 	return nil
 }
 
-func copyDedupedDifferentServerCount(sourceID, targetID string, sourceCluster, targetCluster *config.StorageClusterConfig) error {
+func copyDedupedDifferentServerCount(sourceID, targetID string, sourceCluster, targetCluster config.StorageClusterConfig) error {
 	// create the target LBA sector storage,
 	// which will be used to store the source LBA sectors into the target ARDB cluster.
-	provider, err := ardb.StaticProviderFromStorageCluster(*targetCluster, nil)
+	targetStorageCluster, err := ardb.NewCluster(targetCluster, nil)
 	if err != nil {
 		return err
 	}
-	targetStorage := lba.ARDBSectorStorage(targetID, provider)
+	targetStorage := lba.ARDBSectorStorage(targetID, targetStorageCluster)
 
 	// copy all the source sectors into the target ARDB cluster,
 	// one source ARDB server at a time.
@@ -521,12 +352,12 @@ func copyDedupedDifferentServerCount(sourceID, targetID string, sourceCluster, t
 	return nil
 }
 
-func copyDedupedSameConnection(sourceID, targetID string, conn redis.Conn) (err error) {
+func copyDedupedSameConnection(sourceID, targetID string, conn ardb.Conn) (err error) {
 	log.Infof("dumping vdisk %q and restoring it as vdisk %q",
 		sourceID, targetID)
 
 	sourceKey, targetKey := lba.StorageKey(sourceID), lba.StorageKey(targetID)
-	indexCount, err := redis.Int64(copyDedupedSameConnScript.Do(conn, sourceKey, targetKey))
+	indexCount, err := ardb.Int64(copyDedupedSameConnScript.Do(conn, sourceKey, targetKey))
 	if err == nil {
 		log.Infof("copied %d meta indices to vdisk %q", indexCount, targetID)
 	}
@@ -534,12 +365,12 @@ func copyDedupedSameConnection(sourceID, targetID string, conn redis.Conn) (err 
 	return
 }
 
-func copyDedupedDifferentConnections(sourceID, targetID string, connA, connB redis.Conn) (err error) {
+func copyDedupedDifferentConnections(sourceID, targetID string, connA, connB ardb.Conn) (err error) {
 	sourceKey, targetKey := lba.StorageKey(sourceID), lba.StorageKey(targetID)
 
 	// get data from source connection
 	log.Infof("collecting all metadata from source vdisk %q...", sourceID)
-	data, err := redis.StringMap(connA.Do("HGETALL", sourceKey))
+	data, err := ardb.Int64ToBytesMapping(connA.Do("HGETALL", sourceKey))
 	if err != nil {
 		return
 	}
@@ -564,14 +395,8 @@ func copyDedupedDifferentConnections(sourceID, targetID string, connA, connB red
 	// buffer all data on target connection
 	log.Infof("buffering %d meta indices for target vdisk %q...",
 		len(data), targetID)
-	var index int64
-	for rawIndex, hash := range data {
-		index, err = strconv.ParseInt(rawIndex, 10, 64)
-		if err != nil {
-			return
-		}
-
-		connB.Send("HSET", targetKey, index, []byte(hash))
+	for index, hash := range data {
+		connB.Send("HSET", targetKey, index, hash)
 	}
 
 	// send all data to target connection (execute the transaction)
@@ -587,7 +412,7 @@ func copyDedupedDifferentConnections(sourceID, targetID string, connA, connB red
 }
 
 func copyDedupedUsingSectorStorage(sourceID, targetID string, sourceCfg config.StorageServerConfig, storage lba.SectorStorage) error {
-	conn, err := ardb.GetConnection(sourceCfg)
+	conn, err := ardb.Dial(sourceCfg)
 	if err != nil {
 		return err
 	}
@@ -597,7 +422,7 @@ func copyDedupedUsingSectorStorage(sourceID, targetID string, sourceCfg config.S
 
 	// get data from source connection
 	log.Infof("collecting all metadata from source vdisk %q...", sourceID)
-	sectors, err := ardb.RedisInt64ToBytesMapping(conn.Do("HGETALL", sourceKey))
+	sectors, err := ardb.Int64ToBytesMapping(conn.Do("HGETALL", sourceKey))
 	if err != nil {
 		return err
 	}
@@ -610,6 +435,7 @@ func copyDedupedUsingSectorStorage(sourceID, targetID string, sourceCfg config.S
 	log.Infof("collected %d sectors from source vdisk %q, storing them now...", sectorLength, sourceID)
 
 	var sector *lba.Sector
+
 	for index, bytes := range sectors {
 		sector, err = lba.SectorFromBytes(bytes)
 		if err != nil {
@@ -618,13 +444,11 @@ func copyDedupedUsingSectorStorage(sourceID, targetID string, sourceCfg config.S
 
 		err = storage.SetSector(index, sector)
 		if err != nil {
-			return fmt.Errorf("couldn't set target sector %d: %v", index, err)
+			return fmt.Errorf("couldn't set sector %d: %v", index, err)
 		}
 	}
 
-	log.Infof("set %d target sectors from target vdisk %q, flushing now...", sectorLength, targetID)
-
-	return storage.Flush()
+	return nil
 }
 
 func newDeleteDedupedMetadataOp(vdiskID string) storageOp {
@@ -641,8 +465,7 @@ func (op *deleteDedupedMetadataOp) Send(sender storageOpSender) error {
 }
 
 func (op *deleteDedupedMetadataOp) Receive(receiver storageOpReceiver) error {
-	_, err := receiver.Receive()
-	return err
+	return ardb.Error(receiver.Receive())
 }
 
 func (op *deleteDedupedMetadataOp) Label() string {

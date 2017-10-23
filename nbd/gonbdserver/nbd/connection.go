@@ -774,6 +774,8 @@ func (c *Connection) negotiate(ctx context.Context) error {
 				break
 			}
 
+			c.logger.Debugf("received exportConfig for %s: %s", exportName, ec.Description)
+
 			// Now we know we are going to go with the export for sure
 			// any failure beyond here and we are going to drop the
 			// connection (assuming we aren't doing NBD_OPT_INFO)

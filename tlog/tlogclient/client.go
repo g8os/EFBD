@@ -225,7 +225,9 @@ func (c *Client) runReceiver(ctx context.Context, cancelFunc context.CancelFunc)
 
 				// EOF and other network error triggers reconnection
 				if isNetErr || err == io.EOF {
-					log.Errorf("error while reading: %v", err)
+					if !c.isStopped() {
+						log.Errorf("error while reading: %v", err)
+					}
 					return
 				}
 

@@ -62,7 +62,7 @@ func NewVdiskStaticConfig(data []byte) (*VdiskStaticConfig, error) {
 // Validate implements FormatValidator.Validate.
 func (cfg *NBDVdisksConfig) Validate() error {
 	if cfg == nil {
-		return nil
+		return ErrNilConfig
 	}
 
 	_, err := valid.ValidateStruct(cfg)
@@ -85,7 +85,7 @@ type VdiskStaticConfig struct {
 // Validate implements FormatValidator.Validate.
 func (cfg *VdiskStaticConfig) Validate() error {
 	if cfg == nil {
-		return nil
+		return ErrNilConfig
 	}
 
 	// check valid tags
@@ -140,7 +140,7 @@ type VdiskNBDConfig struct {
 // Validate implements FormatValidator.Validate.
 func (cfg *VdiskNBDConfig) Validate() error {
 	if cfg == nil {
-		return nil
+		return ErrNilConfig
 	}
 
 	_, err := valid.ValidateStruct(cfg)
@@ -177,7 +177,7 @@ type VdiskTlogConfig struct {
 // Validate implements FormatValidator.Validate.
 func (cfg *VdiskTlogConfig) Validate() error {
 	if cfg == nil {
-		return nil
+		return ErrNilConfig
 	}
 
 	_, err := valid.ValidateStruct(cfg)
@@ -215,7 +215,7 @@ type StorageClusterConfig struct {
 // Validate implements FormatValidator.Validate.
 func (cfg *StorageClusterConfig) Validate() error {
 	if cfg == nil {
-		return nil
+		return ErrNilConfig
 	}
 
 	_, err := valid.ValidateStruct(cfg)
@@ -236,29 +236,22 @@ func (cfg *StorageClusterConfig) Validate() error {
 }
 
 // Clone implements Cloner.Clone
-func (cfg *StorageClusterConfig) Clone() StorageClusterConfig {
-	var clone StorageClusterConfig
+func (cfg *StorageClusterConfig) Clone() (clone StorageClusterConfig) {
 	if cfg == nil {
-		return clone
+		return
 	}
 
 	clone.Servers = make([]StorageServerConfig, len(cfg.Servers))
 	copy(clone.Servers, cfg.Servers)
-
-	return clone
+	return
 }
 
 // Equal checks if the 2 configs are equal.
 // Note that the order of data storage servers matters,
 // as this order defines where vdisk's data will end up being.
-func (cfg *StorageClusterConfig) Equal(other *StorageClusterConfig) bool {
-	// check if both configs are given or not
+func (cfg *StorageClusterConfig) Equal(other StorageClusterConfig) bool {
+	// check if source cluster is given
 	if cfg == nil {
-		if other == nil {
-			return true
-		}
-		return false
-	} else if other == nil {
 		return false
 	}
 
@@ -269,24 +262,13 @@ func (cfg *StorageClusterConfig) Equal(other *StorageClusterConfig) bool {
 	}
 	// check if all data storages are equal
 	for i := range cfg.Servers {
-		if !cfg.Servers[i].Equal(&other.Servers[i]) {
+		if !cfg.Servers[i].Equal(other.Servers[i]) {
 			return false
 		}
 	}
 
 	// all data storages are equal
 	return true
-}
-
-// FirstAvailableServer returns the first available server.
-func (cfg *StorageClusterConfig) FirstAvailableServer() (*StorageServerConfig, error) {
-	for _, serverCfg := range cfg.Servers {
-		if !serverCfg.Disabled {
-			return &serverCfg, nil
-		}
-	}
-
-	return nil, errNoDataServersAvailable
 }
 
 // NewZeroStorClusterConfig creates a new ZeroStorClusterConfig from a given YAML slice.
@@ -316,7 +298,7 @@ type ZeroStorClusterConfig struct {
 // Validate implements FormatValidator.Validate.
 func (cfg *ZeroStorClusterConfig) Validate() error {
 	if cfg == nil {
-		return nil
+		return ErrNilConfig
 	}
 
 	_, err := valid.ValidateStruct(cfg)
@@ -346,14 +328,9 @@ func (cfg *ZeroStorClusterConfig) Clone() ZeroStorClusterConfig {
 }
 
 // Equal checks if the 2 configs are equal.
-func (cfg *ZeroStorClusterConfig) Equal(other *ZeroStorClusterConfig) bool {
-	// check if both configs are given or not
+func (cfg *ZeroStorClusterConfig) Equal(other ZeroStorClusterConfig) bool {
+	// check if source config is given
 	if cfg == nil {
-		if other == nil {
-			return true
-		}
-		return false
-	} else if other == nil {
 		return false
 	}
 
@@ -419,7 +396,7 @@ type TlogClusterConfig struct {
 // Validate implements FormatValidator.Validate.
 func (cfg *TlogClusterConfig) Validate() error {
 	if cfg == nil {
-		return nil
+		return ErrNilConfig
 	}
 
 	_, err := valid.ValidateStruct(cfg)
@@ -452,15 +429,18 @@ type StorageServerConfig struct {
 	Address string `yaml:"address" valid:"optional"`
 	// Database '0' is assumed, in case no value is given.
 	Database int `yaml:"db" valid:"optional"`
-	// Disabled defines a storage server as non-usable/offline,
-	// making the rest of this storage server config irrelevant.
-	Disabled bool `yaml:"disabled" valid:"optional"`
+	// State defines a storage server's state.
+	// Depending on the state, the properties above become optional.
+	State StorageServerState `yaml:"state" valid:"optional"`
 }
 
 // Validate this Storage Server Config,
 // returning an error in case this config is invalid.
 func (cfg *StorageServerConfig) Validate() error {
-	if cfg == nil || cfg.Disabled {
+	if cfg == nil {
+		return ErrNilConfig
+	}
+	if cfg.State == StorageServerStateRIP {
 		return nil // nothing to validate here
 	}
 
@@ -468,8 +448,11 @@ func (cfg *StorageServerConfig) Validate() error {
 		return errInvalidStorageDatabase
 	}
 
+	if cfg.Address == "" {
+		return errors.New("storage server address not given while it is required")
+	}
 	if !valid.IsDialString(cfg.Address) {
-		return fmt.Errorf("'%s' is an invalid dialstring", cfg.Address)
+		return fmt.Errorf("storage server address '%s' is an invalid dialstring", cfg.Address)
 	}
 
 	// all checks out
@@ -479,21 +462,13 @@ func (cfg *StorageServerConfig) Validate() error {
 // Equal checks if the 2 configs are equal.
 // Note that the order of data storage servers matters,
 // as this order defines where vdisk's data will end up being.
-func (cfg *StorageServerConfig) Equal(other *StorageServerConfig) bool {
-	// check if both configs are given or not
+func (cfg *StorageServerConfig) Equal(other StorageServerConfig) bool {
 	if cfg == nil {
-		if other == nil {
-			return true
-		}
-		return false
-	} else if other == nil {
 		return false
 	}
 
-	// both configs are given
-
-	// are one of them disabled, while the other is not?
-	if cfg.Disabled != other.Disabled {
+	// are their states equal?!
+	if cfg.State != other.State {
 		return false
 	}
 
