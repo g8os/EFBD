@@ -18,7 +18,6 @@ import (
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage/lba"
 	"github.com/zero-os/0-Disk/nbd/gonbdserver/nbd"
-	v "github.com/zero-os/0-Disk/nbd/nbdserver/version"
 )
 
 func main() {
@@ -48,12 +47,11 @@ func main() {
 	flag.Parse()
 
 	if version {
-		zerodisk.PrintVersion(v.CommitHash, v.BuildDate)
+		zerodisk.PrintVersion()
 		return
 	}
 
-	// log version
-	zerodisk.LogVersion(v.CommitHash, v.BuildDate)
+	zerodisk.LogVersion()
 
 	logLevel := log.InfoLevel
 	if verbose {

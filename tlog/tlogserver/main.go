@@ -12,7 +12,6 @@ import (
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
-	v "github.com/zero-os/0-Disk/tlog/tlogserver/version"
 )
 
 func main() {
@@ -45,12 +44,11 @@ func main() {
 	flag.Parse()
 
 	if version {
-		zerodisk.PrintVersion(v.CommitHash, v.BuildDate)
+		zerodisk.PrintVersion()
 		return
 	}
 
-	// log version
-	zerodisk.LogVersion(v.CommitHash, v.BuildDate)
+	zerodisk.LogVersion()
 
 	// config logger (verbose or not)
 	if verbose {

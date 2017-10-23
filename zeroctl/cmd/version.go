@@ -23,5 +23,5 @@ var VersionCmd = &cobra.Command{
 // outputVersion prints to the STDOUT,
 // the tool version, runtime info, and optionally the commit hash.
 func outputVersion(*cobra.Command, []string) {
-	zerodisk.PrintVersion(CommitHash, BuildDate)
+	zerodisk.PrintVersion()
 }

@@ -11,10 +11,7 @@ BUILD_DATE = $(shell date +%FT%T%z)
 PACKAGES = $(shell go list ./... | grep -v vendor)
 RACE_PACKAGES = $(shell go list ./... | grep -v vendor | grep -E 'nbd|config' | grep -v 'gonbdserver')
 
-ldflags = -extldflags "-static" -s -w
-ldflagsnbdserver = -X $(PACKAGE)/nbd/nbdserver/version.CommitHash=$(COMMIT_HASH) -X $(PACKAGE)/nbd/nbdserver/version.BuildDate=$(BUILD_DATE) -s -w
-ldflagstlogserver = -X $(PACKAGE)/tlog/tlogserver/version.CommitHash=$(COMMIT_HASH) -X $(PACKAGE)/tlog/tlogserver/version.BuildDate=$(BUILD_DATE) -s -w
-ldflagszeroctl = -X $(PACKAGE)/zeroctl/cmd.CommitHash=$(COMMIT_HASH) -X $(PACKAGE)/zeroctl/cmd.BuildDate=$(BUILD_DATE) -s -w
+ldflags = -extldflags "-static" -s -w -X $(PACKAGE).CommitHash=$(COMMIT_HASH) -X $(PACKAGE).BuildDate=$(BUILD_DATE) -s -w
 
 all: nbdserver tlogserver zeroctl
 
@@ -24,7 +21,7 @@ ifeq ($(GOOS), darwin)
 		go build -ldflags '$(ldflagszeroctl)' -o $(OUTPUT)/$@ ./zeroctl
 else
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -ldflags '$(ldflags) $(ldflagszeroctl)' -o $(OUTPUT)/$@ ./zeroctl
+		go build -ldflags '$(ldflags)' -o $(OUTPUT)/$@ ./zeroctl
 endif
 
 nbdserver: $(OUTPUT)
@@ -33,7 +30,7 @@ ifeq ($(GOOS), darwin)
 		go build -o $(OUTPUT)/$@ ./nbd/nbdserver
 else
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -ldflags '$(ldflags) $(ldflagsnbdserver)' -o $(OUTPUT)/$@ ./nbd/nbdserver
+		go build -ldflags '$(ldflags)' -o $(OUTPUT)/$@ ./nbd/nbdserver
 endif
 
 tlogserver: $(OUTPUT)
@@ -42,7 +39,7 @@ ifeq ($(GOOS), darwin)
 		go build -o $(OUTPUT)/$@ ./tlog/tlogserver
 else
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -ldflags '$(ldflags) $(ldflagstlogserver)' -o $(OUTPUT)/$@ ./tlog/tlogserver
+		go build -ldflags '$(ldflags)' -o $(OUTPUT)/$@ ./tlog/tlogserver
 endif
 
 test: testgo testrace testcgo testcodegen benchmarkgo

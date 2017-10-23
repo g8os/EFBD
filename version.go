@@ -12,10 +12,14 @@ var (
 	// CurrentVersion represents the current global
 	// version of the zerodisk modules
 	CurrentVersion = NewVersion(1, 1, 0, versionLabel("beta-1"))
+	// CommitHash represents the Git commit hash at built time
+	CommitHash string
+	// BuildDate represents the date when this tool suite was built
+	BuildDate string
 )
 
 // PrintVersion prints the current version
-func PrintVersion(CommitHash, BuildDate string) {
+func PrintVersion() {
 	version := "Version: " + CurrentVersion.String()
 
 	// Build (Git) Commit Hash
@@ -36,20 +40,17 @@ func PrintVersion(CommitHash, BuildDate string) {
 
 // LogVersion prints the version at log level info
 // meant to log the version at startup of a server
-func LogVersion(CommitHash, BuildDate string) {
-	version := "Version: " + CurrentVersion.String()
-	var build string
+func LogVersion() {
+	// log version
+	log.Info("Version: " + CurrentVersion.String())
 
-	// Build (Git) Commit Hash
+	// log build (Git) Commit Hash
 	if CommitHash != "" {
-		build = "Build: " + CommitHash
+		build := "Build: " + CommitHash
 		if BuildDate != "" {
 			build += " " + BuildDate
 		}
-	}
 
-	log.Info(version)
-	if build != "" {
 		log.Info(build)
 	}
 }
