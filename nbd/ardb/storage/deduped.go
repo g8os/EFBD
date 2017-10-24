@@ -369,21 +369,30 @@ func copyDedupedSameCluster(sourceID, targetID string, cluster ardb.StorageClust
 		return err
 	}
 
+	sourceKey, targetKey := lba.StorageKey(sourceID), lba.StorageKey(targetID)
 	action := ardb.Script(0, copyDedupedSameConnScriptSource,
-		[]string{lba.StorageKey(targetID)}, sourceID, targetID)
+		[]string{targetKey}, sourceKey, targetKey)
 
-	resultChan := make(chan error)
+	type copyResult struct {
+		Count int64
+		Error error
+	}
+	resultChan := make(chan copyResult)
 
 	var actionCount int
 	for server := range ch {
 		server := server
 		go func() {
+			cfg := server.Config()
+			var result copyResult
 			log.Debugf(
 				"copying deduped (LBA) metadata from vdisk %s to vdisk %s on server %s",
-				sourceID, targetID, server.Config())
-			err = ardb.Error(server.Do(action))
+				sourceID, targetID, &cfg)
+			result.Count, result.Error = ardb.Int64(server.Do(action))
+			log.Debugf("copied %d LBA sectors to vdisk %s on server %s",
+				result.Count, targetID, &cfg)
 			select {
-			case resultChan <- err:
+			case resultChan <- result:
 			case <-ctx.Done():
 			}
 		}()
@@ -391,14 +400,23 @@ func copyDedupedSameCluster(sourceID, targetID string, cluster ardb.StorageClust
 	}
 
 	// collect all results
+	var totalCount int64
+	var result copyResult
 	for i := 0; i < actionCount; i++ {
-		err = <-resultChan
-		if err != nil {
+		result = <-resultChan
+		if result.Error != nil {
 			log.Errorf(
 				"stop of copying deduped (LBA) metadata from vdisk %s to vdisk %s due to an error: %v",
-				sourceID, targetID, err)
-			return err
+				sourceID, targetID, result.Error)
+			return result.Error
 		}
+		totalCount += result.Count
+	}
+
+	if totalCount == 0 {
+		return fmt.Errorf(
+			"zero LBA sectors have been copied from vdisk %s to vdisk %s",
+			sourceID, targetID)
 	}
 
 	return nil
@@ -423,9 +441,13 @@ func copyDedupedSameServerCount(sourceID, targetID string, sourceCluster, target
 	sameConnAction := ardb.Script(0, copyDedupedSameConnScriptSource,
 		[]string{lba.StorageKey(targetID)}, sourceID, targetID)
 
-	resultChan := make(chan error)
-	var actionCount int
+	type copyResult struct {
+		Count int64
+		Error error
+	}
+	resultChan := make(chan copyResult)
 
+	var actionCount int
 	// spawn all copy actions
 	for {
 		// get source and target server
@@ -439,22 +461,22 @@ func copyDedupedSameServerCount(sourceID, targetID string, sourceCluster, target
 		}
 
 		go func() {
-			var err error
+			var result copyResult
 			srcConfig := src.Config()
 			if srcConfig.Equal(dst.Config()) {
 				log.Debugf(
 					"copy deduped (LBA) metadata from vdisk %s to vdisk %s on server %s",
 					sourceID, targetID, src.Config())
-				err = ardb.Error(src.Do(sameConnAction))
+				result.Count, result.Error = ardb.Int64(src.Do(sameConnAction))
 			} else {
 				log.Debugf(
 					"copy deduped (LBA) metadata from vdisk %s (at %s) to vdisk %s (at %s)",
 					sourceID, src.Config(), targetID, dst.Config())
-				err = copyDedupedBetweenServers(sourceKey, targetKey, src, dst)
+				result.Count, result.Error = copyDedupedBetweenServers(sourceKey, targetKey, src, dst)
 			}
 
 			select {
-			case resultChan <- err:
+			case resultChan <- result:
 			case <-ctx.Done():
 			}
 		}()
@@ -462,14 +484,23 @@ func copyDedupedSameServerCount(sourceID, targetID string, sourceCluster, target
 	}
 
 	// collect all results
+	var totalCount int64
+	var result copyResult
 	for i := 0; i < actionCount; i++ {
-		err = <-resultChan
-		if err != nil {
+		result = <-resultChan
+		if result.Error != nil {
 			log.Errorf(
 				"stop of copying deduped (LBA) metadata from vdisk %s to vdisk %s due to an error: %v",
-				sourceID, targetID, err)
-			return err
+				sourceID, targetID, result.Error)
+			return result.Error
 		}
+		totalCount += result.Count
+	}
+
+	if totalCount == 0 {
+		return fmt.Errorf(
+			"zero LBA sectors have been copied from vdisk %s to vdisk %s",
+			sourceID, targetID)
 	}
 
 	return nil
@@ -489,15 +520,21 @@ func copyDedupedDifferentServerCount(sourceID, targetID string, sourceCluster, t
 
 	sourceKey := lba.StorageKey(sourceID)
 	targetStorage := lba.ARDBSectorStorage(targetID, targetCluster)
-	resultChan := make(chan error)
+
+	type copyResult struct {
+		Count int64
+		Error error
+	}
+	resultChan := make(chan copyResult)
 
 	var actionCount int
 	for server := range srcChan {
 		server := server
 		go func() {
-			err := copyDedupedMetadataToLBAStorage(sourceKey, server, targetStorage)
+			var result copyResult
+			result.Count, result.Error = copyDedupedMetadataToLBAStorage(sourceKey, server, targetStorage)
 			select {
-			case resultChan <- err:
+			case resultChan <- result:
 			case <-ctx.Done():
 			}
 		}()
@@ -505,11 +542,20 @@ func copyDedupedDifferentServerCount(sourceID, targetID string, sourceCluster, t
 	}
 
 	// collect all results
+	var totalCount int64
+	var result copyResult
 	for i := 0; i < actionCount; i++ {
-		err = <-resultChan
-		if err != nil {
-			return err
+		result = <-resultChan
+		if result.Error != nil {
+			return result.Error
 		}
+		totalCount += result.Count
+	}
+
+	if totalCount == 0 {
+		return fmt.Errorf(
+			"zero LBA sectors have been copied from vdisk %s to vdisk %s",
+			sourceID, targetID)
 	}
 
 	return nil
@@ -521,58 +567,88 @@ type dedupFetchResult struct {
 }
 
 func dedupMetadataFetcher(ctx context.Context, storageKey string, server ardb.StorageServer) <-chan dedupFetchResult {
+	const (
+		startCursor = "0"
+		itemCount   = 1000
+	)
+
 	ch := make(chan dedupFetchResult)
 	go func() {
 		defer close(ch)
 
+		serverCfg := server.Config()
 		// get data from source connection
-		log.Debugf("collecting all (LBA) metadata from %s on %s...", storageKey, server.Config())
+		log.Debugf("collecting all (LBA) metadata from %s on %s...", storageKey, &serverCfg)
 
-		// TODO: replace this with a cursor-based approach,
-		// so we don't have too much in memory at once
-		// issue: https://github.com/zero-os/0-Disk/issues/353
-		action := ardb.Command(command.HashGetAll, storageKey)
-
+		var slice interface{}
 		var result dedupFetchResult
-		result.Data, result.Error = ardb.Int64ToBytesMapping(server.Do(action))
 
-		select {
-		case ch <- result:
-		case <-ctx.Done():
+		// initial cursor and action
+		cursor := startCursor
+		action := ardb.Command(command.HashScan, storageKey, cursor, "COUNT", itemCount)
+
+		// loop through all values of the mapping
+		for {
+			// get new cursor and raw data
+			cursor, slice, result.Error = ardb.CursorAndValues(server.Do(action))
+			if result.Error == nil {
+				// if succesfull, convert the raw data to a mapping we can use
+				result.Data, result.Error = ardb.Int64ToBytesMapping(slice, nil)
+				log.Debugf("received %d LBA sectors from %s on %s...",
+					len(result.Data), storageKey, &serverCfg)
+			}
+
+			select {
+			case ch <- result:
+			case <-ctx.Done():
+				return
+			}
+
+			// return in case of an error or when we iterated through all possible values
+			if result.Error != nil || cursor == startCursor || cursor == "" {
+				return
+			}
+
+			// continue going, prepare the action for the next iteration
+			action = ardb.Command(command.HashScan, storageKey, cursor, "COUNT", itemCount)
 		}
 	}()
 	return ch
 }
 
-func copyDedupedBetweenServers(sourceKey, targetKey string, src, dst ardb.StorageServer) error {
+func copyDedupedBetweenServers(sourceKey, targetKey string, src, dst ardb.StorageServer) (int64, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	resultChan := make(chan error)
+	type copyResult struct {
+		Count int64
+		Error error
+	}
+	resultChan := make(chan copyResult)
 
 	var actionCount int
 	ch := dedupMetadataFetcher(ctx, sourceKey, src)
 	for input := range ch {
 		input := input
 		go func() {
-			dataLength := len(input.Data)
-			if input.Error != nil || dataLength == 0 {
+			result := copyResult{
+				Count: int64(len(input.Data)),
+				Error: input.Error,
+			}
+			if result.Error != nil || result.Count == 0 {
 				select {
-				case resultChan <- input.Error:
+				case resultChan <- result:
 				case <-ctx.Done():
 				}
 				return
 			}
 
-			log.Debugf("collected %d sector indices from %s...", dataLength, sourceKey)
+			log.Debugf("collected %d sector indices from %s...", result.Count, sourceKey)
 
-			cmds := []ardb.StorageAction{
-				// delete any existing vdisk
-				ardb.Command(command.Delete, targetKey),
-			}
+			var cmds []ardb.StorageAction
 
 			// buffer all set actions
-			log.Debugf("buffering %d sector indices to be stored at %s...", dataLength, targetKey)
+			log.Debugf("buffering %d sector indices to be stored at %s...", result.Count, targetKey)
 			for index, hash := range input.Data {
 				cmds = append(cmds,
 					ardb.Command(command.HashSet, targetKey, index, hash))
@@ -588,8 +664,9 @@ func copyDedupedBetweenServers(sourceKey, targetKey string, src, dst ardb.Storag
 				err = fmt.Errorf("%s was busy and couldn't be modified", targetKey)
 			}
 
+			result.Error = err
 			select {
-			case resultChan <- err:
+			case resultChan <- result:
 			case <-ctx.Done():
 			}
 		}()
@@ -597,40 +674,49 @@ func copyDedupedBetweenServers(sourceKey, targetKey string, src, dst ardb.Storag
 	}
 
 	// collect all results
-	var err error
+	var totalCount int64
+	var result copyResult
 	for i := 0; i < actionCount; i++ {
-		err = <-resultChan
-		if err != nil {
+		result = <-resultChan
+		if result.Error != nil {
 			log.Errorf("stop copying sectors from %s to %s due to an error: %v",
-				sourceKey, targetKey, err)
-			return err
+				sourceKey, targetKey, result.Error)
+			return 0, result.Error
 		}
+		totalCount += result.Count
 	}
 
-	return nil
+	return totalCount, nil
 }
 
-func copyDedupedMetadataToLBAStorage(sourceKey string, src ardb.StorageServer, storage lba.SectorStorage) error {
+func copyDedupedMetadataToLBAStorage(sourceKey string, src ardb.StorageServer, storage lba.SectorStorage) (int64, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	resultChan := make(chan error)
+	type copyResult struct {
+		Count int64
+		Error error
+	}
+	resultChan := make(chan copyResult)
 
 	var actionCount int
 	ch := dedupMetadataFetcher(ctx, sourceKey, src)
 	for input := range ch {
 		input := input
 		go func() {
-			dataLength := len(input.Data)
-			if input.Error != nil || dataLength == 0 {
+			result := copyResult{
+				Count: int64(len(input.Data)),
+				Error: input.Error,
+			}
+			if result.Error != nil || result.Count == 0 {
 				select {
-				case resultChan <- input.Error:
+				case resultChan <- result:
 				case <-ctx.Done():
 				}
 				return
 			}
 
-			log.Debugf("collected %d sectors from %s...", dataLength, sourceKey)
+			log.Debugf("collected %d sectors from %s...", result.Count, sourceKey)
 
 			var err error
 			var sector *lba.Sector
@@ -651,14 +737,14 @@ func copyDedupedMetadataToLBAStorage(sourceKey string, src ardb.StorageServer, s
 					break
 				}
 			}
-
 			if err == nil {
-				log.Debugf("stored %d LBA sectors from %s (at %s)...",
-					dataLength, sourceKey, src.Config())
+				log.Debugf("stored %d LBA sectors for %s (using Slow LBA Storage Respreading)...",
+					result.Count, sourceKey)
 			}
 
+			result.Error = err
 			select {
-			case resultChan <- err:
+			case resultChan <- result:
 			case <-ctx.Done():
 			}
 		}()
@@ -666,15 +752,17 @@ func copyDedupedMetadataToLBAStorage(sourceKey string, src ardb.StorageServer, s
 	}
 
 	// collect all results
-	var err error
+	var totalCount int64
+	var result copyResult
 	for i := 0; i < actionCount; i++ {
-		err = <-resultChan
-		if err != nil {
-			return err
+		result = <-resultChan
+		if result.Error != nil {
+			return 0, result.Error
 		}
+		totalCount += result.Count
 	}
 
-	return nil
+	return totalCount, nil
 }
 
 const copyDedupedSameConnScriptSource = `

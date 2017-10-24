@@ -107,6 +107,26 @@ func OptString(reply interface{}, err error) (string, error) {
 	return redis.String(reply, err)
 }
 
+// CursorAndValues returns the cursor and other values,
+// retrieved as the result of a *SCAN operation.
+func CursorAndValues(reply interface{}, err error) (string, interface{}, error) {
+	values, err := redis.Values(reply, err)
+	if err != nil {
+		return "", nil, err
+	}
+
+	if len(values) != 2 {
+		return "", nil, errors.New("CursorAndValues expects a slice of 2 values")
+	}
+
+	cursor, err := redis.String(values[0], nil)
+	if err != nil {
+		return "", nil, err
+	}
+
+	return cursor, values[1], nil
+}
+
 // Int64s is a helper that converts an array command reply to a []int64.
 // If err is not equal to nil, then Int64s returns the error.
 // Int64s returns an error if an array item is not an integer.

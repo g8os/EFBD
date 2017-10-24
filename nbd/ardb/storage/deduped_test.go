@@ -567,7 +567,7 @@ func TestListDedupedBlockIndices(t *testing.T) {
 func TestCopyDedupedDifferentServerCount(t *testing.T) {
 	assert := assert.New(t)
 
-	sourceCluster := redisstub.NewCluster(4, false)
+	sourceCluster := redisstub.NewCluster(4, true)
 	defer sourceCluster.Close()
 
 	sourceSectorStorage := lba.ARDBSectorStorage("source", sourceCluster)
@@ -634,5 +634,8 @@ func testCopyDedupedDifferentServerCount(assert *assert.Assertions, indices []in
 }
 
 func init() {
+	// ledisdb uses other names, for whatever reason
+	command.HashScan.Name = "XHSCAN"
+
 	log.SetLevel(log.DebugLevel)
 }

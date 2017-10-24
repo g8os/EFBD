@@ -330,21 +330,32 @@ func copyNonDedupedSameCluster(sourceID, targetID string, cluster ardb.StorageCl
 		return err
 	}
 
+	sourceKey := nonDedupedStorageKey(sourceID)
+	targetKey := nonDedupedStorageKey(targetID)
 	action := ardb.Script(0, copyNonDedupedSameConnScriptSource,
-		[]string{nonDedupedStorageKey(targetID)}, sourceID, targetID)
+		[]string{targetKey}, sourceKey, targetKey)
 
-	resultChan := make(chan error)
+	type copyResult struct {
+		Count int64
+		Error error
+	}
+	resultChan := make(chan copyResult)
 
 	var actionCount int
 	for server := range ch {
 		server := server
 		go func() {
+			cfg := server.Config()
 			log.Debugf(
 				"copying non-deduped data from vdisk %s to vdisk %s on server %s",
-				sourceID, targetID, server.Config())
-			err = ardb.Error(server.Do(action))
+				sourceID, targetID, &cfg)
+
+			var result copyResult
+			result.Count, result.Error = ardb.Int64(server.Do(action))
+			log.Debugf("copied %d non-deduped blocks to vdisk %s on server %s",
+				result.Count, targetID, &cfg)
 			select {
-			case resultChan <- err:
+			case resultChan <- result:
 			case <-ctx.Done():
 			}
 		}()
@@ -352,14 +363,23 @@ func copyNonDedupedSameCluster(sourceID, targetID string, cluster ardb.StorageCl
 	}
 
 	// collect all results
+	var totalCount int64
+	var result copyResult
 	for i := 0; i < actionCount; i++ {
-		err = <-resultChan
-		if err != nil {
+		result = <-resultChan
+		if result.Error != nil {
 			log.Errorf(
 				"stop of copying non-deduped data from vdisk %s to vdisk %s due to an error: %v",
-				sourceID, targetID, err)
-			return err
+				sourceID, targetID, result.Error)
+			return result.Error
 		}
+		totalCount += result.Count
+	}
+
+	if totalCount == 0 {
+		return fmt.Errorf(
+			"no non-deduped data was copied from vdisk %s to vdisk %s",
+			sourceID, targetID)
 	}
 
 	return nil
@@ -384,9 +404,13 @@ func copyNonDedupedSameServerCount(sourceID, targetID string, sourceCluster, tar
 	sameConnAction := ardb.Script(0, copyNonDedupedSameConnScriptSource,
 		[]string{targetKey}, sourceID, targetID)
 
-	resultChan := make(chan error)
-	var actionCount int
+	type copyResult struct {
+		Count int64
+		Error error
+	}
+	resultChan := make(chan copyResult)
 
+	var actionCount int
 	// spawn all copy actions
 	for {
 		// get source and target server
@@ -400,22 +424,22 @@ func copyNonDedupedSameServerCount(sourceID, targetID string, sourceCluster, tar
 		}
 
 		go func() {
-			var err error
+			var result copyResult
 			srcConfig := src.Config()
 			if srcConfig.Equal(dst.Config()) {
 				log.Debugf(
 					"copy non-deduped data from vdisk %s to vdisk %s on server %s",
-					sourceID, targetID, src.Config())
-				err = ardb.Error(src.Do(sameConnAction))
+					sourceID, targetID, srcConfig)
+				result.Count, result.Error = ardb.Int64(src.Do(sameConnAction))
 			} else {
 				log.Debugf(
 					"copy non-deduped data from vdisk %s (at %s) to vdisk %s (at %s)",
-					sourceID, src.Config(), targetID, dst.Config())
-				err = copyNonDedupedBetweenServers(sourceKey, targetKey, src, dst)
+					sourceID, srcConfig, targetID, dst.Config())
+				result.Count, result.Error = copyNonDedupedBetweenServers(sourceKey, targetKey, src, dst)
 			}
 
 			select {
-			case resultChan <- err:
+			case resultChan <- result:
 			case <-ctx.Done():
 			}
 		}()
@@ -423,14 +447,23 @@ func copyNonDedupedSameServerCount(sourceID, targetID string, sourceCluster, tar
 	}
 
 	// collect all results
+	var totalCount int64
+	var result copyResult
 	for i := 0; i < actionCount; i++ {
-		err = <-resultChan
-		if err != nil {
+		result = <-resultChan
+		if result.Error != nil {
 			log.Errorf(
 				"stop of copying non-deduped data from vdisk %s to vdisk %s due to an error: %v",
-				sourceID, targetID, err)
-			return err
+				sourceID, targetID, result.Error)
+			return result.Error
 		}
+		totalCount += result.Count
+	}
+
+	if totalCount == 0 {
+		return fmt.Errorf(
+			"no non-deduped data was copied from vdisk %s to vdisk %s",
+			sourceID, targetID)
 	}
 
 	return nil
@@ -454,15 +487,21 @@ func copyNonDedupedDifferentServerCount(sourceID, targetID string, targetBS int6
 	}
 
 	sourceKey := nonDedupedStorageKey(sourceID)
-	resultChan := make(chan error)
+
+	type copyResult struct {
+		Count int64
+		Error error
+	}
+	resultChan := make(chan copyResult)
 
 	var actionCount int
 	for server := range srcChan {
 		server := server
 		go func() {
-			err := copyNonDedupDataToBlockStorage(sourceKey, server, targetStorage)
+			var result copyResult
+			result.Count, result.Error = copyNonDedupDataToBlockStorage(sourceKey, server, targetStorage)
 			select {
-			case resultChan <- err:
+			case resultChan <- result:
 			case <-ctx.Done():
 			}
 		}()
@@ -470,11 +509,20 @@ func copyNonDedupedDifferentServerCount(sourceID, targetID string, targetBS int6
 	}
 
 	// collect all results
+	var totalCount int64
+	var result copyResult
 	for i := 0; i < actionCount; i++ {
-		err = <-resultChan
-		if err != nil {
-			return err
+		result = <-resultChan
+		if result.Error != nil {
+			return result.Error
 		}
+		totalCount += result.Count
+	}
+
+	if totalCount == 0 {
+		return fmt.Errorf(
+			"no non-deduped data was copied from vdisk %s to vdisk %s",
+			sourceID, targetID)
 	}
 
 	return nil
@@ -486,59 +534,89 @@ type nonDedupFetchResult struct {
 }
 
 func nonDedupDataFetcher(ctx context.Context, storageKey string, server ardb.StorageServer) <-chan nonDedupFetchResult {
+	const (
+		startCursor = "0"
+		itemCount   = 1000
+	)
+
 	ch := make(chan nonDedupFetchResult)
 	go func() {
 		defer close(ch)
 
+		serverCfg := server.Config()
 		// get data from source connection
-		log.Debugf("collecting all nondedup blocks from %s on %s...", storageKey, server.Config())
+		log.Debugf("collecting all nondedup blocks from %s on %s...", storageKey, &serverCfg)
 
-		// TODO: replace this with a cursor-based approach,
-		// so we don't have too much in memory at once
-		// issue: https://github.com/zero-os/0-Disk/issues/353
-		action := ardb.Command(command.HashGetAll, storageKey)
-
+		var slice interface{}
 		var result nonDedupFetchResult
-		result.Data, result.Error = ardb.Int64ToBytesMapping(server.Do(action))
 
-		select {
-		case ch <- result:
-		case <-ctx.Done():
+		// initial cursor and action
+		cursor := startCursor
+		action := ardb.Command(command.HashScan, storageKey, cursor, "COUNT", itemCount)
+
+		// loop through all values of the mapping
+		for {
+			// get new cursor and raw data
+			cursor, slice, result.Error = ardb.CursorAndValues(server.Do(action))
+			if result.Error == nil {
+				// if succesfull, convert the raw data to a mapping we can use
+				result.Data, result.Error = ardb.Int64ToBytesMapping(slice, nil)
+				log.Debugf("received %d non-deduped blocks from %s on %s...",
+					len(result.Data), storageKey, &serverCfg)
+			}
+
+			select {
+			case ch <- result:
+			case <-ctx.Done():
+				return
+			}
+
+			// return in case of an error or when we iterated through all possible values
+			if result.Error != nil || cursor == startCursor || cursor == "" {
+				return
+			}
+
+			// continue going, prepare the action for the next iteration
+			action = ardb.Command(command.HashScan, storageKey, cursor, "COUNT", itemCount)
 		}
 	}()
 	return ch
 }
 
-func copyNonDedupedBetweenServers(sourceKey, targetKey string, src, dst ardb.StorageServer) error {
+func copyNonDedupedBetweenServers(sourceKey, targetKey string, src, dst ardb.StorageServer) (int64, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	resultChan := make(chan error)
+	type copyResult struct {
+		Count int64
+		Error error
+	}
+	resultChan := make(chan copyResult)
 
 	var actionCount int
 	ch := nonDedupDataFetcher(ctx, sourceKey, src)
 	for input := range ch {
 		input := input
 		go func() {
-			dataLength := len(input.Data)
-			if input.Error != nil || dataLength == 0 {
+			result := copyResult{
+				Count: int64(len(input.Data)),
+				Error: input.Error,
+			}
+			if result.Error != nil || result.Count == 0 {
 				select {
-				case resultChan <- input.Error:
+				case resultChan <- result:
 				case <-ctx.Done():
 				}
 				return
 			}
 
 			log.Debugf("collected %d nondedup blocks from %s (at %s)...",
-				dataLength, sourceKey, src.Config())
+				result.Count, sourceKey, src.Config())
 
-			cmds := []ardb.StorageAction{
-				// delete any existing vdisk
-				ardb.Command(command.Delete, targetKey),
-			}
+			var cmds []ardb.StorageAction
 
 			// buffer all set actions
-			log.Debugf("buffering %d nondedup blocks to be stored at %s...", dataLength, targetKey)
+			log.Debugf("buffering %d nondedup blocks to be stored at %s...", result.Count, targetKey)
 			for index, hash := range input.Data {
 				cmds = append(cmds,
 					ardb.Command(command.HashSet, targetKey, index, hash))
@@ -554,8 +632,9 @@ func copyNonDedupedBetweenServers(sourceKey, targetKey string, src, dst ardb.Sto
 				err = fmt.Errorf("%s was busy and couldn't be modified", targetKey)
 			}
 
+			result.Error = err
 			select {
-			case resultChan <- err:
+			case resultChan <- result:
 			case <-ctx.Done():
 			}
 			return
@@ -564,63 +643,69 @@ func copyNonDedupedBetweenServers(sourceKey, targetKey string, src, dst ardb.Sto
 	}
 
 	// collect all results
-	var err error
+	var totalCount int64
+	var result copyResult
 	for i := 0; i < actionCount; i++ {
-		err = <-resultChan
-		if err != nil {
+		result = <-resultChan
+		if result.Error != nil {
 			log.Errorf("stop copying nondedup blocks from %s to %s due to an error: %v",
-				sourceKey, targetKey, err)
-			return err
+				sourceKey, targetKey, result.Error)
+			return 0, result.Error
 		}
+		totalCount += result.Count
 	}
 
-	return nil
+	return totalCount, nil
 }
 
-func copyNonDedupDataToBlockStorage(sourceKey string, src ardb.StorageServer, storage BlockStorage) error {
+func copyNonDedupDataToBlockStorage(sourceKey string, src ardb.StorageServer, storage BlockStorage) (int64, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	resultChan := make(chan error)
+	type copyResult struct {
+		Count int64
+		Error error
+	}
+	resultChan := make(chan copyResult)
 
 	var actionCount int
 	ch := nonDedupDataFetcher(ctx, sourceKey, src)
 	for input := range ch {
 		input := input
 		go func() {
-			dataLength := len(input.Data)
-			if input.Error != nil || dataLength == 0 {
+			result := copyResult{
+				Count: int64(len(input.Data)),
+				Error: input.Error,
+			}
+			if result.Error != nil || result.Count == 0 {
 				select {
-				case resultChan <- input.Error:
+				case resultChan <- result:
 				case <-ctx.Done():
 				}
 				return
 			}
 
 			log.Debugf("collected %d nondedup blocks from %s (at %s)...",
-				dataLength, sourceKey, src.Config())
-
-			var err error
+				result.Count, sourceKey, src.Config())
 
 			// NOTE:
 			// for now this is a bit slow,
 			// as we'll reach out to the target server for each iterator
 			for index, bytes := range input.Data {
-				err = storage.SetBlock(index, bytes)
-				if err != nil {
-					err = fmt.Errorf("couldn't set block %d: %v", index, err)
+				result.Error = storage.SetBlock(index, bytes)
+				if result.Error != nil {
+					result.Error = fmt.Errorf("couldn't set block %d: %v", index, result.Error)
 					break
 				}
 			}
-
-			if err == nil {
+			if result.Error == nil {
 				log.Debugf("flushing %d nondedup stored blocks from %s (at %s)...",
-					dataLength, sourceKey, src.Config())
-				err = storage.Flush()
+					result.Count, sourceKey, src.Config())
+				result.Error = storage.Flush()
 			}
 
 			select {
-			case resultChan <- err:
+			case resultChan <- result:
 			case <-ctx.Done():
 			}
 		}()
@@ -628,15 +713,17 @@ func copyNonDedupDataToBlockStorage(sourceKey string, src ardb.StorageServer, st
 	}
 
 	// collect all results
-	var err error
+	var totalCount int64
+	var result copyResult
 	for i := 0; i < actionCount; i++ {
-		err = <-resultChan
-		if err != nil {
-			return err
+		result = <-resultChan
+		if result.Error != nil {
+			return 0, result.Error
 		}
+		totalCount += result.Count
 	}
 
-	return nil
+	return totalCount, nil
 }
 
 // nonDedupedStorageKey returns the storage key that can/will be

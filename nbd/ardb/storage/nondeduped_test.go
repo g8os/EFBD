@@ -471,5 +471,8 @@ func TestListNonDedupedBlockIndices(t *testing.T) {
 }
 
 func init() {
+	// ledisdb uses other names, for whatever reason
+	command.HashScan.Name = "XHSCAN"
+
 	log.SetLevel(log.DebugLevel)
 }
