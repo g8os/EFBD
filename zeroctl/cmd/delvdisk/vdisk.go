@@ -23,7 +23,7 @@ var VdiskCmd = &cobra.Command{
 }
 
 func deleteVdisk(cmd *cobra.Command, args []string) error {
-	logLevel := log.ErrorLevel
+	logLevel := log.InfoLevel
 	if cmdconfig.Verbose {
 		logLevel = log.DebugLevel
 	}

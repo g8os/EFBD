@@ -192,6 +192,55 @@ func VdiskExists(id string, t config.VdiskType, cluster ardb.StorageCluster) (bo
 	}
 }
 
+// CopyVdiskConfig is the config for a vdisk
+// used when calling the CopyVdisk primitive.
+type CopyVdiskConfig struct {
+	VdiskID   string
+	Type      config.VdiskType
+	BlockSize int64
+}
+
+// CopyVdisk allows you to copy a vdisk from a source to a target vdisk.
+// The source and target vdisks have to have the same storage type and block size.
+// They can be stored on the same or different clusters.
+func CopyVdisk(source, target CopyVdiskConfig, sourceCluster, targetCluster ardb.StorageCluster) error {
+	sourceStorageType := source.Type.StorageType()
+	targetStorageType := target.Type.StorageType()
+	if sourceStorageType != targetStorageType {
+		return fmt.Errorf(
+			"source vdisk %s and target vdisk %s have different storageTypes (%s != %s)",
+			source.VdiskID, target.VdiskID, sourceStorageType, targetStorageType)
+	}
+
+	var err error
+	switch sourceStorageType {
+	case config.StorageDeduped:
+		err = copyDedupedMetadata(
+			source.VdiskID, target.VdiskID, source.BlockSize, target.BlockSize,
+			sourceCluster, targetCluster)
+
+	case config.StorageNonDeduped:
+		err = copyNonDedupedData(
+			source.VdiskID, target.VdiskID, source.BlockSize, target.BlockSize,
+			sourceCluster, targetCluster)
+
+	case config.StorageSemiDeduped:
+		err = copySemiDeduped(
+			source.VdiskID, target.VdiskID, source.BlockSize, target.BlockSize,
+			sourceCluster, targetCluster)
+
+	default:
+		err = fmt.Errorf(
+			"%v is not a supported storage type", sourceStorageType)
+	}
+
+	if err != nil || !source.Type.TlogSupport() || !target.Type.TlogSupport() {
+		return err
+	}
+
+	return copyTlogMetadata(source.VdiskID, target.VdiskID, sourceCluster, targetCluster)
+}
+
 // DeleteVdisk returns true if the vdisk in question was deleted from the given ARDB storage cluster.
 // An error is returned in case this couldn't be deleted (completely) for whatever reason.
 func DeleteVdisk(id string, t config.VdiskType, cluster ardb.StorageCluster) (bool, error) {

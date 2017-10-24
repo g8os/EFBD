@@ -509,7 +509,7 @@ func (cfg *StorageServerConfig) Equal(other StorageServerConfig) bool {
 
 // String implements Stringer.String
 func (cfg StorageServerConfig) String() string {
-	return fmt.Sprintf("%s@%d (%s)", cfg.Address, cfg.Database, cfg.State)
+	return fmt.Sprintf("%s@%d", cfg.Address, cfg.Database)
 }
 
 // isDialStringSlice checks a provided string slice

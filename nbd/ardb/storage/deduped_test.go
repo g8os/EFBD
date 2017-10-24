@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/zero-os/0-Disk"
-	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/command"
@@ -570,7 +569,6 @@ func TestCopyDedupedDifferentServerCount(t *testing.T) {
 
 	sourceCluster := redisstub.NewCluster(4, false)
 	defer sourceCluster.Close()
-	sourceStorageConfig := sourceCluster.StorageClusterConfig()
 
 	sourceSectorStorage := lba.ARDBSectorStorage("source", sourceCluster)
 
@@ -593,26 +591,25 @@ func TestCopyDedupedDifferentServerCount(t *testing.T) {
 
 	// test copying to a target cluster with less servers available
 	testCopyDedupedDifferentServerCount(assert, indices, "source", "target",
-		sourceStorageConfig, sourceSectorStorage, 3)
+		sourceCluster, sourceSectorStorage, 3)
 	testCopyDedupedDifferentServerCount(assert, indices, "source", "target",
-		sourceStorageConfig, sourceSectorStorage, 2)
+		sourceCluster, sourceSectorStorage, 2)
 	testCopyDedupedDifferentServerCount(assert, indices, "source", "target",
-		sourceStorageConfig, sourceSectorStorage, 1)
+		sourceCluster, sourceSectorStorage, 1)
 
 	// test coping to a target cluster with more servers available
 	testCopyDedupedDifferentServerCount(assert, indices, "source", "target",
-		sourceStorageConfig, sourceSectorStorage, 5)
+		sourceCluster, sourceSectorStorage, 5)
 	testCopyDedupedDifferentServerCount(assert, indices, "source", "target",
-		sourceStorageConfig, sourceSectorStorage, 8)
+		sourceCluster, sourceSectorStorage, 8)
 }
 
-func testCopyDedupedDifferentServerCount(assert *assert.Assertions, indices []int64, sourceID, targetID string, sourceCluster config.StorageClusterConfig, sourceSectorStorage lba.SectorStorage, targetServerCount int) {
+func testCopyDedupedDifferentServerCount(assert *assert.Assertions, indices []int64, sourceID, targetID string, sourceCluster ardb.StorageCluster, sourceSectorStorage lba.SectorStorage, targetServerCount int) {
 	targetCluster := redisstub.NewCluster(targetServerCount, false)
 	defer targetCluster.Close()
-	targetStorageConfig := targetCluster.StorageClusterConfig()
 
 	// copy the sectors
-	err := copyDedupedDifferentServerCount(sourceID, targetID, sourceCluster, targetStorageConfig)
+	err := copyDedupedDifferentServerCount(sourceID, targetID, sourceCluster, targetCluster)
 	if !assert.NoError(err) {
 		return
 	}

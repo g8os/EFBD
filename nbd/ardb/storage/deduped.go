@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/zero-os/0-Disk"
@@ -334,17 +333,31 @@ func listDedupedBlockIndices(vdiskID string, cluster ardb.StorageCluster) ([]int
 
 // copyDedupedMetadata copies all metadata of a deduped storage
 // from a sourceID to a targetID, within the same cluster or between different clusters.
-func copyDedupedMetadata(sourceID, targetID string, sourceCluster, targetCluster ardb.StorageCluster) error {
+func copyDedupedMetadata(sourceID, targetID string, sourceBS, targetBS int64, sourceCluster, targetCluster ardb.StorageCluster) error {
+	if sourceBS != targetBS {
+		return fmt.Errorf(
+			"vdisks %s and %s have non matching block sizes (%d != %d)",
+			sourceID, targetID, sourceBS, targetBS)
+	}
+
 	if isInterfaceValueNil(targetCluster) {
+		log.Infof(
+			"copying deduped (LBA) metadata from vdisk %s to vdisk %s within a single storage cluster...",
+			sourceID, targetID)
 		return copyDedupedSameCluster(sourceID, targetID, sourceCluster)
 	}
 
 	if sourceCluster.ServerCount() == targetCluster.ServerCount() {
+		log.Infof(
+			"copying deduped (LBA) metadata from vdisk %s to vdisk %s between clusters wihh an equal amount of servers...",
+			sourceID, targetID)
 		return copyDedupedSameServerCount(sourceID, targetID, sourceCluster, targetCluster)
 	}
 
-	return errors.New("TODO")
-	//return copyDedupedDifferentServerCount(sourceID, targetID, sourceCluster, targetCluster)
+	log.Infof(
+		"copying deduped (LBA) metadata from vdisk %s to vdisk %s between clusters wihh an different amount of servers...",
+		sourceID, targetID)
+	return copyDedupedDifferentServerCount(sourceID, targetID, sourceCluster, targetCluster)
 }
 
 func copyDedupedSameCluster(sourceID, targetID string, cluster ardb.StorageCluster) error {
@@ -365,6 +378,9 @@ func copyDedupedSameCluster(sourceID, targetID string, cluster ardb.StorageClust
 	for server := range ch {
 		server := server
 		go func() {
+			log.Debugf(
+				"copying deduped (LBA) metadata from vdisk %s to vdisk %s on server %s",
+				sourceID, targetID, server.Config())
 			err = ardb.Error(server.Do(action))
 			select {
 			case resultChan <- err:
@@ -378,6 +394,9 @@ func copyDedupedSameCluster(sourceID, targetID string, cluster ardb.StorageClust
 	for i := 0; i < actionCount; i++ {
 		err = <-resultChan
 		if err != nil {
+			log.Errorf(
+				"stop of copying deduped (LBA) metadata from vdisk %s to vdisk %s due to an error: %v",
+				sourceID, targetID, err)
 			return err
 		}
 	}
@@ -408,34 +427,29 @@ func copyDedupedSameServerCount(sourceID, targetID string, sourceCluster, target
 	var actionCount int
 
 	// spawn all copy actions
-SpawnActions:
 	for {
 		// get source and target server
-		var ok bool
-		var src, dst ardb.StorageServer
-		for src != nil && dst != nil {
-			select {
-			case src, ok = <-srcChan:
-				if !ok {
-					srcChan = nil
-				}
-			case dst, ok = <-dstChan:
-				if !ok {
-					dstChan = nil
-				}
-			}
-
-			if srcChan == nil && dstChan == nil {
-				break SpawnActions
-			}
+		src, ok := <-srcChan
+		if !ok {
+			break
+		}
+		dst, ok := <-dstChan
+		if !ok {
+			panic("destination servers ran out before source servers")
 		}
 
 		go func() {
 			var err error
 			srcConfig := src.Config()
 			if srcConfig.Equal(dst.Config()) {
+				log.Debugf(
+					"copy deduped (LBA) metadata from vdisk %s to vdisk %s on server %s",
+					sourceID, targetID, src.Config())
 				err = ardb.Error(src.Do(sameConnAction))
 			} else {
+				log.Debugf(
+					"copy deduped (LBA) metadata from vdisk %s (at %s) to vdisk %s (at %s)",
+					sourceID, src.Config(), targetID, dst.Config())
 				err = copyDedupedBetweenServers(sourceKey, targetKey, src, dst)
 			}
 
@@ -451,6 +465,9 @@ SpawnActions:
 	for i := 0; i < actionCount; i++ {
 		err = <-resultChan
 		if err != nil {
+			log.Errorf(
+				"stop of copying deduped (LBA) metadata from vdisk %s to vdisk %s due to an error: %v",
+				sourceID, targetID, err)
 			return err
 		}
 	}
@@ -503,15 +520,13 @@ type dedupFetchResult struct {
 	Error error
 }
 
-func dedupMetadataFetcher(ctx context.Context, vdiskID string, server ardb.StorageServer) <-chan dedupFetchResult {
+func dedupMetadataFetcher(ctx context.Context, storageKey string, server ardb.StorageServer) <-chan dedupFetchResult {
 	ch := make(chan dedupFetchResult)
 	go func() {
 		defer close(ch)
 
-		storageKey := lba.StorageKey(vdiskID)
-
 		// get data from source connection
-		log.Infof("collecting all (LBA) metadata from %s...", storageKey)
+		log.Debugf("collecting all (LBA) metadata from %s on %s...", storageKey, server.Config())
 
 		// TODO: replace this with a cursor-based approach,
 		// so we don't have too much in memory at once
@@ -549,7 +564,7 @@ func copyDedupedBetweenServers(sourceKey, targetKey string, src, dst ardb.Storag
 				return
 			}
 
-			log.Infof("collected %d meta indices from %s...", dataLength, sourceKey)
+			log.Debugf("collected %d sector indices from %s...", dataLength, sourceKey)
 
 			cmds := []ardb.StorageAction{
 				// delete any existing vdisk
@@ -557,20 +572,25 @@ func copyDedupedBetweenServers(sourceKey, targetKey string, src, dst ardb.Storag
 			}
 
 			// buffer all set actions
-			log.Infof("buffering %d meta indices to be stored at %s...", dataLength, targetKey)
+			log.Debugf("buffering %d sector indices to be stored at %s...", dataLength, targetKey)
 			for index, hash := range input.Data {
 				cmds = append(cmds,
 					ardb.Command(command.HashSet, targetKey, index, hash))
 			}
 
 			transaction := ardb.Transaction(cmds...)
-			log.Infof("flushing buffered metadata to be stored at %s...", targetKey)
+			log.Debugf("flushing buffered metadata to be stored at %s on %s...", targetKey, dst.Config())
 			// execute the transaction
 			response, err := dst.Do(transaction)
 			if err == nil && response == nil {
 				// if response == <nil> the transaction has failed
 				// more info: https://redis.io/topics/transactions
 				err = fmt.Errorf("%s was busy and couldn't be modified", targetKey)
+			}
+
+			select {
+			case resultChan <- err:
+			case <-ctx.Done():
 			}
 		}()
 		actionCount++
@@ -581,6 +601,8 @@ func copyDedupedBetweenServers(sourceKey, targetKey string, src, dst ardb.Storag
 	for i := 0; i < actionCount; i++ {
 		err = <-resultChan
 		if err != nil {
+			log.Errorf("stop copying sectors from %s to %s due to an error: %v",
+				sourceKey, targetKey, err)
 			return err
 		}
 	}
@@ -608,7 +630,7 @@ func copyDedupedMetadataToLBAStorage(sourceKey string, src ardb.StorageServer, s
 				return
 			}
 
-			log.Infof("collected %d sectors from %s...", dataLength, sourceKey)
+			log.Debugf("collected %d sectors from %s...", dataLength, sourceKey)
 
 			var err error
 			var sector *lba.Sector
@@ -628,6 +650,11 @@ func copyDedupedMetadataToLBAStorage(sourceKey string, src ardb.StorageServer, s
 					err = fmt.Errorf("couldn't set sector %d: %v", index, err)
 					break
 				}
+			}
+
+			if err == nil {
+				log.Debugf("stored %d LBA sectors from %s (at %s)...",
+					dataLength, sourceKey, src.Config())
 			}
 
 			select {

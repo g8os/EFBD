@@ -1,10 +1,9 @@
 package storage
 
 import (
-	"errors"
+	"context"
 	"fmt"
 
-	"github.com/garyburd/redigo/redis"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/command"
@@ -244,13 +243,118 @@ func listSemiDedupedBlockIndices(vdiskID string, cluster ardb.StorageCluster) ([
 
 // copySemiDeduped copies a semi deduped storage
 // within the same or between different storage clusters.
-func copySemiDeduped(sourceID, targetID string, sourceCluster, targetCluster ardb.StorageCluster) error {
-	return errors.New("TODO")
+func copySemiDeduped(sourceID, targetID string, sourceBS, targetBS int64, sourceCluster, targetCluster ardb.StorageCluster) error {
+	err := copyDedupedMetadata(sourceID, targetID, sourceBS, targetBS, sourceCluster, targetCluster)
+	if err != nil {
+		return err
+	}
+
+	var hasBitMask bool
+	if isInterfaceValueNil(targetCluster) {
+		log.Infof(
+			"copying semi-deduped metadata from vdisk %s to vdisk %s within a single storage cluster...",
+			sourceID, targetID)
+		hasBitMask, err = copySemiDedupedSingleCluster(sourceID, targetID, sourceCluster)
+	} else {
+		log.Infof(
+			"copying semi-deduped metadata from vdisk %s to vdisk %s between storage clusters...",
+			sourceID, targetID)
+		hasBitMask, err = copySemiDedupedBetweenClusters(sourceID, targetID, sourceCluster, targetCluster)
+	}
+	if err != nil || !hasBitMask {
+		return err
+	}
+
+	return copyNonDedupedData(sourceID, targetID, sourceBS, targetBS, sourceCluster, targetCluster)
 }
 
-// NOTE: copies bitmask only
-func copySemiDedupedSameConnection(sourceID, targetID string, conn ardb.Conn) (hasBitMask bool, err error) {
-	script := redis.NewScript(0, `
+func copySemiDedupedSingleCluster(sourceID, targetID string, cluster ardb.StorageCluster) (bool, error) {
+	sourceKey := semiDedupBitMapKey(sourceID)
+	targetkey := semiDedupBitMapKey(targetID)
+
+	log.Debugf("copy semi-deduped bitmask from %s to %s on same cluster",
+		sourceKey, targetkey)
+
+	action := ardb.Script(0, copySemiDedupedMetaDataSameServerScriptSource,
+		nil, sourceKey, targetkey)
+
+	return ardb.Bool(cluster.Do(action))
+}
+
+func copySemiDedupedBetweenClusters(sourceID, targetID string, sourceCluster, targetCluster ardb.StorageCluster) (bool, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	srcChan, err := sourceCluster.ServerIterator(ctx)
+	if err != nil {
+		return false, err
+	}
+	dstChan, err := targetCluster.ServerIterator(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	src := <-srcChan
+	dst := <-dstChan
+
+	if srcConfig := src.Config(); srcConfig.Equal(dst.Config()) {
+		log.Debugf(
+			"copy semi-deduped bitmask from vdisk %s to vdisk %s on same server",
+			sourceID, targetID)
+		return copySemiDedupedSameServer(sourceID, targetID, src)
+	}
+
+	log.Debugf(
+		"copy semi-deduped bitmask from vdisk %s to vdisk %s between different servers",
+		sourceID, targetID)
+	return copySemiDedupedDifferentServers(sourceID, targetID, src, dst)
+}
+
+func copySemiDedupedSameServer(sourceID, targetID string, server ardb.StorageServer) (bool, error) {
+	sourceKey := semiDedupBitMapKey(sourceID)
+	targetkey := semiDedupBitMapKey(targetID)
+
+	log.Debugf("copy semi-deduped bitmask from %s to %s on same server %s",
+		sourceKey, targetkey, server.Config())
+
+	action := ardb.Script(0, copySemiDedupedMetaDataSameServerScriptSource,
+		nil, sourceKey, targetkey)
+
+	return ardb.Bool(server.Do(action))
+}
+
+func copySemiDedupedDifferentServers(sourceID, targetID string, src, dst ardb.StorageServer) (bool, error) {
+	log.Debugf("collecting semi-deduped bitmask from %s for source vdisk %s...",
+		src.Config(), sourceID)
+	action := ardb.Command(command.Get, semiDedupBitMapKey(sourceID))
+	bytes, err := ardb.Bytes(src.Do(action))
+	if err == ardb.ErrNil {
+		log.Debugf("no semi-deduped bitmask found for source vdisk %q...", sourceID)
+		return false, nil
+	}
+	if err != nil {
+		return false, err // couldn't get bitmask due to an unexpected error
+	}
+
+	log.Debugf("storing semi-deduped bitmask on %s for target vdisk %s...",
+		dst.Config(), targetID)
+	action = ardb.Command(command.Set, semiDedupBitMapKey(sourceID), bytes)
+	err = ardb.Error(dst.Do(action))
+	return true, err
+}
+
+// semiDedupBitMapKey returns the storage key which is used
+// to store the BitMap for the semideduped storage of a given vdisk
+func semiDedupBitMapKey(vdiskID string) string {
+	return semiDedupBitMapKeyPrefix + vdiskID
+}
+
+const (
+	// semiDedupBitMapKeyPrefix is the prefix used in semiDedupBitMapKey
+	semiDedupBitMapKeyPrefix = "semidedup:bitmap:"
+)
+
+const copySemiDedupedMetaDataSameServerScriptSource = `
 local source = ARGV[1]
 local destination = ARGV[2]
 
@@ -264,54 +368,4 @@ end
 
 redis.call("RESTORE", destination, 0, redis.call("DUMP", source))
 return 1
-`)
-
-	log.Infof("dumping vdisk %q's bitmask and restoring it as vdisk %q's bitmask",
-		sourceID, targetID)
-
-	sourceKey := semiDedupBitMapKey(sourceID)
-	targetKey := semiDedupBitMapKey(targetID)
-
-	hasBitMask, err = ardb.Bool(script.Do(conn, sourceKey, targetKey))
-	return
-}
-
-// NOTE: copies bitmask only
-func copySemiDedupedDifferentConnections(sourceID, targetID string, connA, connB ardb.Conn) (hasBitMask bool, err error) {
-	sourceKey := semiDedupBitMapKey(sourceID)
-
-	log.Infof("collecting semidedup bitmask from source vdisk %q...", sourceID)
-	bytes, err := ardb.Bytes(connA.Do("GET", sourceKey))
-	if err == ardb.ErrNil {
-		err = nil
-		log.Infof("no semidedup bitmask found for source vdisk %q...", sourceID)
-		return // nothing to do, as there is no bitmask
-	}
-	if err != nil {
-		return // couldn't get bitmask due to an unexpected error
-	}
-
-	log.Infof("collected semidedup bitmask from source vdisk %q...", sourceID)
-
-	targetKey := semiDedupBitMapKey(targetID)
-	_, err = connB.Do("SET", targetKey, bytes)
-	if err != nil {
-		return // couldn't set bitmask, this makes the vdisk invalid
-	}
-
-	log.Infof("stored semidedup bitmask for target storage %q...", targetID)
-
-	hasBitMask = true
-	return
-}
-
-// semiDedupBitMapKey returns the storage key which is used
-// to store the BitMap for the semideduped storage of a given vdisk
-func semiDedupBitMapKey(vdiskID string) string {
-	return semiDedupBitMapKeyPrefix + vdiskID
-}
-
-const (
-	// semiDedupBitMapKeyPrefix is the prefix used in semiDedupBitMapKey
-	semiDedupBitMapKeyPrefix = "semidedup:bitmap:"
-)
+`

@@ -3,7 +3,6 @@ package storage
 import (
 	"fmt"
 
-	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/command"
@@ -45,56 +44,38 @@ func tlogMetadataKey(vdiskID string) string {
 	return tlogMetadataKeyPrefix + vdiskID
 }
 
-// CopyTlogMetadata copies all metadata of a tlog-enabled storage
-// from a sourceID to a targetID, within the same cluster or between different clusters.
-func CopyTlogMetadata(sourceID, targetID string, sourceClusterCfg config.StorageClusterConfig, targetClusterCfg *config.StorageClusterConfig) error {
-	// define whether or not we're copying between different servers.
-	if targetClusterCfg == nil {
-		targetClusterCfg = &sourceClusterCfg
+// copyTlogMetadata copies tlog metadata
+// within the same or between different storage clusters.
+func copyTlogMetadata(sourceID, targetID string, sourceCluster, targetCluster ardb.StorageCluster) error {
+	if isInterfaceValueNil(targetCluster) {
+		return copyTlogMetadataSingleCluster(sourceID, targetID, sourceCluster)
 	}
 
-	// get first available storage server
-
-	metaSourceCfg, err := ardb.FindFirstAvailableServerConfig(sourceClusterCfg)
-	if err != nil {
-		return err
-	}
-
-	sourceCluster, err := ardb.NewUniCluster(metaSourceCfg, nil)
-	if err != nil {
-		return err
-	}
-
-	metaTargetCfg, err := ardb.FindFirstAvailableServerConfig(*targetClusterCfg)
-	if err != nil {
-		return err
-	}
-
-	if metaSourceCfg.Equal(metaTargetCfg) {
-		conn, err := ardb.Dial(metaSourceCfg)
-		if err != nil {
-			return fmt.Errorf("couldn't connect to ardb: %s", err.Error())
-		}
-		defer conn.Close()
-
-		return copyTlogMetadataSameConnection(sourceID, targetID, sourceCluster)
-	}
-
-	targetCluster, err := ardb.NewUniCluster(metaTargetCfg, nil)
-	if err != nil {
-		return err
-	}
-
-	return copyTlogMetadataDifferentConnections(sourceID, targetID, sourceCluster, targetCluster)
+	return copyTlogMetadataBetweenClusters(sourceID, targetID, sourceCluster, targetCluster)
 }
 
-func copyTlogMetadataDifferentConnections(sourceID, targetID string, sourceCluster, targetCluster ardb.StorageCluster) error {
+func copyTlogMetadataSingleCluster(sourceID, targetID string, cluster ardb.StorageCluster) error {
+	sourceKey := tlogMetadataKey(sourceID)
+	targetkey := tlogMetadataKey(targetID)
+
+	log.Debugf("copy tlog metadata from %s to %s on same cluster",
+		sourceKey, targetkey)
+
+	action := ardb.Script(0, copyTlogMetadataSameConnScript,
+		nil, sourceKey, targetkey)
+
+	return ardb.Error(cluster.Do(action))
+}
+
+func copyTlogMetadataBetweenClusters(sourceID, targetID string, sourceCluster, targetCluster ardb.StorageCluster) error {
+	log.Debugf("load tlog metadata from source cluster for %s", sourceID)
 	metadata, err := LoadTlogMetadata(sourceID, sourceCluster)
 	if err != nil {
 		return fmt.Errorf(
 			"couldn't deserialize source tlog metadata for %s: %v", sourceID, err)
 	}
 
+	log.Debugf("store tlog metadata on target cluster for %s", targetID)
 	err = StoreTlogMetadata(targetID, targetCluster, metadata)
 	if err != nil {
 		return fmt.Errorf(
@@ -104,19 +85,7 @@ func copyTlogMetadataDifferentConnections(sourceID, targetID string, sourceClust
 	return nil
 }
 
-func copyTlogMetadataSameConnection(sourceID, targetID string, cluster ardb.StorageCluster) error {
-	log.Infof("dumping tlog metadata of vdisk %q and restoring it as tlog metadata of vdisk %q",
-		sourceID, targetID)
-
-	sourceKey, targetKey := tlogMetadataKey(sourceID), tlogMetadataKey(targetID)
-	_, err := cluster.Do(ardb.Script(
-		0, copyTlogMetadataSameConnScript,
-		[]string{targetKey},
-		sourceKey, targetKey))
-	return err
-}
-
-var copyTlogMetadataSameConnScript = `
+const copyTlogMetadataSameConnScript = `
 	local source = ARGV[1]
 	local dest = ARGV[2]
 	

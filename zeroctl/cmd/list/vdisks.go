@@ -25,9 +25,9 @@ var VdisksCmd = &cobra.Command{
 }
 
 func listVdisks(cmd *cobra.Command, args []string) error {
-	logLevel := log.ErrorLevel
+	logLevel := log.InfoLevel
 	if config.Verbose {
-		logLevel = log.InfoLevel
+		logLevel = log.DebugLevel
 	}
 	log.SetLevel(logLevel)
 

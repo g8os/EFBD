@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"runtime"
 
+	"github.com/zero-os/0-Disk/nbd/ardb"
+
 	"github.com/spf13/cobra"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
@@ -25,7 +27,7 @@ var vdiskCmdCfg struct {
 
 // VdiskCmd represents the vdisk copy subcommand
 var VdiskCmd = &cobra.Command{
-	Use:   "vdisk source_vdiskid target_vdiskid [target_clusterid]",
+	Use:   "vdisk source_vdiskid target_vdiskid",
 	Short: "Copy a vdisk",
 	RunE:  copyVdisk,
 }
@@ -33,7 +35,7 @@ var VdiskCmd = &cobra.Command{
 func copyVdisk(cmd *cobra.Command, args []string) error {
 	logLevel := log.InfoLevel
 	if cmdconfig.Verbose {
-		logLevel = log.InfoLevel
+		logLevel = log.DebugLevel
 	}
 	log.SetLevel(logLevel)
 
@@ -44,78 +46,76 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 	}
 	defer configSource.Close()
 
-	log.Info("parsing positional arguments...")
+	log.Debug("parsing positional arguments...")
 
 	// validate pos arg length
 	argn := len(args)
 	if argn < 2 {
 		return errors.New("not enough arguments")
-	} else if argn > 3 {
+	} else if argn > 2 {
 		return errors.New("too many arguments")
 	}
 
 	// store pos arguments in named variables
 	sourceVdiskID, targetVdiskID := args[0], args[1]
-	var targetClusterID string
-	if argn == 3 {
-		targetClusterID = args[2]
-	}
 
-	var sourceClusterConfig config.StorageClusterConfig
-	var targetClusterConfig *config.StorageClusterConfig
+	// TODO: support slave clusters!!!
 
-	// try to read the Vdisk+NBD config of source vdisk
-	sourceStaticConfig, err := config.ReadVdiskStaticConfig(configSource, sourceVdiskID)
+	// try to read the configs of source vdisk
+	srcStaticCfg, err := config.ReadVdiskStaticConfig(configSource, sourceVdiskID)
 	if err != nil {
-		return fmt.Errorf(
-			"couldn't read source vdisk %s's static config: %v", sourceVdiskID, err)
+		return err
 	}
-	sourceStorageConfig, err := config.ReadNBDStorageConfig(
-		configSource, sourceVdiskID)
+	srcNBDConfig, err := config.ReadVdiskNBDConfig(configSource, sourceVdiskID)
 	if err != nil {
-		return fmt.Errorf(
-			"couldn't read source vdisk %s's storage config: %v", sourceVdiskID, err)
+		return err
+	}
+	srcClusterConfig, err := config.ReadStorageClusterConfig(configSource, srcNBDConfig.StorageClusterID)
+	if err != nil {
+		return err
+	}
+	sourceCluster, err := ardb.NewCluster(*srcClusterConfig, nil)
+	if err != nil {
+		return err
 	}
 
-	sourceClusterConfig = sourceStorageConfig.StorageCluster
+	// try to read the configs of target vdisk
+	dstStaticConfig, err := config.ReadVdiskStaticConfig(configSource, targetVdiskID)
+	if err != nil {
+		return err
+	}
+	dstNBDConfig, err := config.ReadVdiskNBDConfig(configSource, targetVdiskID)
+	if err != nil {
+		return err
+	}
 
-	// if a targetClusterID is given, check if it's not the same as the source cluster ID,
-	// and if it is not, get its config
-	if targetClusterID != "" {
-		sourceVdiskNBDConfig, err := config.ReadVdiskNBDConfig(configSource, sourceVdiskID)
+	var targetCluster ardb.StorageCluster
+	// only create target cluster if the source and target cluster IDs are different
+	if srcNBDConfig.StorageClusterID != dstNBDConfig.StorageClusterID {
+		dstClusterConfig, err := config.ReadStorageClusterConfig(configSource, dstNBDConfig.StorageClusterID)
 		if err != nil {
-			return fmt.Errorf(
-				"couldn't read source vdisk %s's storage config: %v", sourceVdiskID, err)
+			return err
 		}
-
-		if sourceVdiskNBDConfig.StorageClusterID != targetClusterID {
-			targetClusterConfig, err = config.ReadStorageClusterConfig(configSource, targetClusterID)
-			if err != nil {
-				return fmt.Errorf(
-					"couldn't read target vdisk %s's storage config: %v", targetVdiskID, err)
-			}
+		targetCluster, err = ardb.NewCluster(*dstClusterConfig, nil)
+		if err != nil {
+			return err
 		}
 	}
 
-	// 1. copy the vdisk (meta)data
+	// 1. copy the ARDB (meta)data
 
-	switch stype := sourceStaticConfig.Type.StorageType(); stype {
-	case config.StorageDeduped:
-		err = storage.CopyDeduped(
-			sourceVdiskID, targetVdiskID,
-			sourceClusterConfig, targetClusterConfig)
-	case config.StorageNonDeduped:
-		err = storage.CopyNonDeduped(
-			sourceVdiskID, targetVdiskID,
-			sourceClusterConfig, targetClusterConfig)
-	case config.StorageSemiDeduped:
-		err = storage.CopySemiDeduped(
-			sourceVdiskID, targetVdiskID,
-			sourceClusterConfig, targetClusterConfig)
-	default:
-		err = fmt.Errorf("vdisk %s has an unknown storage type %d",
-			sourceVdiskID, stype)
+	sourceConfig := storage.CopyVdiskConfig{
+		VdiskID:   sourceVdiskID,
+		Type:      srcStaticCfg.Type,
+		BlockSize: int64(srcStaticCfg.BlockSize),
 	}
+	targetConfig := storage.CopyVdiskConfig{
+		VdiskID:   targetVdiskID,
+		Type:      dstStaticConfig.Type,
+		BlockSize: int64(dstStaticConfig.BlockSize),
+	}
+
+	err = storage.CopyVdisk(sourceConfig, targetConfig, sourceCluster, targetCluster)
 	if err != nil {
 		return err
 	}
@@ -133,15 +133,7 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to copy/generate tlog data for vdisk `%v`: %v", targetVdiskID, err)
 	}
 
-	if !sourceStaticConfig.Type.TlogSupport() {
-		return nil
-	}
-
-	// copy the tlog-specific metadata if both the source and target
-	// support tlog and have enabled it
-	// TODO: only try to do this if both source and target vdiskID have tlog configured
-	// TODO: also fork/copy the actual tlog (meta)data, see https://github.com/zero-os/0-Disk/issues/147
-	return storage.CopyTlogMetadata(sourceVdiskID, targetVdiskID, sourceClusterConfig, targetClusterConfig)
+	return nil
 }
 
 func init() {
@@ -159,10 +151,8 @@ NOTE: by design,
   the data will be copied the first time the vdisk spins up,
   on the condition that the templateStorageCluster has been configured.
 
-WARNING: when copying nondeduped vdisks,
-  it is currently not supported that the target vdisk's data cluster
-  has more or less storage servers, then the source vdisk's data cluster.
-  See issue #206 for more information.
+NOTE: the storage types and block sizes of source and target vdisk
+  need to be equal, else an error is returned.
 `
 
 	VdiskCmd.Flags().Var(
