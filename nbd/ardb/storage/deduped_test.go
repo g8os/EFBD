@@ -18,7 +18,7 @@ import (
 	"github.com/zero-os/0-Disk/redisstub"
 )
 
-// simplified algorithm based on `cmd/copyvdisk/copy_different.go`
+// simplified algorithm based on `zeroctl/cmd/copyvdisk/vdisk.go`
 func copyTestMetaData(t *testing.T, vdiskIDA, vdiskIDB string, clusterA, clusterB ardb.StorageCluster) {
 	data, err := ardb.Int64ToBytesMapping(
 		clusterA.Do(ardb.Command(command.HashGetAll, lba.StorageKey(vdiskIDA))))
