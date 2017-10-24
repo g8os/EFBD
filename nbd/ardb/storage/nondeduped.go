@@ -162,34 +162,13 @@ func nonDedupedVdiskExists(vdiskID string, cluster ardb.StorageCluster) (bool, e
 		return false, err
 	}
 
-	type serverResult struct {
-		exists bool
-		err    error
-	}
-	resultCh := make(chan serverResult)
-
-	var count int
+	var exists bool
 	action := ardb.Command(command.Exists, nonDedupedStorageKey(vdiskID))
 	for server := range serverCh {
-		server := server
-		go func() {
-			var result serverResult
-			log.Infof("checking if non-deduped vdisk %s exists on %v",
-				vdiskID, server.Config())
-			result.exists, result.err = ardb.Bool(server.Do(action))
-			select {
-			case resultCh <- result:
-			case <-ctx.Done():
-			}
-		}()
-		count++
-	}
-
-	var result serverResult
-	for i := 0; i < count; i++ {
-		result = <-resultCh
-		if result.exists || result.err != nil {
-			return result.exists, result.err
+		log.Infof("checking if non-deduped vdisk %s exists on %v", vdiskID, server.Config())
+		exists, err = ardb.Bool(server.Do(action))
+		if err != nil || exists {
+			return exists, err
 		}
 	}
 
