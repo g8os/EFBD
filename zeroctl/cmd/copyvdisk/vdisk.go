@@ -23,6 +23,7 @@ var vdiskCmdCfg struct {
 	PrivKey                 string
 	FlushSize               int
 	JobCount                int
+	Force                   bool
 }
 
 // VdiskCmd represents the vdisk copy subcommand
@@ -100,6 +101,15 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
+		err = checkVdiskExists(targetVdiskID, dstStaticConfig.Type, targetCluster)
+		if err != nil {
+			return err
+		}
+	} else {
+		err = checkVdiskExists(targetVdiskID, dstStaticConfig.Type, sourceCluster)
+		if err != nil {
+			return err
+		}
 	}
 
 	// 1. copy the ARDB (meta)data
@@ -133,6 +143,40 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to copy/generate tlog data for vdisk `%v`: %v", targetVdiskID, err)
 	}
 
+	return nil
+}
+
+// checkVdiskExists checks if the vdisk in question already/still exists,
+// and if so, and the force flag is specified, delete the vdisk.
+func checkVdiskExists(id string, t config.VdiskType, cluster ardb.StorageCluster) error {
+	// check if vdisk exists
+	exists, err := storage.VdiskExists(id, t, cluster)
+	if !exists {
+		return nil // vdisk doesn't exist, so nothing to do
+	}
+	if err != nil {
+		return fmt.Errorf("couldn't check if vdisk %s already exists: %v", id, err)
+	}
+	if !vdiskCmdCfg.Force {
+		return fmt.Errorf("cannot copy to vdisk %s as it already exists", id)
+	}
+
+	// delete vdisk, as it exists and `--force` is specified
+	deleted, err := storage.DeleteVdisk(id, t, cluster)
+	if err != nil {
+		return fmt.Errorf("couldn't delete vdisk %s: %v", id, err)
+	}
+	if !deleted {
+		return fmt.Errorf("couldn't delete vdisk %s for an unknown reason", id)
+	}
+
+	// delete 0-Stor (meta)data for this vdisk
+	if t.TlogSupport() {
+		// TODO: also delete actual tlog meta(data) from 0-Stor cluster for the supported vdisks ?!?!
+		//       https://github.com/zero-os/0-Disk/issues/147
+	}
+
+	// vdisk did exist, but we were able to delete all the exiting (meta)data
 	return nil
 }
 
@@ -176,4 +220,9 @@ NOTE: the storage types and block sizes of source and target vdisk
 		&vdiskCmdCfg.FlushSize,
 		"flush-size", tlogserver.DefaultConfig().FlushSize,
 		"number of tlog blocks in one flush")
+
+	VdiskCmd.Flags().BoolVarP(
+		&vdiskCmdCfg.Force,
+		"force", "f", false,
+		"when given, delete the target vdisk if it already existed")
 }
