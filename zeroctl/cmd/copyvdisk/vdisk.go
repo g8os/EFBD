@@ -19,8 +19,6 @@ import (
 var vdiskCmdCfg struct {
 	SourceConfig            config.SourceConfig
 	ForceSameStorageCluster bool
-	DataShards              int
-	ParityShards            int
 	PrivKey                 string
 	FlushSize               int
 	JobCount                int
@@ -128,8 +126,6 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 	err = copy.Copy(context.Background(), configSource, copy.Config{
 		SourceVdiskID: sourceVdiskID,
 		TargetVdiskID: targetVdiskID,
-		DataShards:    vdiskCmdCfg.DataShards,
-		ParityShards:  vdiskCmdCfg.ParityShards,
 		PrivKey:       vdiskCmdCfg.PrivKey,
 		FlushSize:     vdiskCmdCfg.FlushSize,
 		JobCount:      vdiskCmdCfg.JobCount,
@@ -177,14 +173,6 @@ WARNING: when copying nondeduped vdisks,
 		&vdiskCmdCfg.ForceSameStorageCluster, "same", false,
 		"enable flag to force copy within the same nbd servers")
 
-	VdiskCmd.Flags().IntVar(
-		&vdiskCmdCfg.DataShards,
-		"data-shards", 4,
-		"data shards (K) variable of erasure encoding")
-	VdiskCmd.Flags().IntVar(
-		&vdiskCmdCfg.ParityShards,
-		"parity-shards", 2,
-		"parity shards (M) variable of erasure encoding")
 	VdiskCmd.Flags().StringVar(
 		&vdiskCmdCfg.PrivKey,
 		"priv-key", "12345678901234567890123456789012",

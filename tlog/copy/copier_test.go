@@ -77,12 +77,14 @@ func TestCopyDiffCluster(t *testing.T) {
 			Org:       "testorg",
 			Namespace: "thedisk",
 		},
-		Servers: serverConfSource,
 		MetadataServers: []config.ServerConfig{
 			config.ServerConfig{
 				Address: mdServer.ListenAddr(),
 			},
 		},
+		DataServers:  serverConfSource,
+		DataShards:   dataShards,
+		ParityShards: parityShards,
 	}
 
 	zeroStorClusterConfTarget := &config.ZeroStorClusterConfig{
@@ -90,17 +92,19 @@ func TestCopyDiffCluster(t *testing.T) {
 			Org:       "testorg",
 			Namespace: "thedisk",
 		},
-		Servers: serverConfTarget,
 		MetadataServers: []config.ServerConfig{
 			config.ServerConfig{
 				Address: mdServer.ListenAddr(),
 			},
 		},
+		DataServers:  serverConfTarget,
+		DataShards:   dataShards,
+		ParityShards: parityShards,
 	}
 
 	confSource.SetTlogZeroStorCluster(sourceVdiskID, zeroStorClusterIDSource, zeroStorClusterConfSource)
 	confSource.SetTlogZeroStorCluster(targetVdiskID, zeroStorClusterIDTarget, zeroStorClusterConfTarget)
-	testCopy(t, confSource, dataShards, parityShards, blockSize, sourceVdiskID, targetVdiskID, privKey, true)
+	testCopy(t, confSource, blockSize, sourceVdiskID, targetVdiskID, privKey, true)
 }
 
 // TestCopySameCluster test tlog copy when both vdisks reside in same zerostor cluster
@@ -151,26 +155,28 @@ func TestCopySameCluster(t *testing.T) {
 			Org:       "testorg",
 			Namespace: "thedisk",
 		},
-		Servers: serverConf,
+		DataServers: serverConf,
 		MetadataServers: []config.ServerConfig{
 			config.ServerConfig{
 				Address: mdServer.ListenAddr(),
 			},
 		},
+		DataShards:   dataShards,
+		ParityShards: parityShards,
 	}
 
 	confSource.SetTlogZeroStorCluster(sourceVdiskID, zeroStorClusterID, zeroStorClusterConf)
 	confSource.SetTlogZeroStorCluster(targetVdiskID, zeroStorClusterID, zeroStorClusterConf)
-	testCopy(t, confSource, dataShards, parityShards, blockSize, sourceVdiskID, targetVdiskID, privKey, false)
+	testCopy(t, confSource, blockSize, sourceVdiskID, targetVdiskID, privKey, false)
 }
 
-func testCopy(t *testing.T, confSource config.Source, dataShards, parityShards, blockSize int,
+func testCopy(t *testing.T, confSource config.Source, blockSize int,
 	sourceVdiskID, targetVdiskID, privKey string, diffCluster bool) {
 	const (
 		numLogs = 50
 	)
 	// generates some tlog data
-	flusher, err := flusher.New(confSource, dataShards, parityShards, 0, sourceVdiskID, privKey)
+	flusher, err := flusher.New(confSource, 0, sourceVdiskID, privKey)
 	require.NoError(t, err)
 
 	for i := 0; i < numLogs; i++ {
@@ -202,8 +208,6 @@ func testCopy(t *testing.T, confSource config.Source, dataShards, parityShards, 
 		SourceVdiskID: sourceVdiskID,
 		TargetVdiskID: targetVdiskID,
 		PrivKey:       privKey,
-		DataShards:    dataShards,
-		ParityShards:  parityShards,
 		JobCount:      runtime.NumCPU(),
 	})
 	require.NoError(t, err)

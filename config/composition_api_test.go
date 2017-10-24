@@ -168,8 +168,13 @@ func TestReadTlogStorageConfig(t *testing.T) {
 			ClientID:  "foo clientID",
 			Secret:    "foo secret",
 		},
-		Servers:         []ServerConfig{ServerConfig{"1.1.1.1:11"}},
 		MetadataServers: []ServerConfig{ServerConfig{"2.2.2.2:22"}},
+		DataServers: []ServerConfig{
+			ServerConfig{"1.1.1.1:11"},
+			ServerConfig{"1.1.1.1:22"},
+		},
+		DataShards:   1,
+		ParityShards: 1,
 	}
 	source.SetTlogZeroStorCluster("a", "mycluster", &originalZeroStorCfg)
 	tlogStorCfg, err := ReadTlogStorageConfig(source, "a")
@@ -467,8 +472,13 @@ func TestWatchTlogStorageConfig_FailAtStartup(t *testing.T) {
 			ClientID:  "foo clientID",
 			Secret:    "foo secret",
 		},
-		Servers:         []ServerConfig{ServerConfig{"1.1.1.1:11"}},
 		MetadataServers: []ServerConfig{ServerConfig{"2.2.2.2:22"}},
+		DataServers: []ServerConfig{
+			ServerConfig{"1.1.1.1:11"},
+			ServerConfig{"1.1.1.1:22"},
+		},
+		DataShards:   1,
+		ParityShards: 1,
 	})
 
 	_, err = WatchTlogStorageConfig(ctx, source, "a")
@@ -490,18 +500,26 @@ func TestWatchTlogStorageConfig_FailAfterSuccess(t *testing.T) {
 			ClientID:  "foo clientID",
 			Secret:    "foo secret",
 		},
-		Servers:         []ServerConfig{ServerConfig{"1.1.1.1:11"}},
 		MetadataServers: []ServerConfig{ServerConfig{"2.2.2.2:22"}},
+		DataServers: []ServerConfig{
+			ServerConfig{"1.1.1.1:11"},
+			ServerConfig{"1.1.1.1:22"},
+		},
+		DataShards:   1,
+		ParityShards: 1,
 	})
 	ch, err := WatchTlogStorageConfig(ctx, source, "a")
 	assert.NoError(err, "should be valid")
 
 	output := <-ch
 	assert.Nil(output.SlaveStorageCluster)
-	if assert.Len(output.ZeroStorCluster.Servers, 1) {
+	if assert.Len(output.ZeroStorCluster.DataServers, 2) {
 		assert.Equal(
 			ServerConfig{"1.1.1.1:11"},
-			output.ZeroStorCluster.Servers[0])
+			output.ZeroStorCluster.DataServers[0])
+		assert.Equal(
+			ServerConfig{"1.1.1.1:22"},
+			output.ZeroStorCluster.DataServers[1])
 	}
 
 	invalidKeyCh := source.InvalidKey()
@@ -530,17 +548,25 @@ func TestWatchTlogStorageConfig_FailAfterSuccess(t *testing.T) {
 			ClientID:  "foo clientID",
 			Secret:    "foo secret",
 		},
-		Servers:         []ServerConfig{ServerConfig{"3.3.3.3:33"}},
 		MetadataServers: []ServerConfig{ServerConfig{"2.2.2.2:22"}},
+		DataServers: []ServerConfig{
+			ServerConfig{"3.3.3.3:33"},
+			ServerConfig{"3.3.3.3:44"},
+		},
+		DataShards:   1,
+		ParityShards: 1,
 	})
 
 	// trigger reload (even though it was broken before)
 	output = <-ch
 	assert.Nil(output.SlaveStorageCluster)
-	if assert.Len(output.ZeroStorCluster.Servers, 1) {
+	if assert.Len(output.ZeroStorCluster.DataServers, 2) {
 		assert.Equal(
 			ServerConfig{"3.3.3.3:33"},
-			output.ZeroStorCluster.Servers[0])
+			output.ZeroStorCluster.DataServers[0])
+		assert.Equal(
+			ServerConfig{"3.3.3.3:44"},
+			output.ZeroStorCluster.DataServers[1])
 	}
 }
 
@@ -556,8 +582,13 @@ func TestWatchTlogStorageConfig_ChangeClusterReference(t *testing.T) {
 			ClientID:  "foo clientID",
 			Secret:    "foo secret",
 		},
-		Servers:         []ServerConfig{ServerConfig{"1.1.1.1:11"}},
 		MetadataServers: []ServerConfig{ServerConfig{"2.2.2.2:22"}},
+		DataServers: []ServerConfig{
+			ServerConfig{"1.1.1.1:11"},
+			ServerConfig{"1.1.1.1:22"},
+		},
+		DataShards:   1,
+		ParityShards: 1,
 	}
 
 	var slaveStoragecluster *StorageClusterConfig
@@ -628,7 +659,7 @@ func TestWatchTlogStorageConfig_ChangeClusterReference(t *testing.T) {
 	// trigger reload
 	testInvalidKey(Key{ID: "zeroStorCluster", Type: KeyClusterZeroStor}) // error value should not be updated
 
-	zeroStorCluster.Servers[0].Address = "3.3.3.3:33"
+	zeroStorCluster.DataServers[0].Address = "3.3.3.3:33"
 	source.SetTlogZeroStorCluster("a", "zeroStorCluster", &zeroStorCluster)
 	testValue() // updating a storage cluster should be ok
 
@@ -638,12 +669,12 @@ func TestWatchTlogStorageConfig_ChangeClusterReference(t *testing.T) {
 
 	// when updating a cluster, which makes the cluster not valid for the used vdisk,
 	// it should not apply the update either
-	zeroStorCluster.Servers[0].Address = ""
+	zeroStorCluster.DataServers[0].Address = ""
 	source.SetTlogZeroStorCluster("a", "zeroStorCluster", &zeroStorCluster)
 	testInvalidKey(Key{ID: "zeroStorCluster", Type: KeyClusterZeroStor}) // no update should happen
 
 	// updating a cluster in a valid way should still be possible
-	zeroStorCluster.Servers = []ServerConfig{
+	zeroStorCluster.DataServers = []ServerConfig{
 		ServerConfig{"4.4.4.4:44"},
 		ServerConfig{"5.5.5.5:55"},
 	}

@@ -23,14 +23,12 @@ func newCopier(confSource config.Source, conf Config) (*copier, error) {
 	if err := validator.Validate(conf); err != nil {
 		return nil, err
 	}
-	storCliSource, err := stor.NewClientFromConfigSource(confSource, conf.SourceVdiskID, conf.PrivKey,
-		conf.DataShards, conf.ParityShards)
+	storCliSource, err := stor.NewClientFromConfigSource(confSource, conf.SourceVdiskID, conf.PrivKey)
 	if err != nil {
 		return nil, err
 	}
 
-	storCliTarget, err := stor.NewClientFromConfigSource(confSource, conf.TargetVdiskID, conf.PrivKey,
-		conf.DataShards, conf.ParityShards)
+	storCliTarget, err := stor.NewClientFromConfigSource(confSource, conf.TargetVdiskID, conf.PrivKey)
 	if err != nil {
 		return nil, err
 	}

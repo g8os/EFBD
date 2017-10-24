@@ -24,10 +24,10 @@ type Flusher struct {
 }
 
 // New creates a new flusher
-func New(confSource config.Source, dataShards, parityShards, flushSize int,
+func New(confSource config.Source, flushSize int,
 	vdiskID, privKey string) (*Flusher, error) {
 	// creates stor client
-	storConf, err := stor.ConfigFromConfigSource(confSource, vdiskID, privKey, dataShards, parityShards)
+	storConf, err := stor.ConfigFromConfigSource(confSource, vdiskID, privKey)
 	if err != nil {
 		return nil, err
 	}

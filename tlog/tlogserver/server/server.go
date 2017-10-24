@@ -55,11 +55,9 @@ func NewServer(conf *Config, configSource config.Source) (*Server, error) {
 
 	// used to created a flusher on rumtime
 	flusherConf := &flusherConfig{
-		DataShards:   conf.DataShards,
-		ParityShards: conf.ParityShards,
-		FlushSize:    conf.FlushSize,
-		FlushTime:    conf.FlushTime,
-		PrivKey:      conf.PrivKey,
+		FlushSize: conf.FlushSize,
+		FlushTime: conf.FlushTime,
+		PrivKey:   conf.PrivKey,
 	}
 
 	vdiskManager := newVdiskManager(conf.AggMq, conf.FlushSize, configSource)
