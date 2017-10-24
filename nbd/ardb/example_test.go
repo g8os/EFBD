@@ -6,25 +6,21 @@ import (
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/command"
+	"github.com/zero-os/0-Disk/redisstub"
 	"github.com/zero-os/0-Disk/redisstub/ledisdb"
 )
 
 func ExampleBool() {
-	server := ledisdb.NewServer()
-	c, err := ardb.Dial(config.StorageServerConfig{
-		Address: server.Address(),
-	})
-	if err != nil {
-		panic(err)
-	}
+	c := cluster()
 	defer c.Close()
 
-	c.Do("SET", "foo", 1)
+	action := ardb.Command(command.Set, "foo", 1)
+	err := ardb.Error(c.Do(action))
+	panicOnError(err)
 
-	exists, err := ardb.Bool(c.Do("EXISTS", "foo"))
-	if err != nil {
-		panic(err)
-	}
+	action = ardb.Command(command.Exists, "foo")
+	exists, err := ardb.Bool(c.Do(action))
+	panicOnError(err)
 
 	fmt.Print(exists)
 	// Output:
@@ -32,38 +28,29 @@ func ExampleBool() {
 }
 
 func ExampleError() {
-	server := ledisdb.NewServer()
-	c, err := ardb.Dial(config.StorageServerConfig{
-		Address: server.Address(),
-	})
-	if err != nil {
-		panic(err)
-	}
+	c := cluster()
 	defer c.Close()
 
-	err = ardb.Error(c.Do("AUTH", "foo"))
+	// set a key without value
+	action := ardb.Command(command.Set, 1)
+	err := ardb.Error(c.Do(action))
 
 	fmt.Print(err)
 	// Output:
-	// authentication failure
+	// invalid command param
 }
 
 func ExampleBytes() {
-	server := ledisdb.NewServer()
-	c, err := ardb.Dial(config.StorageServerConfig{
-		Address: server.Address(),
-	})
-	if err != nil {
-		panic(err)
-	}
+	c := cluster()
 	defer c.Close()
 
-	c.Do("SET", "foo", []byte{1, 2, 3})
+	action := ardb.Command(command.Set, "foo", []byte{1, 2, 3})
+	err := ardb.Error(c.Do(action))
+	panicOnError(err)
 
-	replyByteSlice, err := ardb.Bytes(c.Do("GET", "foo"))
-	if err != nil {
-		panic(err)
-	}
+	action = ardb.Command(command.Get, "foo")
+	replyByteSlice, err := ardb.Bytes(c.Do(action))
+	panicOnError(err)
 
 	fmt.Print(replyByteSlice)
 	// Output:
@@ -71,19 +58,12 @@ func ExampleBytes() {
 }
 
 func ExampleOptBytes() {
-	server := ledisdb.NewServer()
-	c, err := ardb.Dial(config.StorageServerConfig{
-		Address: server.Address(),
-	})
-	if err != nil {
-		panic(err)
-	}
+	c := cluster()
 	defer c.Close()
 
-	replyByteSlice, err := ardb.OptBytes(c.Do("GET", "foo"))
-	if err != nil {
-		panic(err)
-	}
+	action := ardb.Command(command.Get, "foo")
+	replyByteSlice, err := ardb.OptBytes(c.Do(action))
+	panicOnError(err)
 
 	fmt.Print(replyByteSlice)
 	// Output:
@@ -91,44 +71,35 @@ func ExampleOptBytes() {
 }
 
 func ExampleInt64() {
-	server := ledisdb.NewServer()
-	c, err := ardb.Dial(config.StorageServerConfig{
-		Address: server.Address(),
-	})
-	if err != nil {
-		panic(err)
-	}
+	c := cluster()
 	defer c.Close()
 
-	c.Do("SET", "foo", 1234)
+	action := ardb.Command(command.Set, "foo", 1234)
+	err := ardb.Error(c.Do(action))
+	panicOnError(err)
 
-	replyInt64, err := ardb.Int64(c.Do("GET", "foo"))
-	if err != nil {
-		panic(err)
-	}
+	action = ardb.Command(command.Get, "foo")
+	replyInt64, err := ardb.Int64(c.Do(action))
+	panicOnError(err)
 
 	fmt.Print(replyInt64)
 	// Output: 1234
 }
 
 func ExampleInt64ToBytesMapping() {
-	server := ledisdb.NewServer()
-	c, err := ardb.Dial(config.StorageServerConfig{
-		Address: server.Address(),
-	})
-	if err != nil {
-		panic(err)
-	}
+	c := cluster()
 	defer c.Close()
 
 	hash := []byte("a_hash")
-	c.Do("HSET", hash, 123, []byte{4, 5, 6})
-	c.Do("HSET", hash, 789, []byte{10, 11, 12})
+	action := ardb.Command(command.HashSet, hash, 123, []byte{4, 5, 6})
+	err := ardb.Error(c.Do(action))
+	panicOnError(err)
+	action = ardb.Command(command.HashSet, hash, 789, []byte{10, 11, 12})
+	err = ardb.Error(c.Do(action))
 
-	replyInt64ByteMap, err := ardb.Int64ToBytesMapping(c.Do("HGETALL", hash))
-	if err != nil {
-		panic(err)
-	}
+	action = ardb.Command(command.HashGetAll, hash)
+	replyInt64ByteMap, err := ardb.Int64ToBytesMapping(c.Do(action))
+	panicOnError(err)
 
 	fmt.Println(replyInt64ByteMap[123])
 	fmt.Println(replyInt64ByteMap[789])
@@ -138,33 +109,66 @@ func ExampleInt64ToBytesMapping() {
 }
 
 func ExampleNewCluster() {
-	server := ledisdb.NewServer()
-	defer server.Close()
-
-	cfg := config.StorageClusterConfig{
-		Servers: []config.StorageServerConfig{
-			config.StorageServerConfig{Address: server.Address()},
-		},
-	}
+	servers, cfg := serversAndStorageConfig()
+	defer servers.Close()
 
 	// providing a nil dialer will make
-	// the ardb cluster use a default dialer
+	// the ardb cluster use a default non-pooled dialer
 	cluster, err := ardb.NewCluster(cfg, nil)
-	if err != nil {
-		panic(err)
-	}
+	panicOnError(err)
 
-	_, err = cluster.Do(ardb.Command(command.Set, "answer", 42))
-	if err != nil {
-		panic(err)
-	}
+	action := ardb.Command(command.Set, "answer", 42)
+	err = ardb.Error(cluster.Do(action))
+	panicOnError(err)
 
-	reply, err := cluster.Do(ardb.Command(command.Get, "answer"))
-	if err != nil {
-		panic(err)
-	}
+	action = ardb.Command(command.Get, "answer")
+	reply, err := ardb.String(cluster.Do(action))
+	panicOnError(err)
 
-	replyStr := string(reply.([]byte))
-	fmt.Print(replyStr)
+	fmt.Print(reply)
 	// Output: 42
+}
+
+func ExampleNewCluster_withPool() {
+	servers, cfg := serversAndStorageConfig()
+	defer servers.Close()
+
+	// providing a nil dialFunc will make
+	// the pool use a default one
+	pool := ardb.NewPool(nil)
+	defer pool.Close()
+
+	cluster, err := ardb.NewCluster(cfg, pool)
+	panicOnError(err)
+
+	action := ardb.Command(command.Set, "answer", 42)
+	err = ardb.Error(cluster.Do(action))
+	panicOnError(err)
+
+	action = ardb.Command(command.Get, "answer")
+	reply, err := ardb.String(cluster.Do(action))
+	panicOnError(err)
+
+	fmt.Print(reply)
+	// Output: 42
+}
+
+func serversAndStorageConfig() (*ledisdb.Server, config.StorageClusterConfig) {
+	s := ledisdb.NewServer()
+	cfg := config.StorageClusterConfig{
+		Servers: []config.StorageServerConfig{
+			config.StorageServerConfig{Address: s.Address()},
+		},
+	}
+	return s, cfg
+}
+
+func cluster() *redisstub.UniCluster {
+	return redisstub.NewUniCluster(false)
+}
+
+func panicOnError(err error) {
+	if err != nil {
+		panic(err)
+	}
 }
