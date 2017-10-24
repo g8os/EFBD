@@ -74,8 +74,8 @@ func (cluster *UniCluster) DoFor(_ int64, action StorageAction) (interface{}, er
 }
 
 // NewCluster creates a new (ARDB) cluster.
-//   ErrNoServersAvailable is returned in case no given server is available.
-//   ErrServerStateNotSupported is returned in case at least one server
+// ErrNoServersAvailable is returned in case no given server is available.
+// ErrServerStateNotSupported is returned in case at least one server
 // has a state other than StorageServerStateOnline and StorageServerStateRIP.
 func NewCluster(cfg config.StorageClusterConfig, dialer ConnectionDialer) (*Cluster, error) {
 	if err := cfg.Validate(); err != nil {

@@ -10,11 +10,6 @@ import (
 	"github.com/zero-os/0-Disk/redisstub/ledisdb"
 )
 
-// TODO (part of https://github.com/zero-os/0-Disk/issues/543)
-// add examples:
-// ExampleNewCluster
-// ExampleNewClusterPair
-
 func cluster() StorageCluster {
 	server := ledisdb.NewServer()
 	cluster, err := NewUniCluster(config.StorageServerConfig{
