@@ -295,7 +295,7 @@ func copyNonDedupedData(sourceID, targetID string, sourceBS, targetBS int64, sou
 	}
 
 	log.Infof(
-		"copying non-deduped data from vdisk %s to vdisk %s between clusters wihh an different amount of servers...",
+		"copying non-deduped data from vdisk %s to vdisk %s between clusters with a different amount of servers...",
 		sourceID, targetID)
 	return copyNonDedupedDifferentServerCount(sourceID, targetID, targetBS, sourceCluster, targetCluster)
 }
@@ -381,7 +381,7 @@ func copyNonDedupedSameServerCount(sourceID, targetID string, sourceCluster, tar
 	targetKey := nonDedupedStorageKey(targetID)
 
 	sameConnAction := ardb.Script(0, copyNonDedupedSameConnScriptSource,
-		[]string{targetKey}, sourceID, targetID)
+		[]string{targetKey}, sourceKey, targetKey)
 
 	type copyResult struct {
 		Count int64

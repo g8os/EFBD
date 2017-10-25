@@ -161,11 +161,11 @@ func checkVdiskExists(vdiskID string) error {
 
 	// check if vdisk exists
 	exists, err := storage.VdiskExists(vdiskID, staticConfig.Type, cluster)
-	if !exists {
-		return nil // vdisk doesn't exist, so nothing to do
-	}
 	if err != nil {
 		return fmt.Errorf("couldn't check if vdisk %s already exists: %v", vdiskID, err)
+	}
+	if !exists {
+		return nil // vdisk doesn't exist, so nothing to do
 	}
 	if !vdiskCmdCfg.Force {
 		return fmt.Errorf("cannot restore vdisk %s as it already exists", vdiskID)

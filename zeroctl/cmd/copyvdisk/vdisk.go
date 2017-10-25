@@ -151,11 +151,11 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 func checkVdiskExists(id string, t config.VdiskType, cluster ardb.StorageCluster) error {
 	// check if vdisk exists
 	exists, err := storage.VdiskExists(id, t, cluster)
-	if !exists {
-		return nil // vdisk doesn't exist, so nothing to do
-	}
 	if err != nil {
 		return fmt.Errorf("couldn't check if vdisk %s already exists: %v", id, err)
+	}
+	if !exists {
+		return nil // vdisk doesn't exist, so nothing to do
 	}
 	if !vdiskCmdCfg.Force {
 		return fmt.Errorf("cannot copy to vdisk %s as it already exists", id)

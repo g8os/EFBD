@@ -104,13 +104,11 @@ func NewCluster(cfg config.StorageClusterConfig, dialer ConnectionDialer) (*Clus
 		return nil, err
 	}
 
-	var clusterOperational bool
 	serverCount := int64(len(cfg.Servers))
 	availableServerCount := serverCount
 
 	for _, server := range cfg.Servers {
 		if server.State == config.StorageServerStateOnline {
-			clusterOperational = true
 			continue
 		}
 		if server.State != config.StorageServerStateRIP {
@@ -118,7 +116,7 @@ func NewCluster(cfg config.StorageClusterConfig, dialer ConnectionDialer) (*Clus
 		}
 		availableServerCount--
 	}
-	if !clusterOperational {
+	if availableServerCount == 0 {
 		return nil, ErrNoServersAvailable
 	}
 

@@ -338,7 +338,7 @@ func copySemiDedupedDifferentServers(sourceID, targetID string, src, dst ardb.St
 
 	log.Debugf("storing semi-deduped bitmask on %s for target vdisk %s...",
 		dst.Config(), targetID)
-	action = ardb.Command(command.Set, semiDedupBitMapKey(sourceID), bytes)
+	action = ardb.Command(command.Set, semiDedupBitMapKey(targetID), bytes)
 	err = ardb.Error(dst.Do(action))
 	return true, err
 }

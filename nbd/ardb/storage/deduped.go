@@ -419,7 +419,7 @@ func copyDedupedSameServerCount(sourceID, targetID string, sourceCluster, target
 	targetKey := lba.StorageKey(targetID)
 
 	sameConnAction := ardb.Script(0, copyDedupedSameConnScriptSource,
-		[]string{lba.StorageKey(targetID)}, sourceID, targetID)
+		[]string{targetKey}, sourceKey, targetKey)
 
 	type copyResult struct {
 		Count int64

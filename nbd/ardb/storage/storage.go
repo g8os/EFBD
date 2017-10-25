@@ -292,8 +292,6 @@ func ListVdisks(cluster ardb.StorageCluster) ([]string, error) {
 	resultCh := make(chan serverResult)
 
 	var serverCount int
-	// TODO: dereference deduped blocks as well
-	// https://github.com/zero-os/0-Disk/issues/88
 	var action listVdisksAction
 	var reply interface{}
 	for server := range serverCh {

@@ -25,7 +25,7 @@ var (
 	// Get the value of a key.
 	Get = Type{"GET", false}
 
-	// Scan iterates through all values in a database.
+	// Scan iterates the set of keys in the currently selected ARDB database.
 	Scan = Type{"SCAN", false}
 
 	// HashDelete deletes one or more hash fields.
@@ -56,7 +56,7 @@ var (
 	// HashValues gets the values in a hash.
 	HashValues = Type{"HVALS", false}
 
-	// HashScan iterates through all values in a hash.
+	// HashScan iterates fields of Hash types and their associated values.
 	HashScan = Type{"HSCAN", false}
 
 	// Increment the integer value of a key by one.

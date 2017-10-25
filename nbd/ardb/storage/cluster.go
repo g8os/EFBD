@@ -594,41 +594,6 @@ func (tsc *TemplateCluster) serverOperational(index int64) (bool, error) {
 	}
 }
 
-// templateClusterServerIterator implement a server iterator,
-// for a template cluster with multiple servers.
-type templateClusterServerIterator struct {
-	cluster *TemplateCluster
-	cursor  int64
-}
-
-// Do implements ServerIterator.Do
-func (it *templateClusterServerIterator) Do(action ardb.StorageAction) (reply interface{}, err error) {
-	it.cluster.mux.RLock()
-	cfg := it.cluster.servers[it.cursor]
-	it.cluster.mux.RUnlock()
-
-	return it.cluster.doAt(it.cursor, cfg, action)
-}
-
-// Next implements ServerIterator.Next
-func (it *templateClusterServerIterator) Next() bool {
-	it.cluster.mux.RLock()
-	defer it.cluster.mux.RUnlock()
-
-	if it.cursor >= it.cluster.serverCount {
-		return false
-	}
-
-	var ok bool
-	for it.cursor++; it.cursor < it.cluster.serverCount; it.cursor++ {
-		if ok, _ = it.cluster.serverOperational(it.cursor); ok {
-			return true
-		}
-	}
-
-	return true
-}
-
 // storageClusterWatcher is a small helper struct,
 // used to (un)set a storage cluster watcher for a given clusterID.
 // By centralizing this logic,

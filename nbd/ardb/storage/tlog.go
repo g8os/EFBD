@@ -90,7 +90,7 @@ const copyTlogMetadataSameConnScript = `
 	local dest = ARGV[2]
 	
 	if redis.call("EXISTS", source) == 0 then
-		return
+		return 0
 	end
 	
 	if redis.call("EXISTS", dest) == 1 then
@@ -98,6 +98,7 @@ const copyTlogMetadataSameConnScript = `
 	end
 	
 	redis.call("RESTORE", dest, 0, redis.call("DUMP", source))
+	return 1
 `
 
 const (
