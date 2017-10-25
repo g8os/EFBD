@@ -81,12 +81,21 @@ func (cluster *UniCluster) DoFor(_ int64, action StorageAction) (interface{}, er
 }
 
 // ServerIterator implements StorageCluster.ServerIterator
-func (cluster *UniCluster) ServerIterator(context.Context) (<-chan StorageServer, error) {
-	ch := make(chan StorageServer, 1)
-	ch <- storageServer{
+func (cluster *UniCluster) ServerIterator(ctx context.Context) (<-chan StorageServer, error) {
+	ch := make(chan StorageServer)
+	server := storageServer{
 		cfg:    cluster.server,
 		dialer: cluster.dialer,
 	}
+
+	go func() {
+		select {
+		case ch <- server:
+		case <-ctx.Done():
+		}
+		close(ch)
+	}()
+
 	return ch, nil
 }
 
@@ -255,9 +264,18 @@ func (cluster ErrorCluster) DoFor(objectIndex int64, action StorageAction) (repl
 }
 
 // ServerIterator implements StorageCluster.ServerIterator
-func (cluster ErrorCluster) ServerIterator(context.Context) (<-chan StorageServer, error) {
+func (cluster ErrorCluster) ServerIterator(ctx context.Context) (<-chan StorageServer, error) {
 	ch := make(chan StorageServer, 1)
-	ch <- errorStorageServer{Error: cluster.Error}
+	server := errorStorageServer{Error: cluster.Error}
+
+	go func() {
+		select {
+		case ch <- server:
+		case <-ctx.Done():
+		}
+		close(ch)
+	}()
+
 	return ch, nil
 }
 
@@ -299,9 +317,17 @@ func (cluster NopCluster) DoFor(objectIndex int64, action StorageAction) (reply 
 }
 
 // ServerIterator implements StorageCluster.ServerIterator
-func (cluster NopCluster) ServerIterator(context.Context) (<-chan StorageServer, error) {
+func (cluster NopCluster) ServerIterator(ctx context.Context) (<-chan StorageServer, error) {
 	ch := make(chan StorageServer, 1)
-	ch <- nopStorageServer{}
+
+	go func() {
+		select {
+		case ch <- nopStorageServer{}:
+		case <-ctx.Done():
+		}
+		close(ch)
+	}()
+
 	return ch, nil
 }
 
