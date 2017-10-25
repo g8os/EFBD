@@ -26,7 +26,7 @@ Output the zeroctl version and runtime information.
 
 Copy a [vdisk]'s stored [data (1)][data] or [metadata (1,2,3)][metadata] as a new [vdisk][vdisk].
 
-### [`zeroctl delete vdisks`](commands/delete.md#vdisks)
+### [`zeroctl delete vdisk`](commands/delete.md#vdisk)
 
 Delete a [vdisk][vdisk]'s stored [data (1)][data] and/or [metadata (1,2,3)][metadata].
 

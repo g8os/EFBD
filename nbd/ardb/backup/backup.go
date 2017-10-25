@@ -7,8 +7,6 @@ import (
 	"runtime"
 
 	"github.com/zero-os/0-Disk/config"
-	"github.com/zero-os/0-Disk/log"
-	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 )
 
 const (
@@ -98,9 +96,8 @@ func (cfg *Config) validate() error {
 // storageConfig returned when creating a block storage,
 // ready to export to/import from a backup.
 type storageConfig struct {
-	Indices []int64
-	NBD     config.NBDStorageConfig
-	Vdisk   config.VdiskStaticConfig
+	NBD   config.NBDStorageConfig
+	Vdisk config.VdiskStaticConfig
 }
 
 // blockFetcher is a generic interface which defines the API
@@ -348,7 +345,7 @@ func isNilBlock(block []byte) bool {
 }
 
 // Create a block storage ready for importing/exporting to/from a backup.
-func createStorageConfig(vdiskID string, sourceConfig config.SourceConfig, listIndices bool) (*storageConfig, error) {
+func createStorageConfig(vdiskID string, sourceConfig config.SourceConfig) (*storageConfig, error) {
 	storageConfigCloser, err := config.NewSource(sourceConfig)
 	if err != nil {
 		return nil, err
@@ -365,21 +362,9 @@ func createStorageConfig(vdiskID string, sourceConfig config.SourceConfig, listI
 		return nil, err
 	}
 
-	var indices []int64
-	if listIndices {
-		log.Debugf("collecting all stored block indices for vdisk %s, this might take a while...", vdiskID)
-		indices, err = storage.ListBlockIndices(vdiskID, vdiskConfig.Type, nbdStorageConfig.StorageCluster)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"couldn't list block (storage) indices: %v (does vdisk '%s' exist?)",
-				err, vdiskID)
-		}
-	}
-
 	return &storageConfig{
-		Indices: indices,
-		NBD:     *nbdStorageConfig,
-		Vdisk:   *vdiskConfig,
+		NBD:   *nbdStorageConfig,
+		Vdisk: *vdiskConfig,
 	}, nil
 }
 

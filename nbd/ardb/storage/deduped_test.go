@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/zero-os/0-Disk"
-	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/command"
@@ -139,7 +138,7 @@ func TestGetPrimaryOrTemplateContent(t *testing.T) {
 	defer clusterA.Close()
 
 	storageA, err := Deduped(
-		vdiskIDA, 8, ardb.DefaultLBACacheLimit, clusterA, ardb.NopCluster{})
+		vdiskIDA, 8, ardb.DefaultLBACacheLimit, clusterA, ardb.ErrorCluster{Error: ardb.ErrNoServersAvailable})
 	if err != nil || storageA == nil {
 		t.Fatalf("storageA could not be created: %v", err)
 	}
@@ -370,7 +369,7 @@ func TestDedupedStorageTemplateServerDown(t *testing.T) {
 	}
 
 	// now mark template invalid, and that should make it return an expected error instead
-	storageB.(*dedupedStorage).templateCluster = ardb.NopCluster{}
+	storageB.(*dedupedStorage).templateCluster = ardb.ErrorCluster{Error: ardb.ErrNoServersAvailable}
 	content, err = storageB.GetBlock(someIndexPlusOne)
 	if len(content) != 0 {
 		t.Fatalf("content should be empty but was was: %v",
@@ -470,11 +469,8 @@ func TestListDedupedBlockIndices(t *testing.T) {
 		blockIndexInterval = lba.NumberOfRecordsPerLBASector / 3
 	)
 
-	cluster := redisstub.NewUniCluster(false)
+	cluster := redisstub.NewCluster(4, false)
 	defer cluster.Close()
-	clusterConfig := config.StorageClusterConfig{
-		Servers: []config.StorageServerConfig{cluster.StorageServerConfig()},
-	}
 
 	storage, err := Deduped(
 		vdiskID, blockSize, ardb.DefaultLBACacheLimit, cluster, nil)
@@ -482,9 +478,12 @@ func TestListDedupedBlockIndices(t *testing.T) {
 		t.Fatalf("storage could not be created: %v", err)
 	}
 
-	indices, err := ListDedupedBlockIndices(vdiskID, clusterConfig)
-	if err == nil {
-		t.Fatalf("expected an error, as no indices exist yet: %v", indices)
+	indices, err := listDedupedBlockIndices(vdiskID, cluster)
+	if err != nil {
+		t.Fatalf("expected no error: %v", err)
+	}
+	if len(indices) > 0 {
+		t.Fatalf("expexted no indices: %v", indices)
 	}
 
 	var expectedIndices []int64
@@ -517,7 +516,7 @@ func TestListDedupedBlockIndices(t *testing.T) {
 		}
 
 		// now test if listing the indices is correct
-		indices, err := ListDedupedBlockIndices(vdiskID, clusterConfig)
+		indices, err := listDedupedBlockIndices(vdiskID, cluster)
 		if err != nil {
 			t.Fatalf("couldn't list deduped block indices (step %d): %v", i, err)
 		}
@@ -552,7 +551,7 @@ func TestListDedupedBlockIndices(t *testing.T) {
 		expectedIndices = append(expectedIndices[:ci], expectedIndices[ci+1:]...)
 
 		// now test if listing the indices is still correct
-		indices, err := ListDedupedBlockIndices(vdiskID, clusterConfig)
+		indices, err := listDedupedBlockIndices(vdiskID, cluster)
 		if err != nil {
 			t.Fatalf("couldn't list deduped block indices (step %d): %v", i, err)
 		}
@@ -568,9 +567,8 @@ func TestListDedupedBlockIndices(t *testing.T) {
 func TestCopyDedupedDifferentServerCount(t *testing.T) {
 	assert := assert.New(t)
 
-	sourceCluster := redisstub.NewCluster(4, false)
+	sourceCluster := redisstub.NewCluster(4, true)
 	defer sourceCluster.Close()
-	sourceStorageConfig := sourceCluster.StorageClusterConfig()
 
 	sourceSectorStorage := lba.ARDBSectorStorage("source", sourceCluster)
 
@@ -593,26 +591,25 @@ func TestCopyDedupedDifferentServerCount(t *testing.T) {
 
 	// test copying to a target cluster with less servers available
 	testCopyDedupedDifferentServerCount(assert, indices, "source", "target",
-		sourceStorageConfig, sourceSectorStorage, 3)
+		sourceCluster, sourceSectorStorage, 3)
 	testCopyDedupedDifferentServerCount(assert, indices, "source", "target",
-		sourceStorageConfig, sourceSectorStorage, 2)
+		sourceCluster, sourceSectorStorage, 2)
 	testCopyDedupedDifferentServerCount(assert, indices, "source", "target",
-		sourceStorageConfig, sourceSectorStorage, 1)
+		sourceCluster, sourceSectorStorage, 1)
 
 	// test coping to a target cluster with more servers available
 	testCopyDedupedDifferentServerCount(assert, indices, "source", "target",
-		sourceStorageConfig, sourceSectorStorage, 5)
+		sourceCluster, sourceSectorStorage, 5)
 	testCopyDedupedDifferentServerCount(assert, indices, "source", "target",
-		sourceStorageConfig, sourceSectorStorage, 8)
+		sourceCluster, sourceSectorStorage, 8)
 }
 
-func testCopyDedupedDifferentServerCount(assert *assert.Assertions, indices []int64, sourceID, targetID string, sourceCluster config.StorageClusterConfig, sourceSectorStorage lba.SectorStorage, targetServerCount int) {
+func testCopyDedupedDifferentServerCount(assert *assert.Assertions, indices []int64, sourceID, targetID string, sourceCluster ardb.StorageCluster, sourceSectorStorage lba.SectorStorage, targetServerCount int) {
 	targetCluster := redisstub.NewCluster(targetServerCount, false)
 	defer targetCluster.Close()
-	targetStorageConfig := targetCluster.StorageClusterConfig()
 
 	// copy the sectors
-	err := copyDedupedDifferentServerCount(sourceID, targetID, sourceCluster, targetStorageConfig)
+	err := copyDedupedDifferentServerCount(sourceID, targetID, sourceCluster, targetCluster)
 	if !assert.NoError(err) {
 		return
 	}
@@ -637,5 +634,8 @@ func testCopyDedupedDifferentServerCount(assert *assert.Assertions, indices []in
 }
 
 func init() {
+	// ledisdb uses other names, for whatever reason
+	command.HashScan.Name = "XHSCAN"
+
 	log.SetLevel(log.DebugLevel)
 }
