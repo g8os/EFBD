@@ -4,7 +4,7 @@ This document explain what happens when both the master and slave cluster fails 
 This event is considered really unlikely and thus make this procedure the last ressort to get the data back online.
 
 ## When this procedure should be triggered?
-In the case where one of the shard of the master cluster fails and no slave cluster or the same shard of the slave cluster fails at the same time.
+In the case where a shard of the master cluster fails, without a slave shard of the slave cluster available to back it up. Whether that this is because no slave cluster is configured, or because that specific shard of the slave cluster failed as well is of no importance.
 
 In other words, when some data gets unaccessible by any means.
 
