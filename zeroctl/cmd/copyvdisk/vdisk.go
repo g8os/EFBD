@@ -181,11 +181,7 @@ func checkVdiskExists(id string, t config.VdiskType, cluster ardb.StorageCluster
 }
 
 func init() {
-	VdiskCmd.Long = VdiskCmd.Short + `
-
-If no target storage cluster is given,
-the storage cluster configured for the source vdisk
-will also be used for the target vdisk.
+	VdiskCmd.Long = `Copy a source vdisk as a new target vdisk, both configured in the config.
 
 If an error occured, the target vdisk should be considered as non-existent,
 even though data which is already copied is not rolled back.
