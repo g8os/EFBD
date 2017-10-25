@@ -19,7 +19,7 @@ var vdisksCmdCfg struct {
 
 // VdisksCmd represents the list vdisk subcommand
 var VdisksCmd = &cobra.Command{
-	Use:   "vdisks clusterID",
+	Use:   "vdisks (clusterID|address[@db])",
 	Short: "List all vdisks available on a cluster",
 	RunE:  listVdisks,
 }
@@ -31,13 +31,6 @@ func listVdisks(cmd *cobra.Command, args []string) error {
 	}
 	log.SetLevel(logLevel)
 
-	// create config source
-	source, err := zerodiskcfg.NewSource(vdisksCmdCfg.SourceConfig)
-	if err != nil {
-		return err
-	}
-	defer source.Close()
-
 	// get command line argument
 	argn := len(args)
 	if argn < 1 {
@@ -46,16 +39,9 @@ func listVdisks(cmd *cobra.Command, args []string) error {
 	if argn > 1 {
 		return errors.New("too many cluster identifiers given")
 	}
-	clusterID := args[0]
 
-	// read cluster config
-	clusterConfig, err := zerodiskcfg.ReadStorageClusterConfig(source, clusterID)
-	if err != nil {
-		return err
-	}
-
-	// create cluster
-	cluster, err := ardb.NewCluster(*clusterConfig, nil)
+	// create (uni)cluster
+	cluster, err := createCluster(args[0])
 	if err != nil {
 		return err
 	}
@@ -66,7 +52,7 @@ func listVdisks(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if len(vdiskIDs) == 0 {
-		return errors.New("no vdisks could be found in cluster " + clusterID)
+		return errors.New("no vdisks could be found in " + args[0])
 	}
 
 	// print at least 1 vdisk fond from the specified storage
@@ -76,8 +62,41 @@ func listVdisks(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// create a cluster based on the given string,
+// which is either a serverConfigStirng or the ID of a pre-configured cluster.
+func createCluster(str string) (ardb.StorageCluster, error) {
+	serverCfg, err := zerodiskcfg.ParseStorageServerConfigString(str)
+	if err == nil {
+		return ardb.NewUniCluster(serverCfg, nil)
+	}
+	log.Debugf("failed to create serverConfig using posarg '%s': %v", str, err)
+
+	// create config source
+	source, err := zerodiskcfg.NewSource(vdisksCmdCfg.SourceConfig)
+	if err != nil {
+		return nil, err
+	}
+	defer source.Close()
+
+	// read cluster config
+	clusterConfig, err := zerodiskcfg.ReadStorageClusterConfig(source, str)
+	if err != nil {
+		return nil, err
+	}
+
+	// create cluster
+	return ardb.NewCluster(*clusterConfig, nil)
+}
+
 func init() {
 	VdisksCmd.Long = VdisksCmd.Short + `
+
+This command can list vdisks on an entire cluster,
+as wel as on a single storage server. Some examples:
+
+  	zeroctl vdisk list myCluster
+  	zeroctl vdisk list localhost:2000
+  	zeroctl vdisk list 127.0.0.1:16379@5
 
 WARNING: This command is very slow, and might take a while to finish!
   It might also decrease the performance of the ardb server
