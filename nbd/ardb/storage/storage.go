@@ -274,9 +274,11 @@ func DeleteVdisk(id string, t config.VdiskType, cluster ardb.StorageCluster) (bo
 
 // ListVdisks scans a given storage cluster
 // for available vdisks, and returns their ids.
+// Optionally a predicate can be given to
+// filter specific vdisks based on their identifiers.
 // NOTE: this function is very slow,
 //       and puts a lot of pressure on the ARDB cluster.
-func ListVdisks(cluster ardb.StorageCluster) ([]string, error) {
+func ListVdisks(cluster ardb.StorageCluster, pred func(vdiskID string) bool) ([]string, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -291,8 +293,20 @@ func ListVdisks(cluster ardb.StorageCluster) ([]string, error) {
 	}
 	resultCh := make(chan serverResult)
 
-	var serverCount int
 	var action listVdisksAction
+	if pred == nil {
+		action.filter = filterListedVdiskID
+	} else {
+		action.filter = func(str string) (string, bool) {
+			str, ok := filterListedVdiskID(str)
+			if !ok {
+				return "", false
+			}
+			return str, pred(str)
+		}
+	}
+
+	var serverCount int
 	var reply interface{}
 	for server := range serverCh {
 		server := server
@@ -337,7 +351,9 @@ func ListVdisks(cluster ardb.StorageCluster) ([]string, error) {
 	return ids, nil
 }
 
-type listVdisksAction struct{}
+type listVdisksAction struct {
+	filter func(string) (string, bool)
+}
 
 // Do implements StorageAction.Do
 func (action listVdisksAction) Do(conn ardb.Conn) (reply interface{}, err error) {
@@ -387,10 +403,11 @@ return output
 		// filter output
 		filterPos := 0
 		length := len(output) - 1
+		var ok bool
 		var vdiskID string
 		for i := 0; i < length; i++ {
-			vdiskID = filterListedVdiskID(output[i])
-			if vdiskID != "" {
+			vdiskID, ok = action.filter(output[i])
+			if ok {
 				output[filterPos] = vdiskID
 				filterPos++
 			}
@@ -437,13 +454,13 @@ func ListBlockIndices(id string, t config.VdiskType, cluster ardb.StorageCluster
 // filterListedVdiskID only accepts keys with a known prefix,
 // if no known prefix is found an empty string is returned,
 // otherwise the prefix is removed and the vdiskID is returned.
-func filterListedVdiskID(key string) string {
+func filterListedVdiskID(key string) (string, bool) {
 	parts := listStorageKeyPrefixRex.FindStringSubmatch(key)
 	if len(parts) == 3 {
-		return parts[2]
+		return parts[2], true
 	}
 
-	return ""
+	return "", false
 }
 
 var listStorageKeyPrefixRex = regexp.MustCompile("^(" +
