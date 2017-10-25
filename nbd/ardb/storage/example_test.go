@@ -14,9 +14,11 @@ import (
 func ExampleNewBlockStorage() {
 	cluster := cluster()
 
-	vdiskID := "vdisk1"
-	vdiskType := config.VdiskTypeDB
-	blockSize := int64(4096)
+	const (
+		vdiskID   = "vdisk1"
+		vdiskType = config.VdiskTypeDB
+		blockSize = int64(4096)
+	)
 
 	blockStorage, err := storage.NewBlockStorage(
 		storage.BlockStorageConfig{
@@ -46,10 +48,12 @@ func ExampleNewBlockStorage() {
 func ExampleNewBlockStorage_withTemplateCluster() {
 	cluster, templateCluster := cluster(), cluster()
 
-	vdiskID := "vdisk1"
-	templateVdiskID := "templateVdisk1"
-	vdiskType := config.VdiskTypeBoot
-	blockSize := int64(4096)
+	const (
+		vdiskID         = "vdisk1"
+		templateVdiskID = "templateVdisk1"
+		vdiskType       = config.VdiskTypeBoot
+		blockSize       = int64(4096)
+	)
 
 	blockStorage, err := storage.NewBlockStorage(
 		storage.BlockStorageConfig{
@@ -63,13 +67,16 @@ func ExampleNewBlockStorage_withTemplateCluster() {
 	panicOnError(err)
 	defer blockStorage.Close()
 
-	templateStorage, err := storage.Deduped(
-		templateVdiskID,
-		blockSize,
-		ardb.DefaultLBACacheLimit,
+	templateStorage, err := storage.NewBlockStorage(
+		storage.BlockStorageConfig{
+			VdiskID:   templateVdiskID,
+			VdiskType: vdiskType,
+			BlockSize: blockSize,
+		},
 		templateCluster,
 		nil,
 	)
+	panicOnError(err)
 
 	// set to template cluster
 	err = templateStorage.SetBlock(0, []byte{1, 2, 3, 4})
@@ -77,10 +84,10 @@ func ExampleNewBlockStorage_withTemplateCluster() {
 	err = templateStorage.Flush()
 	panicOnError(err)
 
-	// copy (meta)data from template to storage
+	// copy (meta)data from template to storage cluster
 	copyVdisk(templateVdiskID, vdiskID, templateCluster, cluster)
 
-	// get from storage
+	// get from storage cluster
 	content, err := blockStorage.GetBlock(0)
 	panicOnError(err)
 
