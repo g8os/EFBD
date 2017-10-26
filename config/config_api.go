@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 
+	"github.com/pkg/errors"
 	"github.com/zero-os/0-Disk/log"
 )
 
@@ -140,9 +141,9 @@ func ReadConfig(source Source, id string, keyType KeyType) ([]byte, error) {
 		return bytes, nil // config read successfully
 	}
 
-	if err == ErrConfigUnavailable {
+	if errors.Cause(err) == ErrConfigUnavailable {
 		source.MarkInvalidKey(configKey, "")
-	} else if err == ErrSourceUnavailable {
+	} else if errors.Cause(err) == ErrSourceUnavailable {
 		log.Errorf("couldn't fetch config %v: %v", configKey, err)
 		if source.Type() == "etcd" {
 			log.Broadcast(
@@ -151,7 +152,7 @@ func ReadConfig(source Source, id string, keyType KeyType) ([]byte, error) {
 				source.SourceConfig(),
 			)
 		}
-	} else if _, isInvalid := err.(*InvalidConfigError); isInvalid {
+	} else if errors.Cause(err) == ErrInvalidConfig {
 		source.MarkInvalidKey(configKey, "")
 	}
 

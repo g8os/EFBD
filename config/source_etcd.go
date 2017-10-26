@@ -2,10 +2,10 @@ package config
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/coreos/etcd/clientv3"
+	"github.com/pkg/errors"
 	"github.com/zero-os/0-Disk/log"
 )
 
@@ -180,7 +180,7 @@ func (s *etcdv3Source) Close() error {
 func ETCDKey(id string, ktype KeyType) (string, error) {
 	suffix, ok := etcdKeySuffixes[ktype]
 	if !ok {
-		return "", fmt.Errorf("%v is not a supported key type", ktype)
+		return "", errors.Wrapf(ErrInvalidKey, "%v is not a supported key type", ktype)
 	}
 	return id + suffix, nil
 }

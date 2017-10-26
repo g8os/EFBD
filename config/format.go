@@ -1,10 +1,10 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 
 	valid "github.com/asaskevich/govalidator"
+	"github.com/pkg/errors"
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -67,7 +67,7 @@ func (cfg *NBDVdisksConfig) Validate() error {
 
 	_, err := valid.ValidateStruct(cfg)
 	if err != nil {
-		return fmt.Errorf("invalid NBDVdisksConfig: %v", err)
+		return errors.Wrap(err, "invalid NBDVdisksConfig")
 	}
 
 	return nil
@@ -91,22 +91,26 @@ func (cfg *VdiskStaticConfig) Validate() error {
 	// check valid tags
 	_, err := valid.ValidateStruct(cfg)
 	if err != nil {
-		return fmt.Errorf("invalid static config: %v", err)
+		return errors.Wrap(err, "invalid static config")
 	}
 
 	// validate properties in more detail
 
 	if !ValidateBlockSize(int64(cfg.BlockSize)) {
-		return fmt.Errorf(
-			"blockSize '%d' is invalid, should be equal-or-greater than 512 and be a power of 2", cfg.BlockSize)
+		return errors.Errorf(
+			"blockSize '%d' is invalid, should be equal-or-greater than 512 and be a power of 2",
+			cfg.BlockSize,
+		)
 	}
 	if (cfg.Size * gibibyteAsBytes) < cfg.BlockSize {
-		return fmt.Errorf(
-			"%d is an invalid size, has to be able to contain at least 1 block", cfg.Size)
+		return errors.Errorf(
+			"%d is an invalid size, has to be able to contain at least 1 block",
+			cfg.Size,
+		)
 	}
 	err = cfg.Type.Validate()
 	if err != nil {
-		return fmt.Errorf("VdiskStaticConfig has invalid type: %s", err.Error())
+		return errors.Wrap(err, "VdiskStaticConfig has invalid type")
 	}
 
 	return nil
@@ -145,7 +149,7 @@ func (cfg *VdiskNBDConfig) Validate() error {
 
 	_, err := valid.ValidateStruct(cfg)
 	if err != nil {
-		return fmt.Errorf("invalid VdiskNBDConfig: %v", err)
+		return errors.Wrap(err, "invalid VdiskNBDConfig")
 	}
 
 	return nil
@@ -182,7 +186,7 @@ func (cfg *VdiskTlogConfig) Validate() error {
 
 	_, err := valid.ValidateStruct(cfg)
 	if err != nil {
-		return fmt.Errorf("invalid VdiskTlogConfig: %v", err)
+		return errors.Wrap(err, "invalid VdiskTlogConfig")
 	}
 
 	return nil
@@ -220,7 +224,7 @@ func (cfg *StorageClusterConfig) Validate() error {
 
 	_, err := valid.ValidateStruct(cfg)
 	if err != nil {
-		return fmt.Errorf("invalid StorageClusterConfig: %v", err)
+		return errors.Wrap(err, "invalid StorageClusterConfig")
 	}
 
 	// validate all data server configs
@@ -228,7 +232,7 @@ func (cfg *StorageClusterConfig) Validate() error {
 	for _, serverConfig := range cfg.Servers {
 		err = serverConfig.Validate()
 		if err != nil {
-			return err
+			return errors.Wrap(err, "invalid StorageClusterConfig")
 		}
 	}
 
@@ -307,7 +311,7 @@ func (cfg *ZeroStorClusterConfig) Validate() error {
 
 	_, err := valid.ValidateStruct(cfg)
 	if err != nil {
-		return fmt.Errorf("invalid ZeroStorClusterConfig: %v", err)
+		return errors.Wrap(err, "invalid ZeroStorClusterConfig")
 	}
 
 	if cfg.DataShards < 1 {
@@ -319,9 +323,11 @@ func (cfg *ZeroStorClusterConfig) Validate() error {
 
 	expectedServeCount := cfg.DataShards + cfg.ParityShards
 	if len(cfg.DataServers) != expectedServeCount {
-		return fmt.Errorf(
+		return errors.Errorf(
 			"invalid ZeroStorClusterConfig: expected %d (data+parity) servers, while %d servers were defined",
-			expectedServeCount, len(cfg.DataServers))
+			expectedServeCount,
+			len(cfg.DataServers),
+		)
 	}
 
 	return nil
@@ -427,7 +433,7 @@ func (cfg *TlogClusterConfig) Validate() error {
 
 	_, err := valid.ValidateStruct(cfg)
 	if err != nil {
-		return fmt.Errorf("invalid TlogClusterConfig: %v", err)
+		return errors.Wrap(err, "invalid TlogClusterConfig")
 	}
 
 	err = isDialStringSlice(cfg.Servers)
@@ -471,14 +477,14 @@ func (cfg *StorageServerConfig) Validate() error {
 	}
 
 	if cfg.Database < 0 {
-		return errInvalidStorageDatabase
+		return ErrInvalidDatabase
 	}
 
 	if cfg.Address == "" {
 		return errors.New("storage server address not given while it is required")
 	}
 	if !valid.IsDialString(cfg.Address) {
-		return fmt.Errorf("storage server address '%s' is an invalid dialstring", cfg.Address)
+		return errors.Errorf("storage server address '%s' is an invalid dialstring", cfg.Address)
 	}
 
 	// all checks out
@@ -517,7 +523,7 @@ func (cfg StorageServerConfig) String() string {
 func isDialStringSlice(data []string) error {
 	for _, server := range data {
 		if !valid.IsDialString(server) {
-			return fmt.Errorf("%s is not a valid dial string", server)
+			return errors.Errorf("%s is not a valid dial string", server)
 		}
 	}
 	return nil
@@ -532,11 +538,6 @@ type ServerConfig struct {
 const (
 	// gibibyteAsBytes is a constant used to convert between GiB and bytes
 	gibibyteAsBytes = 1024 * 1024 * 1024
-)
-
-var (
-	errInvalidStorageDatabase = errors.New("invalid database")
-	errNoDataServersAvailable = errors.New("no data servers available")
 )
 
 func init() {

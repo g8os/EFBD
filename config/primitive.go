@@ -1,6 +1,8 @@
 package config
 
-import "fmt"
+import (
+	"github.com/pkg/errors"
+)
 
 // primitive.go
 // defines all primitive types of the config pkg
@@ -47,7 +49,7 @@ func (vdiskType VdiskType) Validate() error {
 	case VdiskTypeBoot, VdiskTypeDB, VdiskTypeCache, VdiskTypeTmp:
 		return nil
 	default:
-		return fmt.Errorf("%s is an invalid VdiskType", vdiskType)
+		return errors.Errorf("%s is an invalid VdiskType", vdiskType)
 	}
 }
 
@@ -80,7 +82,7 @@ func (vdiskType *VdiskType) SetString(s string) error {
 	case vdiskTypeTmpStr:
 		*vdiskType = VdiskTypeTmp
 	default:
-		return fmt.Errorf("%q is not a valid VdiskType", s)
+		return errors.Errorf("%q is not a valid VdiskType", s)
 	}
 
 	return nil
@@ -97,7 +99,7 @@ func (vdiskType *VdiskType) UnmarshalYAML(unmarshal func(interface{}) error) (er
 	var rawType string
 	err = unmarshal(&rawType)
 	if err != nil {
-		return fmt.Errorf("%q is not a valid VdiskType: %s", vdiskType, err)
+		return errors.Wrapf(err, "%q is not a valid VdiskType", vdiskType)
 	}
 
 	err = vdiskType.SetString(rawType)
@@ -220,7 +222,7 @@ func (state *StorageServerState) SetString(s string) error {
 	case storageServerStateRIPStr:
 		*state = StorageServerStateRIP
 	default:
-		return fmt.Errorf("%q is not a valid StorageServerState", s)
+		return errors.Errorf("%q is not a valid StorageServerState", s)
 	}
 
 	return nil
@@ -241,7 +243,7 @@ func (state *StorageServerState) UnmarshalYAML(unmarshal func(interface{}) error
 	var rawState string
 	err = unmarshal(&rawState)
 	if err != nil {
-		return fmt.Errorf("%q is not a valid StorageServerState: %s", rawState, err)
+		return errors.Wrapf(err, "%q is not a valid StorageServerState", rawState)
 	}
 
 	err = state.SetString(rawState)

@@ -1,8 +1,7 @@
 package config
 
 import (
-	"errors"
-	"fmt"
+	"github.com/pkg/errors"
 )
 
 // composition.go
@@ -28,16 +27,22 @@ func (cfg *NBDStorageConfig) Validate() error {
 	// validate primary storage cluster
 	err := cfg.StorageCluster.Validate()
 	if err != nil {
-		return fmt.Errorf(
-			"invalid NBDStorageConfig, invalid primary storage cluster: %v", err)
+		return errors.Wrapf(
+			ErrInvalidStorageCluster,
+			"invalid NBDStorageConfig, invalid primary storage cluster: %v",
+			err,
+		)
 	}
 
 	// ensure that if the template cluster is given, it is valid
 	if cfg.TemplateStorageCluster != nil {
 		err = cfg.TemplateStorageCluster.Validate()
 		if err != nil {
-			return fmt.Errorf(
-				"invalid NBDStorageConfig, invalid template storage cluster: %v", err)
+			return errors.Wrapf(
+				ErrInvalidStorageCluster,
+				"invalid NBDStorageConfig, invalid template storage cluster: %v",
+				err,
+			)
 		}
 	}
 
@@ -46,8 +51,11 @@ func (cfg *NBDStorageConfig) Validate() error {
 		// ensure the static struct validation for the slave config checks out
 		err = cfg.SlaveStorageCluster.Validate()
 		if err != nil {
-			return fmt.Errorf(
-				"invalid NBDStorageConfig, invalid slave storage cluster: %v", err)
+			return errors.Wrapf(
+				ErrInvalidStorageCluster,
+				"invalid NBDStorageConfig, invalid slave storage cluster: %v",
+				err,
+			)
 		}
 
 		// ensure that the slave cluster defines enough data (storage) servers
@@ -105,16 +113,22 @@ func (cfg *TlogStorageConfig) Validate() error {
 	// validate primary storage cluster
 	err := cfg.ZeroStorCluster.Validate()
 	if err != nil {
-		return fmt.Errorf(
-			"invalid TlogStorageConfig, invalid 0-stor cluster: %v", err)
+		return errors.Wrapf(
+			ErrInvalidStorageCluster,
+			"invalid TlogStorageConfig, invalid 0-stor cluster: %v",
+			err,
+		)
 	}
 
 	// validate optional slave storage cluster
 	if cfg.SlaveStorageCluster != nil {
 		err = cfg.SlaveStorageCluster.Validate()
 		if err != nil {
-			return fmt.Errorf(
-				"invalid TlogStorageConfig, invalid slave storage cluster: %v", err)
+			return errors.Wrapf(
+				ErrInvalidStorageCluster,
+				"invalid TlogStorageConfig, invalid slave storage cluster: %v",
+				err,
+			)
 		}
 	}
 

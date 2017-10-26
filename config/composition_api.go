@@ -2,9 +2,8 @@ package config
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
+	"github.com/pkg/errors"
 	"github.com/zero-os/0-Disk/log"
 )
 
@@ -174,8 +173,11 @@ func (w *tlogStorageConfigWatcher) Watch(ctx context.Context) (<-chan TlogStorag
 	select {
 	case <-ctx.Done():
 		cancelWatch()
-		return nil, fmt.Errorf(
-			"TlogStorageConfigWatcher (%s) failed: %v", w.vdiskID, ErrContextDone)
+		return nil, errors.Wrapf(
+			ErrContextDone,
+			"TlogStorageConfigWatcher (%s) failed: %v",
+			w.vdiskID,
+		)
 
 	case clusterInfo := <-clusterChan:
 		_, err = w.applyClusterInfo(clusterInfo)
@@ -270,7 +272,7 @@ func (w *tlogStorageConfigWatcher) Watch(ctx context.Context) (<-chan TlogStorag
 
 func (w *tlogStorageConfigWatcher) sendOutput() error {
 	if w.zeroStorCluster == nil {
-		return errors.New("0-stor storage is nil, while it is required")
+		return errors.Wrap(ErrNilStorage, "0-stor storage is nil")
 	}
 
 	cfg := TlogStorageConfig{ZeroStorCluster: w.zeroStorCluster.Clone()}
@@ -595,7 +597,7 @@ func (w *nbdStorageConfigWatcher) Watch(ctx context.Context) (<-chan NBDStorageC
 
 func (w *nbdStorageConfigWatcher) sendOutput() error {
 	if w.primaryCluster == nil {
-		return errors.New("primary storage is nil, while it is required")
+		return errors.Wrap(ErrNilStorage, "primary storage is nil")
 	}
 
 	cfg := NBDStorageConfig{StorageCluster: w.primaryCluster.Clone()}

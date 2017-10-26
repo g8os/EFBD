@@ -1,9 +1,9 @@
 package config
 
 import (
-	"errors"
-	"fmt"
 	"strings"
+
+	"github.com/pkg/errors"
 )
 
 // NewSourceConfig creates a new source config by
@@ -138,8 +138,10 @@ func etcdResourceFromString(data string) ([]string, error) {
 		for _, address := range addresses {
 			address = strings.TrimSpace(address)
 			if !IsServiceAddress(address) {
-				return nil, fmt.Errorf(
-					"etcd config info: '%s' is not a valid address", address)
+				return nil, errors.Errorf(
+					"etcd config info: '%s' is not a valid address",
+					address,
+				)
 			}
 		}
 
@@ -151,8 +153,10 @@ func etcdResourceFromString(data string) ([]string, error) {
 		return []string{data}, nil
 	}
 
-	return nil, fmt.Errorf(
-		"etcd config info: '%s' is not a valid address", data)
+	return nil, errors.Errorf(
+		"etcd config info: '%s' is not a valid address",
+		data,
+	)
 }
 
 // Used to interpolate a list of endpoints from any kind of accepted value.
@@ -165,8 +169,10 @@ func etcdResource(value interface{}) ([]string, error) {
 		return etcdResourceFromString(str)
 	}
 
-	return nil, fmt.Errorf(
-		"etcd config info: '%v' is not a valid etcd resource", value)
+	return nil, errors.Errorf(
+		"etcd config info: '%v' is not a valid etcd resource",
+		value,
+	)
 }
 
 // Used to interpolate a file path from any kind of accepted value.
@@ -183,8 +189,10 @@ func fileResource(value interface{}) (string, error) {
 		return defaultFileResource, nil
 	}
 
-	return "", fmt.Errorf(
-		"file config info: %v is not a valid file path", value)
+	return "", errors.Errorf(
+		"file config info: %v is not a valid file path",
+		value,
+	)
 }
 
 // Used to turn any valid etcd resource value into a formatted string.
@@ -197,8 +205,10 @@ func etcdResourceToString(value interface{}) (string, error) {
 		return endpoint, nil
 	}
 
-	return "", fmt.Errorf(
-		"etcd config info: '%v' is not a valid etcd resource", value)
+	return "", errors.Errorf(
+		"etcd config info: '%v' is not a valid etcd resource",
+		value,
+	)
 }
 
 const (

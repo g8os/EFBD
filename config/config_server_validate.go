@@ -1,8 +1,7 @@
 package config
 
 import (
-	"errors"
-
+	"github.com/pkg/errors"
 	"github.com/zero-os/0-Disk/log"
 )
 
@@ -84,7 +83,8 @@ func ValidateTlogServerConfigs(source Source, serverID string) error {
 
 	if validTlogConfiguredVdiskCount == 0 {
 		return errors.New(
-			"there is no vdisk that has tlog configuration, while at least one is required")
+			"there is no vdisk that has tlog configuration, while at least one is required",
+		)
 	}
 
 	return nil
