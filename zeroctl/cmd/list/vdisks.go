@@ -3,6 +3,7 @@ package list
 import (
 	"errors"
 	"fmt"
+	"regexp"
 
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
@@ -15,6 +16,7 @@ import (
 
 var vdisksCmdCfg struct {
 	SourceConfig zerodiskcfg.SourceConfig
+	NameRegexp   string
 }
 
 // VdisksCmd represents the list vdisk subcommand
@@ -46,12 +48,28 @@ func listVdisks(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// create optional Regexp-based predicate
+	var pred func(vdiskID string) bool
+	if vdisksCmdCfg.NameRegexp != "" {
+		regexp, err := regexp.Compile(vdisksCmdCfg.NameRegexp)
+		if err != nil {
+			return fmt.Errorf("invalid regexp given for `--name`: %v", err)
+		}
+		pred = regexp.MatchString
+	}
+
 	// list vdisks
-	vdiskIDs, err := storage.ListVdisks(cluster)
+	vdiskIDs, err := storage.ListVdisks(cluster, pred)
 	if err != nil {
 		return err
 	}
 	if len(vdiskIDs) == 0 {
+		if pred != nil {
+			return fmt.Errorf(
+				"no vdisks could be find in %s whose identifier match `%s`",
+				args[0], vdisksCmdCfg.NameRegexp)
+		}
+
 		return errors.New("no vdisks could be found in " + args[0])
 	}
 
@@ -106,4 +124,8 @@ WARNING: This command is very slow, and might take a while to finish!
 	VdisksCmd.Flags().Var(
 		&vdisksCmdCfg.SourceConfig, "config",
 		"config resource: dialstrings (etcd cluster) or path (yaml file)")
+
+	VdisksCmd.Flags().StringVar(
+		&vdisksCmdCfg.NameRegexp, "name", "",
+		"list only vdisks which match the given name (supports regexp)")
 }
