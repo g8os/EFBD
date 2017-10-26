@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestMinimalFTPStorageConfigToString(t *testing.T) {
+func TestMinimalFTPServerConfigToString(t *testing.T) {
 	assert := assert.New(t)
 
 	validCases := []struct {
@@ -19,7 +19,7 @@ func TestMinimalFTPStorageConfigToString(t *testing.T) {
 	}
 
 	for _, validCase := range validCases {
-		var cfg FTPStorageConfig
+		var cfg FTPServerConfig
 		if !assert.NoError(cfg.Set(validCase.Input)) {
 			continue
 		}
@@ -27,19 +27,19 @@ func TestMinimalFTPStorageConfigToString(t *testing.T) {
 	}
 }
 
-func TestFTPStorageConfigToString(t *testing.T) {
+func TestFTPServerConfigToString(t *testing.T) {
 	assert := assert.New(t)
 
 	validCases := []struct {
-		Config   FTPStorageConfig
+		Config   FTPServerConfig
 		Expected string
 	}{
-		{FTPStorageConfig{Address: "localhost:2000"}, "ftp://localhost:2000"},
-		{FTPStorageConfig{Address: "localhost:2000", RootDir: "/bar/foo"}, "ftp://localhost:2000/bar/foo"},
-		{FTPStorageConfig{Address: "localhost:2000", RootDir: "/bar"}, "ftp://localhost:2000/bar"},
-		{FTPStorageConfig{Address: "localhost:2000", Username: "foo"}, "ftp://foo@localhost:2000"},
-		{FTPStorageConfig{Address: "localhost:2000", Username: "foo", Password: "boo"}, "ftp://foo:boo@localhost:2000"},
-		{FTPStorageConfig{Address: "localhost:2000", RootDir: "/bar", Username: "foo", Password: "boo"}, "ftp://foo:boo@localhost:2000/bar"},
+		{FTPServerConfig{Address: "localhost:2000"}, "ftp://localhost:2000"},
+		{FTPServerConfig{Address: "localhost:2000", RootDir: "/bar/foo"}, "ftp://localhost:2000/bar/foo"},
+		{FTPServerConfig{Address: "localhost:2000", RootDir: "/bar"}, "ftp://localhost:2000/bar"},
+		{FTPServerConfig{Address: "localhost:2000", Username: "foo"}, "ftp://foo@localhost:2000"},
+		{FTPServerConfig{Address: "localhost:2000", Username: "foo", Password: "boo"}, "ftp://foo:boo@localhost:2000"},
+		{FTPServerConfig{Address: "localhost:2000", RootDir: "/bar", Username: "foo", Password: "boo"}, "ftp://foo:boo@localhost:2000/bar"},
 	}
 
 	for _, validCase := range validCases {
@@ -67,7 +67,7 @@ func TestFTPStorageConfigStringCommute(t *testing.T) {
 	}
 
 	for _, validCase := range validCases {
-		var cfg FTPStorageConfig
+		var cfg FTPServerConfig
 		if !assert.NoErrorf(cfg.Set(validCase), "input: %v", validCase) {
 			continue
 		}

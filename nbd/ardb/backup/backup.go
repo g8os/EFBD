@@ -28,8 +28,14 @@ type Config struct {
 
 	// Required: SourceConfig to configure the storage with
 	BlockStorageConfig config.SourceConfig
-	// Required: BackupStorageConfig used to configure the backup storage driver.
-	BackupStorageConfig StorageConfig
+
+	// Optional: BackupStoragDriverConfig used to configure the backup storage driver.
+	//  - When not given, defaults to LocalStorageDriver, using the DefaultLocalRoot as the path.
+	//  - When given:
+	//    - If type equals LocalStorageDriverConfig -> Create LocalStorageDriver;
+	//    - If type equals FTPStorageDriverConfig -> Create FTPStorageDriver;
+	//    - Else -> error
+	BackupStoragDriverConfig interface{}
 
 	// Optional: Amount of jobs (goroutines) to run simultaneously
 	//           (to import/export in parallel)
@@ -76,11 +82,6 @@ func (cfg *Config) validate() error {
 		return err
 	}
 
-	err = cfg.BackupStorageConfig.validate()
-	if err != nil {
-		return err
-	}
-
 	if cfg.JobCount <= 0 {
 		cfg.JobCount = runtime.NumCPU()
 	}
@@ -91,6 +92,29 @@ func (cfg *Config) validate() error {
 	}
 
 	return nil
+}
+
+// create a storage driver based on the given backup storage driver config.
+func (cfg *Config) createStorageDriver() (StorageDriver, error) {
+	if cfg.BackupStoragDriverConfig == nil {
+		// default to DefaultLocalRoot, of nothing is given by the user.
+		return LocalStorageDriver(LocalStorageDriverConfig{
+			Path: DefaultLocalRoot,
+		})
+	}
+
+	// if a config is given, try to interpret it
+	switch sdCfg := cfg.BackupStoragDriverConfig.(type) {
+	case FTPStorageDriverConfig:
+		return FTPStorageDriver(sdCfg)
+
+	case LocalStorageDriverConfig:
+		return LocalStorageDriver(sdCfg)
+
+	default:
+		return nil, fmt.Errorf(
+			"%[1]v (%[1]T) is not a valid BackupStoragDriverConfig", sdCfg)
+	}
 }
 
 // storageConfig returned when creating a block storage,

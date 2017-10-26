@@ -62,15 +62,29 @@ func importVdisk(cmd *cobra.Command, args []string) error {
 	}
 
 	cfg := backup.Config{
-		VdiskID:             vdiskCmdCfg.VdiskID,
-		SnapshotID:          vdiskCmdCfg.SnapshotID,
-		BlockStorageConfig:  vdiskCmdCfg.SourceConfig,
-		BackupStorageConfig: vdiskCmdCfg.BackupStorageConfig,
-		JobCount:            vdiskCmdCfg.JobCount,
-		CompressionType:     vdiskCmdCfg.CompressionType,
-		CryptoKey:           vdiskCmdCfg.PrivateKey,
-		Force:               vdiskCmdCfg.Force,
+		VdiskID:            vdiskCmdCfg.VdiskID,
+		SnapshotID:         vdiskCmdCfg.SnapshotID,
+		BlockStorageConfig: vdiskCmdCfg.SourceConfig,
+		JobCount:           vdiskCmdCfg.JobCount,
+		CompressionType:    vdiskCmdCfg.CompressionType,
+		CryptoKey:          vdiskCmdCfg.PrivateKey,
+		Force:              vdiskCmdCfg.Force,
 	}
+
+	if vdiskCmdCfg.BackupStorageConfig.StorageType == ftpStorageType {
+		storageConfig := backup.FTPStorageDriverConfig{
+			ServerConfig: vdiskCmdCfg.BackupStorageConfig.Resource.(backup.FTPServerConfig),
+		}
+		if vdiskCmdCfg.TLSConfig.InsecureSkipVerify || vdiskCmdCfg.TLSConfig.CertFile != "" ||
+			vdiskCmdCfg.TLSConfig.CAFile != "" || vdiskCmdCfg.TLSConfig.ServerName != "" {
+			storageConfig.TLSConfig = &vdiskCmdCfg.TLSConfig
+		}
+		cfg.BackupStoragDriverConfig = storageConfig
+	} else if vdiskCmdCfg.BackupStorageConfig.Resource != nil {
+		cfg.BackupStoragDriverConfig = backup.LocalStorageDriverConfig{
+			Path: vdiskCmdCfg.BackupStorageConfig.Resource.(string),
+		}
+	} // else -> cfg is nil -> defaults to default local storage driver config
 
 	log.Info("Importing the vdisk")
 	err = backup.Import(ctx, cfg)
@@ -232,6 +246,14 @@ here are some examples of valid values for that flag:
 Alternatively you can also give a local directory path to the --storage flag,
 to backup to the local file system instead.
 This is also the default in case the --storage flag is not specified.
+
+
+  When the --storage flag contains an FTP storage config and at least one of 
+--tls-server/--tls-cert/--tls-insecure/--tls-ca flags are given, 
+FTPS (FTP over SSL) is used instead of a plain FTP connection. 
+This enables importing backups in a private and secure fashion,
+discouraging eavesdropping, tampering, and message forgery.
+When the configured server does not support FTPS an error will be returned.
 `
 
 	ImportVdiskCmd.Flags().Var(
@@ -267,4 +289,24 @@ This is also the default in case the --storage flag is not specified.
 		"flush-size", tlogserver.DefaultConfig().FlushSize,
 		"number of tlog blocks in one flush")
 
+	ImportVdiskCmd.Flags().BoolVar(
+		&vdiskCmdCfg.TLSConfig.InsecureSkipVerify,
+		"tls-insecure", false,
+		"when given FTP over SSL will be used without cert verification")
+	ImportVdiskCmd.Flags().StringVar(
+		&vdiskCmdCfg.TLSConfig.ServerName,
+		"tls-server", "",
+		"certs will be verified when given (required when --tls-insecure is not used)")
+	ImportVdiskCmd.Flags().StringVar(
+		&vdiskCmdCfg.TLSConfig.CertFile,
+		"tls-cert", "",
+		"PEM-encoded file containing the TLS Client cert (FTPS will be used when given)")
+	ImportVdiskCmd.Flags().StringVar(
+		&vdiskCmdCfg.TLSConfig.KeyFile,
+		"tls-key", "",
+		"PEM-encoded file containing the private TLS client key")
+	ImportVdiskCmd.Flags().StringVar(
+		&vdiskCmdCfg.TLSConfig.CAFile,
+		"tls-ca", "",
+		"optional PEM-encoded file containing the TLS CA Pool (defaults to system pool when not given)")
 }

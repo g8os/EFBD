@@ -11,16 +11,23 @@ import (
 	"github.com/zero-os/0-Disk/log"
 )
 
+// LocalStorageDriverConfig is used to configure and create a local (Storage) Driver.
+type LocalStorageDriverConfig struct {
+	// Path of the (local) root directory,
+	// where the backup(s) will be r/w from/to.
+	Path string
+}
+
 // LocalStorageDriver ceates a driver which allows you
 // to read/write deduped blocks/map from/to the local file system.
-func LocalStorageDriver(root string) (StorageDriver, error) {
-	err := createLocalDirIfNotExists(root)
+func LocalStorageDriver(cfg LocalStorageDriverConfig) (StorageDriver, error) {
+	err := createLocalDirIfNotExists(cfg.Path)
 	if err != nil {
 		return nil, err
 	}
 
 	return &localDriver{
-		root: root,
+		root: cfg.Path,
 		dirs: newDirCache(),
 	}, nil
 }
@@ -158,7 +165,9 @@ func localFileExists(path string, dir bool) (bool, error) {
 }
 
 var (
-	defaultLocalRoot = func() string {
+	// DefaultLocalRoot defines the default dir
+	// used for local backup storage.
+	DefaultLocalRoot = func() string {
 		var homedir string
 		if usr, err := user.Current(); err == nil {
 			homedir = usr.HomeDir

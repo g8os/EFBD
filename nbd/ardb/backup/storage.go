@@ -9,42 +9,10 @@ import (
 )
 
 var (
-	// ErrInvalidConfig is the error returned when giving an invalid
-	// storage (driver) config to the NewStorageDriver function.
-	ErrInvalidConfig = errors.New("invalid storage driver config")
-
 	// ErrDataDidNotExist is returned from a ServerDriver's Getter
 	// method in case the requested data does not exist on the server.
 	ErrDataDidNotExist = errors.New("requested data did not exist")
 )
-
-// NewStorageDriver creates a new storage driver,
-// using the given Storage (Driver) Config.
-func NewStorageDriver(cfg StorageConfig) (StorageDriver, error) {
-	switch cfg.StorageType {
-	case FTPStorageType:
-		ftpServerConfig, ok := cfg.Resource.(FTPStorageConfig)
-		if !ok {
-			return nil, ErrInvalidConfig
-		}
-		return FTPStorageDriver(ftpServerConfig)
-
-	case LocalStorageType:
-		resource := cfg.Resource
-		if resource == nil || resource == "" {
-			return LocalStorageDriver(defaultLocalRoot)
-		}
-
-		path, ok := cfg.Resource.(string)
-		if !ok {
-			return nil, ErrInvalidConfig
-		}
-		return LocalStorageDriver(path)
-
-	default:
-		return nil, ErrInvalidConfig
-	}
-}
 
 // StorageDriver defines the API of a (storage) driver,
 // which allows us to read/write from/to a (backup) storage,
