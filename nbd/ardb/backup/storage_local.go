@@ -2,7 +2,9 @@ package backup
 
 import (
 	"errors"
+	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"os/user"
 	"path"
@@ -65,6 +67,22 @@ func (ld *localDriver) GetDedupedBlock(hash zerodisk.Hash, w io.Writer) error {
 // GetHeader implements StorageDriver.GetHeader
 func (ld *localDriver) GetHeader(id string, w io.Writer) error {
 	return ld.readFile(backupDir, id, w)
+}
+
+// GetHeaders implements ServerDriver.GetHeaders
+func (ld *localDriver) GetHeaders() (ids []string, err error) {
+	dir := path.Join(ld.root, backupDir)
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't read local backup dir (%s): %v", dir, err)
+	}
+
+	for _, fileInfo := range files {
+		if !fileInfo.IsDir() {
+			ids = append(ids, fileInfo.Name())
+		}
+	}
+	return ids, nil
 }
 
 // Close implements StorageDriver.Close

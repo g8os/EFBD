@@ -39,39 +39,13 @@ func describeSnapshot(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	var storageDriver backup.StorageDriver
+	// create backup storage config based on our flags
+	backupStoragDriverConfig := createBackupStorageConfigFromFlags()
 
-	if vdiskCmdCfg.BackupStorageConfig.StorageType == ftpStorageType {
-		var ftpStorageConfig backup.FTPStorageDriverConfig
-		ftpStorageConfig.ServerConfig = vdiskCmdCfg.BackupStorageConfig.Resource.(backup.FTPServerConfig)
-		if vdiskCmdCfg.TLSConfig.InsecureSkipVerify || vdiskCmdCfg.TLSConfig.CertFile != "" ||
-			vdiskCmdCfg.TLSConfig.CAFile != "" || vdiskCmdCfg.TLSConfig.ServerName != "" {
-			ftpStorageConfig.TLSConfig = &vdiskCmdCfg.TLSConfig
-		}
-		storageDriver, err = backup.FTPStorageDriver(ftpStorageConfig)
-		if err != nil {
-			return err
-		}
-	} else {
-		var localStorageConfig backup.LocalStorageDriverConfig
-		if vdiskCmdCfg.BackupStorageConfig.Resource != nil {
-			localStorageConfig.Path = vdiskCmdCfg.BackupStorageConfig.Resource.(string)
-		} else {
-			localStorageConfig.Path = backup.DefaultLocalRoot
-		}
-
-		storageDriver, err = backup.LocalStorageDriver(localStorageConfig)
-		if err != nil {
-			return err
-		}
-	}
-
-	// load snapshot's header
-	header, err := backup.LoadHeader(
-		vdiskCmdCfg.SnapshotID,
-		storageDriver,
-		&vdiskCmdCfg.PrivateKey,
-		vdiskCmdCfg.CompressionType)
+	// read snapshot's header
+	header, err := backup.ReadSnapshotHeader(
+		vdiskCmdCfg.SnapshotID, backupStoragDriverConfig,
+		&vdiskCmdCfg.PrivateKey, vdiskCmdCfg.CompressionType)
 	if err != nil {
 		return err
 	}
@@ -102,7 +76,7 @@ func describeSnapshot(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println(string(bytes))
-	return nil // TODO
+	return nil
 }
 
 // SnapshotInfo describes a snapshot,

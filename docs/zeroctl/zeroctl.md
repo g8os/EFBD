@@ -40,6 +40,10 @@ List all available [vdisks][vdisk] on a given [storage (1)][storage] server.
 
 NOTE: this command is slow if used on a [storage (1)][storage] server which has a lot of keys. Use this command with precaution.
 
+### [`zeroctl list snapshots`](commands/list.md#snapshots)
+
+List all available [snapshots][snapshot] on a given backup storage.
+
 ### [`zeroctl export vdisk`](commands/export.md#vdisk)
 
 Export a [stored (1)][storage] [vdisk][vdisk] in a secure and efficient manner onto a (S)FTP server, in essense making a [backup][backup] of the [vdisk][vdisk] in question.
@@ -58,4 +62,5 @@ Describe a [vdisk][vdisk] [backup][backup] (see: snapshot) from a (S)FTP server.
 [metadata]: /docs/glossary.md#metadata
 [vdisk]: /docs/glossary.md#vdisk
 [tlog]: /docs/glossary.md#tlog
+[snapshot]: /docs/glossary.md#snapshot
 [restore]: /docs/restore.md#tlog

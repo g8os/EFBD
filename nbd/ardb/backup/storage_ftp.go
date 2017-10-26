@@ -292,6 +292,22 @@ func (ftp *ftpStorageDriver) GetHeader(id string, w io.Writer) error {
 	return ftp.retrieve(loc, w)
 }
 
+// GetHeaders implements ServerDriver.GetHeaders
+func (ftp *ftpStorageDriver) GetHeaders() (ids []string, err error) {
+	dir := path.Join(ftp.rootDir, backupDir)
+	files, err := ftp.client.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't read FTP backup dir (%s): %v", dir, err)
+	}
+
+	for _, fileInfo := range files {
+		if !fileInfo.IsDir() {
+			ids = append(ids, fileInfo.Name())
+		}
+	}
+	return ids, nil
+}
+
 // Close implements ServerDriver.Close
 func (ftp *ftpStorageDriver) Close() error {
 	return ftp.client.Close()

@@ -24,7 +24,65 @@ type StorageDriver interface {
 	GetDedupedBlock(hash zerodisk.Hash, w io.Writer) error
 	GetHeader(id string, w io.Writer) error
 
+	GetHeaders() (ids []string, err error)
+
 	Close() error
+}
+
+// ReadSnapshotHeader loads (read=>[decrypt=>]decompress=>decode)
+// a (snapshot) header from a given (backup) storage.
+//
+// storagDriverConfig is used to configure the backup storage driver.
+// - When not given (nil), defaults to LocalStorageDriver, using the DefaultLocalRoot as the path.
+// - When given:
+//  - If type equals LocalStorageDriverConfig -> Create LocalStorageDriver;
+//  - If type equals FTPStorageDriverConfig -> Create FTPStorageDriver;
+//  - Else -> error
+func ReadSnapshotHeader(id string, storagDriverConfig interface{}, key *CryptoKey, ct CompressionType) (*Header, error) {
+	// create (backup) storage driver (so we can list snapshot headers from it)
+	driver, err := newStorageDriver(storagDriverConfig)
+	if err != nil {
+		return nil, err
+	}
+	return LoadHeader(id, driver, key, ct)
+}
+
+// ListSnapshots lists all snapshots on a given backup storage.
+// Optionally a predicate can be given to filter the returned identifiers.
+// ids can be nil, even when no error occured, this is not concidered an error.
+//
+// storagDriverConfig is used to configure the backup storage driver.
+// - When not given (nil), defaults to LocalStorageDriver, using the DefaultLocalRoot as the path.
+// - When given:
+//  - If type equals LocalStorageDriverConfig -> Create LocalStorageDriver;
+//  - If type equals FTPStorageDriverConfig -> Create FTPStorageDriver;
+//  - Else -> error
+func ListSnapshots(storagDriverConfig interface{}, pred func(id string) bool) (ids []string, err error) {
+	// create (backup) storage driver (so we can list snapshot headers from it)
+	driver, err := newStorageDriver(storagDriverConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	snapshotIDs, err := driver.GetHeaders()
+	if err != nil {
+		return nil, err
+	}
+	if pred == nil {
+		return snapshotIDs, nil
+	}
+
+	filterPos := 0
+	var ok bool
+	for _, snapshotID := range snapshotIDs {
+		ok = pred(snapshotID)
+		if ok {
+			snapshotIDs[filterPos] = snapshotID
+			filterPos++
+		}
+	}
+
+	return snapshotIDs[:filterPos], nil
 }
 
 func hashAsDirAndFile(hash zerodisk.Hash) (string, string, bool) {

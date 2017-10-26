@@ -73,7 +73,7 @@ func listVdisks(cmd *cobra.Command, args []string) error {
 		return errors.New("no vdisks could be found in " + args[0])
 	}
 
-	// print at least 1 vdisk fond from the specified storage
+	// print at least 1 vdisk found from the specified storage
 	for _, vdiskID := range vdiskIDs {
 		fmt.Println(vdiskID)
 	}

@@ -31,6 +31,26 @@ var (
 	errNilResource = errors.New("invalid nil resource given")
 )
 
+func createBackupStorageConfigFromFlags() (cfg interface{}) {
+	if vdiskCmdCfg.BackupStorageConfig.StorageType == ftpStorageType {
+		storageConfig := backup.FTPStorageDriverConfig{
+			ServerConfig: vdiskCmdCfg.BackupStorageConfig.Resource.(backup.FTPServerConfig),
+		}
+		if vdiskCmdCfg.TLSConfig.InsecureSkipVerify || vdiskCmdCfg.TLSConfig.CertFile != "" ||
+			vdiskCmdCfg.TLSConfig.CAFile != "" || vdiskCmdCfg.TLSConfig.ServerName != "" {
+			storageConfig.TLSConfig = &vdiskCmdCfg.TLSConfig
+		}
+
+		return storageConfig
+	}
+	if vdiskCmdCfg.BackupStorageConfig.Resource != nil {
+		return backup.LocalStorageDriverConfig{
+			Path: vdiskCmdCfg.BackupStorageConfig.Resource.(string),
+		}
+	}
+	return nil
+}
+
 // newStorageConfig creates a new storage config by
 // implicitly infering the storage type based on the given data,
 // and based on it use the data as the storage's config resource.

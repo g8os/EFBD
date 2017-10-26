@@ -62,29 +62,15 @@ func importVdisk(cmd *cobra.Command, args []string) error {
 	}
 
 	cfg := backup.Config{
-		VdiskID:            vdiskCmdCfg.VdiskID,
-		SnapshotID:         vdiskCmdCfg.SnapshotID,
-		BlockStorageConfig: vdiskCmdCfg.SourceConfig,
-		JobCount:           vdiskCmdCfg.JobCount,
-		CompressionType:    vdiskCmdCfg.CompressionType,
-		CryptoKey:          vdiskCmdCfg.PrivateKey,
-		Force:              vdiskCmdCfg.Force,
+		VdiskID:                  vdiskCmdCfg.VdiskID,
+		SnapshotID:               vdiskCmdCfg.SnapshotID,
+		BlockStorageConfig:       vdiskCmdCfg.SourceConfig,
+		BackupStoragDriverConfig: createBackupStorageConfigFromFlags(),
+		JobCount:                 vdiskCmdCfg.JobCount,
+		CompressionType:          vdiskCmdCfg.CompressionType,
+		CryptoKey:                vdiskCmdCfg.PrivateKey,
+		Force:                    vdiskCmdCfg.Force,
 	}
-
-	if vdiskCmdCfg.BackupStorageConfig.StorageType == ftpStorageType {
-		storageConfig := backup.FTPStorageDriverConfig{
-			ServerConfig: vdiskCmdCfg.BackupStorageConfig.Resource.(backup.FTPServerConfig),
-		}
-		if vdiskCmdCfg.TLSConfig.InsecureSkipVerify || vdiskCmdCfg.TLSConfig.CertFile != "" ||
-			vdiskCmdCfg.TLSConfig.CAFile != "" || vdiskCmdCfg.TLSConfig.ServerName != "" {
-			storageConfig.TLSConfig = &vdiskCmdCfg.TLSConfig
-		}
-		cfg.BackupStoragDriverConfig = storageConfig
-	} else if vdiskCmdCfg.BackupStorageConfig.Resource != nil {
-		cfg.BackupStoragDriverConfig = backup.LocalStorageDriverConfig{
-			Path: vdiskCmdCfg.BackupStorageConfig.Resource.(string),
-		}
-	} // else -> cfg is nil -> defaults to default local storage driver config
 
 	log.Info("Importing the vdisk")
 	err = backup.Import(ctx, cfg)

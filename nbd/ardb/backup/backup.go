@@ -95,8 +95,8 @@ func (cfg *Config) validate() error {
 }
 
 // create a storage driver based on the given backup storage driver config.
-func (cfg *Config) createStorageDriver() (StorageDriver, error) {
-	if cfg.BackupStoragDriverConfig == nil {
+func newStorageDriver(storagDriverConfig interface{}) (StorageDriver, error) {
+	if storagDriverConfig == nil {
 		// default to DefaultLocalRoot, of nothing is given by the user.
 		return LocalStorageDriver(LocalStorageDriverConfig{
 			Path: DefaultLocalRoot,
@@ -104,7 +104,7 @@ func (cfg *Config) createStorageDriver() (StorageDriver, error) {
 	}
 
 	// if a config is given, try to interpret it
-	switch sdCfg := cfg.BackupStoragDriverConfig.(type) {
+	switch sdCfg := storagDriverConfig.(type) {
 	case FTPStorageDriverConfig:
 		return FTPStorageDriver(sdCfg)
 

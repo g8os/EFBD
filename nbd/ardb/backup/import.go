@@ -41,7 +41,7 @@ func Import(ctx context.Context, cfg Config) error {
 	}
 	defer blockStorage.Close()
 
-	storageDriver, err := cfg.createStorageDriver()
+	storageDriver, err := newStorageDriver(cfg.BackupStoragDriverConfig)
 	if err != nil {
 		return err
 	}
