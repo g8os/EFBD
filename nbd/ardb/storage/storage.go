@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/garyburd/redigo/redis"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
@@ -358,66 +357,50 @@ type listVdisksAction struct {
 // Do implements StorageAction.Do
 func (action listVdisksAction) Do(conn ardb.Conn) (reply interface{}, err error) {
 	const (
-		startListCursor       = "0"
-		vdiskListScriptSource = `
-	local cursor = ARGV[1]
-
-local result = redis.call("SCAN", cursor)
-local batch = result[2]
-
-local key
-local type
-
-local output = {}
-
-for i = 1, #batch do
-	key = batch[i]
-
-	-- only add hashmaps
-	type = redis.call("TYPE", key)
-	type = type.ok or type
-	if type == "hash" then
-		table.insert(output, key)
-	end
-end
-
-cursor = result[1]
-table.insert(output, cursor)
-
-return output
-`
+		startCursor = "0"
+		itemCount   = "5000"
 	)
 
-	script := redis.NewScript(0, vdiskListScriptSource)
-	cursor := startListCursor
 	var output, vdisks []string
+	var slice interface{}
+
+	// initial cursor and action
+	cursor := startCursor
+	scan := ardb.Command(command.Scan, cursor, "COUNT", itemCount)
 
 	// go through all available keys
 	for {
-		output, err = redis.Strings(script.Do(conn, cursor))
+		// get new cursor and raw data
+		cursor, slice, err = ardb.CursorAndValues(scan.Do(conn))
+		// convert the raw data to a string slice we can use
+		output, err = ardb.Strings(slice, err)
+		// return early in case of error
 		if err != nil {
-			log.Error("aborting key scan due to an error: ", err)
-			break
+			return nil, err
 		}
 
 		// filter output
 		filterPos := 0
-		length := len(output) - 1
 		var ok bool
 		var vdiskID string
-		for i := 0; i < length; i++ {
+		for i := range output {
 			vdiskID, ok = action.filter(output[i])
 			if ok {
 				output[filterPos] = vdiskID
 				filterPos++
 			}
 		}
-		cursor = output[length]
 		output = output[:filterPos]
 		vdisks = append(vdisks, output...)
-		if startListCursor == cursor {
+		log.Debugf("%d/%s identifiers in iteration which match the given filters",
+			len(output), itemCount)
+
+		// stop in case we iterated through all possible values
+		if cursor == startCursor || cursor == "" {
 			break
 		}
+
+		scan = ardb.Command(command.Scan, cursor, "COUNT", itemCount)
 	}
 
 	return vdisks, nil

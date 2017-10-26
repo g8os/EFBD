@@ -515,7 +515,7 @@ type nonDedupFetchResult struct {
 func nonDedupDataFetcher(ctx context.Context, storageKey string, server ardb.StorageServer) <-chan nonDedupFetchResult {
 	const (
 		startCursor = "0"
-		itemCount   = 1000
+		itemCount   = "1000"
 	)
 
 	ch := make(chan nonDedupFetchResult)
