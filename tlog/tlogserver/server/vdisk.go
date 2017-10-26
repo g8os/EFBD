@@ -111,10 +111,8 @@ func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, config
 	ctx, cancelFunc := context.WithCancel(parentCtx)
 	// create slave syncer
 	apc := aggmq.AggProcessorConfig{
-		VdiskID:      vdiskID,
-		DataShards:   flusherConf.DataShards,
-		ParityShards: flusherConf.ParityShards,
-		PrivKey:      flusherConf.PrivKey,
+		VdiskID: vdiskID,
+		PrivKey: flusherConf.PrivKey,
 	}
 
 	maxTlbInBuffer := flusherConf.FlushSize * tlogBlockFactorSize
@@ -215,8 +213,7 @@ func (vd *vdisk) watchConfig() error {
 
 func (vd *vdisk) createFlusher() error {
 	// creates stor client
-	storClient, err := stor.NewClientFromConfigSource(vd.configSource, vd.id, vd.flusherConf.PrivKey,
-		vd.flusherConf.DataShards, vd.flusherConf.ParityShards)
+	storClient, err := stor.NewClientFromConfigSource(vd.configSource, vd.id, vd.flusherConf.PrivKey)
 	if err != nil {
 		return err
 	}

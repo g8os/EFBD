@@ -15,8 +15,6 @@ type Config struct {
 	SourceVdiskID string `validate:"nonzero"`
 	TargetVdiskID string `validate:"nonzero"`
 	PrivKey       string `validate:"nonzero"`
-	DataShards    int    `validate:"nonzero,min=1"`
-	ParityShards  int    `validate:"nonzero,min=1"`
 	FlushSize     int
 	JobCount      int `validate:"nonzero,min=1"`
 }

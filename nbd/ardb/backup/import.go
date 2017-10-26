@@ -24,7 +24,7 @@ func Import(ctx context.Context, cfg Config) error {
 		return err
 	}
 
-	storageConfig, err := createStorageConfig(cfg.VdiskID, cfg.BlockStorageConfig, false)
+	storageConfig, err := createStorageConfig(cfg.VdiskID, cfg.BlockStorageConfig)
 	if err != nil {
 		return err
 	}
@@ -41,7 +41,7 @@ func Import(ctx context.Context, cfg Config) error {
 	}
 	defer blockStorage.Close()
 
-	storageDriver, err := NewStorageDriver(cfg.BackupStorageConfig)
+	storageDriver, err := newStorageDriver(cfg.BackupStoragDriverConfig)
 	if err != nil {
 		return err
 	}

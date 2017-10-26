@@ -120,14 +120,14 @@ func newSlaveSyncer(ctx context.Context, configSource config.Source, apc aggmq.A
 
 func (ss *slaveSyncer) init() error {
 	// tlog replay player
-	player, err := player.NewPlayer(ss.ctx, ss.configSource, ss.apc.VdiskID, ss.apc.PrivKey, ss.apc.DataShards, ss.apc.ParityShards)
+	player, err := player.NewPlayer(ss.ctx, ss.configSource, ss.apc.VdiskID, ss.apc.PrivKey)
 	if err != nil {
 		return err
 	}
 	ss.player = player
 
 	// create meta client
-	storConf, err := stor.ConfigFromConfigSource(ss.configSource, ss.vdiskID, "", 0, 0)
+	storConf, err := stor.ConfigFromConfigSource(ss.configSource, ss.vdiskID, "")
 	if err != nil {
 		return err
 	}

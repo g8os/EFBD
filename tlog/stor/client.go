@@ -121,10 +121,9 @@ func NewClient(conf Config) (*Client, error) {
 }
 
 // NewClientFromConfigSource creates new client from given config.Source
-func NewClientFromConfigSource(confSource config.Source, vdiskID, privKey string,
-	dataShards, parityShards int) (*Client, error) {
+func NewClientFromConfigSource(confSource config.Source, vdiskID, privKey string) (*Client, error) {
 
-	conf, err := ConfigFromConfigSource(confSource, vdiskID, privKey, dataShards, parityShards)
+	conf, err := ConfigFromConfigSource(confSource, vdiskID, privKey)
 	if err != nil {
 		return nil, err
 	}

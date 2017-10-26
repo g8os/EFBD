@@ -10,14 +10,13 @@ import (
 var validConfigs = []Config{
 	// Explicit Example
 	Config{
-		VdiskID:             "foo",
-		SnapshotID:          "foo",
-		BlockSize:           DefaultBlockSize,
-		BlockStorageConfig:  config.SourceConfig{},
-		BackupStorageConfig: StorageConfig{},
-		JobCount:            0,
-		CompressionType:     LZ4Compression,
-		CryptoKey:           CryptoKey{4, 2},
+		VdiskID:            "foo",
+		SnapshotID:         "foo",
+		BlockSize:          DefaultBlockSize,
+		BlockStorageConfig: config.SourceConfig{},
+		JobCount:           0,
+		CompressionType:    LZ4Compression,
+		CryptoKey:          CryptoKey{4, 2},
 	},
 	// implicit version of first example
 	Config{
@@ -32,14 +31,6 @@ var validConfigs = []Config{
 		BlockStorageConfig: config.SourceConfig{
 			Resource:   "localhost:20021",
 			SourceType: config.ETCDSourceType,
-		},
-		BackupStorageConfig: StorageConfig{
-			Resource: FTPStorageConfig{
-				Address:  "localhost:2000",
-				Username: "root",
-				Password: "secret",
-			},
-			StorageType: FTPStorageType,
 		},
 		JobCount:        1,
 		CompressionType: XZCompression,
@@ -61,13 +52,6 @@ var invalidConfigs = []Config{
 	},
 	// Missing VdiskID
 	Config{},
-	// Bad Storage Config
-	Config{
-		VdiskID: "foo",
-		BackupStorageConfig: StorageConfig{
-			Resource: 42,
-		},
-	},
 	// Bad Config Source
 	Config{
 		VdiskID: "foo",

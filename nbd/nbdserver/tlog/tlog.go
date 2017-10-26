@@ -11,7 +11,6 @@ import (
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
-	"github.com/zero-os/0-Disk/nbd/ardb/command"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
@@ -21,12 +20,15 @@ import (
 // Storage creates a tlog storage BlockStorage,
 // wrapping around a given backend storage,
 // using the given tlog client to send its write transactions to the tlog server.
-func Storage(ctx context.Context, vdiskID string, configSource config.Source, blockSize int64, storage storage.BlockStorage, cluster ardb.StorageCluster, client tlogClient) (storage.BlockStorage, error) {
-	if storage == nil {
+func Storage(ctx context.Context, vdiskID string, configSource config.Source, blockSize int64, bstorage storage.BlockStorage, cluster ardb.StorageCluster, client tlogClient) (storage.BlockStorage, error) {
+	if bstorage == nil {
 		return nil, errors.New("tlogStorage requires a non-nil BlockStorage")
 	}
+	if cluster == nil {
+		return nil, errors.New("tlogStorage requires a non-nil StorageCluster")
+	}
 
-	metadata, err := loadOrNewTlogMetadata(vdiskID, cluster)
+	metadata, err := storage.LoadTlogMetadata(vdiskID, cluster)
 	if err != nil {
 		return nil, errors.New("tlogStorage requires a valid metadata ARDB provider: " + err.Error())
 	}
@@ -34,8 +36,9 @@ func Storage(ctx context.Context, vdiskID string, configSource config.Source, bl
 	ctx, cancel := context.WithCancel(ctx)
 	tlogStorage := &tlogStorage{
 		vdiskID:        vdiskID,
-		storage:        storage,
+		storage:        bstorage,
 		metadata:       metadata,
+		cluster:        cluster,
 		cache:          newInMemorySequenceCache(),
 		blockSize:      blockSize,
 		transactionCh:  make(chan *transaction, transactionChCapacity),
@@ -59,7 +62,7 @@ func Storage(ctx context.Context, vdiskID string, configSource config.Source, bl
 		}
 		log.Debugf("tlogclient for vdisk `%v` created", vdiskID)
 
-		if metadata.lastFlushedSequence < client.LastFlushedSequence() {
+		if metadata.LastFlushedSequence < client.LastFlushedSequence() {
 			// TODO call tlog player if last flushed sequence from tlog server is
 			// higher than us.
 			// see: https://github.com/zero-os/0-Disk/issues/230
@@ -94,7 +97,8 @@ type tlogStorage struct {
 	mux           sync.RWMutex
 	tlog          tlogClient
 	storage       storage.BlockStorage
-	metadata      *tlogMetadata
+	metadata      storage.TlogMetadata
+	cluster       ardb.StorageCluster
 	cache         sequenceCache
 	blockSize     int64
 	sequence      uint64
@@ -306,7 +310,7 @@ func (tls *tlogStorage) Flush() error {
 	// only if we succesfully flushed the storage,
 	// will we flush our metadata, as to make sure the metadata is in sync
 	// with the content stored in the internal block storage.
-	err = tls.metadata.Flush()
+	err = storage.StoreTlogMetadata(tls.vdiskID, tls.cluster, tls.metadata)
 	if err != nil {
 		log.Errorf("error while flushing metadata: %v", err)
 	}
@@ -680,7 +684,7 @@ func (tls *tlogStorage) flushCachedContent(sequences []uint64) error {
 
 	// the sequences are given in ordered form,
 	// thus we can simply try to set the last given sequence.
-	tls.metadata.SetLastFlushedSequence(sequences[len(sequences)-1])
+	tls.metadata.LastFlushedSequence = sequences[len(sequences)-1]
 	return nil
 }
 
@@ -1034,236 +1038,6 @@ func (dh *dataHistory) Trim(sequenceIndex uint64) ([]byte, bool) {
 func (dh *dataHistory) Empty() bool {
 	return dh.max == math.MaxUint64
 }
-
-// loadOrNewTlogMetadata load metadata from storage or
-// creates a new tlog metadata object.
-// Defauling to nil-values of properties for all properties
-// that weren't defined yet in the ARDB metadata storage.
-func loadOrNewTlogMetadata(vdiskID string, cluster ardb.StorageCluster) (*tlogMetadata, error) {
-	if cluster == nil {
-		// used for testing purposes only
-		return new(tlogMetadata), nil
-	}
-
-	key := MetadataKey(vdiskID)
-	md, err := deserializeTlogMetadata(key, vdiskID, cluster)
-	if err != nil {
-		return nil, err
-	}
-	md.cluster = cluster
-	return md, nil
-}
-
-func deserializeTlogMetadata(key, vdiskID string, cluster ardb.StorageCluster) (*tlogMetadata, error) {
-	lastFlushedSequence, err := ardb.OptUint64(cluster.Do(
-		ardb.Command(command.HashGet, key, tlogMetadataLastFlushedSequenceField)))
-	if err != nil {
-		return nil, err
-	}
-
-	return newTlogMetadata(lastFlushedSequence, vdiskID, key), nil
-}
-
-type tlogMetadata struct {
-	lastFlushedSequence uint64
-
-	vdiskID, key string
-	cluster      ardb.StorageCluster
-	mux          sync.Mutex
-}
-
-func newTlogMetadata(lastFlushedSequence uint64, vdiskID, key string) *tlogMetadata {
-	return &tlogMetadata{
-		lastFlushedSequence: lastFlushedSequence,
-		vdiskID:             vdiskID,
-		key:                 key,
-	}
-}
-
-// SetLastFlushedSequence sets the given seq as the last flushed sequence,
-// only if the given sequence is greater than the one already used.
-func (md *tlogMetadata) SetLastFlushedSequence(seq uint64) bool {
-	md.mux.Lock()
-	defer md.mux.Unlock()
-
-	if seq <= md.lastFlushedSequence {
-		return false
-	}
-
-	md.lastFlushedSequence = seq
-	return true
-}
-
-// Flush all the metadata for this tlogstorage into the ARDB metadata storage server.
-func (md *tlogMetadata) Flush() error {
-	if md.cluster == nil {
-		return nil // nothing to do
-	}
-
-	md.mux.Lock()
-	defer md.mux.Unlock()
-	return md.serialize(md.cluster)
-}
-
-func (md *tlogMetadata) serialize(cluster ardb.StorageCluster) error {
-	_, err := cluster.Do(
-		ardb.Command(command.HashSet,
-			md.key, tlogMetadataLastFlushedSequenceField,
-			md.lastFlushedSequence))
-	return err
-}
-
-// MetadataKey returns the key of the ARDB hashmap,
-// which contains all the metadata stored for a tlog storage.
-func MetadataKey(vdiskID string) string {
-	return tlogMetadataKeyPrefix + vdiskID
-}
-
-// CreateMetadata creates all metadata of a tlog-enabled storage.
-func CreateMetadata(vdiskID string, lastFlushedSequence uint64, clusterCfg config.StorageClusterConfig) error {
-	cluster, err := ardb.NewCluster(clusterCfg, nil)
-	if err != nil {
-		return err
-	}
-
-	metadata := newTlogMetadata(lastFlushedSequence, vdiskID, MetadataKey(vdiskID))
-	return metadata.serialize(cluster)
-}
-
-// DeleteMetadata deletes all metadata of a tlog-enabled storage,
-// from a given metadata server using the given vdiskID.
-func DeleteMetadata(serverCfg config.StorageServerConfig, vdiskIDs ...string) error {
-	// get connection to metadata storage server
-	conn, err := ardb.Dial(serverCfg)
-	if err != nil {
-		return fmt.Errorf("couldn't connect to meta ardb: %s", err.Error())
-	}
-	defer conn.Close()
-
-	for _, vdiskID := range vdiskIDs {
-		// delete the actual metadata (if it existed)
-		err = conn.Send("DEL", MetadataKey(vdiskID))
-		if err != nil {
-			return fmt.Errorf(
-				"couldn't add %s to the delete tlog metadata batch: %v",
-				vdiskID, err)
-		}
-	}
-
-	err = conn.Flush()
-	if err != nil {
-		return fmt.Errorf(
-			"couldn't flush the delete tlog metadata batch: %v", err)
-	}
-
-	var errors flushErrors
-	for _, vdiskID := range vdiskIDs {
-		_, err = conn.Receive()
-		if err != nil {
-			errors = append(errors, fmt.Errorf(
-				"couldn't delete tlog metadata for %s: %v", vdiskID, err))
-		}
-	}
-
-	if len(errors) > 0 {
-		return errors
-	}
-
-	return nil
-}
-
-// CopyMetadata copies all metadata of a tlog-enabled storage
-// from a sourceID to a targetID, within the same cluster or between different clusters.
-func CopyMetadata(sourceID, targetID string, sourceClusterCfg config.StorageClusterConfig, targetClusterCfg *config.StorageClusterConfig) error {
-	// define whether or not we're copying between different servers.
-	if targetClusterCfg == nil {
-		targetClusterCfg = &sourceClusterCfg
-	}
-
-	// get first available storage server
-
-	metaSourceCfg, err := ardb.FindFirstAvailableServerConfig(sourceClusterCfg)
-	if err != nil {
-		return err
-	}
-
-	sourceCluster, err := ardb.NewUniCluster(metaSourceCfg, nil)
-	if err != nil {
-		return err
-	}
-
-	metaTargetCfg, err := ardb.FindFirstAvailableServerConfig(*targetClusterCfg)
-	if err != nil {
-		return err
-	}
-
-	if metaSourceCfg.Equal(metaTargetCfg) {
-		conn, err := ardb.Dial(metaSourceCfg)
-		if err != nil {
-			return fmt.Errorf("couldn't connect to ardb: %s", err.Error())
-		}
-		defer conn.Close()
-
-		return copyMetadataSameConnection(sourceID, targetID, sourceCluster)
-	}
-
-	targetCluster, err := ardb.NewUniCluster(metaTargetCfg, nil)
-	if err != nil {
-		return err
-	}
-
-	return copyMetadataDifferentConnections(sourceID, targetID, sourceCluster, targetCluster)
-}
-
-func copyMetadataDifferentConnections(sourceID, targetID string, sourceCluster, targetCluster ardb.StorageCluster) error {
-	sourceKey := MetadataKey(sourceID)
-	metadata, err := deserializeTlogMetadata(sourceKey, sourceID, sourceCluster)
-	if err != nil {
-		return fmt.Errorf(
-			"couldn't deserialize source tlog metadata for %s: %v", sourceID, err)
-	}
-
-	metadata.key = MetadataKey(targetID)
-	err = metadata.serialize(targetCluster)
-	if err != nil {
-		return fmt.Errorf(
-			"couldn't serialize destination tlog metadata for %s: %v", targetID, err)
-	}
-
-	return nil
-}
-
-func copyMetadataSameConnection(sourceID, targetID string, cluster ardb.StorageCluster) error {
-	log.Infof("dumping tlog metadata of vdisk %q and restoring it as tlog metadata of vdisk %q",
-		sourceID, targetID)
-
-	sourceKey, targetKey := MetadataKey(sourceID), MetadataKey(targetID)
-	_, err := cluster.Do(ardb.Script(
-		0, copyMetadataSameConnScript,
-		[]string{targetKey},
-		sourceKey, targetKey))
-	return err
-}
-
-var copyMetadataSameConnScript = `
-	local source = ARGV[1]
-	local dest = ARGV[2]
-	
-	if redis.call("EXISTS", source) == 0 then
-		return
-	end
-	
-	if redis.call("EXISTS", dest) == 1 then
-		redis.call("DEL", dest)
-	end
-	
-	redis.call("RESTORE", dest, 0, redis.call("DUMP", source))
-`
-
-const (
-	tlogMetadataKeyPrefix                = "tlog:"
-	tlogMetadataLastFlushedSequenceField = "lfseq"
-)
 
 var (
 	// returned when a sequence is added,

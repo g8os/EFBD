@@ -111,7 +111,7 @@ func TestGetNondedupedTemplateContent(t *testing.T) {
 	clusterA := redisstub.NewUniCluster(false)
 	defer clusterA.Close()
 
-	storageA, err := NonDeduped(vdiskID, "", 8, clusterA, ardb.NopCluster{})
+	storageA, err := NonDeduped(vdiskID, "", 8, clusterA, ardb.ErrorCluster{Error: ardb.ErrNoServersAvailable})
 	if err != nil || storageA == nil {
 		t.Fatalf("storageA could not be created: %v", err)
 	}
@@ -278,7 +278,7 @@ func TestNonDedupedStorageTemplateServerDown(t *testing.T) {
 	}
 
 	// now mark template invalid, and that should make it return an expected error instead
-	storageB.(*nonDedupedStorage).templateCluster = ardb.NopCluster{}
+	storageB.(*nonDedupedStorage).templateCluster = ardb.ErrorCluster{Error: ardb.ErrNoServersAvailable}
 	content, err = storageB.GetBlock(someIndexPlusOne)
 	if len(content) != 0 {
 		t.Fatalf("content should be empty but was was: %v",
@@ -375,16 +375,18 @@ func TestListNonDedupedBlockIndices(t *testing.T) {
 
 	cluster := redisstub.NewCluster(4, false)
 	defer cluster.Close()
-	clusterConfig := cluster.StorageClusterConfig()
 
 	storage, err := NonDeduped(vdiskID, "", blockSize, cluster, nil)
 	if err != nil || storage == nil {
 		t.Fatalf("storage could not be created: %v", err)
 	}
 
-	indices, err := ListNonDedupedBlockIndices(vdiskID, clusterConfig)
-	if err == nil {
-		t.Fatalf("expected an error, as no indices exist yet: %v", indices)
+	indices, err := listNonDedupedBlockIndices(vdiskID, cluster)
+	if err != nil {
+		t.Fatalf("expected no error: %v", err)
+	}
+	if len(indices) > 0 {
+		t.Fatalf("expexted no indices: %v", indices)
 	}
 
 	var expectedIndices []int64
@@ -418,9 +420,9 @@ func TestListNonDedupedBlockIndices(t *testing.T) {
 		}
 
 		// now test if listing the indices is correct
-		indices, err := ListNonDedupedBlockIndices(vdiskID, clusterConfig)
+		indices, err := listNonDedupedBlockIndices(vdiskID, cluster)
 		if err != nil {
-			t.Fatalf("couldn't list deduped block indices (step %d): %v", i, err)
+			t.Fatalf("couldn't list non-deduped block indices (step %d): %v", i, err)
 		}
 
 		expectedIndices = append(expectedIndices, blockIndex)
@@ -455,9 +457,9 @@ func TestListNonDedupedBlockIndices(t *testing.T) {
 		expectedIndices = append(expectedIndices[:ci], expectedIndices[ci+1:]...)
 
 		// now test if listing the indices is still correct
-		indices, err := ListNonDedupedBlockIndices(vdiskID, clusterConfig)
+		indices, err := listNonDedupedBlockIndices(vdiskID, cluster)
 		if err != nil {
-			t.Fatalf("couldn't list deduped block indices (step %d): %v", i, err)
+			t.Fatalf("couldn't list non-deduped block indices (step %d): %v", i, err)
 		}
 
 		if assert.Len(t, indices, len(expectedIndices), "at cut index %v", i) {
@@ -469,5 +471,8 @@ func TestListNonDedupedBlockIndices(t *testing.T) {
 }
 
 func init() {
+	// ledisdb uses other names, for whatever reason
+	command.HashScan.Name = "XHSCAN"
+
 	log.SetLevel(log.DebugLevel)
 }

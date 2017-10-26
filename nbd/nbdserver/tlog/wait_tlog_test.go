@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/zero-os/0-Disk/nbd/ardb"
+
 	"github.com/stretchr/testify/require"
 
 	"github.com/zero-os/0-Disk/config"
@@ -49,7 +51,7 @@ func TestWaitOtherTlog(t *testing.T) {
 	defer parentCancelFunc()
 
 	// creates 0-stor for both tlog servers
-	storSource, _, storCleanup := newZeroStorConfig(t, vdiskID, tlogConf)
+	storSource, _, storCleanup := newZeroStorConfig(t, vdiskID, tlogConf, 1, 1)
 	defer storCleanup()
 
 	// creates nbd1 & tlog1
@@ -148,8 +150,7 @@ func TestWaitOtherTlog(t *testing.T) {
 	cancelFunc2()
 
 	// verify that tlog has the right data
-	storCli, err := stor.NewClientFromConfigSource(storSource, vdiskID, tlogConf.PrivKey, tlogConf.DataShards,
-		tlogConf.ParityShards)
+	storCli, err := stor.NewClientFromConfigSource(storSource, vdiskID, tlogConf.PrivKey)
 	require.NoError(t, err)
 
 	for wr := range storCli.Walk(0, tlog.TimeNowTimestamp()) {
@@ -183,7 +184,7 @@ func newTestTlogStorage(ctx context.Context, t *testing.T, vdiskID, tlogServerAd
 	source.SetPrimaryStorageCluster(vdiskID, "nbdcluster", nil)
 
 	tlogStorage, err := Storage(ctx, vdiskID, source, blockSize,
-		blockStorage, nil, nil)
+		blockStorage, ardb.NopCluster{}, nil)
 	require.NoError(t, err)
 	require.NotNil(t, tlogStorage)
 

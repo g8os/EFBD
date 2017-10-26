@@ -24,13 +24,26 @@ func Export(ctx context.Context, cfg Config) error {
 		return err
 	}
 
-	storageConfig, err := createStorageConfig(cfg.VdiskID, cfg.BlockStorageConfig, true)
+	storageConfig, err := createStorageConfig(cfg.VdiskID, cfg.BlockStorageConfig)
 	if err != nil {
 		return err
 	}
 
 	pool := ardb.NewPool(nil)
 	defer pool.Close()
+
+	storageCluster, err := ardb.NewCluster(storageConfig.NBD.StorageCluster, pool)
+	if err != nil {
+		return err
+	}
+
+	log.Debugf("collecting all stored block indices for vdisk %s, this might take a while...", cfg.VdiskID)
+	indices, err := storage.ListBlockIndices(cfg.VdiskID, storageConfig.Vdisk.Type, storageCluster)
+	if err != nil {
+		return fmt.Errorf(
+			"couldn't list block (storage) indices: %v (does vdisk '%s' exist?)",
+			err, cfg.VdiskID)
+	}
 
 	blockStorage, err := storage.BlockStorageFromConfig(
 		cfg.VdiskID,
@@ -41,7 +54,7 @@ func Export(ctx context.Context, cfg Config) error {
 	}
 	defer blockStorage.Close()
 
-	storageDriver, err := NewStorageDriver(cfg.BackupStorageConfig)
+	storageDriver, err := newStorageDriver(cfg.BackupStoragDriverConfig)
 	if err != nil {
 		return err
 	}
@@ -59,7 +72,7 @@ func Export(ctx context.Context, cfg Config) error {
 		Force:           cfg.Force,
 	}
 
-	return exportBS(ctx, blockStorage, storageConfig.Indices, storageDriver, exportConfig)
+	return exportBS(ctx, blockStorage, indices, storageDriver, exportConfig)
 }
 
 // existingOrNewHeader tries to first fetch an existing (snapshot) header from a given server,

@@ -20,19 +20,21 @@ import (
 
 var (
 	testConf = &Config{
-		DataShards:   1,
-		ParityShards: 1,
-		ListenAddr:   "127.0.0.1:0",
-		FlushSize:    25,
-		FlushTime:    10,
-		PrivKey:      "12345678901234567890123456789012",
+		ListenAddr: "127.0.0.1:0",
+		FlushSize:  25,
+		FlushTime:  10,
+		PrivKey:    "12345678901234567890123456789012",
 	}
 )
 
-func newZeroStorConfig(t *testing.T, vdiskID, privKey string,
-	data, parity int) (func(), *config.StubSource, stor.Config) {
+const (
+	testDataShards   = 1
+	testParityShards = 1
+)
+
+func newZeroStorConfig(t *testing.T, vdiskID, privKey string) (func(), *config.StubSource, stor.Config) {
 	// stor server
-	storCluster, err := embeddedserver.NewZeroStorCluster(data + parity)
+	storCluster, err := embeddedserver.NewZeroStorCluster(testDataShards + testParityShards)
 	require.Nil(t, err)
 
 	var servers []config.ServerConfig
@@ -53,8 +55,8 @@ func newZeroStorConfig(t *testing.T, vdiskID, privKey string,
 		IyoSecret:       "",
 		ZeroStorShards:  storCluster.Addrs(),
 		MetaShards:      []string{mdServer.ListenAddr()},
-		DataShardsNum:   data,
-		ParityShardsNum: parity,
+		DataShardsNum:   testDataShards,
+		ParityShardsNum: testParityShards,
 		EncryptPrivKey:  privKey,
 	}
 
@@ -68,12 +70,14 @@ func newZeroStorConfig(t *testing.T, vdiskID, privKey string,
 			ClientID:  storConf.IyoClientID,
 			Secret:    storConf.IyoSecret,
 		},
-		Servers: servers,
 		MetadataServers: []config.ServerConfig{
 			config.ServerConfig{
 				Address: mdServer.ListenAddr(),
 			},
 		},
+		DataServers:  servers,
+		DataShards:   testDataShards,
+		ParityShards: testParityShards,
 	})
 
 	cleanFunc := func() {
@@ -99,7 +103,7 @@ func TestEndToEnd(t *testing.T) {
 
 	log.Infof("in memory redis pool")
 
-	cleanFunc, stubSource, storConfig := newZeroStorConfig(t, expectedVdiskID, conf.PrivKey, conf.DataShards, conf.ParityShards)
+	cleanFunc, stubSource, storConfig := newZeroStorConfig(t, expectedVdiskID, conf.PrivKey)
 	defer cleanFunc()
 
 	// start the server

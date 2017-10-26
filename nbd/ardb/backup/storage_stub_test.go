@@ -89,6 +89,17 @@ func (stub *stubDriver) GetHeader(id string, w io.Writer) error {
 	return nil
 }
 
+// GetHeaders implements StorageDriver.GetHeaders
+func (stub *stubDriver) GetHeaders() (ids []string, err error) {
+	stub.mmux.RLock()
+	defer stub.mmux.RUnlock()
+
+	for id := range stub.headers {
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
 // Close implements StorageDriver.Close
 func (stub *stubDriver) Close() error {
 	return nil // nothing to do

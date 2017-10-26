@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
+	"github.com/zero-os/0-Disk/zeroctl/cmd/backup"
 	"github.com/zero-os/0-Disk/zeroctl/cmd/list"
 )
 
@@ -13,6 +14,7 @@ var ListCmd = &cobra.Command{
 
 func init() {
 	ListCmd.AddCommand(
-		list.VdiskCmd,
+		list.VdisksCmd,
+		backup.ListSnapshotsCmd,
 	)
 }

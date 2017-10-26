@@ -21,6 +21,7 @@ import (
 )
 
 func main() {
+	var version bool
 	var tlsonly bool
 	var verbose bool
 	var lbacachelimit int64
@@ -30,6 +31,7 @@ func main() {
 	var sourceConfig config.SourceConfig
 	var logPath string
 	var serverID string
+
 	flag.BoolVar(&verbose, "v", false, "when false, only log warnings and errors")
 	flag.StringVar(&logPath, "logfile", "", "optionally log to the specified file, instead of the stderr")
 	flag.BoolVar(&tlsonly, "tlsonly", false, "Forces all nbd connections to be tls-enabled")
@@ -40,7 +42,14 @@ func main() {
 	flag.Int64Var(&lbacachelimit, "lbacachelimit", ardb.DefaultLBACacheLimit,
 		fmt.Sprintf("Cache limit of LBA in bytes, needs to be higher then %d (bytes in 1 sector)", lba.BytesPerSector))
 	flag.StringVar(&serverID, "id", "default", "The server ID (default: default)")
+	flag.BoolVar(&version, "version", false, "prints build version and exits")
+
 	flag.Parse()
+
+	if version {
+		zerodisk.PrintVersion()
+		return
+	}
 
 	logLevel := log.InfoLevel
 	if verbose {
@@ -58,6 +67,8 @@ func main() {
 		logHandlers = append(logHandlers, handler)
 		log.SetHandlers(logHandlers...)
 	}
+
+	zerodisk.LogVersion()
 
 	log.Debugf("flags parsed: tlsonly=%t profileaddress=%q protocol=%q address=%q config=%q lbacachelimit=%d logfile=%q id=%q",
 		tlsonly,

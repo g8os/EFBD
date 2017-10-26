@@ -204,12 +204,15 @@ func TestReadZeroStoreClusterConfig(t *testing.T) {
 			ClientID:  "foo client",
 			Secret:    "foo secret",
 		},
-		Servers: []ServerConfig{
-			ServerConfig{Address: "1.1.1.1:11"},
-		},
 		MetadataServers: []ServerConfig{
 			ServerConfig{Address: "2.2.2.2:22"},
 		},
+		DataServers: []ServerConfig{
+			ServerConfig{Address: "1.1.1.1:11"},
+			ServerConfig{Address: "1.1.1.1:22"},
+		},
+		DataShards:   1,
+		ParityShards: 1,
 	}
 	source.SetTlogZeroStorCluster("foo", "bar", &inputCfg)
 
@@ -389,13 +392,15 @@ func TestWatchZeroStorClusterConfig(t *testing.T) {
 			ClientID:  "foo client",
 			Secret:    "foo secret",
 		},
-		Servers: []ServerConfig{
-			ServerConfig{Address: "1.1.1.1:11"},
-			ServerConfig{Address: "2.2.2.2:22"},
-		},
 		MetadataServers: []ServerConfig{
 			ServerConfig{Address: "3.3.3.3:33"},
 		},
+		DataServers: []ServerConfig{
+			ServerConfig{Address: "1.1.1.1:11"},
+			ServerConfig{Address: "2.2.2.2:22"},
+		},
+		DataShards:   1,
+		ParityShards: 1,
 	}
 	source.SetTlogZeroStorCluster("foo", "bar", &inputCfg)
 
@@ -429,7 +434,8 @@ func TestWatchZeroStorClusterConfig(t *testing.T) {
 
 	// update the 0-stor configuration in a valid way
 	inputCfg.IYO.ClientID = "boo client"
-	inputCfg.Servers = append(inputCfg.Servers, ServerConfig{Address: "3.3.3.3:33"})
+	inputCfg.DataServers = append(inputCfg.DataServers, ServerConfig{Address: "3.3.3.3:33"})
+	inputCfg.DataShards++
 	inputCfg.MetadataServers[0].Address = "4.4.4.4:33"
 
 	source.SetTlogZeroStorCluster("foo", "bar", &inputCfg)

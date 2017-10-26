@@ -20,33 +20,34 @@ var (
 	testConf = server.DefaultConfig()
 )
 
+const (
+	testDataShards   = 1
+	testParityShards = 1
+)
+
 func init() {
 	testConf.ListenAddr = "127.0.0.1:0"
-	testConf.DataShards = 1
-	testConf.ParityShards = 1
 }
 
 func newZeroStorDefaultConfig(t *testing.T, vdiskID string) (func(), *config.StubSource, stor.Config) {
-	return newZeroStorConfig(t, vdiskID, testConf.PrivKey, testConf.DataShards, testConf.ParityShards)
+	return newZeroStorConfig(t, vdiskID, testConf.PrivKey)
 }
 
-func newZeroStorConfig(t *testing.T, vdiskID, privKey string,
-	data, parity int) (func(), *config.StubSource, stor.Config) {
+func newZeroStorConfig(t *testing.T, vdiskID, privKey string) (func(), *config.StubSource, stor.Config) {
 
 	// stor server
-	storCluster, err := embeddedserver.NewZeroStorCluster(data + parity)
+	storCluster, err := embeddedserver.NewZeroStorCluster(testDataShards + testParityShards)
 	require.Nil(t, err)
 
 	// meta server
 	mdServer, err := embedserver.New()
 	require.Nil(t, err)
 
-	return newZeroStorConfigFromCluster(t, storCluster, mdServer, vdiskID, privKey, data, parity)
+	return newZeroStorConfigFromCluster(t, storCluster, mdServer, vdiskID, privKey)
 }
 
 func newZeroStorConfigFromCluster(t *testing.T, storCluster *embeddedserver.ZeroStorCluster,
-	mdServer *embedserver.Server, vdiskID, privKey string, data,
-	parity int) (func(), *config.StubSource, stor.Config) {
+	mdServer *embedserver.Server, vdiskID, privKey string) (func(), *config.StubSource, stor.Config) {
 
 	var servers []config.ServerConfig
 	for _, addr := range storCluster.Addrs() {
@@ -63,8 +64,8 @@ func newZeroStorConfigFromCluster(t *testing.T, storCluster *embeddedserver.Zero
 		IyoSecret:       "",
 		ZeroStorShards:  storCluster.Addrs(),
 		MetaShards:      []string{mdServer.ListenAddr()},
-		DataShardsNum:   data,
-		ParityShardsNum: parity,
+		DataShardsNum:   testDataShards,
+		ParityShardsNum: testParityShards,
 		EncryptPrivKey:  privKey,
 	}
 
@@ -78,12 +79,14 @@ func newZeroStorConfigFromCluster(t *testing.T, storCluster *embeddedserver.Zero
 			ClientID:  storConf.IyoClientID,
 			Secret:    storConf.IyoSecret,
 		},
-		Servers: servers,
 		MetadataServers: []config.ServerConfig{
 			config.ServerConfig{
 				Address: mdServer.ListenAddr(),
 			},
 		},
+		DataServers:  servers,
+		DataShards:   testDataShards,
+		ParityShards: testParityShards,
 	})
 
 	cleanFunc := func() {

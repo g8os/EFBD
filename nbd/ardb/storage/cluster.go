@@ -12,10 +12,6 @@ import (
 	"github.com/zero-os/0-Disk/nbd/ardb"
 )
 
-// TODO:
-// add server states (and stub handling)
-// https://github.com/zero-os/0-Disk/issues/455
-
 // NewPrimaryCluster creates a new PrimaryCluster.
 // See `PrimaryCluster` for more information.
 func NewPrimaryCluster(ctx context.Context, vdiskID string, cs config.Source) (*PrimaryCluster, error) {
@@ -75,6 +71,50 @@ func (pc *PrimaryCluster) DoFor(objectIndex int64, action ardb.StorageAction) (r
 	pc.mux.RUnlock()
 
 	return pc.doAt(serverIndex, cfg, action)
+}
+
+// ServerIterator implements StorageCluster.ServerIterator.
+func (pc *PrimaryCluster) ServerIterator(ctx context.Context) (<-chan ardb.StorageServer, error) {
+	pc.mux.Lock()
+	ch := make(chan ardb.StorageServer)
+	go func() {
+		defer pc.mux.Unlock()
+		defer close(ch)
+
+		for index := int64(0); index < pc.serverCount; index++ {
+			operational, _ := pc.serverOperational(index)
+			if !operational {
+				continue
+			}
+
+			server := primaryStorageServer{
+				index:   index,
+				cluster: pc,
+			}
+
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- server:
+			}
+		}
+	}()
+	return ch, nil
+}
+
+// ServerCount implements StorageCluster.ServerCount.
+func (pc *PrimaryCluster) ServerCount() int64 {
+	pc.mux.RLock()
+	defer pc.mux.RUnlock()
+
+	count := pc.serverCount
+	for _, server := range pc.servers {
+		if server.State != config.StorageServerStateOnline {
+			count--
+		}
+	}
+
+	return count
 }
 
 // execute an exuction at a given primary server
@@ -278,6 +318,23 @@ func (pc *PrimaryCluster) updatePrimaryStorageConfig(cfg config.StorageClusterCo
 	return nil
 }
 
+// primaryStorageServer defines a primary storage server.
+type primaryStorageServer struct {
+	index   int64
+	cluster *PrimaryCluster
+}
+
+// Do implements StorageServer.Do
+func (server primaryStorageServer) Do(action ardb.StorageAction) (reply interface{}, err error) {
+	cfg := server.cluster.servers[server.index]
+	return server.cluster.doAt(server.index, cfg, action)
+}
+
+// Config implements StorageServer.Config
+func (server primaryStorageServer) Config() config.StorageServerConfig {
+	return server.cluster.servers[server.index]
+}
+
 // NewTemplateCluster creates a new TemplateCluster.
 // See `TemplateCluster` for more information.
 func NewTemplateCluster(ctx context.Context, vdiskID string, cs config.Source) (*TemplateCluster, error) {
@@ -321,7 +378,37 @@ func (tsc *TemplateCluster) DoFor(objectIndex int64, action ardb.StorageAction) 
 	if err != nil {
 		return nil, err
 	}
+	return tsc.doAt(serverIndex, cfg, action)
+}
 
+// ServerIterator implements StorageCluster.ServerIterator.
+func (tsc *TemplateCluster) ServerIterator(context.Context) (<-chan ardb.StorageServer, error) {
+	return nil, ErrMethodNotSupported
+}
+
+// ServerCount implements StorageCluster.ServerCount.
+func (tsc *TemplateCluster) ServerCount() int64 {
+	tsc.mux.RLock()
+	defer tsc.mux.RUnlock()
+
+	count := tsc.serverCount
+	for _, server := range tsc.servers {
+		if server.State != config.StorageServerStateOnline {
+			count--
+		}
+	}
+
+	return count
+}
+
+// Close any open resources
+func (tsc *TemplateCluster) Close() error {
+	tsc.cancel()
+	tsc.pool.Close()
+	return nil
+}
+
+func (tsc *TemplateCluster) doAt(serverIndex int64, cfg config.StorageServerConfig, action ardb.StorageAction) (reply interface{}, err error) {
 	conn, err := tsc.pool.Dial(cfg)
 	if err == nil {
 		defer conn.Close()
@@ -352,13 +439,6 @@ func (tsc *TemplateCluster) DoFor(objectIndex int64, action ardb.StorageAction) 
 	}
 
 	return nil, ardb.ErrServerUnavailable
-}
-
-// Close any open resources
-func (tsc *TemplateCluster) Close() error {
-	tsc.cancel()
-	tsc.pool.Close()
-	return nil
 }
 
 // spawnConfigReloader starts all needed config watchers,
@@ -608,6 +688,19 @@ func mapErrorToBroadcastStatus(err error) log.MessageStatus {
 
 	return log.StatusUnknownError
 }
+
+// enforces that our StorageClusters
+// are actually StorageClusters
+var (
+	_ ardb.StorageCluster = (*PrimaryCluster)(nil)
+	_ ardb.StorageCluster = (*TemplateCluster)(nil)
+)
+
+// enforces that our ServerIterators
+// are actually ServerIterators
+var (
+	_ ardb.StorageServer = primaryStorageServer{}
+)
 
 var (
 	// ErrMethodNotSupported is an error returned

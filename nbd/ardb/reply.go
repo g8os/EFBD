@@ -107,6 +107,26 @@ func OptString(reply interface{}, err error) (string, error) {
 	return redis.String(reply, err)
 }
 
+// CursorAndValues returns the cursor and other values,
+// retrieved as the result of a *SCAN operation.
+func CursorAndValues(reply interface{}, err error) (string, interface{}, error) {
+	values, err := redis.Values(reply, err)
+	if err != nil {
+		return "", nil, err
+	}
+
+	if len(values) != 2 {
+		return "", nil, errors.New("CursorAndValues expects a slice of 2 values")
+	}
+
+	cursor, err := redis.String(values[0], nil)
+	if err != nil {
+		return "", nil, err
+	}
+
+	return cursor, values[1], nil
+}
+
 // Int64s is a helper that converts an array command reply to a []int64.
 // If err is not equal to nil, then Int64s returns the error.
 // Int64s returns an error if an array item is not an integer.
@@ -125,6 +145,46 @@ func Int64s(reply interface{}, err error) ([]int64, error) {
 	}
 
 	return ints, nil
+}
+
+// Bools is a helper that converts an array command reply to a []bool.
+// If err is not equal to nil, then Bools returns the error.
+// Bools returns an error if an array item is not an bool.
+func Bools(reply interface{}, err error) ([]bool, error) {
+	values, err := redis.Values(reply, err)
+	if err != nil {
+		return nil, err
+	}
+
+	var bools []bool
+	if err := redis.ScanSlice(values, &bools); err != nil {
+		return nil, err
+	}
+	if len(bools) == 0 {
+		return nil, ErrNil
+	}
+
+	return bools, nil
+}
+
+// Strings is a helper that converts an array command reply to a []string.
+// If err is not equal to nil, then Strings returns the error.
+// Strings returns an error if an array item is not an string.
+func Strings(reply interface{}, err error) ([]string, error) {
+	values, err := redis.Values(reply, err)
+	if err != nil {
+		return nil, err
+	}
+
+	var strings []string
+	if err := redis.ScanSlice(values, &strings); err != nil {
+		return nil, err
+	}
+	if len(strings) == 0 {
+		return nil, ErrNil
+	}
+
+	return strings, nil
 }
 
 // Int64ToBytesMapping is a helper that converts an array command reply to a map[int64][]byte.

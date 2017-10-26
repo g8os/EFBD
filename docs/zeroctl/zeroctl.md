@@ -26,7 +26,7 @@ Output the zeroctl version and runtime information.
 
 Copy a [vdisk]'s stored [data (1)][data] or [metadata (1,2,3)][metadata] as a new [vdisk][vdisk].
 
-### [`zeroctl delete vdisks`](commands/delete.md#vdisks)
+### [`zeroctl delete vdisk`](commands/delete.md#vdisk)
 
 Delete a [vdisk][vdisk]'s stored [data (1)][data] and/or [metadata (1,2,3)][metadata].
 
@@ -39,6 +39,10 @@ Delete a [vdisk][vdisk]'s stored [data (1)][data] and/or [metadata (1,2,3)][meta
 List all available [vdisks][vdisk] on a given [storage (1)][storage] server.
 
 NOTE: this command is slow if used on a [storage (1)][storage] server which has a lot of keys. Use this command with precaution.
+
+### [`zeroctl list snapshots`](commands/list.md#snapshots)
+
+List all available [snapshots][snapshot] on a given backup storage.
 
 ### [`zeroctl export vdisk`](commands/export.md#vdisk)
 
@@ -58,4 +62,5 @@ Describe a [vdisk][vdisk] [backup][backup] (see: snapshot) from a (S)FTP server.
 [metadata]: /docs/glossary.md#metadata
 [vdisk]: /docs/glossary.md#vdisk
 [tlog]: /docs/glossary.md#tlog
+[snapshot]: /docs/glossary.md#snapshot
 [restore]: /docs/restore.md#tlog

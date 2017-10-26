@@ -9,42 +9,10 @@ import (
 )
 
 var (
-	// ErrInvalidConfig is the error returned when giving an invalid
-	// storage (driver) config to the NewStorageDriver function.
-	ErrInvalidConfig = errors.New("invalid storage driver config")
-
 	// ErrDataDidNotExist is returned from a ServerDriver's Getter
 	// method in case the requested data does not exist on the server.
 	ErrDataDidNotExist = errors.New("requested data did not exist")
 )
-
-// NewStorageDriver creates a new storage driver,
-// using the given Storage (Driver) Config.
-func NewStorageDriver(cfg StorageConfig) (StorageDriver, error) {
-	switch cfg.StorageType {
-	case FTPStorageType:
-		ftpServerConfig, ok := cfg.Resource.(FTPStorageConfig)
-		if !ok {
-			return nil, ErrInvalidConfig
-		}
-		return FTPStorageDriver(ftpServerConfig)
-
-	case LocalStorageType:
-		resource := cfg.Resource
-		if resource == nil || resource == "" {
-			return LocalStorageDriver(defaultLocalRoot)
-		}
-
-		path, ok := cfg.Resource.(string)
-		if !ok {
-			return nil, ErrInvalidConfig
-		}
-		return LocalStorageDriver(path)
-
-	default:
-		return nil, ErrInvalidConfig
-	}
-}
 
 // StorageDriver defines the API of a (storage) driver,
 // which allows us to read/write from/to a (backup) storage,
@@ -56,7 +24,65 @@ type StorageDriver interface {
 	GetDedupedBlock(hash zerodisk.Hash, w io.Writer) error
 	GetHeader(id string, w io.Writer) error
 
+	GetHeaders() (ids []string, err error)
+
 	Close() error
+}
+
+// ReadSnapshotHeader loads (read=>[decrypt=>]decompress=>decode)
+// a (snapshot) header from a given (backup) storage.
+//
+// storagDriverConfig is used to configure the backup storage driver.
+// - When not given (nil), defaults to LocalStorageDriver, using the DefaultLocalRoot as the path.
+// - When given:
+//  - If type equals LocalStorageDriverConfig -> Create LocalStorageDriver;
+//  - If type equals FTPStorageDriverConfig -> Create FTPStorageDriver;
+//  - Else -> error
+func ReadSnapshotHeader(id string, storagDriverConfig interface{}, key *CryptoKey, ct CompressionType) (*Header, error) {
+	// create (backup) storage driver (so we can list snapshot headers from it)
+	driver, err := newStorageDriver(storagDriverConfig)
+	if err != nil {
+		return nil, err
+	}
+	return LoadHeader(id, driver, key, ct)
+}
+
+// ListSnapshots lists all snapshots on a given backup storage.
+// Optionally a predicate can be given to filter the returned identifiers.
+// ids can be nil, even when no error occured, this is not concidered an error.
+//
+// storagDriverConfig is used to configure the backup storage driver.
+// - When not given (nil), defaults to LocalStorageDriver, using the DefaultLocalRoot as the path.
+// - When given:
+//  - If type equals LocalStorageDriverConfig -> Create LocalStorageDriver;
+//  - If type equals FTPStorageDriverConfig -> Create FTPStorageDriver;
+//  - Else -> error
+func ListSnapshots(storagDriverConfig interface{}, pred func(id string) bool) (ids []string, err error) {
+	// create (backup) storage driver (so we can list snapshot headers from it)
+	driver, err := newStorageDriver(storagDriverConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	snapshotIDs, err := driver.GetHeaders()
+	if err != nil {
+		return nil, err
+	}
+	if pred == nil {
+		return snapshotIDs, nil
+	}
+
+	filterPos := 0
+	var ok bool
+	for _, snapshotID := range snapshotIDs {
+		ok = pred(snapshotID)
+		if ok {
+			snapshotIDs[filterPos] = snapshotID
+			filterPos++
+		}
+	}
+
+	return snapshotIDs[:filterPos], nil
 }
 
 func hashAsDirAndFile(hash zerodisk.Hash) (string, string, bool) {

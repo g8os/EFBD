@@ -7,8 +7,6 @@ import (
 	"runtime"
 
 	"github.com/zero-os/0-Disk/config"
-	"github.com/zero-os/0-Disk/log"
-	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 )
 
 const (
@@ -30,8 +28,14 @@ type Config struct {
 
 	// Required: SourceConfig to configure the storage with
 	BlockStorageConfig config.SourceConfig
-	// Required: BackupStorageConfig used to configure the backup storage driver.
-	BackupStorageConfig StorageConfig
+
+	// Optional: BackupStoragDriverConfig used to configure the backup storage driver.
+	//  - When not given, defaults to LocalStorageDriver, using the DefaultLocalRoot as the path.
+	//  - When given:
+	//    - If type equals LocalStorageDriverConfig -> Create LocalStorageDriver;
+	//    - If type equals FTPStorageDriverConfig -> Create FTPStorageDriver;
+	//    - Else -> error
+	BackupStoragDriverConfig interface{}
 
 	// Optional: Amount of jobs (goroutines) to run simultaneously
 	//           (to import/export in parallel)
@@ -78,11 +82,6 @@ func (cfg *Config) validate() error {
 		return err
 	}
 
-	err = cfg.BackupStorageConfig.validate()
-	if err != nil {
-		return err
-	}
-
 	if cfg.JobCount <= 0 {
 		cfg.JobCount = runtime.NumCPU()
 	}
@@ -95,12 +94,34 @@ func (cfg *Config) validate() error {
 	return nil
 }
 
+// create a storage driver based on the given backup storage driver config.
+func newStorageDriver(storagDriverConfig interface{}) (StorageDriver, error) {
+	if storagDriverConfig == nil {
+		// default to DefaultLocalRoot, of nothing is given by the user.
+		return LocalStorageDriver(LocalStorageDriverConfig{
+			Path: DefaultLocalRoot,
+		})
+	}
+
+	// if a config is given, try to interpret it
+	switch sdCfg := storagDriverConfig.(type) {
+	case FTPStorageDriverConfig:
+		return FTPStorageDriver(sdCfg)
+
+	case LocalStorageDriverConfig:
+		return LocalStorageDriver(sdCfg)
+
+	default:
+		return nil, fmt.Errorf(
+			"%[1]v (%[1]T) is not a valid BackupStoragDriverConfig", sdCfg)
+	}
+}
+
 // storageConfig returned when creating a block storage,
 // ready to export to/import from a backup.
 type storageConfig struct {
-	Indices []int64
-	NBD     config.NBDStorageConfig
-	Vdisk   config.VdiskStaticConfig
+	NBD   config.NBDStorageConfig
+	Vdisk config.VdiskStaticConfig
 }
 
 // blockFetcher is a generic interface which defines the API
@@ -348,7 +369,7 @@ func isNilBlock(block []byte) bool {
 }
 
 // Create a block storage ready for importing/exporting to/from a backup.
-func createStorageConfig(vdiskID string, sourceConfig config.SourceConfig, listIndices bool) (*storageConfig, error) {
+func createStorageConfig(vdiskID string, sourceConfig config.SourceConfig) (*storageConfig, error) {
 	storageConfigCloser, err := config.NewSource(sourceConfig)
 	if err != nil {
 		return nil, err
@@ -365,21 +386,9 @@ func createStorageConfig(vdiskID string, sourceConfig config.SourceConfig, listI
 		return nil, err
 	}
 
-	var indices []int64
-	if listIndices {
-		log.Debugf("collecting all stored block indices for vdisk %s, this might take a while...", vdiskID)
-		indices, err = storage.ListBlockIndices(vdiskID, vdiskConfig.Type, nbdStorageConfig.StorageCluster)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"couldn't list block (storage) indices: %v (does vdisk '%s' exist?)",
-				err, vdiskID)
-		}
-	}
-
 	return &storageConfig{
-		Indices: indices,
-		NBD:     *nbdStorageConfig,
-		Vdisk:   *vdiskConfig,
+		NBD:   *nbdStorageConfig,
+		Vdisk: *vdiskConfig,
 	}, nil
 }
 

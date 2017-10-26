@@ -35,8 +35,7 @@ func TestCoord(t *testing.T) {
 
 	tlogConf.WaitListenAddr = WaitListenAddrRandom
 
-	cleanFunc, confSource, _ := newZeroStorConfig(t, vdiskID, tlogConf.PrivKey,
-		tlogConf.DataShards, tlogConf.ParityShards)
+	cleanFunc, confSource, _ := newZeroStorConfig(t, vdiskID, tlogConf.PrivKey)
 	defer cleanFunc()
 
 	parentCtx, parentCancelFunc := context.WithCancel(context.Background())
@@ -116,8 +115,7 @@ func TestCoord(t *testing.T) {
 	wg2.Wait()
 
 	// make sure we have A+B with proper sequence number
-	storCli, err := stor.NewClientFromConfigSource(confSource, vdiskID, tlogConf.PrivKey, tlogConf.DataShards,
-		tlogConf.ParityShards)
+	storCli, err := stor.NewClientFromConfigSource(confSource, vdiskID, tlogConf.PrivKey)
 	require.NoError(t, err)
 
 	seq := tlog.FirstSequence

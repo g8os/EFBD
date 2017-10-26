@@ -1,6 +1,7 @@
 package ardb
 
 import (
+	"context"
 	"errors"
 
 	"github.com/zero-os/0-Disk/config"
@@ -15,6 +16,12 @@ type StorageCluster interface {
 	// DoFor applies a given action
 	// to a server within this cluster which maps to the given objectIndex.
 	DoFor(objectIndex int64, action StorageAction) (reply interface{}, err error)
+
+	// ServerIterator returns a server iterator for this Cluster.
+	ServerIterator(ctx context.Context) (<-chan StorageServer, error)
+
+	// ServerCount returns the amount of currently available servers within this cluster.
+	ServerCount() int64
 }
 
 // NewUniCluster creates a new (ARDB) uni-cluster.
@@ -73,26 +80,52 @@ func (cluster *UniCluster) DoFor(_ int64, action StorageAction) (interface{}, er
 	return cluster.Do(action)
 }
 
+// ServerIterator implements StorageCluster.ServerIterator
+func (cluster *UniCluster) ServerIterator(ctx context.Context) (<-chan StorageServer, error) {
+	ch := make(chan StorageServer)
+	server := storageServer{
+		cfg:    cluster.server,
+		dialer: cluster.dialer,
+	}
+
+	go func() {
+		select {
+		case ch <- server:
+		case <-ctx.Done():
+		}
+		close(ch)
+	}()
+
+	return ch, nil
+}
+
+// ServerCount implements StorageCluster.ServerCount
+func (cluster *UniCluster) ServerCount() int64 {
+	return 1
+}
+
 // NewCluster creates a new (ARDB) cluster.
-//   ErrNoServersAvailable is returned in case no given server is available.
-//   ErrServerStateNotSupported is returned in case at least one server
+// ErrNoServersAvailable is returned in case no given server is available.
+// ErrServerStateNotSupported is returned in case at least one server
 // has a state other than StorageServerStateOnline and StorageServerStateRIP.
 func NewCluster(cfg config.StorageClusterConfig, dialer ConnectionDialer) (*Cluster, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
 
-	var clusterOperational bool
+	serverCount := int64(len(cfg.Servers))
+	availableServerCount := serverCount
+
 	for _, server := range cfg.Servers {
 		if server.State == config.StorageServerStateOnline {
-			clusterOperational = true
 			continue
 		}
 		if server.State != config.StorageServerStateRIP {
 			return nil, ErrServerStateNotSupported
 		}
+		availableServerCount--
 	}
-	if !clusterOperational {
+	if availableServerCount == 0 {
 		return nil, ErrNoServersAvailable
 	}
 
@@ -101,16 +134,18 @@ func NewCluster(cfg config.StorageClusterConfig, dialer ConnectionDialer) (*Clus
 	}
 
 	return &Cluster{
-		servers:     cfg.Servers,
-		serverCount: int64(len(cfg.Servers)),
-		dialer:      dialer,
+		servers:              cfg.Servers,
+		serverCount:          serverCount,
+		availableServerCount: availableServerCount,
+		dialer:               dialer,
 	}, nil
 }
 
 // Cluster defines the in memory cluster model for a single cluster.
 type Cluster struct {
-	servers     []config.StorageServerConfig
-	serverCount int64
+	servers              []config.StorageServerConfig
+	serverCount          int64
+	availableServerCount int64
 
 	dialer ConnectionDialer
 }
@@ -135,6 +170,37 @@ func (cluster *Cluster) DoFor(objectIndex int64, action StorageAction) (interfac
 	return cluster.doAt(serverIndex, action)
 }
 
+// ServerIterator implements StorageCluster.ServerIterator
+func (cluster *Cluster) ServerIterator(ctx context.Context) (<-chan StorageServer, error) {
+	ch := make(chan StorageServer)
+	go func() {
+		defer close(ch)
+
+		for _, cfg := range cluster.servers {
+			if cfg.State != config.StorageServerStateOnline {
+				continue
+			}
+
+			server := storageServer{
+				cfg:    cfg,
+				dialer: cluster.dialer,
+			}
+
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- server:
+			}
+		}
+	}()
+	return ch, nil
+}
+
+// ServerCount implements StorageCluster.ServerCount
+func (cluster *Cluster) ServerCount() int64 {
+	return cluster.availableServerCount
+}
+
 func (cluster *Cluster) doAt(serverIndex int64, action StorageAction) (interface{}, error) {
 	// establish a connection for that serverIndex
 	conn, err := cluster.dialer.Dial(cluster.servers[serverIndex])
@@ -156,19 +222,143 @@ func (cluster *Cluster) serverOperational(index int64) (bool, error) {
 	return ok, nil
 }
 
+// storageServer is the std storage server.
+type storageServer struct {
+	cfg    config.StorageServerConfig
+	dialer ConnectionDialer
+}
+
+// Do implements StorageServer.Do
+func (server storageServer) Do(action StorageAction) (reply interface{}, err error) {
+	// establish a connection for that serverIndex
+	conn, err := server.dialer.Dial(server.cfg)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	// apply the given action to the established connection
+	return action.Do(conn)
+}
+
+// Config implements StorageServer.Config
+func (server storageServer) Config() config.StorageServerConfig {
+	return server.cfg
+}
+
+// ErrorCluster is a Cluster which can be used for
+// scenarios where you want to specify a StorageCluster,
+// which only ever returns a static error.
+type ErrorCluster struct {
+	Error error
+}
+
+// Do implements StorageCluster.Do
+func (cluster ErrorCluster) Do(action StorageAction) (reply interface{}, err error) {
+	return nil, cluster.Error
+}
+
+// DoFor implements StorageCluster.DoFor
+func (cluster ErrorCluster) DoFor(objectIndex int64, action StorageAction) (reply interface{}, err error) {
+	return nil, cluster.Error
+}
+
+// ServerIterator implements StorageCluster.ServerIterator
+func (cluster ErrorCluster) ServerIterator(ctx context.Context) (<-chan StorageServer, error) {
+	ch := make(chan StorageServer, 1)
+	server := errorStorageServer{Error: cluster.Error}
+
+	go func() {
+		select {
+		case ch <- server:
+		case <-ctx.Done():
+		}
+		close(ch)
+	}()
+
+	return ch, nil
+}
+
+// ServerCount implements StorageCluster.ServerCount
+func (cluster ErrorCluster) ServerCount() int64 {
+	return 0
+}
+
+// errorStorageServer is a server which can be used for
+// scenarios where you want to specify a StorageServer,
+// which only ever returns a static error.
+type errorStorageServer struct {
+	Error error
+}
+
+// Do implements StorageServer.Do
+func (server errorStorageServer) Do(action StorageAction) (reply interface{}, err error) {
+	return nil, server.Error
+}
+
+// Config implements StorageServer.Config
+func (server errorStorageServer) Config() config.StorageServerConfig {
+	return config.StorageServerConfig{}
+}
+
 // NopCluster is a Cluster which can be used for
 // scenarios where you want to specify a StorageCluster,
-// which only ever returns NoServersAvailable error.
+// which returns no errors and no content.
 type NopCluster struct{}
 
 // Do implements StorageCluster.Do
-func (cluster NopCluster) Do(action StorageAction) (reply interface{}, err error) {
-	return nil, ErrNoServersAvailable
+func (cluster NopCluster) Do(_ StorageAction) (reply interface{}, err error) {
+	return nil, nil
 }
 
 // DoFor implements StorageCluster.DoFor
 func (cluster NopCluster) DoFor(objectIndex int64, action StorageAction) (reply interface{}, err error) {
-	return nil, ErrNoServersAvailable
+	return nil, nil
+}
+
+// ServerIterator implements StorageCluster.ServerIterator
+func (cluster NopCluster) ServerIterator(ctx context.Context) (<-chan StorageServer, error) {
+	ch := make(chan StorageServer, 1)
+
+	go func() {
+		select {
+		case ch <- nopStorageServer{}:
+		case <-ctx.Done():
+		}
+		close(ch)
+	}()
+
+	return ch, nil
+}
+
+// ServerCount implements StorageCluster.ServerCount
+func (cluster NopCluster) ServerCount() int64 {
+	return 1
+}
+
+// nopStorageServer is a server which can be used for
+// scenarios where you want to specify a StorageServer,
+// which returns no errors and no content.
+type nopStorageServer struct{}
+
+// Do implements StorageServer.Do
+func (server nopStorageServer) Do(action StorageAction) (reply interface{}, err error) {
+	return nil, nil
+}
+
+// Config implements StorageServer.Config
+func (server nopStorageServer) Config() config.StorageServerConfig {
+	return config.StorageServerConfig{}
+}
+
+// StorageServer defines the interface of an
+// object which allows you to interact with an ARDB Storage Server.
+type StorageServer interface {
+	// Do applies a given action to this storage server.
+	Do(action StorageAction) (reply interface{}, err error)
+
+	// Config returns the storage server config used for this storage server.
+	Config() config.StorageServerConfig
 }
 
 // ServerIndexPredicate is a predicate
@@ -258,6 +448,15 @@ var (
 	_ StorageCluster = (*UniCluster)(nil)
 	_ StorageCluster = (*Cluster)(nil)
 	_ StorageCluster = NopCluster{}
+	_ StorageCluster = ErrorCluster{}
+)
+
+// enforces that our std StorageServers
+// are actually StorageServers
+var (
+	_ StorageServer = storageServer{}
+	_ StorageServer = errorStorageServer{}
+	_ StorageServer = nopStorageServer{}
 )
 
 var (
