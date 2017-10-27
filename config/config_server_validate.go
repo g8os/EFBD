@@ -13,7 +13,7 @@ func ValidateNBDServerConfigs(source Source, serverID string) error {
 		return err
 	}
 
-	errs := errors.NewErrSlice()
+	errs := errors.NewErrorSlice()
 	for _, vdiskID := range cfg.Vdisks {
 		_, err = ReadNBDStorageConfig(source, vdiskID)
 		if err != nil {
@@ -21,11 +21,7 @@ func ValidateNBDServerConfigs(source Source, serverID string) error {
 		}
 	}
 
-	if errs.Len() > 0 {
-		return errs
-	}
-
-	return nil
+	return errs.AsError()
 }
 
 // ValidateTlogServerConfigs validates all available Tlog Vdisk Configurations,
@@ -40,7 +36,7 @@ func ValidateTlogServerConfigs(source Source, serverID string) error {
 	var nbdVdiskConfig *VdiskNBDConfig
 
 	var validTlogConfiguredVdiskCount int
-	errs := errors.NewErrSlice()
+	errs := errors.NewErrorSlice()
 
 	for _, vdiskID := range cfg.Vdisks {
 		vdiskStaticConfig, err = ReadVdiskStaticConfig(source, vdiskID)
@@ -77,15 +73,11 @@ func ValidateTlogServerConfigs(source Source, serverID string) error {
 		validTlogConfiguredVdiskCount++
 	}
 
-	if errs.Len() > 0 {
-		return errs
-	}
-
 	if validTlogConfiguredVdiskCount == 0 {
-		return errors.New(
+		errs.Add(errors.New(
 			"there is no vdisk that has tlog configuration, while at least one is required",
-		)
+		))
 	}
 
-	return nil
+	return errs.AsError()
 }

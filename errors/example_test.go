@@ -50,6 +50,16 @@ func ExampleCause() {
 	// Output: this is the cause of the error
 }
 
+func ExampleWrapError() {
+	errCause := errors.New("this is the cause error")
+	errAnnot := errors.New("this is the annotation error")
+
+	err := errors.WrapError(errCause, errAnnot)
+
+	fmt.Print(err.Error())
+	// Output: this is the annotation error: this is the cause error
+}
+
 func ExampleCause_multipleWraps() {
 	err := errors.New("cause of the error")
 	err = errors.Wrap(err, "annotation 1")
@@ -65,10 +75,16 @@ func ExampleCause_multipleWraps() {
 	// cause of the error
 }
 
-func ExampleErrorSlice() {
-	var errs errors.ErrorSlice
+func Example_errorSlice() {
+	errs := errors.NewErrorSlice()
 
 	fmt.Println(errs.Len())
+
+	if errs.AsError() == nil {
+		fmt.Println("no errors")
+	} else {
+		fmt.Println("there shouldn't be any errors in here yet")
+	}
 
 	errs.Add(errors.New("an error"))
 
@@ -82,6 +98,7 @@ func ExampleErrorSlice() {
 
 	// Output:
 	// 0
+	// no errors
 	// 1
 	// an error;
 	// 2
