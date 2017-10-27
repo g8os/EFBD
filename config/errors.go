@@ -1,6 +1,6 @@
 package config
 
-import "github.com/pkg/errors"
+import "github.com/zero-os/0-Disk/errors"
 
 // Error constants
 var (

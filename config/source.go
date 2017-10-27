@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/pkg/errors"
+	"github.com/zero-os/0-Disk/errors"
 )
 
 // NewSource creates a new Source based on the given configuration.

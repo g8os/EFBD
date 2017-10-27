@@ -7,9 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/pkg/errors"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
-
 	yaml "gopkg.in/yaml.v2"
 )
 

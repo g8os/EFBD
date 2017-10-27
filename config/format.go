@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	valid "github.com/asaskevich/govalidator"
-	"github.com/pkg/errors"
+	"github.com/zero-os/0-Disk/errors"
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -97,13 +97,13 @@ func (cfg *VdiskStaticConfig) Validate() error {
 	// validate properties in more detail
 
 	if !ValidateBlockSize(int64(cfg.BlockSize)) {
-		return errors.Errorf(
+		return errors.Newf(
 			"blockSize '%d' is invalid, should be equal-or-greater than 512 and be a power of 2",
 			cfg.BlockSize,
 		)
 	}
 	if (cfg.Size * gibibyteAsBytes) < cfg.BlockSize {
-		return errors.Errorf(
+		return errors.Newf(
 			"%d is an invalid size, has to be able to contain at least 1 block",
 			cfg.Size,
 		)
@@ -323,7 +323,7 @@ func (cfg *ZeroStorClusterConfig) Validate() error {
 
 	expectedServeCount := cfg.DataShards + cfg.ParityShards
 	if len(cfg.DataServers) != expectedServeCount {
-		return errors.Errorf(
+		return errors.Newf(
 			"invalid ZeroStorClusterConfig: expected %d (data+parity) servers, while %d servers were defined",
 			expectedServeCount,
 			len(cfg.DataServers),
@@ -484,7 +484,7 @@ func (cfg *StorageServerConfig) Validate() error {
 		return errors.New("storage server address not given while it is required")
 	}
 	if !valid.IsDialString(cfg.Address) {
-		return errors.Errorf("storage server address '%s' is an invalid dialstring", cfg.Address)
+		return errors.Newf("storage server address '%s' is an invalid dialstring", cfg.Address)
 	}
 
 	// all checks out
@@ -523,7 +523,7 @@ func (cfg StorageServerConfig) String() string {
 func isDialStringSlice(data []string) error {
 	for _, server := range data {
 		if !valid.IsDialString(server) {
-			return errors.Errorf("%s is not a valid dial string", server)
+			return errors.Newf("%s is not a valid dial string", server)
 		}
 	}
 	return nil

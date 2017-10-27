@@ -1,7 +1,7 @@
 package config
 
 import (
-	"github.com/pkg/errors"
+	"github.com/zero-os/0-Disk/errors"
 )
 
 // primitive.go
@@ -49,7 +49,7 @@ func (vdiskType VdiskType) Validate() error {
 	case VdiskTypeBoot, VdiskTypeDB, VdiskTypeCache, VdiskTypeTmp:
 		return nil
 	default:
-		return errors.Errorf("%s is an invalid VdiskType", vdiskType)
+		return errors.Newf("%s is an invalid VdiskType", vdiskType)
 	}
 }
 
@@ -82,7 +82,7 @@ func (vdiskType *VdiskType) SetString(s string) error {
 	case vdiskTypeTmpStr:
 		*vdiskType = VdiskTypeTmp
 	default:
-		return errors.Errorf("%q is not a valid VdiskType", s)
+		return errors.Newf("%q is not a valid VdiskType", s)
 	}
 
 	return nil
@@ -222,7 +222,7 @@ func (state *StorageServerState) SetString(s string) error {
 	case storageServerStateRIPStr:
 		*state = StorageServerStateRIP
 	default:
-		return errors.Errorf("%q is not a valid StorageServerState", s)
+		return errors.Newf("%q is not a valid StorageServerState", s)
 	}
 
 	return nil

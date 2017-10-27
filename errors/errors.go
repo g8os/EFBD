@@ -13,14 +13,11 @@ import (
 )
 
 // New returns an error with provided message
-// and records the stack trace at the point where it was called.
 func New(msg string) error {
 	return errors.New(msg)
 }
 
-// Newf formats according to a format specifier
-// and returns the string as a value that satisfies error.
-// It also records the stack trace at the point where it was called.
+// Newf formats an error according to a format specifier
 func Newf(format string, args ...interface{}) error {
 	return errors.Errorf(format, args...)
 }

@@ -3,7 +3,7 @@ package config
 import (
 	"strings"
 
-	"github.com/pkg/errors"
+	"github.com/zero-os/0-Disk/errors"
 )
 
 // NewSourceConfig creates a new source config by
@@ -138,7 +138,7 @@ func etcdResourceFromString(data string) ([]string, error) {
 		for _, address := range addresses {
 			address = strings.TrimSpace(address)
 			if !IsServiceAddress(address) {
-				return nil, errors.Errorf(
+				return nil, errors.Newf(
 					"etcd config info: '%s' is not a valid address",
 					address,
 				)
@@ -153,7 +153,7 @@ func etcdResourceFromString(data string) ([]string, error) {
 		return []string{data}, nil
 	}
 
-	return nil, errors.Errorf(
+	return nil, errors.Newf(
 		"etcd config info: '%s' is not a valid address",
 		data,
 	)
@@ -169,7 +169,7 @@ func etcdResource(value interface{}) ([]string, error) {
 		return etcdResourceFromString(str)
 	}
 
-	return nil, errors.Errorf(
+	return nil, errors.Newf(
 		"etcd config info: '%v' is not a valid etcd resource",
 		value,
 	)
@@ -189,7 +189,7 @@ func fileResource(value interface{}) (string, error) {
 		return defaultFileResource, nil
 	}
 
-	return "", errors.Errorf(
+	return "", errors.Newf(
 		"file config info: %v is not a valid file path",
 		value,
 	)
@@ -205,7 +205,7 @@ func etcdResourceToString(value interface{}) (string, error) {
 		return endpoint, nil
 	}
 
-	return "", errors.Errorf(
+	return "", errors.Newf(
 		"etcd config info: '%v' is not a valid etcd resource",
 		value,
 	)
