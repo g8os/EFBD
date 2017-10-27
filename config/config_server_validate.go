@@ -13,15 +13,15 @@ func ValidateNBDServerConfigs(source Source, serverID string) error {
 		return err
 	}
 
-	var errs validateErrors
+	errs := errors.NewErrSlice()
 	for _, vdiskID := range cfg.Vdisks {
 		_, err = ReadNBDStorageConfig(source, vdiskID)
 		if err != nil {
-			errs = append(errs, err)
+			errs.Add(err)
 		}
 	}
 
-	if len(errs) > 0 {
+	if errs.Len() > 0 {
 		return errs
 	}
 
@@ -40,12 +40,12 @@ func ValidateTlogServerConfigs(source Source, serverID string) error {
 	var nbdVdiskConfig *VdiskNBDConfig
 
 	var validTlogConfiguredVdiskCount int
-	var errs validateErrors
+	errs := errors.NewErrSlice()
 
 	for _, vdiskID := range cfg.Vdisks {
 		vdiskStaticConfig, err = ReadVdiskStaticConfig(source, vdiskID)
 		if err != nil {
-			errs = append(errs, err)
+			errs.Add(err)
 			continue
 		}
 		if !vdiskStaticConfig.Type.TlogSupport() {
@@ -56,7 +56,7 @@ func ValidateTlogServerConfigs(source Source, serverID string) error {
 		}
 		nbdVdiskConfig, err = ReadVdiskNBDConfig(source, vdiskID)
 		if err != nil {
-			errs = append(errs, err)
+			errs.Add(err)
 			continue
 		}
 		if nbdVdiskConfig.TlogServerClusterID == "" {
@@ -70,14 +70,14 @@ func ValidateTlogServerConfigs(source Source, serverID string) error {
 		// now let's try to read the tlog storage
 		_, err = ReadTlogStorageConfig(source, vdiskID)
 		if err != nil {
-			errs = append(errs, err)
+			errs.Add(err)
 			continue
 		}
 
 		validTlogConfiguredVdiskCount++
 	}
 
-	if len(errs) > 0 {
+	if errs.Len() > 0 {
 		return errs
 	}
 
@@ -88,18 +88,4 @@ func ValidateTlogServerConfigs(source Source, serverID string) error {
 	}
 
 	return nil
-}
-
-type validateErrors []error
-
-func (errs validateErrors) Error() string {
-	if len(errs) == 0 {
-		return ""
-	}
-
-	var str string
-	for _, err := range errs {
-		str += err.Error() + ";"
-	}
-	return str
 }

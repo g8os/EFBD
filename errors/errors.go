@@ -40,3 +40,36 @@ func Wrapf(err error, format string, args ...interface{}) error {
 func Cause(err error) error {
 	return errors.Cause(err)
 }
+
+// NewErrSlice returns an empty ErrorSlice
+func NewErrSlice() *ErrorSlice {
+	return new(ErrorSlice)
+}
+
+// ErrorSlice represents a slice of errors
+type ErrorSlice struct {
+	errors []error
+}
+
+// Add adds an error to ErrorSlice
+func (errs *ErrorSlice) Add(err error) {
+	errs.errors = append(errs.errors, err)
+}
+
+// Error implements the error interface
+func (errs *ErrorSlice) Error() string {
+	if errs.Len() == 0 {
+		return ""
+	}
+
+	var str string
+	for _, err := range errs.errors {
+		str += err.Error() + ";"
+	}
+	return str
+}
+
+// Len returns the current amount of errors in ErrorSlice
+func (errs *ErrorSlice) Len() int {
+	return len(errs.errors)
+}

@@ -64,3 +64,26 @@ func ExampleCause_multipleWraps() {
 	// annotation 3: annotation 2: annotation 1: cause of the error
 	// cause of the error
 }
+
+func ExampleErrorSlice() {
+	var errs errors.ErrorSlice
+
+	fmt.Println(errs.Len())
+
+	errs.Add(errors.New("an error"))
+
+	fmt.Println(errs.Len())
+	fmt.Println(errs.Error())
+
+	errs.Add(errors.New("another error"))
+
+	fmt.Println(errs.Len())
+	fmt.Println(errs.Error())
+
+	// Output:
+	// 0
+	// 1
+	// an error;
+	// 2
+	// an error;another error;
+}
