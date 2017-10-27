@@ -5,6 +5,12 @@ import (
 	"fmt"
 )
 
+func panicOnError(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
 func ExampleHashBytes() {
 	// given we have two sets of data ...
 	data := []byte("data to hash")
@@ -31,4 +37,21 @@ func ExampleHashBytes() {
 	// 4154c68e4df38451a009232697d3da08cbc02aa411bb1e03f1006aa046a84bd4
 	// it is true that hashes are equal
 	// it is false that hashes are equal
+}
+
+func ExampleNewHasher() {
+	// given we have data ...
+	data := []byte("data to hash")
+
+	// we can define a new unstance of default hasher
+	hasher, err := NewHasher()
+	panicOnError(err)
+
+	// hasher is used to hash the data
+	h := hasher.HashBytes(data)
+
+	str := hex.EncodeToString(h)
+	fmt.Println(str)
+	// Output:
+	// ae1c89d781f63c4dd6c8ec4703b711bed45966af278446749dbe0eed34eaedf3
 }
