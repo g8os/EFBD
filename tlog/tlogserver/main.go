@@ -11,7 +11,9 @@ import (
 	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/tlog/tlogserver/aggmq"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
+	"github.com/zero-os/0-Disk/tlog/tlogserver/slavesync"
 )
 
 func main() {
@@ -21,7 +23,6 @@ func main() {
 	var verbose bool
 	var profileAddr string
 	var storageAddresses string
-	//var withSlaveSync bool
 	var logPath string
 	var sourceConfig config.SourceConfig
 	var serverID string
@@ -33,7 +34,6 @@ func main() {
 	flag.StringVar(&conf.PrivKey, "priv-key", conf.PrivKey, "private key")
 	flag.StringVar(&profileAddr, "profile-address", "", "Enables profiling of this server as an http service")
 	flag.Var(&sourceConfig, "config", "config resource: dialstrings (etcd cluster) or path (yaml file)")
-	//flag.BoolVar(&withSlaveSync, "with-slave-sync", false, "sync to ardb slave")
 	flag.BoolVar(&verbose, "v", false, "log verbose (debug) statements")
 	flag.StringVar(&logPath, "logfile", "", "optionally log to the specified file, instead of the stderr")
 	flag.StringVar(&serverID, "id", "default", "The server ID (default: default)")
@@ -101,20 +101,11 @@ func main() {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
-	// [TODO]
-	// disabled until we work on a solution for
-	// issue https://github.com/zero-os/0-Disk/issues/475,
-	// as right now this feature writes to primary cluster which is not good for anything!
-	// > This also disabled the slave sync stuff within the tlog vdisk code
-	// > (due to conf.AggMq not being defined)
-	/*if withSlaveSync {
-		// aggregation MQ
-		conf.AggMq = aggmq.NewMQ()
-
-		// slave syncer manager
-		ssm := slavesync.NewManager(ctx, conf.AggMq, configSource)
-		go ssm.Run()
-	}*/
+	// aggregation MQ
+	conf.AggMq = aggmq.NewMQ()
+	// slave syncer manager
+	ssm := slavesync.NewManager(ctx, conf.AggMq, configSource)
+	go ssm.Run()
 
 	// create server
 	server, err := server.NewServer(conf, configSource)

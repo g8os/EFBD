@@ -79,7 +79,7 @@ func (p *Pool) getConnectionSpecificPool(cfg config.StorageServerConfig) (*redis
 }
 
 // Close releases the resources used by the pool.
-func (p *Pool) Close() {
+func (p *Pool) Close() error {
 	p.mux.Lock()
 	defer p.mux.Unlock()
 
@@ -89,6 +89,7 @@ func (p *Pool) Close() {
 	}
 
 	p.pools = nil
+	return nil
 }
 
 // ConnectionDialer defines a type which allows you to dial a connection.
