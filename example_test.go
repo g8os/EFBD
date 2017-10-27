@@ -55,3 +55,21 @@ func ExampleNewHasher() {
 	// Output:
 	// ae1c89d781f63c4dd6c8ec4703b711bed45966af278446749dbe0eed34eaedf3
 }
+
+func ExampleNewKeyedHasher() {
+	// given we have data and key ...
+	data := []byte("data to hash")
+	key := []byte("key")
+
+	// we can define a new unstance of default keyed hasher
+	hasher, err := NewKeyedHasher(key)
+	panicOnError(err)
+
+	// hasher is used to hash the data
+	h := hasher.HashBytes(data)
+	str := hex.EncodeToString(h)
+
+	fmt.Println(str)
+	// Output:
+	// 5e09ed568017f03f66d6cca8c37272d0c55be86e9c27cf459721037c8fc3b5bb
+}
