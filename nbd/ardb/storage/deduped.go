@@ -630,17 +630,10 @@ func copyDedupedBetweenServers(sourceKey, targetKey string, src, dst ardb.Storag
 					ardb.Command(command.HashSet, targetKey, index, hash))
 			}
 
-			transaction := newARDBTransaction(cmds...)
+			action := ardb.Commands(cmds...)
 			log.Debugf("flushing buffered metadata to be stored at %s on %s...", targetKey, dst.Config())
-			// execute the transaction
-			response, err := dst.Do(transaction)
-			if err == nil && response == nil {
-				// if response == <nil> the transaction has failed
-				// more info: https://redis.io/topics/transactions
-				err = fmt.Errorf("%s was busy and couldn't be modified", targetKey)
-			}
+			result.Error = ardb.Error(dst.Do(action))
 
-			result.Error = err
 			select {
 			case resultChan <- result:
 			case <-ctx.Done():

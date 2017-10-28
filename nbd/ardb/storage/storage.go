@@ -519,8 +519,4 @@ func isInterfaceValueNil(v interface{}) bool {
 var (
 	// TODO: remove once https://github.com/zero-os/0-Disk/issues/567 is fixed
 	ardbStartCursor = "0"
-
-	newARDBTransaction = func(cmds ...ardb.StorageAction) ardb.StorageAction {
-		return ardb.Transaction(cmds...)
-	}
 )
