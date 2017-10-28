@@ -10,6 +10,10 @@ func panicOnError(err error) {
 		panic(err)
 	}
 }
+func printHex(h Hash) {
+	str := hex.EncodeToString(h)
+	fmt.Println(str)
+}
 
 func ExampleHashBytes() {
 	// given we have two sets of data ...
@@ -18,13 +22,10 @@ func ExampleHashBytes() {
 
 	// we can obtain obtain hashes
 	h := HashBytes(data)
+	printHex(h)
+
 	hDiff := HashBytes(dataDiff)
-
-	str := hex.EncodeToString(h)
-	strDiff := hex.EncodeToString(hDiff)
-
-	fmt.Println(str)
-	fmt.Println(strDiff)
+	printHex(hDiff)
 
 	// we can compare hashes
 	sameHash := h.Equals(h)
@@ -43,15 +44,14 @@ func ExampleNewHasher() {
 	// given we have data ...
 	data := []byte("data to hash")
 
-	// we can define a new unstance of default hasher
+	// we can define a new instance of default hasher
 	hasher, err := NewHasher()
 	panicOnError(err)
 
 	// hasher is used to hash the data
 	h := hasher.HashBytes(data)
+	printHex(h)
 
-	str := hex.EncodeToString(h)
-	fmt.Println(str)
 	// Output:
 	// ae1c89d781f63c4dd6c8ec4703b711bed45966af278446749dbe0eed34eaedf3
 }
@@ -61,15 +61,13 @@ func ExampleNewKeyedHasher() {
 	data := []byte("data to hash")
 	key := []byte("key")
 
-	// we can define a new unstance of default keyed hasher
+	// we can define a new instance of default keyed hasher
 	hasher, err := NewKeyedHasher(key)
 	panicOnError(err)
 
 	// hasher is used to hash the data
 	h := hasher.HashBytes(data)
-	str := hex.EncodeToString(h)
-
-	fmt.Println(str)
+	printHex(h)
 	// Output:
 	// 5e09ed568017f03f66d6cca8c37272d0c55be86e9c27cf459721037c8fc3b5bb
 }
