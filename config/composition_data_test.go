@@ -119,18 +119,6 @@ var invalidNBDStorageConfigs = []NBDStorageConfig{
 var validTlogStorageConfigs = []TlogStorageConfig{
 	// complete example
 	TlogStorageConfig{
-		SlaveStorageCluster: &StorageClusterConfig{
-			Servers: []StorageServerConfig{
-				StorageServerConfig{
-					Address:  "localhost:16379",
-					Database: 1,
-				},
-				StorageServerConfig{
-					Address:  "localhost:16380",
-					Database: 2,
-				},
-			},
-		},
 		ZeroStorCluster: ZeroStorClusterConfig{
 			IYO: IYOCredentials{
 				Org:       "foo org",
@@ -212,32 +200,3 @@ var invalidTlogStorageConfigs = []TlogStorageConfig{
 		},
 	},
 }
-
-var invalidTlogStorageConfigsDeduped = append(invalidTlogStorageConfigs,
-	// missing metadata storage server in given slave cluster
-	TlogStorageConfig{
-		ZeroStorCluster: ZeroStorClusterConfig{
-			IYO: IYOCredentials{
-				Org:       "foo org",
-				Namespace: "foo namespace",
-				ClientID:  "foo client",
-				Secret:    "foo secret",
-			},
-			MetadataServers: []ServerConfig{
-				ServerConfig{Address: "3.3.3.3:33"},
-			},
-			DataServers: []ServerConfig{
-				ServerConfig{Address: "1.1.1.1:11"},
-				ServerConfig{Address: "2.2.2.2:22"},
-			},
-			DataShards:   1,
-			ParityShards: 1,
-		},
-		SlaveStorageCluster: &StorageClusterConfig{
-			Servers: []StorageServerConfig{
-				StorageServerConfig{
-					Address: "localhost:16379",
-				},
-			},
-		},
-	})

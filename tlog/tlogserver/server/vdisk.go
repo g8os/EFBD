@@ -528,7 +528,7 @@ func (vd *vdisk) manageSlaveSync() error {
 		return nil
 	}
 
-	// read config
+	/*// read config
 	conf, err := config.ReadVdiskTlogConfig(vd.configSource, vd.id)
 	if err != nil {
 		return err
@@ -543,7 +543,7 @@ func (vd *vdisk) manageSlaveSync() error {
 			vd.withSlaveSyncer = false
 		}
 		return nil
-	}
+	}*/
 
 	if vd.withSlaveSyncer {
 		log.Infof("Restart slave syncer for vdisk: %v", vd.id)

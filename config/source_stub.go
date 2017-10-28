@@ -186,14 +186,6 @@ func (s *StubSource) SetSlaveStorageCluster(vdiskID, clusterID string, cfg *Stor
 
 	vdiskCfg := s.getVdiskCfg(vdiskID)
 
-	if vdiskCfg.Tlog == nil {
-		vdiskCfg.Tlog = &VdiskTlogConfig{
-			SlaveStorageClusterID: clusterID,
-		}
-	} else {
-		vdiskCfg.Tlog.SlaveStorageClusterID = clusterID
-	}
-
 	if vdiskCfg.NBD == nil {
 		vdiskCfg.NBD = &VdiskNBDConfig{
 			SlaveStorageClusterID: clusterID,
