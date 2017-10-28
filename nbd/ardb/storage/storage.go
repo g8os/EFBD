@@ -13,7 +13,6 @@ import (
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/command"
-	"github.com/zero-os/0-Disk/nbd/ardb/storage/lba"
 )
 
 // BlockStorage defines an interface for all a block storage.
@@ -451,7 +450,7 @@ var listStorageKeyPrefixRex = regexp.MustCompile("^(" +
 	")(.+)$")
 
 var listStorageKeyPrefixes = []string{
-	lba.StorageKeyPrefix,
+	lbaStorageKeyPrefix,
 	nonDedupedStorageKeyPrefix,
 }
 
@@ -514,3 +513,14 @@ func isInterfaceValueNil(v interface{}) bool {
 	rv := reflect.ValueOf(v)
 	return rv.Kind() == reflect.Ptr && rv.IsNil()
 }
+
+// some variables that we wish to override
+// to make up for ledisdb shortcomings
+var (
+	// TODO: remove once https://github.com/zero-os/0-Disk/issues/567 is fixed
+	ardbStartCursor = "0"
+
+	newARDBTransaction = func(cmds ...ardb.StorageAction) ardb.StorageAction {
+		return ardb.Transaction(cmds...)
+	}
+)

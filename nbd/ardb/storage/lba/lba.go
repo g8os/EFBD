@@ -6,63 +6,42 @@ import (
 	"sync"
 
 	"github.com/zero-os/0-Disk"
-	"github.com/zero-os/0-Disk/log"
-	"github.com/zero-os/0-Disk/nbd/ardb"
 )
 
 const (
-	// StorageKeyPrefix is the prefix used in StorageKey
-	StorageKeyPrefix = "lba:"
 	// MinimumBucketSizeLimit defines how small the cache limit for the LBA
 	// and thus a bucket can be at its extreme. Bigger is better.
 	MinimumBucketSizeLimit = BytesPerSector * 8
 )
 
-// StorageKey returns the LBA storage key used for a given deduped vdisk
-func StorageKey(vdiskID string) string {
-	return StorageKeyPrefix + vdiskID
-}
-
 // NewLBA creates a new LBA
-func NewLBA(vdiskID string, cacheLimitInBytes int64, cluster ardb.StorageCluster) (lba *LBA, err error) {
-	if vdiskID == "" {
-		return nil, errors.New("NewLBA requires non-empty vdiskID")
-	}
-	if cluster == nil {
-		return nil, errors.New("NewLBA requires a non-nil ARDB StorageCluster")
-	}
+func NewLBA(cacheLimitInBytes int64, storage SectorStorage) (*LBA, error) {
 	if cacheLimitInBytes < MinimumBucketSizeLimit {
 		return nil, fmt.Errorf(
 			"sectorCache requires at least %d bytes", MinimumBucketSizeLimit)
 	}
+	if storage == nil {
+		return nil, errors.New("LBA requires a non-nil storage")
+	}
 
+	// compute bucket config variables
 	bucketCount := cacheLimitInBytes / MinimumBucketSizeLimit
 	if bucketCount > maxNumberOfSectorBuckets {
 		bucketCount = maxNumberOfSectorBuckets
 	}
-
 	bucketLimitInBytes := cacheLimitInBytes / bucketCount
 
-	log.Debugf("creating LBA for vdisk %s with %d bucket(s)", vdiskID, bucketCount)
-
-	return newLBAWithStorageFactory(int32(bucketCount), bucketLimitInBytes, func() SectorStorage {
-		return ARDBSectorStorage(vdiskID, cluster)
-	}), nil
-}
-
-func newLBAWithStorageFactory(bucketCount int32, bucketLimitInBytes int64, factory func() SectorStorage) *LBA {
+	// create all buckets
 	buckets := make([]*sectorBucket, bucketCount)
-
-	var storage SectorStorage
 	for index := range buckets {
-		storage = factory()
 		buckets[index] = newSectorBucket(bucketLimitInBytes, storage)
 	}
 
+	// create the LBA itself
 	return &LBA{
 		buckets:     buckets,
-		bucketCount: bucketCount,
-	}
+		bucketCount: int32(bucketCount),
+	}, nil
 }
 
 // LBA implements the functionality to lookup block keys through the logical block index.

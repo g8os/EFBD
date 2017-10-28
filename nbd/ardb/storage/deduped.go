@@ -23,11 +23,8 @@ func Deduped(vdiskID string, blockSize, lbaCacheLimit int64, cluster, templateCl
 	}
 
 	// create the LBA (used to store deduped metadata)
-	vlba, err := lba.NewLBA(
-		vdiskID,
-		cacheLimit,
-		cluster,
-	)
+	lbaStorage := newLBASectorStorage(vdiskID, cluster)
+	vlba, err := lba.NewLBA(cacheLimit, lbaStorage)
 	if err != nil {
 		log.Errorf("couldn't create the LBA: %s", err.Error())
 		return nil, err
@@ -203,7 +200,7 @@ func dedupedVdiskExists(vdiskID string, cluster ardb.StorageCluster) (bool, erro
 	}
 
 	var exists bool
-	action := ardb.Command(command.Exists, lba.StorageKey(vdiskID))
+	action := ardb.Command(command.Exists, lbaStorageKey(vdiskID))
 	for server := range serverCh {
 		log.Infof("checking if deduped vdisk %s exists on %v", vdiskID, server.Config())
 		exists, err = ardb.Bool(server.Do(action))
@@ -234,7 +231,7 @@ func deleteDedupedData(vdiskID string, cluster ardb.StorageCluster) (bool, error
 	var serverCount int
 	// TODO: dereference deduped blocks as well
 	// https://github.com/zero-os/0-Disk/issues/88
-	action := ardb.Command(command.Delete, lba.StorageKey(vdiskID))
+	action := ardb.Command(command.Delete, lbaStorageKey(vdiskID))
 	for server := range serverCh {
 		server := server
 		go func() {
@@ -279,7 +276,7 @@ func listDedupedBlockIndices(vdiskID string, cluster ardb.StorageCluster) ([]int
 	resultCh := make(chan serverResult)
 
 	var serverCount int
-	action := ardb.Script(0, listDedupedBlockIndicesScriptSource, nil, lba.StorageKey(vdiskID))
+	action := ardb.Script(0, listDedupedBlockIndicesScriptSource, nil, lbaStorageKey(vdiskID))
 	for server := range serverCh {
 		server := server
 		go func() {
@@ -349,7 +346,7 @@ func copyDedupedSameCluster(sourceID, targetID string, cluster ardb.StorageClust
 		return err
 	}
 
-	sourceKey, targetKey := lba.StorageKey(sourceID), lba.StorageKey(targetID)
+	sourceKey, targetKey := lbaStorageKey(sourceID), lbaStorageKey(targetID)
 	action := ardb.Script(0, copyDedupedSameConnScriptSource,
 		[]string{targetKey}, sourceKey, targetKey)
 
@@ -415,8 +412,8 @@ func copyDedupedSameServerCount(sourceID, targetID string, sourceCluster, target
 		return err
 	}
 
-	sourceKey := lba.StorageKey(sourceID)
-	targetKey := lba.StorageKey(targetID)
+	sourceKey := lbaStorageKey(sourceID)
+	targetKey := lbaStorageKey(targetID)
 
 	sameConnAction := ardb.Script(0, copyDedupedSameConnScriptSource,
 		[]string{targetKey}, sourceKey, targetKey)
@@ -498,8 +495,8 @@ func copyDedupedDifferentServerCount(sourceID, targetID string, sourceCluster, t
 		return err
 	}
 
-	sourceKey := lba.StorageKey(sourceID)
-	targetStorage := lba.ARDBSectorStorage(targetID, targetCluster)
+	sourceKey := lbaStorageKey(sourceID)
+	targetStorage := newLBASectorStorage(targetID, targetCluster)
 
 	type copyResult struct {
 		Count int64
@@ -548,8 +545,7 @@ type dedupFetchResult struct {
 
 func dedupMetadataFetcher(ctx context.Context, storageKey string, server ardb.StorageServer) <-chan dedupFetchResult {
 	const (
-		startCursor = "0"
-		itemCount   = "1000"
+		itemCount = "1000"
 	)
 
 	ch := make(chan dedupFetchResult)
@@ -564,7 +560,7 @@ func dedupMetadataFetcher(ctx context.Context, storageKey string, server ardb.St
 		var result dedupFetchResult
 
 		// initial cursor and action
-		cursor := startCursor
+		cursor := ardbStartCursor
 		action := ardb.Command(command.HashScan, storageKey, cursor, "COUNT", itemCount)
 
 		// loop through all values of the mapping
@@ -585,7 +581,7 @@ func dedupMetadataFetcher(ctx context.Context, storageKey string, server ardb.St
 			}
 
 			// return in case of an error or when we iterated through all possible values
-			if result.Error != nil || cursor == startCursor || cursor == "" {
+			if result.Error != nil || cursor == ardbStartCursor {
 				return
 			}
 
@@ -634,7 +630,7 @@ func copyDedupedBetweenServers(sourceKey, targetKey string, src, dst ardb.Storag
 					ardb.Command(command.HashSet, targetKey, index, hash))
 			}
 
-			transaction := ardb.Transaction(cmds...)
+			transaction := newARDBTransaction(cmds...)
 			log.Debugf("flushing buffered metadata to be stored at %s on %s...", targetKey, dst.Config())
 			// execute the transaction
 			response, err := dst.Do(transaction)
