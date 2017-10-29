@@ -6,6 +6,9 @@ import (
 	"runtime"
 
 	"github.com/zero-os/0-Disk/log"
+	"regexp"
+	"strconv"
+	"strings"
 )
 
 var (
@@ -16,6 +19,8 @@ var (
 	CommitHash string
 	// BuildDate represents the date when this tool suite was built
 	BuildDate string
+
+	verRegex = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$`)
 )
 
 // PrintVersion prints the current version
@@ -126,6 +131,29 @@ func (v Version) String() string {
 
 	label := bytes.Trim(v.Label[:], "\x00")
 	return str + "-" + string(label)
+}
+
+func VersionFromString(ver string) (Version, error) {
+	match := verRegex.FindStringSubmatch(ver)
+	if len(match) == 0 {
+		return Version{}, fmt.Errorf("not a valid version format '%s'", ver)
+	}
+	num := make([]uint8, 3)
+	for i, n := range match[1:4] {
+		v, err := strconv.ParseUint(n, 10, 8)
+		if err != nil {
+			return Version{}, fmt.Errorf("failed to parse version number (%d): %v", n, err)
+		}
+
+		num[i] = uint8(v)
+	}
+
+	var label *VersionLabel
+	if l := strings.TrimSpace(match[4]); len(l) != 0 {
+		label = versionLabel(l)
+	}
+
+	return NewVersion(num[0], num[1], num[2], label), nil
 }
 
 func versionLabel(str string) *VersionLabel {
