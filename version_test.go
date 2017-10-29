@@ -90,9 +90,17 @@ func TestVersionFromString(t *testing.T) {
 		}
 	}
 
+	//default version
+	if dv, err := VersionFromString(""); err == nil {
+		if ok := assert.Zero(t, defaultVersion.Compare(dv)); !ok {
+			t.Fatal()
+		}
+	} else {
+		t.Fatal(err)
+	}
+
 	//faulty version numbers
 	bad := []string{
-		"",              //empty string
 		"1.1-alpha",     //no patch number
 		"abcd",          //rubbish
 		"1.1.1.alpha-2", //label separated by . instead of -

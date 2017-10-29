@@ -21,6 +21,8 @@ var (
 	BuildDate string
 
 	verRegex = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$`)
+
+	defaultVersion = NewVersion(1, 1, 0, nil)
 )
 
 // PrintVersion prints the current version
@@ -134,6 +136,10 @@ func (v Version) String() string {
 }
 
 func VersionFromString(ver string) (Version, error) {
+	if ver == "" {
+		return defaultVersion, nil
+	}
+
 	match := verRegex.FindStringSubmatch(ver)
 	if len(match) == 0 {
 		return Version{}, fmt.Errorf("not a valid version format '%s'", ver)
