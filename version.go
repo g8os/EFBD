@@ -20,8 +20,11 @@ var (
 	// BuildDate represents the date when this tool suite was built
 	BuildDate string
 
+	//version parsing regex
 	verRegex = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$`)
 
+	//default version when VersionFromString method is called with empty
+	//string (1.1.0)
 	defaultVersion = NewVersion(1, 1, 0, nil)
 )
 
@@ -135,6 +138,8 @@ func (v Version) String() string {
 	return str + "-" + string(label)
 }
 
+//VersionFromString returns a Version object from the string
+//representation
 func VersionFromString(ver string) (Version, error) {
 	if ver == "" {
 		return defaultVersion, nil
