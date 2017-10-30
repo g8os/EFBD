@@ -263,6 +263,8 @@ type Metadata struct {
 	// optional: information about the source
 	// used to created the backup from.
 	Source Source `bencode:"src" valid:"optional"`
+	// optional: version of the 0-disk toolchain
+	Version string `bencode:"v" valid:"optional"`
 }
 
 // Source contains some optional metadata for a snapshot,
