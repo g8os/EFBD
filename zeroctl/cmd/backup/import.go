@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"runtime"
 
+	"github.com/zero-os/0-Disk/nbd/ardb"
+
 	"github.com/spf13/cobra"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb/backup"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
-	nbdtlog "github.com/zero-os/0-Disk/nbd/nbdserver/tlog"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/copy"
 	tlogserver "github.com/zero-os/0-Disk/tlog/tlogserver/server"
@@ -30,10 +31,8 @@ var ImportVdiskCmd = &cobra.Command{
 // see `init` for more information
 // about the meaning of each config property.
 var importVdiskCmdCfg struct {
-	DataShards   int
-	ParityShards int
-	TlogPrivKey  string
-	FlushSize    int
+	TlogPrivKey string
+	FlushSize   int
 }
 
 func importVdisk(cmd *cobra.Command, args []string) error {
@@ -63,14 +62,14 @@ func importVdisk(cmd *cobra.Command, args []string) error {
 	}
 
 	cfg := backup.Config{
-		VdiskID:             vdiskCmdCfg.VdiskID,
-		SnapshotID:          vdiskCmdCfg.SnapshotID,
-		BlockStorageConfig:  vdiskCmdCfg.SourceConfig,
-		BackupStorageConfig: vdiskCmdCfg.BackupStorageConfig,
-		JobCount:            vdiskCmdCfg.JobCount,
-		CompressionType:     vdiskCmdCfg.CompressionType,
-		CryptoKey:           vdiskCmdCfg.PrivateKey,
-		Force:               vdiskCmdCfg.Force,
+		VdiskID:                  vdiskCmdCfg.VdiskID,
+		SnapshotID:               vdiskCmdCfg.SnapshotID,
+		BlockStorageConfig:       vdiskCmdCfg.SourceConfig,
+		BackupStoragDriverConfig: createBackupStorageConfigFromFlags(),
+		JobCount:                 vdiskCmdCfg.JobCount,
+		CompressionType:          vdiskCmdCfg.CompressionType,
+		CryptoKey:                vdiskCmdCfg.PrivateKey,
+		Force:                    vdiskCmdCfg.Force,
 	}
 
 	log.Info("Importing the vdisk")
@@ -87,12 +86,22 @@ func importVdisk(cmd *cobra.Command, args []string) error {
 
 	log.Infof("generate tlog data")
 
+	vdiskNbdConf, err := config.ReadVdiskNBDConfig(configSource, vdiskCmdCfg.VdiskID)
+	if err != nil {
+		log.Errorf("failed to read vdisk nbd config of `%v`: %v", vdiskCmdCfg.VdiskID, err)
+		return err
+	}
+
+	clusterConf, err := config.ReadStorageClusterConfig(configSource, vdiskNbdConf.StorageClusterID)
+	if err != nil {
+		log.Errorf("failed to read storage cluster config of `%v`: %v", vdiskCmdCfg.VdiskID, err)
+		return err
+	}
+
 	generator, err := copy.NewGenerator(configSource, copy.Config{
 		SourceVdiskID: vdiskCmdCfg.VdiskID,
 		TargetVdiskID: vdiskCmdCfg.VdiskID,
 		FlushSize:     importVdiskCmdCfg.FlushSize,
-		DataShards:    importVdiskCmdCfg.DataShards,
-		ParityShards:  importVdiskCmdCfg.ParityShards,
 		PrivKey:       importVdiskCmdCfg.TlogPrivKey,
 		JobCount:      vdiskCmdCfg.JobCount,
 	})
@@ -100,14 +109,22 @@ func importVdisk(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	return generator.GenerateFromStorage(ctx)
+	var tlogMetadata storage.TlogMetadata
+	tlogMetadata.LastFlushedSequence, err = generator.GenerateFromStorage(ctx)
+	if err != nil {
+		return err
+	}
 
-	// TODO : copy nbd's tlog metadata
-	// see https://github.com/zero-os/0-Disk/issues/230
+	// store nbd's tlog metadata
+	cluster, err := ardb.NewCluster(*clusterConf, nil)
+	if err != nil {
+		return err
+	}
+	return storage.StoreTlogMetadata(vdiskCmdCfg.VdiskID, cluster, tlogMetadata)
 }
 
 // checkVdiskExists checks if the vdisk in question already/still exists,
-// and if so, and the force flag is specified, delete the (meta)data.
+// and if so, and the force flag is specified, delete the vdisk.
 func checkVdiskExists(vdiskID string) error {
 	// create config source
 	configSource, err := config.NewSource(vdiskCmdCfg.SourceConfig)
@@ -116,80 +133,61 @@ func checkVdiskExists(vdiskID string) error {
 	}
 	defer configSource.Close()
 
+	// gather configs
 	staticConfig, err := config.ReadVdiskStaticConfig(configSource, vdiskID)
 	if err != nil {
 		return fmt.Errorf(
 			"cannot read static vdisk config for vdisk %s: %v", vdiskID, err)
 	}
-	nbdStorageConfig, err := config.ReadNBDStorageConfig(configSource, vdiskID)
+	nbdStorageConfig, err := config.ReadVdiskNBDConfig(configSource, vdiskID)
 	if err != nil {
 		return fmt.Errorf(
 			"cannot read nbd storage config for vdisk %s: %v", vdiskID, err)
 	}
-
-	exists, err := storage.VdiskExists(
-		vdiskID, staticConfig.Type, &nbdStorageConfig.StorageCluster)
-	if !exists {
-		return nil // vdisk doesn't exist, so nothing to do
+	clusterConfig, err := config.ReadStorageClusterConfig(configSource, nbdStorageConfig.StorageClusterID)
+	if err != nil {
+		return fmt.Errorf(
+			"cannot read storage cluster config for cluster %s: %v",
+			nbdStorageConfig.StorageClusterID, err)
 	}
+
+	// create (primary) storage cluster
+	cluster, err := ardb.NewCluster(*clusterConfig, nil) // not pooled
+	if err != nil {
+		return fmt.Errorf(
+			"cannot create storage cluster model for cluster %s: %v",
+			nbdStorageConfig.StorageClusterID, err)
+	}
+
+	// check if vdisk exists
+	exists, err := storage.VdiskExists(vdiskID, staticConfig.Type, cluster)
 	if err != nil {
 		return fmt.Errorf("couldn't check if vdisk %s already exists: %v", vdiskID, err)
 	}
-
+	if !exists {
+		return nil // vdisk doesn't exist, so nothing to do
+	}
 	if !vdiskCmdCfg.Force {
-		return fmt.Errorf("cannot import vdisk %s as it already exists", vdiskID)
+		return fmt.Errorf("cannot restore vdisk %s as it already exists", vdiskID)
 	}
 
-	vdisks := map[string]config.VdiskType{vdiskID: staticConfig.Type}
-
-	// delete metadata
-	serverConfig, err := nbdStorageConfig.StorageCluster.FirstAvailableServer()
+	// delete vdisk, as it exists and `--force` is specified
+	deleted, err := storage.DeleteVdisk(vdiskID, staticConfig.Type, cluster)
 	if err != nil {
-		return err
+		return fmt.Errorf("couldn't delete vdisk %s: %v", vdiskID, err)
 	}
-	err = storage.DeleteMetadata(*serverConfig, vdisks)
-	if err != nil {
-		return fmt.Errorf(
-			"couldn't delete metadata for vdisks from %s@%d: %v",
-			serverConfig.Address, serverConfig.Database, err)
-	}
-	// make this easier
-	// see: https://github.com/zero-os/0-Disk/issues/481
-	err = deleteTlogMetadata(*serverConfig, vdisks)
-	if err != nil {
-		return fmt.Errorf(
-			"couldn't delete tlog metadata for vdisks from %s@%d: %v",
-			serverConfig.Address, serverConfig.Database, err)
+	if !deleted {
+		return fmt.Errorf("couldn't delete vdisk %s for an unknown reason", vdiskID)
 	}
 
-	// delete data
-	for _, serverConfig := range nbdStorageConfig.StorageCluster.Servers {
-		err := storage.DeleteData(serverConfig, vdisks)
-		if err != nil {
-			return fmt.Errorf(
-				"couldn't delete data for vdisk %s from %s@%d: %v",
-				vdiskID, serverConfig.Address, serverConfig.Database, err)
-		}
+	// delete 0-Stor (meta)data for this vdisk
+	if staticConfig.Type.TlogSupport() {
+		// TODO: also delete actual tlog meta(data) from 0-Stor cluster for the supported vdisks ?!?!
+		//       https://github.com/zero-os/0-Disk/issues/147
 	}
 
 	// vdisk did exist, but we were able to delete all the exiting (meta)data
 	return nil
-}
-
-func deleteTlogMetadata(serverCfg config.StorageServerConfig, vdiskMap map[string]config.VdiskType) error {
-	var vdisks []string
-	for vdiskID, vdiskType := range vdiskMap {
-		if vdiskType.TlogSupport() {
-			vdisks = append(vdisks, vdiskID)
-		}
-	}
-
-	// TODO: ensure that vdisk also have an active tlog configuration,
-	//       as this is still optional even though it might support it type-wise.
-	// TODO: also delete actual tlog meta(data) from 0-Stor cluster for the supported vdisks
-	//       https://github.com/zero-os/0-Disk/issues/147
-
-	return nbdtlog.DeleteMetadata(serverCfg, vdisks...)
 }
 
 func parseImportPosArguments(args []string) error {
@@ -234,6 +232,14 @@ here are some examples of valid values for that flag:
 Alternatively you can also give a local directory path to the --storage flag,
 to backup to the local file system instead.
 This is also the default in case the --storage flag is not specified.
+
+
+  When the --storage flag contains an FTP storage config and at least one of 
+--tls-server/--tls-cert/--tls-insecure/--tls-ca flags are given, 
+FTPS (FTP over SSL) is used instead of a plain FTP connection. 
+This enables importing backups in a private and secure fashion,
+discouraging eavesdropping, tampering, and message forgery.
+When the configured server does not support FTPS an error will be returned.
 `
 
 	ImportVdiskCmd.Flags().Var(
@@ -259,14 +265,6 @@ This is also the default in case the --storage flag is not specified.
 		"force", "f", false,
 		"when given, delete the vdisk if it already existed")
 
-	ImportVdiskCmd.Flags().IntVar(
-		&importVdiskCmdCfg.DataShards,
-		"data-shards", 4,
-		"data shards (K) variable of erasure encoding")
-	ImportVdiskCmd.Flags().IntVar(
-		&importVdiskCmdCfg.ParityShards,
-		"parity-shards", 2,
-		"parity shards (M) variable of erasure encoding")
 	ImportVdiskCmd.Flags().StringVar(
 		&importVdiskCmdCfg.TlogPrivKey,
 		"tlog-priv-key", "12345678901234567890123456789012",
@@ -277,4 +275,24 @@ This is also the default in case the --storage flag is not specified.
 		"flush-size", tlogserver.DefaultConfig().FlushSize,
 		"number of tlog blocks in one flush")
 
+	ImportVdiskCmd.Flags().BoolVar(
+		&vdiskCmdCfg.TLSConfig.InsecureSkipVerify,
+		"tls-insecure", false,
+		"when given FTP over SSL will be used without cert verification")
+	ImportVdiskCmd.Flags().StringVar(
+		&vdiskCmdCfg.TLSConfig.ServerName,
+		"tls-server", "",
+		"certs will be verified when given (required when --tls-insecure is not used)")
+	ImportVdiskCmd.Flags().StringVar(
+		&vdiskCmdCfg.TLSConfig.CertFile,
+		"tls-cert", "",
+		"PEM-encoded file containing the TLS Client cert (FTPS will be used when given)")
+	ImportVdiskCmd.Flags().StringVar(
+		&vdiskCmdCfg.TLSConfig.KeyFile,
+		"tls-key", "",
+		"PEM-encoded file containing the private TLS client key")
+	ImportVdiskCmd.Flags().StringVar(
+		&vdiskCmdCfg.TLSConfig.CAFile,
+		"tls-ca", "",
+		"optional PEM-encoded file containing the TLS CA Pool (defaults to system pool when not given)")
 }

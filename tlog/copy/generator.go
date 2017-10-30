@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
@@ -24,7 +25,7 @@ type Generator struct {
 
 // NewGenerator creates new tlog generator
 func NewGenerator(configSource config.Source, conf Config) (*Generator, error) {
-	flusher, err := flusher.New(configSource, conf.DataShards, conf.ParityShards, conf.FlushSize,
+	flusher, err := flusher.New(configSource, conf.FlushSize,
 		conf.TargetVdiskID, conf.PrivKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create flusher: %v", err)
@@ -37,36 +38,41 @@ func NewGenerator(configSource config.Source, conf Config) (*Generator, error) {
 	}, nil
 }
 
-// GenerateFromStorage generates tlog data from block storage
-func (g *Generator) GenerateFromStorage(parentCtx context.Context) error {
+// GenerateFromStorage generates tlog data from block storage.
+// It returns last sequence flushed.
+func (g *Generator) GenerateFromStorage(parentCtx context.Context) (uint64, error) {
 	staticConf, err := config.ReadVdiskStaticConfig(g.configSource, g.sourceVdiskID)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	storageConf, err := config.ReadNBDStorageConfig(g.configSource, g.sourceVdiskID)
 	if err != nil {
-		return fmt.Errorf("failed to ReadNBDStorageConfig: %v", err)
+		return 0, fmt.Errorf("failed to ReadNBDStorageConfig: %v", err)
 	}
 
-	indices, err := storage.ListBlockIndices(g.sourceVdiskID, staticConf.Type, &storageConf.StorageCluster)
+	// create (primary) storage cluster
+	// TODO: support optional slave cluster here
+	// see: https://github.com/zero-os/0-Disk/issues/445
+	cluster, err := ardb.NewCluster(storageConf.StorageCluster, nil) // not pooled
 	if err != nil {
-		return fmt.Errorf("ListBlockIndices failed for vdisk `%v`: %v", g.sourceVdiskID, err)
+		return 0, fmt.Errorf(
+			"cannot create storage cluster model for primary cluster of vdisk %s: %v",
+			g.sourceVdiskID, err)
 	}
 
-	ardbProv, err := ardb.StaticProvider(*storageConf, nil)
+	indices, err := storage.ListBlockIndices(g.sourceVdiskID, staticConf.Type, cluster)
 	if err != nil {
-		return err
+		return 0, fmt.Errorf("ListBlockIndices failed for vdisk `%v`: %v", g.sourceVdiskID, err)
 	}
 
-	sourceStorage, err := storage.NewBlockStorage(storage.BlockStorageConfig{
-		VdiskID:         g.sourceVdiskID,
-		TemplateVdiskID: staticConf.TemplateVdiskID,
-		VdiskType:       staticConf.Type,
-		BlockSize:       int64(staticConf.BlockSize),
-	}, ardbProv)
+	pool := ardb.NewPool(nil)
+	defer pool.Close()
+
+	sourceStorage, err := storage.BlockStorageFromConfig(
+		g.sourceVdiskID, *staticConf, *storageConf, pool)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer sourceStorage.Close()
 
@@ -124,7 +130,8 @@ func (g *Generator) GenerateFromStorage(parentCtx context.Context) error {
 	}
 
 	// add to flusher
-	var seq uint64
+	seq := tlog.FirstSequence
+
 	wg.Add(1)
 	go func() {
 		timestamp := tlog.TimeNowTimestamp()
@@ -135,15 +142,29 @@ func (g *Generator) GenerateFromStorage(parentCtx context.Context) error {
 			case <-ctx.Done():
 				return
 			default:
-				err = g.flusher.AddTransaction(schema.OpSet, seq, ic.content, ic.idx, timestamp)
+				err = g.flusher.AddTransaction(tlog.Transaction{
+					Operation: schema.OpSet,
+					Sequence:  seq,
+					Content:   ic.content,
+					Index:     ic.idx,
+					Timestamp: timestamp,
+					Hash:      zerodisk.Hash(ic.content),
+				})
+
 				if err != nil {
 					errCh <- err
 					return
 				}
-				seq++
+				if g.flusher.Full() {
+					if _, _, err := g.flusher.Flush(); err != nil {
+						errCh <- err
+						return
+					}
+				}
 				if int(seq) == len(indices) {
 					return
 				}
+				seq++
 			}
 		}
 	}()
@@ -155,12 +176,12 @@ func (g *Generator) GenerateFromStorage(parentCtx context.Context) error {
 
 	select {
 	case err := <-errCh:
-		return err
+		return 0, err
 	case <-doneCh:
 		// all is good
 	}
 
-	_, err = g.flusher.Flush()
+	_, _, err = g.flusher.Flush()
 	log.Infof("GenerateFromStorage generates `%v` tlog data with err = %v", len(indices), err)
-	return err
+	return seq, err
 }

@@ -55,15 +55,12 @@ func NewServer(conf *Config, configSource config.Source) (*Server, error) {
 
 	// used to created a flusher on rumtime
 	flusherConf := &flusherConfig{
-		DataShards:   conf.DataShards,
-		ParityShards: conf.ParityShards,
-		FlushSize:    conf.FlushSize,
-		FlushTime:    conf.FlushTime,
-		PrivKey:      conf.PrivKey,
+		FlushSize: conf.FlushSize,
+		FlushTime: conf.FlushTime,
+		PrivKey:   conf.PrivKey,
 	}
 
-	vdiskManager := newVdiskManager(
-		conf.AggMq, conf.BlockSize, conf.FlushSize, configSource)
+	vdiskManager := newVdiskManager(conf.AggMq, conf.FlushSize, configSource)
 	return &Server{
 		listener:             listener,
 		flusherConf:          flusherConf,
@@ -136,7 +133,7 @@ func (s *Server) handshake(r io.Reader, w io.Writer, conn *net.TCPConn) (vd *vdi
 	log.Debug("received handshake request from incoming connection")
 
 	// get the version from the handshake req and validate it
-	clientVersion := zerodisk.Version(req.Version())
+	clientVersion := zerodisk.VersionFromUInt32(req.Version())
 	if clientVersion.Compare(tlog.MinSupportedVersion) < 0 {
 		status = tlog.HandshakeStatusInvalidVersion
 		err = fmt.Errorf("client version (%s) is not supported by this server", clientVersion)

@@ -80,6 +80,8 @@ func (bucket *sectorBucket) Flush() error {
 	defer bucket.mux.Unlock()
 
 	var entry *cacheEntry
+
+	var err error
 	var errors flushError
 
 	// mark all sectors for flushing
@@ -90,12 +92,10 @@ func (bucket *sectorBucket) Flush() error {
 			continue // only write dirty sectors
 		}
 
-		// mark the sector for flushing
-		errors.AddError(bucket.storage.SetSector(entry.sectorIndex, entry.sector))
+		// mark the sector for persistent storage
+		err = bucket.storage.SetSector(entry.sectorIndex, entry.sector)
+		errors.AddError(err)
 	}
-
-	// flush all sectors ready for storage
-	errors.AddError(bucket.storage.Flush())
 
 	// clear bucket, which is something we want to do always
 	// as flushing is used only as a final action,
@@ -105,8 +105,7 @@ func (bucket *sectorBucket) Flush() error {
 	bucket.sectors = make(map[int64]*list.Element, bucket.size)
 	bucket.evictList.Init()
 
-	// return all errors that occured,
-	// or none if all was fine.
+	// flush bucket storage
 	return errors.AsError()
 }
 
@@ -154,10 +153,7 @@ func (bucket *sectorBucket) flushOldest() error {
 		entry := ent.Value.(*cacheEntry)
 		delete(bucket.sectors, entry.sectorIndex)
 
-		var errors flushError
-		errors.AddError(bucket.storage.SetSector(entry.sectorIndex, entry.sector))
-		errors.AddError(bucket.storage.Flush())
-		return errors.AsError()
+		return bucket.storage.SetSector(entry.sectorIndex, entry.sector)
 	}
 
 	return errBucketIsEmpty

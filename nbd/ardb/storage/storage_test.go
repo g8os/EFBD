@@ -3,16 +3,11 @@ package storage
 import (
 	"bytes"
 	"crypto/rand"
-	"errors"
-	"fmt"
 	"sync"
 	"testing"
 
-	"github.com/garyburd/redigo/redis"
-	"github.com/stretchr/testify/assert"
-	"github.com/zero-os/0-Disk/config"
+	"github.com/stretchr/testify/require"
 	"github.com/zero-os/0-Disk/log"
-	"github.com/zero-os/0-Disk/redisstub"
 )
 
 // shared test function to test all types of BlockStorage equally,
@@ -346,191 +341,62 @@ func testBlockStorageDeadlock(t *testing.T, blockSize, blockCount int64, storage
 	wg.Wait()
 }
 
-func TestBockStorageConfig(t *testing.T) {
-	// todo
-}
-
-func TestPipelineErrors(t *testing.T) {
-	assert := assert.New(t)
-
-	var errs pipelineErrors
-	assert.Nil(errs, "should be nil by default")
-
-	errs.AddError(nil)
-	errs.AddErrorMsg(nil, "foo")
-	assert.Nil(errs, "should still be nil as no errors were added")
-
-	errs.AddError(errors.New("foo"))
-	assert.NotNil(errs, "should not be nil any longer")
-	assert.Equal("foo", errs.Error())
-
-	errs = nil
-	assert.Nil(errs, "should be nil once again")
-
-	errs.AddErrorMsg(errors.New("foo"), "bar")
-	assert.NotNil(errs, "should not be nil any longer")
-	assert.Equal("bar (foo)", errs.Error())
-
-	errs = nil
-	assert.Nil(errs, "should be nil once again")
-
-	errs.AddErrorMsg(errors.New("foo"), "")
-	assert.NotNil(errs, "should not be nil any longer")
-	assert.Equal("foo", errs.Error())
-}
-
-type testStorageOp struct {
-	cmd       string
-	args      []interface{}
-	validator func(interface{}, error) error
-}
-
-func (op *testStorageOp) Send(sender storageOpSender) error {
-	return sender.Send(op.cmd, op.args...)
-}
-
-func (op *testStorageOp) Receive(receiver storageOpReceiver) error {
-	reply, err := receiver.Receive()
-
-	if op.validator != nil {
-		return op.validator(reply, err)
+func TestSortInt64s(t *testing.T) {
+	require := require.New(t)
+	testCases := []struct {
+		input, expected []int64
+	}{
+		{[]int64{}, []int64{}},
+		{[]int64{1}, []int64{1}},
+		{[]int64{1, 2}, []int64{1, 2}},
+		{[]int64{2, 1}, []int64{1, 2}},
+		{[]int64{5, 4, 3, 2, 1}, []int64{1, 2, 3, 4, 5}},
+		{[]int64{3, 1, 2}, []int64{1, 2, 3}},
 	}
-
-	return err
-}
-
-func (op *testStorageOp) Label() string {
-	return "test storage op"
-}
-
-func testStorageSetOp(key string, value interface{}) storageOp {
-	return &testStorageOp{
-		cmd:  "SET",
-		args: []interface{}{key, value},
+	for _, testCase := range testCases {
+		output := make([]int64, len(testCase.input))
+		copy(output, testCase.input)
+		sortInt64s(output)
+		require.Equalf(testCase.expected, output, "%v", testCase)
 	}
 }
 
-func testStorageDeleteOp(key string) storageOp {
-	return &testStorageOp{
-		cmd:  "DEL",
-		args: []interface{}{key},
-		validator: func(reply interface{}, err error) error {
-			n, err := redis.Int(reply, err)
-			if err != nil {
-				return err
-			}
-
-			if n == 0 {
-				return fmt.Errorf("%v was not deleted, as it didn't exist", key)
-			}
-
-			return nil
-		},
+func TestDedupInt64s(t *testing.T) {
+	require := require.New(t)
+	testCases := []struct {
+		input, expected []int64
+	}{
+		{nil, nil},
+		{[]int64{1}, []int64{1}},
+		{[]int64{1, 2}, []int64{1, 2}},
+		{[]int64{1, 1}, []int64{1}},
+		{[]int64{1, 1, 2, 2}, []int64{1, 2}},
+		{[]int64{1, 1, 2, 2, 3}, []int64{1, 2, 3}},
+		{[]int64{1, 1, 4, 2, 2, 2, 3}, []int64{1, 4, 2, 3}},
+	}
+	for _, testCase := range testCases {
+		output := dedupInt64s(testCase.input)
+		require.Equalf(testCase.expected, output, "%v", testCase)
 	}
 }
 
-func testStorageGetOp(key string, expected interface{}) storageOp {
-	return &testStorageOp{
-		cmd:  "GET",
-		args: []interface{}{key},
-		validator: func(reply interface{}, err error) error {
-			if err != nil {
-				return err
-			}
-
-			var value interface{}
-
-			switch expected.(type) {
-			case int:
-				value, err = redis.Int(reply, err)
-			case string:
-				value, err = redis.String(reply, err)
-			}
-
-			if err != nil {
-				return err
-			}
-
-			if value != expected {
-				return fmt.Errorf("received %v, expected %v", value, expected)
-			}
-
-			return nil
-		},
+func TestDedupStrings(t *testing.T) {
+	require := require.New(t)
+	testCases := []struct {
+		input, expected []string
+	}{
+		{nil, nil},
+		{[]string{"foo"}, []string{"foo"}},
+		{[]string{"foo", "foo"}, []string{"foo"}},
+		{[]string{"foo", "bar"}, []string{"foo", "bar"}},
+		{[]string{"foo", "foo", "bar", "bar", "bar"}, []string{"foo", "bar"}},
+		{[]string{"foo", "foo", "bar", "bar", "bar", "baz"}, []string{"foo", "bar", "baz"}},
+		{[]string{"foo", "foo", "baz", "bar", "bar", "bar"}, []string{"foo", "baz", "bar"}},
 	}
-}
-
-func TestStorageOpPipeline(t *testing.T) {
-	memRedis := redisstub.NewMemoryRedis()
-	go memRedis.Listen()
-	defer memRedis.Close()
-
-	cfg := config.StorageServerConfig{Address: memRedis.Address()}
-
-	var pipeline storageOpPipeline
-
-	assert := assert.New(t)
-	assert.Nil(pipeline, "should still be nil")
-
-	pipeline.Clear()
-	assert.Nil(pipeline, "should still be nil")
-
-	pipeline.Add(nil)
-	assert.Nil(pipeline, "should still be nil, as adding nil ops shouldn't work")
-
-	err := pipeline.Apply(cfg)
-	assert.NoError(err,
-		"should never result in an error, as there was nothing to apply")
-
-	pipeline.Add(testStorageGetOp("foo", "bar"))
-	assert.Equal(1, len(pipeline))
-	err = pipeline.Apply(cfg)
-	assert.Error(err, "getting non-existent stuff should not be fine")
-
-	pipeline.Clear()
-	assert.Nil(pipeline, "should be nil again")
-	assert.Equal(0, len(pipeline))
-
-	pipeline.Add(testStorageSetOp("foo", "bar"))
-	assert.NotNil(pipeline, "should not be nil anymore")
-	assert.Equal(1, len(pipeline))
-	pipeline.Add(testStorageSetOp("answer", 42))
-	assert.NotNil(pipeline, "should not be nil anymore")
-	assert.Equal(2, len(pipeline))
-
-	err = pipeline.Apply(cfg)
-	assert.NoError(err, "setting stuff should work")
-
-	pipeline.Clear()
-	assert.Nil(pipeline, "should be nil again")
-	assert.Equal(0, len(pipeline))
-
-	pipeline.Add(testStorageGetOp("foo", "bar"))
-	assert.Equal(1, len(pipeline))
-	pipeline.Add(testStorageDeleteOp("foo"))
-	assert.Equal(2, len(pipeline))
-	pipeline.Add(testStorageGetOp("answer", 42))
-	assert.Equal(3, len(pipeline))
-	err = pipeline.Apply(cfg)
-	assert.NoError(err, "getting and deleting existent stuff should be fine")
-
-	pipeline.Clear()
-	assert.Nil(pipeline, "should be nil again")
-	assert.Equal(0, len(pipeline))
-
-	pipeline.Add(testStorageGetOp("foo", "bar"))
-	assert.Equal(1, len(pipeline))
-	err = pipeline.Apply(cfg)
-	assert.Error(err, "getting non-existent existent stuff shouldn't be fine")
-
-	pipeline.Clear()
-	assert.Nil(pipeline, "should be nil again")
-	assert.Equal(0, len(pipeline))
-
-	pipeline.Add(testStorageGetOp("answer", 42))
-	assert.Equal(1, len(pipeline))
-	err = pipeline.Apply(cfg)
-	assert.NoError(err, "getting existent stuff should be fine")
+	for _, testCase := range testCases {
+		output := dedupStrings(testCase.input)
+		require.Equalf(testCase.expected, output, "%v", testCase)
+	}
 }
 
 func init() {

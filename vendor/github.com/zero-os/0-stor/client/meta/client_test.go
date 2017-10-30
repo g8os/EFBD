@@ -39,6 +39,12 @@ func TestRoundTrip(t *testing.T) {
 	assert.Equal(t, md.Next, storedMd.Next, "next pointer is different")
 	assert.Equal(t, md.ConfigPtr, storedMd.ConfigPtr, "config pointer is different")
 	assert.Equal(t, md.Chunks, storedMd.Chunks, "chunks are differents")
+
+	err = c.Delete(string(md.Key))
+	require.NoError(t, err)
+	// make sure we can't get it back
+	_, err = c.Get(string(md.Key))
+	require.Error(t, err)
 }
 
 // test that client can return gracefully when the server is not exist

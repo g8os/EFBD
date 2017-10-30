@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zero-os/0-Disk/nbd/ardb"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
@@ -42,13 +44,14 @@ func TestTlogStorageSlow(t *testing.T) {
 	}
 
 	source := config.NewStubSource()
+	source.SetPrimaryStorageCluster(vdiskID, "nbdCluster", nil)
 	source.SetTlogServerCluster(vdiskID, "tlogcluster", &config.TlogClusterConfig{
 		Servers: []string{tlogrpc},
 	})
 	defer source.Close()
 
 	storage, err := Storage(
-		ctx, vdiskID, "tlogcluster", source, blockSize, slowStorage, nil, nil)
+		ctx, vdiskID, source, blockSize, slowStorage, ardb.NopCluster{}, nil)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}

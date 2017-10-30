@@ -1,17 +1,18 @@
 package storage
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
 
-	"github.com/garyburd/redigo/redis"
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
-	"github.com/zero-os/0-Disk/nbd/ardb/storage/lba"
+	"github.com/zero-os/0-Disk/nbd/ardb/command"
 )
 
 // BlockStorage defines an interface for all a block storage.
@@ -63,8 +64,69 @@ func (cfg *BlockStorageConfig) Validate() error {
 	return nil
 }
 
+// BlockStorageFromConfigSource creates a block storage
+// from the config retrieved from the given config source.
+// It is the simplest way to create a BlockStorage,
+// but it also has the disadvantage that
+// it does not support SelfHealing or HotReloading of the used configuration.
+func BlockStorageFromConfigSource(vdiskID string, cs config.Source, dialer ardb.ConnectionDialer) (BlockStorage, error) {
+	// get configs from source
+	vdiskConfig, err := config.ReadVdiskStaticConfig(cs, vdiskID)
+	if err != nil {
+		return nil, err
+	}
+	nbdStorageConfig, err := config.ReadNBDStorageConfig(cs, vdiskID)
+	if err != nil {
+		return nil, err
+	}
+
+	return BlockStorageFromConfig(vdiskID, *vdiskConfig, *nbdStorageConfig, dialer)
+}
+
+// BlockStorageFromConfig creates a block storage from the given config.
+// It is the simplest way to create a BlockStorage,
+// but it also has the disadvantage that
+// it does not support SelfHealing or HotReloading of the used configuration.
+func BlockStorageFromConfig(vdiskID string, vdiskConfig config.VdiskStaticConfig, nbdConfig config.NBDStorageConfig, dialer ardb.ConnectionDialer) (BlockStorage, error) {
+	err := vdiskConfig.Validate()
+	if err != nil {
+		return nil, err
+	}
+	err = nbdConfig.Validate()
+	if err != nil {
+		return nil, err
+	}
+
+	// create primary cluster
+	cluster, err := ardb.NewCluster(nbdConfig.StorageCluster, dialer)
+	if err != nil {
+		return nil, err
+	}
+
+	// create template cluster if needed
+	var templateCluster ardb.StorageCluster
+	if vdiskConfig.Type.TemplateSupport() && nbdConfig.TemplateStorageCluster != nil {
+		templateCluster, err = ardb.NewCluster(*nbdConfig.TemplateStorageCluster, dialer)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// create block storage config
+	cfg := BlockStorageConfig{
+		VdiskID:         vdiskID,
+		TemplateVdiskID: vdiskConfig.TemplateVdiskID,
+		VdiskType:       vdiskConfig.Type,
+		BlockSize:       int64(vdiskConfig.BlockSize),
+		LBACacheLimit:   ardb.DefaultLBACacheLimit,
+	}
+
+	// try to create actual block storage
+	return NewBlockStorage(cfg, cluster, templateCluster)
+}
+
 // NewBlockStorage returns the correct block storage based on the given VdiskConfig.
-func NewBlockStorage(cfg BlockStorageConfig, provider ardb.ConnProvider) (storage BlockStorage, err error) {
+func NewBlockStorage(cfg BlockStorageConfig, cluster, templateCluster ardb.StorageCluster) (storage BlockStorage, err error) {
 	err = cfg.Validate()
 	if err != nil {
 		return
@@ -72,29 +134,36 @@ func NewBlockStorage(cfg BlockStorageConfig, provider ardb.ConnProvider) (storag
 
 	vdiskType := cfg.VdiskType
 
+	// templateCluster gets disabled,
+	// if vdisk type has no template support.
+	if !vdiskType.TemplateSupport() {
+		templateCluster = nil
+	}
+
 	switch storageType := vdiskType.StorageType(); storageType {
 	case config.StorageDeduped:
 		return Deduped(
 			cfg.VdiskID,
 			cfg.BlockSize,
 			cfg.LBACacheLimit,
-			vdiskType.TemplateSupport(),
-			provider)
+			cluster,
+			templateCluster)
 
 	case config.StorageNonDeduped:
 		return NonDeduped(
 			cfg.VdiskID,
 			cfg.TemplateVdiskID,
 			cfg.BlockSize,
-			vdiskType.TemplateSupport(),
-			provider)
+			cluster,
+			templateCluster)
 
 	case config.StorageSemiDeduped:
 		return SemiDeduped(
 			cfg.VdiskID,
 			cfg.BlockSize,
 			cfg.LBACacheLimit,
-			provider)
+			cluster,
+			templateCluster)
 
 	default:
 		return nil, fmt.Errorf(
@@ -103,335 +172,293 @@ func NewBlockStorage(cfg BlockStorageConfig, provider ardb.ConnProvider) (storag
 	}
 }
 
-// VdiskExists returns true if the vdisk question exists in the given ardb storage cluster.
+// VdiskExists returns true if the vdisk in question exists in the given ARDB storage cluster.
 // An error is returned in case this couldn't be verified for whatever reason.
-func VdiskExists(id string, t config.VdiskType, ccfg *config.StorageClusterConfig) (bool, error) {
+func VdiskExists(id string, t config.VdiskType, cluster ardb.StorageCluster) (bool, error) {
 	switch st := t.StorageType(); st {
 	case config.StorageDeduped:
-		return DedupedVdiskExists(id, ccfg)
+		return dedupedVdiskExists(id, cluster)
 
 	case config.StorageNonDeduped:
-		return NonDedupedVdiskExists(id, ccfg)
+		return nonDedupedVdiskExists(id, cluster)
 
 	case config.StorageSemiDeduped:
-		return SemiDedupedVdiskExists(id, ccfg)
+		return semiDedupedVdiskExists(id, cluster)
 
 	default:
 		return false, fmt.Errorf("%v is not a supported storage type", st)
 	}
 }
 
-// ListBlockIndices returns all indices stored for the given storage.
-// This function will always either return an error OR indices.
-func ListBlockIndices(id string, t config.VdiskType, ccfg *config.StorageClusterConfig) ([]int64, error) {
-	switch st := t.StorageType(); st {
+// CopyVdiskConfig is the config for a vdisk
+// used when calling the CopyVdisk primitive.
+type CopyVdiskConfig struct {
+	VdiskID   string
+	Type      config.VdiskType
+	BlockSize int64
+}
+
+// CopyVdisk allows you to copy a vdisk from a source to a target vdisk.
+// The source and target vdisks have to have the same storage type and block size.
+// They can be stored on the same or different clusters.
+func CopyVdisk(source, target CopyVdiskConfig, sourceCluster, targetCluster ardb.StorageCluster) error {
+	sourceStorageType := source.Type.StorageType()
+	targetStorageType := target.Type.StorageType()
+	if sourceStorageType != targetStorageType {
+		return fmt.Errorf(
+			"source vdisk %s and target vdisk %s have different storageTypes (%s != %s)",
+			source.VdiskID, target.VdiskID, sourceStorageType, targetStorageType)
+	}
+
+	var err error
+	switch sourceStorageType {
 	case config.StorageDeduped:
-		return ListDedupedBlockIndices(id, ccfg)
+		err = copyDedupedMetadata(
+			source.VdiskID, target.VdiskID, source.BlockSize, target.BlockSize,
+			sourceCluster, targetCluster)
 
 	case config.StorageNonDeduped:
-		return ListNonDedupedBlockIndices(id, ccfg)
+		err = copyNonDedupedData(
+			source.VdiskID, target.VdiskID, source.BlockSize, target.BlockSize,
+			sourceCluster, targetCluster)
 
 	case config.StorageSemiDeduped:
-		return ListSemiDedupedBlockIndices(id, ccfg)
+		err = copySemiDeduped(
+			source.VdiskID, target.VdiskID, source.BlockSize, target.BlockSize,
+			sourceCluster, targetCluster)
+
+	default:
+		err = fmt.Errorf(
+			"%v is not a supported storage type", sourceStorageType)
+	}
+
+	if err != nil || !source.Type.TlogSupport() || !target.Type.TlogSupport() {
+		return err
+	}
+
+	return copyTlogMetadata(source.VdiskID, target.VdiskID, sourceCluster, targetCluster)
+}
+
+// DeleteVdisk returns true if the vdisk in question was deleted from the given ARDB storage cluster.
+// An error is returned in case this couldn't be deleted (completely) for whatever reason.
+func DeleteVdisk(id string, t config.VdiskType, cluster ardb.StorageCluster) (bool, error) {
+	var err error
+	var deletedTlogMetadata bool
+	if t.TlogSupport() {
+		command := ardb.Command(command.Delete, tlogMetadataKey(id))
+		deletedTlogMetadata, err = ardb.Bool(cluster.Do(command))
+		if err != nil {
+			return false, err
+		}
+		if deletedTlogMetadata {
+			log.Infof("deleted tlog metadata stored for vdisk %s on first available server", id)
+		}
+	}
+
+	var deletedStorage bool
+	switch st := t.StorageType(); st {
+	case config.StorageDeduped:
+		deletedStorage, err = deleteDedupedData(id, cluster)
+	case config.StorageNonDeduped:
+		deletedStorage, err = deleteNonDedupedData(id, cluster)
+	case config.StorageSemiDeduped:
+		deletedStorage, err = deleteSemiDedupedData(id, cluster)
+	default:
+		err = fmt.Errorf("%v is not a supported storage type", st)
+	}
+
+	return deletedTlogMetadata || deletedStorage, err
+}
+
+// ListVdisks scans a given storage cluster
+// for available vdisks, and returns their ids.
+// Optionally a predicate can be given to
+// filter specific vdisks based on their identifiers.
+// NOTE: this function is very slow,
+//       and puts a lot of pressure on the ARDB cluster.
+func ListVdisks(cluster ardb.StorageCluster, pred func(vdiskID string) bool) ([]string, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	serverCh, err := cluster.ServerIterator(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	type serverResult struct {
+		ids []string
+		err error
+	}
+	resultCh := make(chan serverResult)
+
+	var action listVdisksAction
+	if pred == nil {
+		action.filter = filterListedVdiskID
+	} else {
+		action.filter = func(str string) (string, bool) {
+			str, ok := filterListedVdiskID(str)
+			if !ok {
+				return "", false
+			}
+			return str, pred(str)
+		}
+	}
+
+	var serverCount int
+	var reply interface{}
+	for server := range serverCh {
+		server := server
+		go func() {
+			var result serverResult
+			log.Infof("listing all vdisks stored on %v", server.Config())
+			reply, result.err = server.Do(action)
+			if result.err == nil && reply != nil {
+				// [NOTE] this line of code relies on the fact that our
+				// custom `listVdisksAction` type returns a `[]string` value as a reply,
+				// as soon as that logic changes, this line will start causing trouble.
+				result.ids = reply.([]string)
+			}
+			select {
+			case resultCh <- result:
+			case <-ctx.Done():
+			}
+		}()
+		serverCount++
+	}
+
+	// collect the ids from all servers within the given cluster
+	var ids []string
+	var result serverResult
+	for i := 0; i < serverCount; i++ {
+		result = <-resultCh
+		if result.err != nil {
+			// return early, an error has occured!
+			return nil, result.err
+		}
+		ids = append(ids, result.ids...)
+	}
+
+	if len(ids) <= 1 {
+		return ids, nil // nothing to do
+	}
+
+	// sort and dedupe
+	sort.Strings(ids)
+	ids = dedupStrings(ids)
+
+	return ids, nil
+}
+
+type listVdisksAction struct {
+	filter func(string) (string, bool)
+}
+
+// Do implements StorageAction.Do
+func (action listVdisksAction) Do(conn ardb.Conn) (reply interface{}, err error) {
+	const (
+		startCursor = "0"
+		itemCount   = "5000"
+	)
+
+	var output, vdisks []string
+	var slice interface{}
+
+	// initial cursor and action
+	cursor := startCursor
+	scan := ardb.Command(command.Scan, cursor, "COUNT", itemCount)
+
+	// go through all available keys
+	for {
+		// get new cursor and raw data
+		cursor, slice, err = ardb.CursorAndValues(scan.Do(conn))
+		// convert the raw data to a string slice we can use
+		output, err = ardb.Strings(slice, err)
+		// return early in case of error
+		if err != nil {
+			return nil, err
+		}
+
+		// filter output
+		filterPos := 0
+		var ok bool
+		var vdiskID string
+		for i := range output {
+			vdiskID, ok = action.filter(output[i])
+			if ok {
+				output[filterPos] = vdiskID
+				filterPos++
+			}
+		}
+		output = output[:filterPos]
+		vdisks = append(vdisks, output...)
+		log.Debugf("%d/%s identifiers in iteration which match the given filters",
+			len(output), itemCount)
+
+		// stop in case we iterated through all possible values
+		if cursor == startCursor || cursor == "" {
+			break
+		}
+
+		scan = ardb.Command(command.Scan, cursor, "COUNT", itemCount)
+	}
+
+	return vdisks, nil
+}
+
+// Send implements StorageAction.Send
+func (action listVdisksAction) Send(conn ardb.Conn) error {
+	return ErrMethodNotSupported
+}
+
+// KeysModified implements StorageAction.KeysModified
+func (action listVdisksAction) KeysModified() ([]string, bool) {
+	return nil, false
+}
+
+// ListBlockIndices returns all indices stored for the given vdisk.
+// This function returns either an error OR indices.
+func ListBlockIndices(id string, t config.VdiskType, cluster ardb.StorageCluster) ([]int64, error) {
+	switch st := t.StorageType(); st {
+	case config.StorageDeduped:
+		return listDedupedBlockIndices(id, cluster)
+
+	case config.StorageNonDeduped:
+		return listNonDedupedBlockIndices(id, cluster)
+
+	case config.StorageSemiDeduped:
+		return listSemiDedupedBlockIndices(id, cluster)
 
 	default:
 		return nil, fmt.Errorf("%v is not a supported storage type", st)
 	}
 }
 
-// ScanForAvailableVdisks scans a given storage servers
-// for available vdisks, and returns their ids.
-func ScanForAvailableVdisks(cfg config.StorageServerConfig) ([]string, error) {
-	log.Debugf("connection to ardb at %s (db: %d)",
-		cfg.Address, cfg.Database)
-	conn, err := ardb.GetConnection(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("couldn't connect to the ardb: %s", err.Error())
-	}
-	defer conn.Close()
-
-	log.Debugf("scanning for all available vdisks...")
-
-	const (
-		startListCursor       = "0"
-		vdiskListScriptSource = `
-	local cursor = ARGV[1]
-
-local result = redis.call("SCAN", cursor)
-local batch = result[2]
-
-local key
-local type
-
-local output = {}
-
-for i = 1, #batch do
-	key = batch[i]
-
-	-- only add hashmaps
-	type = redis.call("TYPE", key)
-	type = type.ok or type
-	if type == "hash" then
-		table.insert(output, key)
-	end
-end
-
-cursor = result[1]
-table.insert(output, cursor)
-
-return output
-`
-	)
-
-	script := redis.NewScript(0, vdiskListScriptSource)
-	cursor := startListCursor
-	var output []string
-
-	var vdisks []string
-	var vdisksLength int
-
-	// go through all available keys
-	for {
-		output, err = redis.Strings(script.Do(conn, cursor))
-		if err != nil {
-			log.Error("aborting key scan due to an error: ", err)
-			break
-		}
-
-		vdisksLength = len(output) - 1
-		if vdisksLength > 0 {
-			vdisks = append(vdisks, output[:vdisksLength]...)
-		}
-
-		cursor = output[vdisksLength]
-		if startListCursor == cursor {
-			break
-		}
-	}
-
-	if len(vdisks) == 0 {
-		return nil, nil
-	}
-
-	var ok bool
-	var vdiskID string
-
-	// only log each vdisk once
-	uniqueVdisks := make(map[string]struct{})
-	for i := len(vdisks) - 1; i >= 0; i-- {
-		vdiskID = filterListedVdiskID(string(vdisks[i]))
-		if vdiskID != "" {
-			if _, ok = uniqueVdisks[vdiskID]; !ok {
-				// if vdisk is valid and unique
-				// don't delete it
-				continue
-			}
-		}
-
-		// add vdisk to unique vdisks map
-		uniqueVdisks[vdiskID] = struct{}{}
-
-		// delete vdisk
-		vdisks[i] = vdisks[len(vdisks)-1]
-		vdisks = vdisks[:len(vdisks)-1]
-	}
-
-	return vdisks, nil
-}
-
 // filterListedVdiskID only accepts keys with a known prefix,
 // if no known prefix is found an empty string is returned,
 // otherwise the prefix is removed and the vdiskID is returned.
-func filterListedVdiskID(key string) string {
-	parts := storageKeyPrefixRex.FindStringSubmatch(key)
+func filterListedVdiskID(key string) (string, bool) {
+	parts := listStorageKeyPrefixRex.FindStringSubmatch(key)
 	if len(parts) == 3 {
-		return parts[2]
+		return parts[2], true
 	}
 
-	return ""
+	return "", false
 }
 
-var storageKeyPrefixRex = regexp.MustCompile("^(" +
-	strings.Join(knownStorageKeyPrefixes, "|") +
+var listStorageKeyPrefixRex = regexp.MustCompile("^(" +
+	strings.Join(listStorageKeyPrefixes, "|") +
 	")(.+)$")
 
-var knownStorageKeyPrefixes = []string{
-	lba.StorageKeyPrefix,
+var listStorageKeyPrefixes = []string{
+	lbaStorageKeyPrefix,
 	nonDedupedStorageKeyPrefix,
-	semiDedupBitMapKeyPrefix,
-}
-
-// DeleteMetadata deletes all metadata for the given vdisks from the given storage server.
-func DeleteMetadata(cfg config.StorageServerConfig, vdisks map[string]config.VdiskType) error {
-	var pipeline storageOpPipeline
-
-	for vdiskID, vdiskType := range vdisks {
-		if vdiskType.StorageType() == config.StorageSemiDeduped {
-			pipeline.Add(newDeleteSemiDedupedMetaDataOp(vdiskID))
-		}
-	}
-
-	return pipeline.Apply(cfg)
-}
-
-// DeleteData deletes all data for the given vdisks from the given storage server.
-func DeleteData(cfg config.StorageServerConfig, vdisks map[string]config.VdiskType) error {
-	var pipeline storageOpPipeline
-
-	for vdiskID, vdiskType := range vdisks {
-		switch vdiskType.StorageType() {
-		case config.StorageDeduped:
-			pipeline.Add(newDeleteDedupedMetadataOp(vdiskID))
-		case config.StorageNonDeduped:
-			pipeline.Add(newDeleteNonDedupedDataOp(vdiskID))
-		case config.StorageSemiDeduped:
-			pipeline.Add(newDeleteDedupedMetadataOp(vdiskID))
-			pipeline.Add(newDeleteNonDedupedDataOp(vdiskID))
-		}
-	}
-
-	return pipeline.Apply(cfg)
-}
-
-// storageOpSender is used to send (see: batch) commands and their arguments,
-// such that a group of commands (see: transaction) can be applied all together.
-type storageOpSender interface {
-	Send(commandName string, args ...interface{}) error
-}
-
-// storageOpSender is used to receive and decode a reply from
-// the ARDB server, such that a command applied can be validated.
-type storageOpReceiver interface {
-	Receive() (reply interface{}, err error)
-}
-
-// storageOp defines the interface for any kind of operation
-// that we wish to apply directly onto the ARDB
-type storageOp interface {
-	Send(storageOpSender) error
-	Receive(storageOpReceiver) error
-	Label() string
-}
-
-// storageOpPipeline is simply a group of operations
-// that can be applied all together (and as many times as you want)
-// to an(y) ARDB server.
-type storageOpPipeline []storageOp
-
-// Add an operation so it can be applied later.
-func (ops *storageOpPipeline) Add(op storageOp) {
-	if op == nil {
-		return
-	}
-
-	*ops = append(*ops, op)
-}
-
-// Remove all earlier added operations from this pipeline.
-func (ops *storageOpPipeline) Clear() {
-	*ops = nil
-}
-
-// Apply all added operations to the given ARDB server.
-func (ops storageOpPipeline) Apply(cfg config.StorageServerConfig) error {
-	if ops == nil {
-		return nil
-	}
-
-	conn, err := ardb.GetConnection(cfg)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	for _, op := range ops {
-		err = op.Send(conn)
-		if err != nil {
-			return fmt.Errorf(
-				"couldn't batch pipeline op '%s': %v", op.Label(), err)
-		}
-	}
-
-	err = conn.Flush()
-	if err != nil {
-		return fmt.Errorf(
-			"couldn't apply the %d pipelined operations", len(ops))
-	}
-
-	var errs pipelineErrors
-
-	for _, op := range ops {
-		err = op.Receive(conn)
-		errs.AddErrorMsg(err, "op '%s' failed", op.Label())
-	}
-
-	if errs != nil {
-		return errs
-	}
-
-	return nil
-}
-
-// pipelineErrors is a nice utility type,
-// which allows for collecting multiple errors
-// and returning them as a single error.
-//
-// NOTE: might be nice to turn this into a
-// general purpose type we use throughout the 0-Disk codebase
-// or perhaps there is a nice lib that already does this for us,
-// that we should use instead of this.
-// Either way, it works for now (and is unit tested).
-//
-// WARNING: when returning it as an `error` interface,
-// make sure to check first if pipelinErrors is not `nil`,
-// because once you turn it into an interface (`error`),
-// it won't be `nil` any longer, even though its concrete type is `nil`.
-// This is because of how interfaces are implemented in Go,
-// so be careful for that. You have been warned!
-type pipelineErrors []error
-
-// Add an error (if it's not nil) to the slice of errors.
-func (errs *pipelineErrors) AddError(err error) {
-	if err == nil {
-		return
-	}
-
-	*errs = append(*errs, err)
-}
-
-// Add an error (if it's not nil) to the slice of errors,
-// and preprend it with a formatted message (if given).
-func (errs *pipelineErrors) AddErrorMsg(err error, format string, args ...interface{}) {
-	if err == nil {
-		return
-	}
-
-	if format == "" {
-		*errs = append(*errs, err)
-		return
-	}
-
-	*errs = append(*errs,
-		fmt.Errorf(format+" (%v)", append(args, err)...))
-}
-
-// Turn the slice of errors into a single error string.
-// If the slice is empty, an empty string will be returned instead.
-func (errs pipelineErrors) Error() string {
-	if len(errs) == 0 {
-		return ""
-	}
-
-	var str string
-	for _, err := range errs {
-		str += err.Error() + ", "
-	}
-
-	return str[:len(str)-2]
 }
 
 // sortInt64s sorts a slice of int64s
 func sortInt64s(s []int64) {
+	if len(s) < 2 {
+		return
+	}
 	sort.Sort(int64Slice(s))
 }
 
@@ -444,13 +471,45 @@ func (s int64Slice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
 // dedupInt64s deduplicates a given int64 slice which is already sorted.
 func dedupInt64s(s []int64) []int64 {
-	for i, n := 0, len(s)-1; i < n; {
-		if s[i] == s[i+1] {
-			s = append(s[:i], s[i+1:]...)
-			continue
-		}
-		i++
+	p := len(s) - 1
+	if p <= 0 {
+		return s
 	}
 
-	return s
+	for i := p - 1; i >= 0; i-- {
+		if s[p] != s[i] {
+			p--
+			s[p] = s[i]
+		}
+	}
+
+	return s[p:]
+}
+
+// dedupStrings deduplicates a given string slice which is already sorted.
+func dedupStrings(s []string) []string {
+	p := len(s) - 1
+	if p <= 0 {
+		return s
+	}
+
+	for i := p - 1; i >= 0; i-- {
+		if s[p] != s[i] {
+			p--
+			s[p] = s[i]
+		}
+	}
+
+	return s[p:]
+}
+
+// a slightly expensive helper function which allows
+// us to test if an interface value is nil or not
+func isInterfaceValueNil(v interface{}) bool {
+	if v == nil {
+		return true
+	}
+
+	rv := reflect.ValueOf(v)
+	return rv.Kind() == reflect.Ptr && rv.IsNil()
 }

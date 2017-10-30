@@ -1,11 +1,8 @@
 # zeroctl delete
 
-## vdisks
+## vdisk
 
-Delete one, multiple or all [vdisks][vdisk].
-
-When no vdiskids are specified,
-all [vdisks][vdisk] listed in [the config file][nbdconfig] will be deleted.
+Delete a [vdisk][vdisk].
 
 > WARNING: until [issue #88](https://github.com/zero-os/0-Disk/issues/88) has been resolved,
   only the [metadata (1)][metadata] of [deduped][deduped] [vdisks][vdisk] can be deleted by this command.
@@ -13,12 +10,11 @@ all [vdisks][vdisk] listed in [the config file][nbdconfig] will be deleted.
 
 ```
 Usage:
-  zeroctl delete vdisks [vdiskid...] [flags]
+  zeroctl delete vdisk vdiskid [flags]
 
 Flags:
-      --config string   zeroctl config file (default "config.yml")
-  -f, --force           when enabled non-fatal errors are logged instead of aborting the command
-  -h, --help            help for vdisks
+      --config SourceConfig   config resource: dialstrings (etcd cluster) or path (yaml file) (default config.yml)
+  -h, --help                  help for vdisk
 
 Global Flags:
   -v, --verbose   log available information
@@ -26,34 +22,10 @@ Global Flags:
 
 ### Examples
 
-To delete all [vdisks][vdisk] listed in [the config file][nbdconfig]:
+To delete a [vdisk][vdisk] `foo`, we would do:
 
 ```
-$ zeroctl delete vdisks
-```
-
-Which is the less explicit version of:
-
-```
-$ zeroctl delete vdisks --config config.yml
-```
-
-To delete only 1 (or more) [vdisks][vdisk], rather than all, we can specify their identifiers:
-
-```
-$ zeroctl delete vdisks vdiskC --config.yml
-```
-
-With this knowledge we can write the first delete example even more explicit:
-
-```
-$ zeroctl delete vdisks vdiskA vdiskC --config.yml
-```
-
-The following would succeed for the found [vdisk][vdisk], but log an error for the other [vdisk][vdisk] as that one can't be found:
-
-```
-$ zeroctl delete vdisks foo vdiskA # vdiskA will be deleted correctly, even though foo doesn't exist
+$ zeroctl delete vdisk foo
 ```
 
 

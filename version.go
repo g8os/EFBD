@@ -1,49 +1,103 @@
 package zerodisk
 
-import "fmt"
+import (
+	"bytes"
+	"fmt"
+	"runtime"
+
+	"github.com/zero-os/0-Disk/log"
+)
 
 var (
 	// CurrentVersion represents the current global
 	// version of the zerodisk modules
-	CurrentVersion = NewVersion(1, 1, 0, VersionStageAlpha)
+	CurrentVersion = NewVersion(1, 1, 0, versionLabel("beta-1"))
+	// CommitHash represents the Git commit hash at built time
+	CommitHash string
+	// BuildDate represents the date when this tool suite was built
+	BuildDate string
 )
 
-// NewVersion creates a new version
-func NewVersion(major, minor, patch uint8, stage VersionStage) Version {
-	return (Version(major) << 24) |
-		(Version(minor) << 16) |
-		(Version(patch) << 8) |
-		Version(stage)
+// PrintVersion prints the current version
+func PrintVersion() {
+	version := "Version: " + CurrentVersion.String()
+
+	// Build (Git) Commit Hash
+	if CommitHash != "" {
+		version += "\r\nBuild: " + CommitHash
+		if BuildDate != "" {
+			version += " " + BuildDate
+		}
+	}
+
+	// Output version and runtime information
+	fmt.Printf("%s\r\nRuntime: %s %s\r\n",
+		version,
+		runtime.Version(), // Go Version
+		runtime.GOOS,      // OS Name
+	)
 }
 
-// Version defines the semantic version,
-// used by Client and Server.
-type Version uint32
+// LogVersion prints the version at log level info
+// meant to log the version at startup of a server
+func LogVersion() {
+	// log version
+	log.Info("Version: " + CurrentVersion.String())
+
+	// log build (Git) Commit Hash
+	if CommitHash != "" {
+		build := "Build: " + CommitHash
+		if BuildDate != "" {
+			build += " " + BuildDate
+		}
+
+		log.Info(build)
+	}
+}
+
+// VersionFromUInt32 creates a version from a given uint32 number.
+func VersionFromUInt32(v uint32) Version {
+	return Version{
+		Number: VersionNumber(v),
+		Label:  nil,
+	}
+}
+
+// NewVersion creates a new version
+func NewVersion(major, minor, patch uint8, label *VersionLabel) Version {
+	number := (VersionNumber(major) << 16) |
+		(VersionNumber(minor) << 8) |
+		VersionNumber(patch)
+	return Version{
+		Number: number,
+		Label:  label,
+	}
+}
+
+type (
+	// Version defines the version version information,
+	// used by zeroctl services.
+	Version struct {
+		Number VersionNumber
+		Label  *VersionLabel
+	}
+
+	// VersionNumber defines the semantic version number,
+	// used by zeroctl services.
+	VersionNumber uint32
+
+	// VersionLabel defines an optional version extension,
+	// used by zeroctl services.
+	VersionLabel [8]byte
+)
 
 // Compare returns an integer comparing this version
 // with another version. { lt=-1 ; eq=0 ; gt=1 }
 func (v Version) Compare(other Version) int {
-	verA := v & versionBitMask
-	verB := other & versionBitMask
-
 	// are the actual versions not equal?
-	if verA < verB {
+	if v.Number < other.Number {
 		return -1
-	} else if verA > verB {
-		return 1
-	}
-
-	// actual versions are equal, so let's see if one
-	// of them is in the non-production stage,
-	// in which case the one in production is greater
-	// than the one in prerelease
-
-	preA := VersionStage(v)
-	preB := VersionStage(other)
-
-	if preA != VersionStageLive && preB == VersionStageLive {
-		return -1
-	} else if preA == VersionStageLive && preB != VersionStageLive {
+	} else if v.Number > other.Number {
 		return 1
 	}
 
@@ -52,60 +106,30 @@ func (v Version) Compare(other Version) int {
 }
 
 // UInt32 returns the integral version
-// of this Tlog Version
+// of this Version.
 func (v Version) UInt32() uint32 {
-	return uint32(v)
+	return uint32(v.Number)
 }
 
 // String returns the string version
-// of this Tlog Version
+// of this Version.
 func (v Version) String() string {
 	str := fmt.Sprintf("%d.%d.%d",
-		v>>24,        // major
-		(v>>16)&0xFF, // minor
-		(v>>8)&0xFF,  // patch
+		(v.Number>>16)&0xFF, // major
+		(v.Number>>8)&0xFF,  // minor
+		v.Number&0xFF,       // patch
 	)
 
-	// optional version stage
-	if stage := VersionStage(v); stage != VersionStageLive {
-		str += "-"
-		switch stage {
-		case VersionStageRC:
-			str += strVersionStageRC
-		case VersionStageBeta:
-			str += strVersionStageBeta
-		case VersionStageAlpha:
-			str += strVersionStageAlpha
-		default:
-			str += strVersionStageDev
-		}
+	if v.Label == nil {
+		return str
 	}
 
-	return str
+	label := bytes.Trim(v.Label[:], "\x00")
+	return str + "-" + string(label)
 }
 
-// VersionStage defines the stage of the version.
-// This type can also be used to cast a Version to a VersionStage.
-type VersionStage uint8
-
-// The different version stages
-const (
-	VersionStageLive VersionStage = 1 << iota
-	VersionStageRC
-	VersionStageBeta
-	VersionStageAlpha
-	VersionStageDev
-)
-
-// The different version stages in (short) string format
-const (
-	strVersionStageRC    = "rc"
-	strVersionStageBeta  = "beta"
-	strVersionStageAlpha = "alpha"
-	strVersionStageDev   = "dev"
-)
-
-const (
-	// used to remove the version stage from a version
-	versionBitMask = Version(0xFFFFFF00)
-)
+func versionLabel(str string) *VersionLabel {
+	var label VersionLabel
+	copy(label[:], str[:])
+	return &label
+}

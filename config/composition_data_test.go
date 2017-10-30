@@ -138,13 +138,15 @@ var validTlogStorageConfigs = []TlogStorageConfig{
 				ClientID:  "foo client",
 				Secret:    "foo secret",
 			},
-			Servers: []ServerConfig{
-				ServerConfig{Address: "1.1.1.1:11"},
-				ServerConfig{Address: "2.2.2.2:22"},
-			},
 			MetadataServers: []ServerConfig{
 				ServerConfig{Address: "3.3.3.3:33"},
 			},
+			DataServers: []ServerConfig{
+				ServerConfig{Address: "1.1.1.1:11"},
+				ServerConfig{Address: "2.2.2.2:22"},
+			},
+			DataShards:   1,
+			ParityShards: 1,
 		},
 	},
 	// minimal example
@@ -156,13 +158,15 @@ var validTlogStorageConfigs = []TlogStorageConfig{
 				ClientID:  "foo client",
 				Secret:    "foo secret",
 			},
-			Servers: []ServerConfig{
-				ServerConfig{Address: "1.1.1.1:11"},
-				ServerConfig{Address: "2.2.2.2:22"},
-			},
 			MetadataServers: []ServerConfig{
 				ServerConfig{Address: "3.3.3.3:33"},
 			},
+			DataServers: []ServerConfig{
+				ServerConfig{Address: "1.1.1.1:11"},
+				ServerConfig{Address: "2.2.2.2:22"},
+			},
+			DataShards:   1,
+			ParityShards: 1,
 		},
 	},
 }
@@ -179,13 +183,15 @@ var invalidTlogStorageConfigs = []TlogStorageConfig{
 				ClientID:  "foo client",
 				Secret:    "foo secret",
 			},
-			Servers: []ServerConfig{
-				ServerConfig{Address: "1.1.1.1:11"},
-				ServerConfig{Address: "2.2.2.2:22"},
-			},
 			MetadataServers: []ServerConfig{
 				ServerConfig{Address: "3.3.3.3:33"},
 			},
+			DataServers: []ServerConfig{
+				ServerConfig{Address: "1.1.1.1:11"},
+				ServerConfig{Address: "2.2.2.2:22"},
+			},
+			DataShards:   1,
+			ParityShards: 1,
 		},
 	},
 	// invalid ZeroStor Storage Cluster
@@ -197,10 +203,12 @@ var invalidTlogStorageConfigs = []TlogStorageConfig{
 				ClientID:  "foo client",
 				Secret:    "foo secret",
 			},
-			Servers: []ServerConfig{
+			DataServers: []ServerConfig{
 				ServerConfig{Address: "1.1.1.1:11"},
 				ServerConfig{Address: "2.2.2.2:22"},
 			},
+			DataShards:   1,
+			ParityShards: 1,
 		},
 	},
 }
@@ -215,13 +223,15 @@ var invalidTlogStorageConfigsDeduped = append(invalidTlogStorageConfigs,
 				ClientID:  "foo client",
 				Secret:    "foo secret",
 			},
-			Servers: []ServerConfig{
-				ServerConfig{Address: "1.1.1.1:11"},
-				ServerConfig{Address: "2.2.2.2:22"},
-			},
 			MetadataServers: []ServerConfig{
 				ServerConfig{Address: "3.3.3.3:33"},
 			},
+			DataServers: []ServerConfig{
+				ServerConfig{Address: "1.1.1.1:11"},
+				ServerConfig{Address: "2.2.2.2:22"},
+			},
+			DataShards:   1,
+			ParityShards: 1,
 		},
 		SlaveStorageCluster: &StorageClusterConfig{
 			Servers: []StorageServerConfig{

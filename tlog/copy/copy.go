@@ -15,8 +15,6 @@ type Config struct {
 	SourceVdiskID string `validate:"nonzero"`
 	TargetVdiskID string `validate:"nonzero"`
 	PrivKey       string `validate:"nonzero"`
-	DataShards    int    `validate:"nonzero,min=1"`
-	ParityShards  int    `validate:"nonzero,min=1"`
 	FlushSize     int
 	JobCount      int `validate:"nonzero,min=1"`
 }
@@ -84,6 +82,6 @@ func Copy(ctx context.Context, confSource config.Source, conf Config) error {
 	if err != nil {
 		return err
 	}
-	return generator.GenerateFromStorage(ctx)
-
+	_, err = generator.GenerateFromStorage(ctx)
+	return err
 }

@@ -5,46 +5,50 @@ import (
 	mrand "math/rand"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/zero-os/0-Disk"
-	"github.com/zero-os/0-Disk/redisstub"
 )
 
 func TestLBAWithEmptyStubStorage(t *testing.T) {
 	const (
-		bucketCount = 8
-		sectors     = 8
-		bucketLimit = (sectors / 2) * BytesPerSector
+		bucketCount   = 8
+		lbaCacheLimit = MinimumBucketSizeLimit * bucketCount
+		sectors       = 8
 	)
 
-	lba := newLBAWithStorageFactory(bucketCount, bucketLimit, func() SectorStorage {
-		return newStubSectorStorage()
-	})
-	if lba == nil {
-		t.Fatal("lba is nil")
-	}
+	require := require.New(t)
+
+	storage := newStubSectorStorage()
+	require.NotNil(storage)
+
+	lba, err := NewLBA(lbaCacheLimit, storage)
+	require.NoError(err)
+	require.NotNil(lba)
 
 	testLBAWithEmptyStorage(t, sectors, bucketCount, lba)
 }
 
+/*
 func TestLBAWithEmptyARDBStorage(t *testing.T) {
 	const (
-		bucketCount = 8
-		sectors     = 8
-		bucketLimit = (sectors / 2) * BytesPerSector
+		bucketCount   = 8
+		lbaCacheLimit = MinimumBucketSizeLimit * bucketCount
+		sectors       = 8
 	)
 
-	provider := redisstub.NewInMemoryRedisProvider(nil)
-	defer provider.Close()
+	cluster := redisstub.NewUniCluster(true)
+	defer cluster.Close()
 
 	lba := newLBAWithStorageFactory(bucketCount, bucketLimit, func() SectorStorage {
-		return ARDBSectorStorage("foo", provider)
+		return ARDBSectorStorage("foo", cluster)
 	})
 	if lba == nil {
 		t.Fatal("lba is nil")
 	}
 
 	testLBAWithEmptyStorage(t, sectors, bucketCount, lba)
-}
+}*/
 
 func testLBAWithEmptyStorage(t *testing.T, sectors, buckets int64, lba *LBA) {
 	var (

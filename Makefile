@@ -2,7 +2,7 @@ OUTPUT ?= bin
 GOOS ?= linux
 GOARCH ?= amd64
 
-TIMEOUT ?= 2m
+TIMEOUT ?= 5m
 
 PACKAGE = github.com/zero-os/0-Disk
 COMMIT_HASH = $(shell git rev-parse --short HEAD 2>/dev/null)
@@ -12,35 +12,35 @@ PACKAGES = $(shell go list ./... | grep -v vendor)
 RACE_PACKAGES = $(shell go list ./... | grep -v vendor | grep -E 'nbd|config' | grep -v 'gonbdserver')
 
 ldflags = -extldflags "-static" -s -w
-ldflagszeroctl = -X $(PACKAGE)/zeroctl/cmd.CommitHash=$(COMMIT_HASH) -X $(PACKAGE)/zeroctl/cmd.BuildDate=$(BUILD_DATE) -s -w
+ldflagsversion = -X $(PACKAGE).CommitHash=$(COMMIT_HASH) -X $(PACKAGE).BuildDate=$(BUILD_DATE) -s -w
 
 all: nbdserver tlogserver zeroctl
 
 zeroctl: $(OUTPUT)
 ifeq ($(GOOS), darwin)
 	GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -ldflags '$(ldflagszeroctl)' -o $(OUTPUT)/$@ ./zeroctl
+		go build -ldflags '$(ldflagsversion)' -o $(OUTPUT)/$@ ./zeroctl
 else
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -ldflags '$(ldflags) $(ldflagszeroctl)' -o $(OUTPUT)/$@ ./zeroctl
+		go build -ldflags '$(ldflags) $(ldflagsversion)' -o $(OUTPUT)/$@ ./zeroctl
 endif
 
 nbdserver: $(OUTPUT)
 ifeq ($(GOOS), darwin)
 	GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -o $(OUTPUT)/$@ ./nbd/nbdserver
+		go build -ldflags '$(ldflagsversion)' -o $(OUTPUT)/$@ ./nbd/nbdserver
 else
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -ldflags '$(ldflags)' -o $(OUTPUT)/$@ ./nbd/nbdserver
+		go build -ldflags '$(ldflags) $(ldflagsversion)' -o $(OUTPUT)/$@ ./nbd/nbdserver
 endif
 
 tlogserver: $(OUTPUT)
 ifeq ($(GOOS), darwin)
 	GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -o $(OUTPUT)/$@ ./tlog/tlogserver
+		go build -ldflags '$(ldflagsversion)' -o $(OUTPUT)/$@ ./tlog/tlogserver
 else
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -ldflags '$(ldflags)' -o $(OUTPUT)/$@ ./tlog/tlogserver
+		go build -ldflags '$(ldflags) $(ldflagsversion)' -o $(OUTPUT)/$@ ./tlog/tlogserver
 endif
 
 test: testgo testrace testcgo testcodegen benchmarkgo

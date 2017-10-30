@@ -2,7 +2,6 @@ package player
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/zero-os/0-Disk/config"
@@ -20,7 +19,7 @@ type Player struct {
 	vdiskID      string
 	storCli      *stor.Client
 	blockStorage storage.BlockStorage
-	connProvider ardb.ConnProvider
+	ardbPool     *ardb.Pool
 	ctx          context.Context
 }
 
@@ -30,47 +29,25 @@ type Player struct {
 type OnReplayCb func(seq uint64) error
 
 // NewPlayer creates new tlog player
-func NewPlayer(ctx context.Context, source config.Source,
-	vdiskID, privKey string, dataShards, parityShards int) (*Player, error) {
+func NewPlayer(ctx context.Context, source config.Source, vdiskID, privKey string) (*Player, error) {
 
-	// get config to create block storage
-	vdiskCfg, err := config.ReadVdiskStaticConfig(source, vdiskID)
+	ardbPool := ardb.NewPool(nil)
+	blockStorage, err := storage.BlockStorageFromConfigSource(vdiskID, source, ardbPool)
 	if err != nil {
-		return nil, err
-	}
-	nbdCfg, err := config.ReadNBDStorageConfig(source, vdiskID)
-	if err != nil {
+		ardbPool.Close()
 		return nil, err
 	}
 
-	// create static provider,
-	// as the tlog player does not require hot reloading.
-	ardbProvider, err := ardb.StaticProvider(*nbdCfg, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	blockStorage, err := storage.NewBlockStorage(storage.BlockStorageConfig{
-		VdiskID:         vdiskID,
-		TemplateVdiskID: vdiskCfg.TemplateVdiskID,
-		VdiskType:       vdiskCfg.Type,
-		BlockSize:       int64(vdiskCfg.BlockSize),
-	}, ardbProvider)
-	if err != nil {
-		ardbProvider.Close()
-		return nil, err
-	}
-
-	return NewPlayerWithStorage(ctx, source, ardbProvider, blockStorage, vdiskID, privKey, dataShards, parityShards)
+	return NewPlayerWithStorage(ctx, source, ardbPool, blockStorage, vdiskID, privKey)
 }
 
 // NewPlayerWithStorage create new tlog player
 // with given BlockStorage
 func NewPlayerWithStorage(ctx context.Context, source config.Source,
-	connProvider ardb.ConnProvider, storage storage.BlockStorage,
-	vdiskID, privKey string, dataShards, parityShards int) (*Player, error) {
+	ardbPool *ardb.Pool, storage storage.BlockStorage,
+	vdiskID, privKey string) (*Player, error) {
 
-	storConf, err := stor.ConfigFromConfigSource(source, vdiskID, privKey, dataShards, parityShards)
+	storConf, err := stor.ConfigFromConfigSource(source, vdiskID, privKey)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +58,7 @@ func NewPlayerWithStorage(ctx context.Context, source config.Source,
 
 	return &Player{
 		blockStorage: storage,
-		connProvider: connProvider,
+		ardbPool:     ardbPool,
 		ctx:          ctx,
 		vdiskID:      vdiskID,
 		storCli:      storCli,
@@ -92,26 +69,11 @@ func NewPlayerWithStorage(ctx context.Context, source config.Source,
 // Close releases all its resources
 func (p *Player) Close() error {
 	p.storCli.Close()
-
-	// TODO:
-	// choose a universal error combinator solution
-	// as code like this is a mess
-
-	if p.connProvider == nil {
-		return p.blockStorage.Close()
+	if p.ardbPool != nil {
+		p.ardbPool.Close()
 	}
 
-	errA := p.connProvider.Close()
-	errB := p.blockStorage.Close()
-	if errA != nil {
-		if errB != nil {
-			return errors.New(errA.Error() + "; " + errB.Error())
-		}
-
-		return errA
-	}
-
-	return errB
+	return p.blockStorage.Close()
 }
 
 // Replay replays the tlog by decoding data from the tlog blockchains.

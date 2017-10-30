@@ -112,16 +112,18 @@ func TestNewStorageClusterConfig(t *testing.T) {
 func TestStorageClusterConfigEqual(t *testing.T) {
 	assert := assert.New(t)
 
-	var a, b *StorageClusterConfig
-	assert.True(a.Equal(b), "both are nil")
+	var a *StorageClusterConfig
+	var b StorageClusterConfig
+
+	assert.False(a.Equal(b), "a is nil")
 
 	a = &StorageClusterConfig{
 		Servers: []StorageServerConfig{
 			StorageServerConfig{Address: "localhost:16379"},
 		},
 	}
-	assert.False(a.Equal(b), "a isn't nil")
-	b = a
+	assert.False(a.Equal(b), "b is different")
+	b = *a
 	assert.True(a.Equal(b), "should be equal")
 
 	a = nil
@@ -149,37 +151,29 @@ func TestStorageClusterConfigEqual(t *testing.T) {
 	assert.False(a.Equal(b), "almost equal servers, one has different database")
 	b.Servers[0].Database = 5
 
-	b = nil
-	assert.False(a.Equal(b), "b is nil")
+	b = StorageClusterConfig{}
+	assert.False(a.Equal(b), "b is different")
 }
 
 func TestStorageServerConfigEqual(t *testing.T) {
 	assert := assert.New(t)
 
-	var a, b *StorageServerConfig
+	var a, b StorageServerConfig
 	assert.True(a.Equal(b), "both are nil")
 
-	a = &StorageServerConfig{Address: "localhost:16379"}
+	a = StorageServerConfig{Address: "localhost:16379"}
 	assert.False(a.Equal(b), "a isn't nil")
 
 	b = a
 	assert.True(a.Equal(b), "should be equal")
 
-	a = nil
-	assert.False(a.Equal(b), "a is nil")
-
-	a = &StorageServerConfig{Address: "localhost:16379"}
+	a = StorageServerConfig{Address: "localhost:16379"}
 	assert.True(a.Equal(b), "should be equal")
 
 	a.Database = 42
 	assert.False(a.Equal(b), "a has different database")
 	b.Database = 42
 	assert.True(a.Equal(b), "should be equal")
-
-	a = nil
-	assert.False(a.Equal(b), "a is nil")
-	b = nil
-	assert.True(a.Equal(b), "both are nil")
 }
 
 func TestStorageClusterConfigClone(t *testing.T) {
@@ -197,13 +191,13 @@ func TestStorageClusterConfigClone(t *testing.T) {
 	}
 
 	b := a.Clone()
-	assert.True(a.Equal(&b), "should be equal")
+	assert.True(a.Equal(b), "should be equal")
 
 	// as b is a clone, we should be able to modify it, without modifying a
 	b.Servers[0].Address = "localhost:300"
-	assert.False(a.Equal(&b), "shouldn't be equal")
+	assert.False(a.Equal(b), "shouldn't be equal")
 	a.Servers[0].Address = "localhost:300"
-	assert.True(a.Equal(&b), "should be equal")
+	assert.True(a.Equal(b), "should be equal")
 }
 
 // tests StorageServerConfig manual unmarshalling
@@ -277,16 +271,17 @@ func TestNewZeroStorClusterConfig(t *testing.T) {
 func TestZeroStorClusterConfigEqual(t *testing.T) {
 	assert := assert.New(t)
 
-	var a, b *ZeroStorClusterConfig
-	assert.True(a.Equal(b), "both are nil")
+	var a *ZeroStorClusterConfig
+	var b ZeroStorClusterConfig
+	assert.False(a.Equal(b), "a is nil")
 
 	a = &ZeroStorClusterConfig{
 		IYO: IYOCredentials{
 			Org: "foo organisation",
 		},
 	}
-	assert.False(a.Equal(b), "a is not nil")
-	b = a
+	assert.False(a.Equal(b), "b is different")
+	b = *a
 	assert.True(a.Equal(b), "should be equal")
 
 	a = nil
@@ -316,19 +311,34 @@ func TestZeroStorClusterConfigEqual(t *testing.T) {
 	b.IYO.Secret = "foo secret"
 	assert.True(a.Equal(b), "should be equal")
 
-	a.Servers = []ServerConfig{
+	a.DataShards = 1
+	assert.False(a.Equal(b), "b does not have a DataShards")
+	b.DataShards = 1
+	assert.True(a.Equal(b), "should be equal")
+
+	a.ParityShards = 1
+	assert.False(a.Equal(b), "b does not have a ParityShards")
+	b.ParityShards = 1
+	assert.True(a.Equal(b), "should be equal")
+
+	a.DataServers = []ServerConfig{
 		ServerConfig{
 			Address: "1.1.1.1:11",
 		},
-	}
-	assert.False(a.Equal(b), "b does not have a server")
-	b.Servers = []ServerConfig{
 		ServerConfig{
 			Address: "1.1.1.1:22",
 		},
 	}
-	assert.False(a.Equal(b), "b has a different server address")
-	b.Servers[0].Address = "1.1.1.1:11"
+	assert.False(a.Equal(b), "b does not have servers")
+	b.DataServers = []ServerConfig{
+		ServerConfig{
+			Address: "1.1.1.1:11",
+		},
+	}
+	assert.False(a.Equal(b), "b has not enough servers")
+	b.DataServers = append(b.DataServers, ServerConfig{Address: "1.1.1.1:33"})
+	assert.False(a.Equal(b), "b has different servers")
+	b.DataServers[1].Address = "1.1.1.1:22"
 	assert.True(a.Equal(b), "should be equal")
 
 	a.MetadataServers = []ServerConfig{
@@ -357,7 +367,7 @@ func TestZeroStorClusterConfigClone(t *testing.T) {
 	assert.Empty(a.IYO.Namespace)
 	assert.Empty(a.IYO.Org)
 	assert.Empty(a.IYO.Secret)
-	assert.Empty(a.Servers)
+	assert.Empty(a.DataServers)
 	assert.Empty(a.MetadataServers)
 
 	a.IYO = IYOCredentials{
@@ -367,29 +377,34 @@ func TestZeroStorClusterConfigClone(t *testing.T) {
 		Secret:    "secret foo",
 	}
 
-	a.Servers = []ServerConfig{
-		ServerConfig{"localhost:16379"},
-		ServerConfig{"localhost:16380"},
-		ServerConfig{"localhost:16381"},
-	}
-
 	a.MetadataServers = []ServerConfig{
 		ServerConfig{"localhost:16389"},
 		ServerConfig{"localhost:16390"},
 		ServerConfig{"localhost:16391"},
 	}
 
+	a.DataServers = []ServerConfig{
+		ServerConfig{"localhost:16379"},
+		ServerConfig{"localhost:16380"},
+		ServerConfig{"localhost:16381"},
+	}
+
+	a.DataShards = 2
+	a.ParityShards = 1
+
 	b := a.Clone()
 	assert.Equal(a.IYO, b.IYO, "should be equal")
-	assert.Equal(a.Servers, b.Servers, "should be equal")
 	assert.Equal(a.MetadataServers, b.MetadataServers, "should be equal")
+	assert.Equal(a.DataServers, b.DataServers, "should be equal")
+	assert.Equal(a.DataShards, b.DataShards, "should be equal")
+	assert.Equal(a.ParityShards, b.ParityShards, "should be equal")
 
 	b.IYO.Secret = "secret bar"
-	b.Servers[0] = ServerConfig{"localhost:200"}
+	b.DataServers[0] = ServerConfig{"localhost:200"}
 	b.MetadataServers[0] = ServerConfig{"localhost:201"}
 
 	assert.NotEqual(a.IYO, b.IYO, "IYO secret shouldn't equal any longer")
-	assert.NotEqual(a.Servers, b.Servers, "one server shouldn't equal any longer")
+	assert.NotEqual(a.DataServers, b.DataServers, "one server shouldn't equal any longer")
 	assert.NotEqual(a.MetadataServers, b.MetadataServers, "one server shouldn't equal any longer")
 
 }

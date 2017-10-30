@@ -17,7 +17,8 @@ import (
 )
 
 func TestBackendSigtermHandler(t *testing.T) {
-	provider := redisstub.NewInMemoryRedisProvider(nil)
+	cluster := redisstub.NewUniCluster(true)
+	defer cluster.Close()
 
 	const (
 		vdiskID    = "a"
@@ -26,13 +27,12 @@ func TestBackendSigtermHandler(t *testing.T) {
 		blockCount = size / blockSize
 	)
 
-	var err error
 	var blockStorage storage.BlockStorage
 	ctx := context.Background()
 
-	blockStorage, err = storage.Deduped(
+	blockStorage, err := storage.Deduped(
 		vdiskID, blockSize,
-		ardb.DefaultLBACacheLimit, false, provider)
+		ardb.DefaultLBACacheLimit, cluster, nil)
 	if err != nil {
 		t.Fatalf("couldn't create deduped block storage: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestBackendSigtermHandler(t *testing.T) {
 	// test Deduped Storage
 	testBackendSigtermHandler(ctx, t, vdiskID, blockSize, size, blockStorage)
 
-	blockStorage, err = storage.NonDeduped(vdiskID, "", blockSize, false, provider)
+	blockStorage, err = storage.NonDeduped(vdiskID, "", blockSize, cluster, nil)
 	if err != nil {
 		t.Fatalf("couldn't create nondeduped block storage: %v", err)
 	}
@@ -58,11 +58,12 @@ func TestBackendSigtermHandler(t *testing.T) {
 
 		source := config.NewStubSource()
 		defer source.Close()
+		source.SetPrimaryStorageCluster(vdiskID, "nbdCluster", nil)
 		source.SetTlogServerCluster(vdiskID, "tlogcluster", &config.TlogClusterConfig{
 			Servers: []string{tlogrpc},
 		})
 
-		tls, err := tlog.Storage(ctx, vdiskID, "tlogcluster", source, blockSize, storage, provider, nil)
+		tls, err := tlog.Storage(ctx, vdiskID, source, blockSize, storage, cluster, nil)
 		require.NoError(t, err)
 		require.NotNil(t, tls)
 
@@ -75,15 +76,13 @@ func TestBackendSigtermHandler(t *testing.T) {
 
 func newTlogTestServer(ctx context.Context, t *testing.T, vdiskID string) (string, func()) {
 	testConf := &server.Config{
-		DataShards:   4,
-		ParityShards: 2,
-		ListenAddr:   "",
-		FlushSize:    25,
-		FlushTime:    25,
-		PrivKey:      "12345678901234567890123456789012",
+		ListenAddr: "",
+		FlushSize:  25,
+		FlushTime:  25,
+		PrivKey:    "12345678901234567890123456789012",
 	}
 
-	configSource, _, cleanup := newZeroStorConfig(t, vdiskID, testConf)
+	configSource, _, cleanup := newZeroStorConfig(t, vdiskID, testConf, 4, 2)
 
 	// start the server
 	s, err := server.NewServer(testConf, configSource)
@@ -94,10 +93,10 @@ func newTlogTestServer(ctx context.Context, t *testing.T, vdiskID string) (strin
 	return s.ListenAddr(), cleanup
 }
 
-func newZeroStorConfig(t *testing.T, vdiskID string, tlogConf *server.Config) (*config.StubSource, stor.Config, func()) {
+func newZeroStorConfig(t *testing.T, vdiskID string, tlogConf *server.Config, k, m int) (*config.StubSource, stor.Config, func()) {
 
 	// stor server
-	storCluster, err := embeddedserver.NewZeroStorCluster(tlogConf.DataShards + tlogConf.ParityShards)
+	storCluster, err := embeddedserver.NewZeroStorCluster(k + m)
 	require.Nil(t, err)
 
 	var servers []config.ServerConfig
@@ -117,8 +116,8 @@ func newZeroStorConfig(t *testing.T, vdiskID string, tlogConf *server.Config) (*
 		Namespace:       "thedisk",
 		ZeroStorShards:  storCluster.Addrs(),
 		MetaShards:      []string{mdServer.ListenAddr()},
-		DataShardsNum:   tlogConf.DataShards,
-		ParityShardsNum: tlogConf.ParityShards,
+		DataShardsNum:   k,
+		ParityShardsNum: m,
 		EncryptPrivKey:  tlogConf.PrivKey,
 	}
 
@@ -132,12 +131,14 @@ func newZeroStorConfig(t *testing.T, vdiskID string, tlogConf *server.Config) (*
 			ClientID:  storConf.IyoClientID,
 			Secret:    storConf.IyoSecret,
 		},
-		Servers: servers,
+		DataServers: servers,
 		MetadataServers: []config.ServerConfig{
 			config.ServerConfig{
 				Address: mdServer.ListenAddr(),
 			},
 		},
+		DataShards:   k,
+		ParityShards: m,
 	})
 
 	cleanFunc := func() {

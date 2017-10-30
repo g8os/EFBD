@@ -40,9 +40,8 @@ func TestGenerate(t *testing.T) {
 	require.NoError(t, err)
 	defer mdServer.Stop()
 
-	// redis provider
-	redisProvider := redisstub.NewInMemoryRedisProvider(nil)
-	defer redisProvider.Close()
+	cluster := redisstub.NewUniCluster(true)
+	defer cluster.Close()
 
 	// config source
 	confSource := config.NewStubSource()
@@ -65,11 +64,7 @@ func TestGenerate(t *testing.T) {
 	confSource.SetVdiskConfig(targetVdiskID, &staticConf)
 
 	storageClusterConf := &config.StorageClusterConfig{
-		Servers: []config.StorageServerConfig{
-			config.StorageServerConfig{
-				Address: redisProvider.PrimaryAddress(),
-			},
-		},
+		Servers: []config.StorageServerConfig{cluster.StorageServerConfig()},
 	}
 
 	confSource.SetPrimaryStorageCluster(sourceVdiskID, nbdClusterID, storageClusterConf)
@@ -80,18 +75,20 @@ func TestGenerate(t *testing.T) {
 			Org:       "testorg",
 			Namespace: "thedisk",
 		},
-		Servers: serverConf,
 		MetadataServers: []config.ServerConfig{
 			config.ServerConfig{
 				Address: mdServer.ListenAddr(),
 			},
 		},
+		DataServers:  serverConf,
+		DataShards:   dataShards,
+		ParityShards: parityShards,
 	})
 
 	// 1. Create block storages and fill with data
 	sourceBlockStorage, err := storage.Deduped(
 		sourceVdiskID, blockSize,
-		ardb.DefaultLBACacheLimit, false, redisProvider)
+		ardb.DefaultLBACacheLimit, cluster, nil)
 	require.NoError(t, err)
 
 	contents := make(map[int64][]byte, blockCount)
@@ -114,21 +111,19 @@ func TestGenerate(t *testing.T) {
 	generator, err := NewGenerator(confSource, Config{
 		SourceVdiskID: sourceVdiskID,
 		TargetVdiskID: targetVdiskID,
-		DataShards:    dataShards,
-		ParityShards:  parityShards,
 		PrivKey:       privKey,
 		JobCount:      runtime.NumCPU(),
 	})
 	require.NoError(t, err)
 
-	err = generator.GenerateFromStorage(context.Background())
+	_, err = generator.GenerateFromStorage(context.Background())
 	require.NoError(t, err)
 
 	// 3. Use tlog replay to restore data
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
-	player, err := player.NewPlayer(ctx, confSource, targetVdiskID, privKey, dataShards, parityShards)
+	player, err := player.NewPlayer(ctx, confSource, targetVdiskID, privKey)
 	require.NoError(t, err)
 
 	_, err = player.Replay(decoder.NewLimitByTimestamp(0, 0))
@@ -137,7 +132,7 @@ func TestGenerate(t *testing.T) {
 	// 4. Check the replayed data
 	targetBlockStorage, err := storage.Deduped(
 		targetVdiskID, blockSize,
-		ardb.DefaultLBACacheLimit, false, redisProvider)
+		ardb.DefaultLBACacheLimit, cluster, nil)
 	require.NoError(t, err)
 
 	for idx, content := range contents {

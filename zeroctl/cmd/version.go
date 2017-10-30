@@ -1,9 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-	"runtime"
-
 	"github.com/spf13/cobra"
 	"github.com/zero-os/0-Disk"
 )
@@ -26,21 +23,5 @@ var VersionCmd = &cobra.Command{
 // outputVersion prints to the STDOUT,
 // the tool version, runtime info, and optionally the commit hash.
 func outputVersion(*cobra.Command, []string) {
-	// Tool Version
-	version := "Version: " + zerodisk.CurrentVersion.String()
-
-	// Build (Git) Commit Hash
-	if CommitHash != "" {
-		version += "\r\nBuild: " + CommitHash
-		if BuildDate != "" {
-			version += " " + BuildDate
-		}
-	}
-
-	// Output version and runtime information
-	fmt.Printf("%s\r\nRuntime: %s %s\r\n",
-		version,
-		runtime.Version(), // Go Version
-		runtime.GOOS,      // OS Name
-	)
+	zerodisk.PrintVersion()
 }

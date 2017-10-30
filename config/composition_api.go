@@ -232,7 +232,7 @@ func (w *tlogStorageConfigWatcher) Watch(ctx context.Context) (<-chan TlogStorag
 					return
 				}
 				log.Debugf("TlogStorageConfigWatcher (%s) receives 0-stor cluster", w.vdiskID)
-				if w.zeroStorCluster.Equal(&cluster) {
+				if w.zeroStorCluster.Equal(cluster) {
 					log.Debugf(
 						"TlogStorageConfigWatcher (%s) received nop-update for 0-stor cluster (%s)",
 						w.vdiskID, w.zeroStorClusterID)
@@ -248,7 +248,7 @@ func (w *tlogStorageConfigWatcher) Watch(ctx context.Context) (<-chan TlogStorag
 						"close TlogStorageConfigWatcher (%s) because of closed slave chan", w.vdiskID)
 					return
 				}
-				if w.slaveCluster.Equal(&cluster) {
+				if w.slaveCluster.Equal(cluster) {
 					log.Debugf(
 						"TlogStorageConfigWatcher (%s) received nop-update for slave cluster (%s)",
 						w.vdiskID, w.slaveClusterID)
@@ -542,7 +542,7 @@ func (w *nbdStorageConfigWatcher) Watch(ctx context.Context) (<-chan NBDStorageC
 					return
 				}
 				log.Debugf("nbdStorageConfigWatcher (%s) receives primary cluster", w.vdiskID)
-				if w.primaryCluster.Equal(&cluster) {
+				if w.primaryCluster.Equal(cluster) {
 					log.Debugf(
 						"nbdStorageConfigWatcher (%s) received nop-update for primary cluster (%s)",
 						w.vdiskID, w.primaryClusterID)
@@ -558,7 +558,7 @@ func (w *nbdStorageConfigWatcher) Watch(ctx context.Context) (<-chan NBDStorageC
 					return
 				}
 				log.Debugf("nbdStorageConfigWatcher (%s) receives template cluster", w.vdiskID)
-				if w.templateCluster.Equal(&cluster) {
+				if w.templateCluster.Equal(cluster) {
 					log.Debugf(
 						"nbdStorageConfigWatcher (%s) received nop-update for template cluster (%s)",
 						w.vdiskID, w.templateClusterID)
@@ -574,7 +574,7 @@ func (w *nbdStorageConfigWatcher) Watch(ctx context.Context) (<-chan NBDStorageC
 					return
 				}
 				log.Debugf("nbdStorageConfigWatcher (%s) receives slave cluster", w.vdiskID)
-				if w.slaveCluster.Equal(&cluster) {
+				if w.slaveCluster.Equal(cluster) {
 					log.Debugf(
 						"nbdStorageConfigWatcher (%s) received nop-update for slave cluster (%s)",
 						w.vdiskID, w.slaveClusterID)

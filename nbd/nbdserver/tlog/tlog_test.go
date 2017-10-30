@@ -7,6 +7,7 @@ import (
 	mrand "math/rand"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,11 +19,16 @@ import (
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/stor"
 	"github.com/zero-os/0-Disk/tlog/stor/embeddedserver"
+	"github.com/zero-os/0-Disk/tlog/tlogclient"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/player"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
 	"github.com/zero-os/0-stor/client/meta/embedserver"
 )
+
+func init() {
+	log.SetLevel(log.DebugLevel)
+}
 
 func TestTlogStorageWithInMemory(t *testing.T) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
@@ -67,10 +73,12 @@ func TestTlogStorageWithDeduped(t *testing.T) {
 		blockCount = 8
 	)
 
-	redisProvider := redisstub.NewInMemoryRedisProvider(nil)
+	cluster := redisstub.NewUniCluster(true)
+	defer cluster.Close()
+
 	storage, err := storage.Deduped(
 		vdiskID, blockSize,
-		ardb.DefaultLBACacheLimit, false, redisProvider)
+		ardb.DefaultLBACacheLimit, cluster, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -88,10 +96,11 @@ func TestTlogStorageForceFlushWithDeduped(t *testing.T) {
 		blockCount = 8
 	)
 
-	redisProvider := redisstub.NewInMemoryRedisProvider(nil)
+	cluster := redisstub.NewUniCluster(true)
+	defer cluster.Close()
 	storage, err := storage.Deduped(
 		vdiskID, blockSize,
-		ardb.DefaultLBACacheLimit, false, redisProvider)
+		ardb.DefaultLBACacheLimit, cluster, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -108,9 +117,11 @@ func TestTlogStorageWithNondeduped(t *testing.T) {
 		blockSize = 8
 	)
 
-	redisProvider := redisstub.NewInMemoryRedisProvider(nil)
+	cluster := redisstub.NewUniCluster(true)
+	defer cluster.Close()
+
 	storage, err := storage.NonDeduped(
-		vdiskID, "", blockSize, false, redisProvider)
+		vdiskID, "", blockSize, cluster, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -127,9 +138,11 @@ func TestTlogStorageForceFlushWithNondeduped(t *testing.T) {
 		blockSize = 8
 	)
 
-	redisProvider := redisstub.NewInMemoryRedisProvider(nil)
+	cluster := redisstub.NewUniCluster(true)
+	defer cluster.Close()
+
 	storage, err := storage.NonDeduped(
-		vdiskID, "", blockSize, false, redisProvider)
+		vdiskID, "", blockSize, cluster, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -145,13 +158,14 @@ func testTlogStorage(ctx context.Context, t *testing.T, vdiskID string, blockSiz
 	}
 
 	source := config.NewStubSource()
+	source.SetPrimaryStorageCluster(vdiskID, "nbdCluster", nil)
 	source.SetTlogServerCluster(vdiskID, "tlogcluster", &config.TlogClusterConfig{
 		Servers: []string{tlogrpc},
 	})
 	defer source.Close()
 
 	storage, err := Storage(
-		ctx, vdiskID, "tlogcluster", source, blockSize, storage, nil, nil)
+		ctx, vdiskID, source, blockSize, storage, ardb.NopCluster{}, nil)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}
@@ -167,13 +181,14 @@ func testTlogStorageForceFlush(ctx context.Context, t *testing.T, vdiskID string
 	}
 
 	source := config.NewStubSource()
+	source.SetPrimaryStorageCluster(vdiskID, "nbdCluster", nil)
 	source.SetTlogServerCluster(vdiskID, "tlogcluster", &config.TlogClusterConfig{
 		Servers: []string{tlogrpc},
 	})
 	defer source.Close()
 
 	storage, err := Storage(
-		ctx, vdiskID, "tlogcluster", source, blockSize, storage, nil, nil)
+		ctx, vdiskID, source, blockSize, storage, ardb.NopCluster{}, nil)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}
@@ -183,15 +198,13 @@ func testTlogStorageForceFlush(ctx context.Context, t *testing.T, vdiskID string
 
 func newTlogTestServer(ctx context.Context, t *testing.T, vdiskID string) (string, func()) {
 	testConf := &server.Config{
-		DataShards:   4,
-		ParityShards: 2,
-		ListenAddr:   "",
-		FlushSize:    25,
-		FlushTime:    25,
-		PrivKey:      "12345678901234567890123456789012",
+		ListenAddr: "",
+		FlushSize:  25,
+		FlushTime:  25,
+		PrivKey:    "12345678901234567890123456789012",
 	}
 
-	configSource, _, cleanup := newZeroStorConfig(t, vdiskID, testConf)
+	configSource, _, cleanup := newZeroStorConfig(t, vdiskID, testConf, 4, 2)
 
 	// start the server
 	s, err := server.NewServer(testConf, configSource)
@@ -203,43 +216,31 @@ func newTlogTestServer(ctx context.Context, t *testing.T, vdiskID string) (strin
 }
 
 func TestTlogDedupedStorageReplay(t *testing.T) {
-	var connProvider ardb.ConnProvider
-	defer func() {
-		if connProvider != nil {
-			connProvider.Close()
-		}
-	}()
+	var cluster *redisstub.UniCluster
+	defer cluster.Close()
 
 	createDedupedStorage := func(vdiskID string, vdiskSize, blockSize int64) (storage.BlockStorage, error) {
-		if connProvider != nil {
-			connProvider.Close()
-		}
+		cluster.Close()
+		cluster = redisstub.NewUniCluster(true)
 
-		connProvider = redisstub.NewInMemoryRedisProvider(nil)
 		return storage.Deduped(
 			vdiskID, blockSize,
-			ardb.DefaultLBACacheLimit, false, connProvider)
+			ardb.DefaultLBACacheLimit, cluster, nil)
 	}
 
 	testTlogStorageReplay(t, createDedupedStorage)
 }
 
 func TestTlogNonDedupedStorageReplay(t *testing.T) {
-	var connProvider ardb.ConnProvider
-	defer func() {
-		if connProvider != nil {
-			connProvider.Close()
-		}
-	}()
+	var cluster *redisstub.UniCluster
+	defer cluster.Close()
 
 	createNonDedupedStorage := func(vdiskID string, vdiskSize, blockSize int64) (storage.BlockStorage, error) {
-		if connProvider != nil {
-			connProvider.Close()
-		}
+		cluster.Close()
+		cluster = redisstub.NewUniCluster(true)
 
-		connProvider = redisstub.NewInMemoryRedisProvider(nil)
 		return storage.NonDeduped(
-			vdiskID, "", blockSize, false, connProvider)
+			vdiskID, "", blockSize, cluster, nil)
 	}
 
 	testTlogStorageReplay(t, createNonDedupedStorage)
@@ -261,15 +262,13 @@ func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
 	t.Log("1. Start a tlogserver;")
 
 	testConf := &server.Config{
-		DataShards:   4,
-		ParityShards: 2,
-		ListenAddr:   "",
-		FlushSize:    1,
-		FlushTime:    1,
-		PrivKey:      "12345678901234567890123456789012",
+		ListenAddr: "",
+		FlushSize:  1,
+		FlushTime:  1,
+		PrivKey:    "12345678901234567890123456789012",
 	}
 
-	configSource, _, cleanup := newZeroStorConfig(t, vdiskID, testConf)
+	configSource, _, cleanup := newZeroStorConfig(t, vdiskID, testConf, 4, 2)
 	defer cleanup()
 
 	t.Log("start the server")
@@ -295,13 +294,14 @@ func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
 	}
 
 	source := config.NewStubSource()
+	source.SetPrimaryStorageCluster(vdiskID, "nbdCluster", nil)
 	source.SetTlogServerCluster(vdiskID, "tlogcluster", &config.TlogClusterConfig{
 		Servers: []string{tlogrpc},
 	})
 	defer source.Close()
 
 	storage, err := Storage(
-		ctx, vdiskID, "tlogcluster", source, blockSize, internalStorage, nil, nil)
+		ctx, vdiskID, source, blockSize, internalStorage, ardb.NopCluster{}, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -399,8 +399,7 @@ func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
 	t.Log("7. Replay the tlog aggregations;")
 
 	t.Log("replay from tlog except the last block")
-	player, err := player.NewPlayerWithStorage(ctx, configSource, nil, storage, vdiskID,
-		testConf.PrivKey, testConf.DataShards, testConf.ParityShards)
+	player, err := player.NewPlayerWithStorage(ctx, configSource, nil, storage, vdiskID, testConf.PrivKey)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -883,14 +882,10 @@ func TestDataHistory(t *testing.T) {
 	}
 }
 
-func init() {
-	log.SetLevel(log.DebugLevel)
-}
-
-func newZeroStorConfig(t *testing.T, vdiskID string, tlogConf *server.Config) (*config.StubSource, stor.Config, func()) {
+func newZeroStorConfig(t *testing.T, vdiskID string, tlogConf *server.Config, k, m int) (*config.StubSource, stor.Config, func()) {
 
 	// stor server
-	storCluster, err := embeddedserver.NewZeroStorCluster(tlogConf.DataShards + tlogConf.ParityShards)
+	storCluster, err := embeddedserver.NewZeroStorCluster(k + m)
 	require.Nil(t, err)
 
 	var servers []config.ServerConfig
@@ -912,8 +907,8 @@ func newZeroStorConfig(t *testing.T, vdiskID string, tlogConf *server.Config) (*
 		IyoSecret:       "",
 		ZeroStorShards:  storCluster.Addrs(),
 		MetaShards:      []string{mdServer.ListenAddr()},
-		DataShardsNum:   tlogConf.DataShards,
-		ParityShardsNum: tlogConf.ParityShards,
+		DataShardsNum:   k,
+		ParityShardsNum: m,
 		EncryptPrivKey:  tlogConf.PrivKey,
 	}
 
@@ -927,12 +922,14 @@ func newZeroStorConfig(t *testing.T, vdiskID string, tlogConf *server.Config) (*
 			ClientID:  storConf.IyoClientID,
 			Secret:    storConf.IyoSecret,
 		},
-		Servers: servers,
+		DataServers: servers,
 		MetadataServers: []config.ServerConfig{
 			config.ServerConfig{
 				Address: mdServer.ListenAddr(),
 			},
 		},
+		DataShards:   k,
+		ParityShards: m,
 	})
 
 	cleanFunc := func() {
@@ -940,4 +937,162 @@ func newZeroStorConfig(t *testing.T, vdiskID string, tlogConf *server.Config) (*
 		storCluster.Close()
 	}
 	return stubSource, storConf, cleanFunc
+}
+
+// Added this test for this issue (tlog storage didn't watch for updates on tlog storage cluster ID)
+// https://github.com/zero-os/0-Disk/issues/526
+func TestTlogSwitchClusterID(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
+	const (
+		vdiskID   = "a"
+		blockSize = 8
+	)
+
+	// initil cluster, and later on the last valid cluster
+	lastValidClusterID := "initTlogCluster"
+	lastValidCluster := config.TlogClusterConfig{
+		Servers: []string{"localhost:2345"},
+	}
+	// clusters we'll switch to, one by one, in order
+	clusters := []switchCluster{
+		switchCluster{clusterID: "", config: config.TlogClusterConfig{
+			Servers: []string{"1.1.1.1:4321"},
+		}, invalid: true},
+		switchCluster{clusterID: "tlogCluster0", config: config.TlogClusterConfig{
+			Servers: []string{"127.0.0.1:1234"},
+		}},
+		switchCluster{clusterID: "tlogCluster0", config: config.TlogClusterConfig{
+			Servers: []string{"128.3.1.2:1234"},
+		}},
+		switchCluster{clusterID: "tlogCluster1", config: config.TlogClusterConfig{
+			Servers: []string{"1.2.3.4:5678"},
+		}},
+		switchCluster{clusterID: "", config: config.TlogClusterConfig{
+			Servers: []string{"0.0.0.0:1234"},
+		}, invalid: true},
+		switchCluster{clusterID: "tlogCluster2", config: config.TlogClusterConfig{
+			Servers: []string{"5.6.7.8:1234"},
+		}},
+		switchCluster{clusterID: "tlogCluster3", config: config.TlogClusterConfig{
+			Servers: []string{"11.12.13.14:1234"},
+		}},
+		switchCluster{clusterID: lastValidClusterID, config: config.TlogClusterConfig{
+			Servers: lastValidCluster.Servers,
+		}},
+		switchCluster{clusterID: lastValidClusterID, config: config.TlogClusterConfig{
+			Servers: []string{"5.6.7.8:1234"},
+		}},
+	}
+
+	storage := storage.NewInMemoryStorage(vdiskID, blockSize)
+
+	source := config.NewStubSource()
+	defer source.Close()
+	source.SetPrimaryStorageCluster(vdiskID, "nbdCluster", nil)
+	source.SetTlogServerCluster(vdiskID, lastValidClusterID, &lastValidCluster)
+
+	tlogClient := &stubTlogClient{servers: lastValidCluster.Servers}
+
+	storage, err := Storage(ctx, vdiskID, source, blockSize, storage, ardb.NopCluster{}, tlogClient)
+	require.NoError(err)
+
+	defer storage.Close()
+	require.NotNil(storage)
+	tlogStorage := storage.(*tlogStorage)
+
+	for _, cluster := range clusters {
+		// change tlog server cluster
+		if cluster.clusterID != lastValidClusterID {
+			source.SetTlogServerCluster(vdiskID, cluster.clusterID, &cluster.config)
+		} else { // only update the tlog cluster, not the vdisk config
+			source.SetTlogCluster(cluster.clusterID, &cluster.config)
+		}
+
+		// wait for update to propagate
+		timeoutTicker := time.NewTicker(30 * time.Second)
+		pollTicker := time.NewTicker(5 * time.Millisecond)
+
+	TickLoop:
+		for {
+			select {
+			case <-pollTicker.C:
+				s := tlogClient.getServers()
+				require.Len(s, 1)
+
+				if cluster.invalid {
+					require.Equal(lastValidCluster.Servers[0], s[0],
+						"servers should still be equal to last valid server")
+					break TickLoop
+				}
+
+				if cluster.config.Servers[0] == s[0] {
+					lastValidClusterID = cluster.clusterID
+					lastValidCluster = cluster.config
+					break TickLoop
+				}
+
+			case <-timeoutTicker.C:
+				assert.FailNow("Timed out waiting for tlog cluster ID to be updated.")
+			}
+		}
+
+		s := tlogClient.getServers()
+		require.Len(s, 1)
+		require.Equal(lastValidCluster.Servers[0], s[0],
+			"servers should still be equal to last valid server")
+		if !cluster.invalid {
+			require.Equal(lastValidClusterID, tlogStorage.tlogClusterID)
+		}
+	}
+}
+
+type switchCluster struct {
+	clusterID string
+	config    config.TlogClusterConfig
+	invalid   bool // cluster should be unchanged after this is pushed
+}
+
+type stubTlogClient struct {
+	servers []string
+	lock    sync.Mutex
+}
+
+func (stls *stubTlogClient) Send(op uint8, seq uint64, index int64, timestamp int64, data []byte) error {
+	return nil
+}
+
+func (stls *stubTlogClient) ForceFlushAtSeq(uint64) error {
+	return nil
+}
+
+func (stls *stubTlogClient) WaitNbdSlaveSync() error {
+	return nil
+}
+
+func (stls *stubTlogClient) ChangeServerAddresses(servers []string) {
+	stls.lock.Lock()
+	stls.servers = servers
+	stls.lock.Unlock()
+}
+
+func (stls *stubTlogClient) getServers() []string {
+	stls.lock.Lock()
+	defer stls.lock.Unlock()
+	return stls.servers
+}
+
+func (stls *stubTlogClient) Recv() <-chan *tlogclient.Result {
+	return nil
+}
+
+func (stls *stubTlogClient) LastFlushedSequence() uint64 {
+	return 0
+}
+func (stls *stubTlogClient) Close() error {
+	return nil
 }

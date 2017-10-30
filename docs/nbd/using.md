@@ -68,6 +68,12 @@ you'll have to specify the config file explicitly using the `-config path` flag.
 <a id="nbd-client"></a>
 ### Test with nbd-client](nbd-client)
 
+> ⚠ NOTE ⚠
+>
+> Only nbd-client version `3.10` is supported,
+> newer clients (version 3.11 and above)
+> with newstyle nbd negotiation protocol are not supported.
+
 Connect your `nbd-client` to the server running on `localhost:6666`:
 
 ```
@@ -78,6 +84,15 @@ sudo mount /dev/nbd1 /mnt/sharedvolume
 
 <a id="convert-image"></a>
 ### Converting an image
+
+> ⚠ NOTE ⚠
+>
+> When using qemu to convert and emulate images hosted via an nbdserver,
+> only `qemu 2.8` is supported.
+>
+> It is known and accepted that the nbdserver does not work
+> when used with `qemu 2.10` and any version other than `2.8`.
+> See [issue #523](https://github.com/zero-os/0-Disk/issues/523) for more information.
 
 This will actually to copy our standard qcow2, img or vdi template file into ARDB.
 

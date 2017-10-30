@@ -182,9 +182,17 @@ servers:
   - address: 1.1.1.1:11
   - address: 2.2.2.2:22
     db: 2
-`, `
+`,
+	// the most minimal cluster config
+	`
 servers:
   - address: 1.1.1.1:11
+`, // only disabled servers given
+	`
+servers:
+  - address: localhost:16379
+    state: rip
+  - state: rip
 `,
 }
 
@@ -203,12 +211,6 @@ servers:
 	`
 servers:
   address: localhost:16379
-`, // only disabled data storages given
-	`
-servers:
-  - address: localhost:16379
-    disabled: true
-  - disabled: true
 `,
 }
 
@@ -217,7 +219,7 @@ var validStorageServerConfigYAML = []string{
 	`
 address: localhost:16379
 db: 1
-disabled: false
+state: online
 `, // complete example (2)
 	`
 address: 127.0.0.1:16379
@@ -233,9 +235,9 @@ db: 3
 	`
    address: "[2001:db8:0:3:3:3:3:3]:33"
 `,
-	// when disabled is true, the other properties are irrelevant
+	// when state is RIP, the other properties are irrelevant
 	`
-disabled: true
+state: rip
 `,
 }
 
@@ -259,11 +261,13 @@ iyo:
   namespace: "foo namespace"
   clientID: "foo client"
   secret: "foo secret"
-servers:
-  - address: "1.1.1.1:11"
-  - address: "2.2.2.2:22"
 metadataServers:
   - address: "3.3.3.3:33"
+dataServers:
+  - address: "1.1.1.1:11"
+  - address: "2.2.2.2:22"
+dataShards: 1
+parityShards: 1
 `, // minimal example
 	`
 iyo:
@@ -271,10 +275,13 @@ iyo:
   namespace: "foo namespace"
   clientID: "foo client"
   secret: "foo secret"
-servers:
-  - address: "1.1.1.1:11"
 metadataServers:
   - address: "2.2.2.2:22"
+dataServers:
+  - address: "1.1.1.1:11"
+  - address: "1.1.1.1:22"
+dataShards: 1
+parityShards: 1
 `, // using unix socket address for metadata example
 	`
 iyo:
@@ -282,10 +289,31 @@ iyo:
   namespace: "foo namespace"
   clientID: "foo client"
   secret: "foo secret"
-servers:
-  - address: "1.1.1.1:11"
 metadataServers:
   - address: "unix://etcd137925510"
+dataServers:
+  - address: "1.1.1.1:11"
+  - address: "1.1.1.1:22"
+dataShards: 1
+parityShards: 1
+`, // alt. minimal example, with more data servers
+	`
+iyo:
+  org: "foo org"
+  namespace: "foo namespace"
+  clientID: "foo client"
+  secret: "foo secret"
+metadataServers:
+  - address: "2.2.2.2:22"
+dataServers:
+  - address: "1.1.1.1:11"
+  - address: "1.1.1.1:22"
+  - address: "1.1.1.1:33"
+  - address: "1.1.1.1:44"
+  - address: "1.1.1.1:55"
+  - address: "1.1.1.1:66"
+dataShards: 4
+parityShards: 2
 `,
 }
 
@@ -296,21 +324,27 @@ iyo:
   namespace: "foo namespace"
   clientID: "foo client"
   secret: "foo secret"
-servers:
-  - address: "1.1.1.1:11"
 metadataServers:
   - address: "3.3.3.3:33"
+dataServers:
+  - address: "1.1.1.1:11"
+  - address: "1.1.1.1:22"
+dataShards: 1
+parityShards: 1
 `, // missing namespace
 	`
 iyo:
   org: "foo org"
   clientID: "foo client"
   secret: "foo secret"
-servers:
+metadataServers:
+  - address: "3.3.3.3:33"
+dataServers:
   - address: "1.1.1.1:11"
-metadataServers:
-  - address: "3.3.3.3:33"
-`, // missing server addresses
+  - address: "1.1.1.1:22"
+dataShards: 1
+parityShards: 1
+`, // missing data server addresses
 	`
 iyo:
   org: "foo org"
@@ -319,17 +353,22 @@ iyo:
   secret: "foo secret"
 metadataServers:
   - address: "3.3.3.3:33"
-`, // empty server address
+dataShards: 1
+parityShards: 1
+`, // empty data server address
 	`
 iyo:
   org: "foo org"
   namespace: "foo namespace"
   clientID: "foo client"
   secret: "foo secret"
-servers:
+metadataServers:
+  - address: "3.3.3.3:33"
+dataServers:
   - address: ""
-metadataServers:
-  - address: "3.3.3.3:33"
+  - address: ""
+dataShards: 1
+parityShards: 1
 `, // invalid server address
 	`
 iyo:
@@ -337,10 +376,13 @@ iyo:
   namespace: "foo namespace"
   clientID: "foo client"
   secret: "foo secret"
-servers:
-  - address: "foo address"
 metadataServers:
   - address: "3.3.3.3:33"
+dataServers:
+  - address: "foo"
+  - address: "address"
+dataShards: 1
+parityShards: 1
 `,
 	// missing metadataserver addresses
 	`
@@ -349,8 +391,11 @@ iyo:
   namespace: "foo namespace"
   clientID: "foo client"
   secret: "foo secret"
-servers:
+dataServers:
   - address: "1.1.1.1:11"
+  - address: "1.1.1.1:22"
+dataShards: 1
+parityShards: 1
 `, // empty metadataserver address
 	`
 iyo:
@@ -358,10 +403,13 @@ iyo:
   namespace: "foo namespace"
   clientID: "foo client"
   secret: "foo secret"
-servers:
-  - address: "1.1.1.1:11"
 metadataServers:
   - address: ""
+dataServers:
+  - address: "1.1.1.1:11"
+  - address: "1.1.1.1:22"
+dataShards: 1
+parityShards: 1
 `, // invalid metadataserver address
 	`
 iyo:
@@ -369,9 +417,94 @@ iyo:
   namespace: "foo namespace"
   clientID: "foo client"
   secret: "foo secret"
-servers:
-  - address: "1.1.1.1:11"
 metadataServers:
   - address: "unixfooaddress"
+dataServers:
+  - address: "1.1.1.1:11"
+  - address: "1.1.1.1:22"
+dataShards: 1
+parityShards: 1
+`, // invalid data servers count (not enough)
+	`
+iyo:
+  org: "foo org"
+  namespace: "foo namespace"
+  clientID: "foo client"
+  secret: "foo secret"
+metadataServers:
+  - address: "3.3.3.3:33"
+dataServers:
+  - address: "1.1.1.1:22"
+dataShards: 1
+parityShards: 1
+`, // invalid data servers count (too much)
+	`
+iyo:
+  org: "foo org"
+  namespace: "foo namespace"
+  clientID: "foo client"
+  secret: "foo secret"
+metadataServers:
+  - address: "3.3.3.3:33"
+dataServers:
+  - address: "1.1.1.1:22"
+  - address: "1.1.1.1:33"
+  - address: "1.1.1.1:44"
+dataShards: 1
+parityShards: 1
+`, // missing dataShards property
+	`
+iyo:
+  org: "foo org"
+  namespace: "foo namespace"
+  clientID: "foo client"
+  secret: "foo secret"
+metadataServers:
+  - address: "3.3.3.3:33"
+dataServers:
+  - address: "1.1.1.1:22"
+  - address: "1.1.1.1:33"
+parityShards: 1
+`, // missing parityShards property
+	`
+iyo:
+  org: "foo org"
+  namespace: "foo namespace"
+  clientID: "foo client"
+  secret: "foo secret"
+metadataServers:
+  - address: "3.3.3.3:33"
+dataServers:
+  - address: "1.1.1.1:22"
+  - address: "1.1.1.1:33"
+dataShards: 1
+`, // invalid dataShards property
+	`
+iyo:
+org: "foo org"
+namespace: "foo namespace"
+clientID: "foo client"
+secret: "foo secret"
+metadataServers:
+- address: "3.3.3.3:33"
+dataServers:
+- address: "1.1.1.1:22"
+- address: "1.1.1.1:33"
+dataShards: -1
+parityShards: 1
+`, // invalid parityShards property
+	`
+iyo:
+  org: "foo org"
+  namespace: "foo namespace"
+  clientID: "foo client"
+  secret: "foo secret"
+metadataServers:
+  - address: "3.3.3.3:33"
+dataServers:
+  - address: "1.1.1.1:22"
+  - address: "1.1.1.1:33"
+dataShards: 1
+parityShards: -1
 `,
 }

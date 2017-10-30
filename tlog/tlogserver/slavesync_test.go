@@ -35,11 +35,11 @@ func TestSlaveSyncEndToEnd(t *testing.T) {
 	defer cancelFunc()
 
 	// redis provider for the ardb
-	redisProvider := redisstub.NewInMemoryRedisProvider(nil)
+	mr := redisstub.NewMemoryRedis()
+	defer mr.Close()
 
 	// 0-stor
-	stubSource, _, cleanFunc := newZeroStorConfig(t, vdiskID, conf.PrivKey, conf.DataShards,
-		conf.ParityShards, redisProvider.PrimaryAddress())
+	stubSource, _, cleanFunc := newZeroStorConfig(t, vdiskID, conf.PrivKey, 1, 1, mr.StorageServerConfig().Address)
 	defer cleanFunc()
 
 	// Slave syncer
@@ -98,8 +98,14 @@ func TestSlaveSyncEndToEnd(t *testing.T) {
 	err = client.WaitNbdSlaveSync()
 	require.Nil(t, err)
 
+	pool := ardb.NewPool(nil)
+	defer pool.Close()
+
+	cluster, err := ardb.NewUniCluster(mr.StorageServerConfig(), pool)
+	require.NoError(t, err)
+
 	// check it from the storage
-	storage, err := storage.Deduped(vdiskID, blockSize, ardb.DefaultLBACacheLimit, false, redisProvider)
+	storage, err := storage.Deduped(vdiskID, blockSize, ardb.DefaultLBACacheLimit, cluster, nil)
 	require.NoError(t, err)
 
 	for i := 0; i < numLogs; i++ {
@@ -151,12 +157,14 @@ func newZeroStorConfig(t *testing.T, vdiskID, privKey string,
 			ClientID:  storConf.IyoClientID,
 			Secret:    storConf.IyoSecret,
 		},
-		Servers: servers,
 		MetadataServers: []config.ServerConfig{
 			config.ServerConfig{
 				Address: mdServer.ListenAddr(),
 			},
 		},
+		DataServers:  servers,
+		DataShards:   data,
+		ParityShards: parity,
 	})
 
 	storageClusterID := "cluster_id_for_slave"

@@ -45,15 +45,15 @@ func exportVdisk(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	cfg := backup.Config{
-		VdiskID:             vdiskCmdCfg.VdiskID,
-		SnapshotID:          vdiskCmdCfg.SnapshotID,
-		BlockSize:           exportVdiskCmdCfg.ExportBlockSize,
-		BlockStorageConfig:  vdiskCmdCfg.SourceConfig,
-		BackupStorageConfig: vdiskCmdCfg.BackupStorageConfig,
-		JobCount:            vdiskCmdCfg.JobCount,
-		CompressionType:     vdiskCmdCfg.CompressionType,
-		CryptoKey:           vdiskCmdCfg.PrivateKey,
-		Force:               vdiskCmdCfg.Force,
+		VdiskID:                  vdiskCmdCfg.VdiskID,
+		SnapshotID:               vdiskCmdCfg.SnapshotID,
+		BlockSize:                exportVdiskCmdCfg.ExportBlockSize,
+		BlockStorageConfig:       vdiskCmdCfg.SourceConfig,
+		BackupStoragDriverConfig: createBackupStorageConfigFromFlags(),
+		JobCount:                 vdiskCmdCfg.JobCount,
+		CompressionType:          vdiskCmdCfg.CompressionType,
+		CryptoKey:                vdiskCmdCfg.PrivateKey,
+		Force:                    vdiskCmdCfg.Force,
 	}
 
 	err = backup.Export(ctx, cfg)
@@ -120,6 +120,13 @@ This is also the default in case the --storage flag is not specified.
 a deduped map will be overwritten if it already existed,
 AND if it couldn't be loaded, due to being corrupt or encrypted/compressed,
 using a different private key or compression type, than the one(s) used right now.
+
+  When the --storage flag contains an FTP storage config and at least one of 
+--tls-server/--tls-cert/--tls-insecure/--tls-ca flags are given, 
+FTPS (FTP over SSL) is used instead of a plain FTP connection. 
+This enables exporting backups in a private and secure fashion,
+discouraging eavesdropping, tampering, and message forgery.
+When the configured server does not support FTPS an error will be returned.
 `
 
 	ExportVdiskCmd.Flags().Var(
@@ -147,4 +154,25 @@ using a different private key or compression type, than the one(s) used right no
 		&vdiskCmdCfg.Force,
 		"force", "f", false,
 		"when given, overwrite a deduped map if it can't be loaded")
+
+	ExportVdiskCmd.Flags().BoolVar(
+		&vdiskCmdCfg.TLSConfig.InsecureSkipVerify,
+		"tls-insecure", false,
+		"when given FTP over SSL will be used without cert verification")
+	ExportVdiskCmd.Flags().StringVar(
+		&vdiskCmdCfg.TLSConfig.ServerName,
+		"tls-server", "",
+		"certs will be verified when given (required when --tls-insecure is not used)")
+	ExportVdiskCmd.Flags().StringVar(
+		&vdiskCmdCfg.TLSConfig.CertFile,
+		"tls-cert", "",
+		"PEM-encoded file containing the TLS Client cert (FTPS will be used when given)")
+	ExportVdiskCmd.Flags().StringVar(
+		&vdiskCmdCfg.TLSConfig.KeyFile,
+		"tls-key", "",
+		"PEM-encoded file containing the private TLS client key")
+	ExportVdiskCmd.Flags().StringVar(
+		&vdiskCmdCfg.TLSConfig.CAFile,
+		"tls-ca", "",
+		"optional PEM-encoded file containing the TLS CA Pool (defaults to system pool when not given)")
 }

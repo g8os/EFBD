@@ -58,19 +58,13 @@ func (c *ExportController) GetConfig(name string) (*nbd.ExportConfig, error) {
 
 	return &nbd.ExportConfig{
 		Name:               name,
-		Description:        "Deduped g8os zerodisk",
+		Description:        cfg.Type.String() + " vdisk",
 		Driver:             "ardb",
 		ReadOnly:           cfg.ReadOnly,
 		TLSOnly:            c.tlsOnly,
 		MinimumBlockSize:   0, // use size given by ArdbBackend.Geometry
 		PreferredBlockSize: 0, // use size given by ArdbBackend.Geometry
 		MaximumBlockSize:   0, // use size given by ArdbBackend.Geometry
-		// TODO: add ability to have custom DriverParameters
-		// Related to following go-raml issues:
-		//	+ https://github.com/Jumpscale/go-raml/issues/132
-		//	+ https://github.com/Jumpscale/go-raml/issues/96
-		// They are related in a way that we would need a way to have
-		// a map[string[string] object generated
 	}, nil
 }
 

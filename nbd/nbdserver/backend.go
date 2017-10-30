@@ -6,14 +6,13 @@ import (
 	"time"
 
 	"github.com/zero-os/0-Disk/log"
-	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/nbd/gonbdserver/nbd"
 	"github.com/zero-os/0-Disk/nbd/nbdserver/statistics"
 	"github.com/zero-os/0-Disk/nbd/nbdserver/tlog"
 )
 
-func newBackend(vdiskID string, size uint64, blockSize int64, storage storage.BlockStorage, vComp *vdiskCompletion, connProvider ardb.ConnProvider, vdiskStatsLogger statistics.VdiskLogger) *backend {
+func newBackend(vdiskID string, size uint64, blockSize int64, storage storage.BlockStorage, vComp *vdiskCompletion, closer Closer, vdiskStatsLogger statistics.VdiskLogger) *backend {
 	vComp.Add()
 
 	return &backend{
@@ -21,7 +20,7 @@ func newBackend(vdiskID string, size uint64, blockSize int64, storage storage.Bl
 		blockSize:        blockSize,
 		size:             size,
 		storage:          storage,
-		connProvider:     connProvider,
+		closer:           closer,
 		vComp:            vComp,
 		vdiskStatsLogger: vdiskStatsLogger,
 	}
@@ -33,9 +32,14 @@ type backend struct {
 	blockSize        int64
 	size             uint64
 	storage          storage.BlockStorage
-	connProvider     ardb.ConnProvider
+	closer           Closer
 	vComp            *vdiskCompletion
 	vdiskStatsLogger statistics.VdiskLogger
+}
+
+// Closer defines a type which can be closed.
+type Closer interface {
+	Close() error
 }
 
 // WriteAt implements nbd.Backend.WriteAt
@@ -192,8 +196,11 @@ func (ab *backend) Flush(ctx context.Context) (err error) {
 func (ab *backend) Close(ctx context.Context) (err error) {
 	ab.vdiskStatsLogger.Close()
 
-	if ab.connProvider != nil {
-		ab.connProvider.Close()
+	if ab.closer != nil {
+		err = ab.closer.Close()
+		if err != nil {
+			log.Errorf("error while closing callee-provided closer: %v", err)
+		}
 	}
 
 	err = ab.storage.Close()

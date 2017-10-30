@@ -30,7 +30,7 @@ func TestForceFlushAtSeq(t *testing.T) {
 	// create and start server
 	conf := testConf
 	conf.FlushTime = 1000
-	cleanFunc, stubSource, _ := newZeroStorConfig(t, vdiskID, conf.PrivKey, conf.DataShards, conf.ParityShards)
+	cleanFunc, stubSource, _ := newZeroStorConfig(t, vdiskID, conf.PrivKey)
 	defer cleanFunc()
 
 	// start the server
@@ -100,7 +100,7 @@ func TestForceFlushAtSeqPossibleRace(t *testing.T) {
 	// create and start server
 	conf := testConf
 	conf.FlushTime = 1000
-	cleanFunc, stubSource, _ := newZeroStorConfig(t, vdiskID, conf.PrivKey, conf.DataShards, conf.ParityShards)
+	cleanFunc, stubSource, _ := newZeroStorConfig(t, vdiskID, conf.PrivKey)
 	defer cleanFunc()
 
 	// start the server

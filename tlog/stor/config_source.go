@@ -6,7 +6,7 @@ import (
 )
 
 // ConfigFromConfigSource creates tlog stor client config from config.Source
-func ConfigFromConfigSource(source config.Source, vdiskID, privKey string, dataShards, parityShards int) (conf Config, err error) {
+func ConfigFromConfigSource(source config.Source, vdiskID, privKey string) (conf Config, err error) {
 	// read vdisk config
 	vdiskConf, err := config.ReadVdiskTlogConfig(source, vdiskID)
 	if err != nil {
@@ -23,7 +23,7 @@ func ConfigFromConfigSource(source config.Source, vdiskID, privKey string, dataS
 
 	// creates stor config
 	serverAddrs := func() (addrs []string) {
-		for _, s := range zsc.Servers {
+		for _, s := range zsc.DataServers {
 			addrs = append(addrs, s.Address)
 		}
 		return
@@ -44,8 +44,8 @@ func ConfigFromConfigSource(source config.Source, vdiskID, privKey string, dataS
 		IyoSecret:       zsc.IYO.Secret,
 		ZeroStorShards:  serverAddrs,
 		MetaShards:      metaServerAddrs,
-		DataShardsNum:   dataShards,
-		ParityShardsNum: parityShards,
+		DataShardsNum:   zsc.DataShards,
+		ParityShardsNum: zsc.ParityShards,
 		EncryptPrivKey:  privKey,
 	}, nil
 }
