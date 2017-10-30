@@ -40,14 +40,8 @@ var (
 	// ErrInvalidConfig is returned when the given config was invalid
 	ErrInvalidConfig = errors.New("config is invalid")
 
-	// ErrInvalidStorageCluster is returned when the storage cluster is invalid
-	ErrInvalidStorageCluster = errors.New("storage cluster is invalid")
-
 	// ErrNilStorage is returned when a storage was nil while being required
 	ErrNilStorage = errors.New("storage is nil while it is required")
-
-	// ErrInvalidDatabase is returned when the StorageServerConfig's database is invalid
-	ErrInvalidDatabase = errors.New("invalid database")
 )
 
 // NewInvalidConfigError creates a new error with ErrInvalidConfig as Cause

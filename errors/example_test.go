@@ -75,7 +75,7 @@ func ExampleCause_multipleWraps() {
 	// cause of the error
 }
 
-func Example_errorSlice() {
+func ExampleErrorSlice() {
 	errs := errors.NewErrorSlice()
 
 	fmt.Println(errs.Len())
@@ -95,6 +95,7 @@ func Example_errorSlice() {
 
 	fmt.Println(errs.Len())
 	fmt.Println(errs.Error())
+	fmt.Println(errs.AsError())
 
 	// Output:
 	// 0
@@ -102,5 +103,6 @@ func Example_errorSlice() {
 	// 1
 	// an error;
 	// 2
+	// an error;another error;
 	// an error;another error;
 }

@@ -67,7 +67,8 @@ func (cfg *NBDVdisksConfig) Validate() error {
 
 	_, err := valid.ValidateStruct(cfg)
 	if err != nil {
-		return errors.Wrap(err, "invalid NBDVdisksConfig")
+		return errors.WrapError(ErrInvalidConfig,
+			errors.Wrap(err, "invalid NBDVdisksConfig"))
 	}
 
 	return nil
@@ -91,7 +92,8 @@ func (cfg *VdiskStaticConfig) Validate() error {
 	// check valid tags
 	_, err := valid.ValidateStruct(cfg)
 	if err != nil {
-		return errors.Wrap(err, "invalid static config")
+		return errors.WrapError(
+			ErrInvalidConfig, errors.Wrap(err, "invalid static config"))
 	}
 
 	// validate properties in more detail
@@ -149,7 +151,8 @@ func (cfg *VdiskNBDConfig) Validate() error {
 
 	_, err := valid.ValidateStruct(cfg)
 	if err != nil {
-		return errors.Wrap(err, "invalid VdiskNBDConfig")
+		return errors.WrapError(ErrInvalidConfig,
+			errors.Wrap(err, "invalid VdiskNBDConfig"))
 	}
 
 	return nil
@@ -186,7 +189,8 @@ func (cfg *VdiskTlogConfig) Validate() error {
 
 	_, err := valid.ValidateStruct(cfg)
 	if err != nil {
-		return errors.Wrap(err, "invalid VdiskTlogConfig")
+		return errors.WrapError(ErrInvalidConfig,
+			errors.Wrap(err, "invalid VdiskTlogConfig"))
 	}
 
 	return nil
@@ -224,7 +228,8 @@ func (cfg *StorageClusterConfig) Validate() error {
 
 	_, err := valid.ValidateStruct(cfg)
 	if err != nil {
-		return errors.Wrap(err, "invalid StorageClusterConfig")
+		return errors.WrapError(ErrInvalidConfig,
+			errors.Wrap(err, "invalid StorageClusterConfig"))
 	}
 
 	// validate all data server configs
@@ -311,19 +316,23 @@ func (cfg *ZeroStorClusterConfig) Validate() error {
 
 	_, err := valid.ValidateStruct(cfg)
 	if err != nil {
-		return errors.Wrap(err, "invalid ZeroStorClusterConfig")
+		return errors.WrapError(ErrInvalidConfig,
+			errors.Wrap(err, "invalid ZeroStorClusterConfig"))
 	}
 
 	if cfg.DataShards < 1 {
-		return errors.New("invalid ZeroStorClusterConfig: dataShards has to be at least 1")
+		return errors.Wrap(ErrInvalidConfig,
+			"invalid ZeroStorClusterConfig: dataShards has to be at least 1")
 	}
 	if cfg.ParityShards < 1 {
-		return errors.New("invalid ZeroStorClusterConfig: parityShards has to be at least 1")
+		return errors.Wrap(ErrInvalidConfig,
+			"invalid ZeroStorClusterConfig: parityShards has to be at least 1")
 	}
 
 	expectedServeCount := cfg.DataShards + cfg.ParityShards
 	if len(cfg.DataServers) != expectedServeCount {
-		return errors.Newf(
+		return errors.Wrapf(
+			ErrInvalidConfig,
 			"invalid ZeroStorClusterConfig: expected %d (data+parity) servers, while %d servers were defined",
 			expectedServeCount,
 			len(cfg.DataServers),
@@ -433,7 +442,9 @@ func (cfg *TlogClusterConfig) Validate() error {
 
 	_, err := valid.ValidateStruct(cfg)
 	if err != nil {
-		return errors.Wrap(err, "invalid TlogClusterConfig")
+		return errors.WrapError(
+			ErrInvalidConfig,
+			errors.Wrap(err, "invalid TlogClusterConfig"))
 	}
 
 	err = isDialStringSlice(cfg.Servers)
@@ -477,14 +488,16 @@ func (cfg *StorageServerConfig) Validate() error {
 	}
 
 	if cfg.Database < 0 {
-		return ErrInvalidDatabase
+		return errors.Wrap(ErrInvalidConfig, "invalid database")
 	}
 
 	if cfg.Address == "" {
-		return errors.New("storage server address not given while it is required")
+		return errors.Wrap(ErrInvalidConfig,
+			"storage server address not given while it is required")
 	}
 	if !valid.IsDialString(cfg.Address) {
-		return errors.Newf("storage server address '%s' is an invalid dialstring", cfg.Address)
+		return errors.Wrapf(ErrInvalidConfig,
+			"storage server address '%s' is an invalid dialstring", cfg.Address)
 	}
 
 	// all checks out
