@@ -71,3 +71,19 @@ func ExampleNewKeyedHasher() {
 	// Output:
 	// 5e09ed568017f03f66d6cca8c37272d0c55be86e9c27cf459721037c8fc3b5bb
 }
+
+func ExampleNewVersion() {
+	// given we have a new version of the zerodisk modules
+	// defined by ...
+	var (
+		major, minor, patch uint8
+		label               *VersionLabel
+	)
+	major, minor, patch, label = 2, 3, 4, versionLabel("beta-2")
+
+	// we can define a new version of the zerodisk modules
+	ver := NewVersion(major, minor, patch, label)
+
+	fmt.Println(ver)
+	// Output: 2.3.4-beta-2
+}
