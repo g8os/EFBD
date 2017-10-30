@@ -87,3 +87,36 @@ func ExampleNewVersion() {
 	fmt.Println(ver)
 	// Output: 2.3.4-beta-2
 }
+
+func versionDiff(diff int) string {
+	switch diff {
+	case -1:
+		return "Lower version"
+	case 0:
+		return "Same version"
+	case 1:
+		return "Higher version"
+	default:
+		return ""
+	}
+}
+func ExampleVersion_Compare() {
+	// given we have several versions of the zerodisk modules
+	versA := NewVersion(2, 3, 4, versionLabel("beta-2"))
+	versB := NewVersion(2, 3, 4, versionLabel("beta-2"))
+	versC := NewVersion(1, 1, 0, versionLabel("beta-1"))
+
+	// we can compare versions
+	diff := versA.Compare(versB)
+	fmt.Println(versionDiff(diff))
+
+	diff = versB.Compare(versC)
+	fmt.Println(versionDiff(diff))
+
+	diff = versC.Compare(versA)
+	fmt.Println(versionDiff(diff))
+	// Output:
+	// Same version
+	// Higher version
+	// Lower version
+}
