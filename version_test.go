@@ -3,6 +3,7 @@ package zerodisk
 import (
 	"testing"
 
+	"fmt"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -112,4 +113,13 @@ func TestVersionFromString(t *testing.T) {
 			t.Error()
 		}
 	}
+}
+
+func ExampleVersionFromString() {
+	v, err := VersionFromString("1.0.0-alpha")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(v)
+	// Output: 1.0.0-alpha
 }
