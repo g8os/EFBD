@@ -7,16 +7,6 @@ import (
 	"github.com/zero-os/0-Disk"
 )
 
-func panicOnError(err error) {
-	if err != nil {
-		panic(err)
-	}
-}
-func printHex(h zerodisk.Hash) {
-	str := hex.EncodeToString(h)
-	fmt.Println(str)
-}
-
 func ExampleHashBytes() {
 	// given we have two sets of data ...
 	dataA := []byte("data to hash")
@@ -85,12 +75,9 @@ func ExampleNewVersion() {
 
 func ExampleVersion_Compare() {
 	// given we have several versions of the zerodisk modules
-	labelA := zerodisk.VersionLabel{'b', 'e', 't', 'a', '-', '2'}
-	labelB := zerodisk.VersionLabel{'b', 'e', 't', 'a', '-', '2'}
-	labelC := zerodisk.VersionLabel{'b', 'e', 't', 'a', '-', '2'}
-	versA := zerodisk.NewVersion(2, 3, 4, &labelA)
-	versB := zerodisk.NewVersion(2, 3, 4, &labelB)
-	versC := zerodisk.NewVersion(1, 1, 0, &labelC)
+	versA := zerodisk.NewVersion(2, 3, 4, nil)
+	versB := zerodisk.NewVersion(2, 3, 4, nil)
+	versC := zerodisk.NewVersion(1, 1, 0, nil)
 
 	// we can compare versions
 	diff := versA.Compare(versB)
@@ -105,4 +92,15 @@ func ExampleVersion_Compare() {
 	// 0
 	// 1
 	// -1
+}
+
+func panicOnError(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
+func printHex(h zerodisk.Hash) {
+	str := hex.EncodeToString(h)
+	fmt.Println(str)
 }
