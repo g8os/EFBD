@@ -1,8 +1,10 @@
-package zerodisk
+package zerodisk_test
 
 import (
 	"encoding/hex"
 	"fmt"
+
+	"github.com/zero-os/0-Disk"
 )
 
 func panicOnError(err error) {
@@ -10,28 +12,28 @@ func panicOnError(err error) {
 		panic(err)
 	}
 }
-func printHex(h Hash) {
+func printHex(h zerodisk.Hash) {
 	str := hex.EncodeToString(h)
 	fmt.Println(str)
 }
 
 func ExampleHashBytes() {
 	// given we have two sets of data ...
-	data := []byte("data to hash")
-	dataDiff := []byte("other data to hash")
+	dataA := []byte("data to hash")
+	dataB := []byte("other data to hash")
 
 	// we can obtain obtain hashes
-	h := HashBytes(data)
-	printHex(h)
+	hexA := zerodisk.HashBytes(dataA)
+	printHex(hexA)
 
-	hDiff := HashBytes(dataDiff)
-	printHex(hDiff)
+	hexB := zerodisk.HashBytes(dataB)
+	printHex(hexB)
 
 	// we can compare hashes
-	sameHash := h.Equals(h)
+	sameHash := hexA.Equals(hexA)
 	fmt.Printf("it is %v that hashes are equal\n", sameHash)
 
-	sameHash = h.Equals(hDiff)
+	sameHash = hexA.Equals(hexB)
 	fmt.Printf("it is %v that hashes are equal\n", sameHash)
 	// Output:
 	// ae1c89d781f63c4dd6c8ec4703b711bed45966af278446749dbe0eed34eaedf3
@@ -45,7 +47,7 @@ func ExampleNewHasher() {
 	data := []byte("data to hash")
 
 	// we can define a new instance of default hasher
-	hasher, err := NewHasher()
+	hasher, err := zerodisk.NewHasher()
 	panicOnError(err)
 
 	// hasher is used to hash the data
@@ -62,7 +64,7 @@ func ExampleNewKeyedHasher() {
 	key := []byte("key")
 
 	// we can define a new instance of default keyed hasher
-	hasher, err := NewKeyedHasher(key)
+	hasher, err := zerodisk.NewKeyedHasher(key)
 	panicOnError(err)
 
 	// hasher is used to hash the data
@@ -73,50 +75,34 @@ func ExampleNewKeyedHasher() {
 }
 
 func ExampleNewVersion() {
-	// given we have a new version of the zerodisk modules
-	// defined by ...
-	var (
-		major, minor, patch uint8
-		label               *VersionLabel
-	)
-	major, minor, patch, label = 2, 3, 4, versionLabel("beta-2")
-
 	// we can define a new version of the zerodisk modules
-	ver := NewVersion(major, minor, patch, label)
+	label := zerodisk.VersionLabel{'b', 'e', 't', 'a', '-', '2'}
+	ver := zerodisk.NewVersion(2, 3, 4, &label)
 
 	fmt.Println(ver)
 	// Output: 2.3.4-beta-2
 }
 
-func versionDiff(diff int) string {
-	switch diff {
-	case -1:
-		return "Lower version"
-	case 0:
-		return "Same version"
-	case 1:
-		return "Higher version"
-	default:
-		return ""
-	}
-}
 func ExampleVersion_Compare() {
 	// given we have several versions of the zerodisk modules
-	versA := NewVersion(2, 3, 4, versionLabel("beta-2"))
-	versB := NewVersion(2, 3, 4, versionLabel("beta-2"))
-	versC := NewVersion(1, 1, 0, versionLabel("beta-1"))
+	labelA := zerodisk.VersionLabel{'b', 'e', 't', 'a', '-', '2'}
+	labelB := zerodisk.VersionLabel{'b', 'e', 't', 'a', '-', '2'}
+	labelC := zerodisk.VersionLabel{'b', 'e', 't', 'a', '-', '2'}
+	versA := zerodisk.NewVersion(2, 3, 4, &labelA)
+	versB := zerodisk.NewVersion(2, 3, 4, &labelB)
+	versC := zerodisk.NewVersion(1, 1, 0, &labelC)
 
 	// we can compare versions
 	diff := versA.Compare(versB)
-	fmt.Println(versionDiff(diff))
+	fmt.Println(diff)
 
 	diff = versB.Compare(versC)
-	fmt.Println(versionDiff(diff))
+	fmt.Println(diff)
 
 	diff = versC.Compare(versA)
-	fmt.Println(versionDiff(diff))
+	fmt.Println(diff)
 	// Output:
-	// Same version
-	// Higher version
-	// Lower version
+	// 0
+	// 1
+	// -1
 }
