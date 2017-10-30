@@ -70,6 +70,16 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 		return err
 	}
 
+	version, err := zerodisk.VersionFromString(header.Metadata.Version)
+	if err != nil {
+		return err
+	}
+
+	//support only current or older versions
+	if version.Compare(zerodisk.CurrentVersion) > 0 {
+		return fmt.Errorf("version '%s' not supported (greater than: %s)", version, zerodisk.CurrentVersion)
+	}
+
 	dedupedMap, err := unpackRawDedupedMap(header.DedupedMap)
 	if err != nil {
 		return err
