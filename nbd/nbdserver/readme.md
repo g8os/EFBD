@@ -30,6 +30,12 @@ See [the NBD Server Configuration docs](/docs/nbd/config.md) for more informatio
 > It is known and accepted that the nbdserver does not work
 > when used with `qemu 2.10` and any version other than `2.8`.
 > See [issue #523](https://github.com/zero-os/0-Disk/issues/523) for more information.
+>
+> When using nbd-client to connect to the nbdserver,
+> only nbd-client version `3.10` is supported,
+> it is known and accepted that the nbdserver does not work
+> with nbd-client version `3.11` and above.
+> See [issue #523](https://github.com/zero-os/0-Disk/issues/523) for more information.
 
 Use `nbdserver -h` or `nbdserver --help` to get more information about all available flags.
 

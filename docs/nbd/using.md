@@ -70,8 +70,9 @@ you'll have to specify the config file explicitly using the `-config path` flag.
 
 > ⚠ NOTE ⚠
 >
-> Only nbd-client version `3.10` is supported
-> newer clients (version 3.11 and above) with newstyle nbd negotiation protocol are not supported.
+> Only nbd-client version `3.10` is supported,
+> newer clients (version 3.11 and above)
+> with newstyle nbd negotiation protocol are not supported.
 
 Connect your `nbd-client` to the server running on `localhost:6666`:
 
