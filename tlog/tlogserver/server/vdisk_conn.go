@@ -3,17 +3,15 @@ package server
 import (
 	"bufio"
 	"context"
-	"errors"
-	"fmt"
 	"io"
 	"net"
 
-	"zombiezen.com/go/capnproto2"
-
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
+	"zombiezen.com/go/capnproto2"
 )
 
 func (vd *vdisk) handle(conn *net.TCPConn, br *bufio.Reader, respSegmentBufLen int) error {
@@ -31,7 +29,7 @@ func (vd *vdisk) handle(conn *net.TCPConn, br *bufio.Reader, respSegmentBufLen i
 		// decode message
 		msg, err := capnp.NewDecoder(br).Decode()
 		if err != nil {
-			if err == io.EOF {
+			if errors.Cause(err) == io.EOF {
 				return nil // EOF in this stage is not an error
 			}
 			return err
@@ -62,7 +60,7 @@ func (vd *vdisk) handle(conn *net.TCPConn, br *bufio.Reader, respSegmentBufLen i
 			log.Infof("vdisk `%v` receive disconnect command", vd.id)
 			return nil
 		default:
-			err = fmt.Errorf("%v is not a supported client message type", which)
+			err = errors.Newf("%v is not a supported client message type", which)
 		}
 
 		if err != nil {
@@ -183,7 +181,7 @@ func (vd *vdisk) attachConn(conn *net.TCPConn) error {
 	defer vd.clientConnLock.Unlock()
 
 	if vd.clientConn != nil {
-		return fmt.Errorf("there is already conencted client for vdisk `%v`", vd.id)
+		return errors.Newf("there is already conencted client for vdisk `%v`", vd.id)
 	}
 
 	vd.clientConn = conn

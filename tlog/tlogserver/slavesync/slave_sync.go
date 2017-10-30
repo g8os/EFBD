@@ -3,18 +3,17 @@ package slavesync
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"sync"
 
-	"zombiezen.com/go/capnproto2"
-
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog/schema"
 	"github.com/zero-os/0-Disk/tlog/stor"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/player"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/aggmq"
+	"zombiezen.com/go/capnproto2"
 )
 
 // Manager defines slave syncer manager
@@ -161,7 +160,7 @@ func (ss *slaveSyncer) start() error {
 	// get slavesyncer's latest synced sequence
 	ss.lastSyncedSeq, err = ss.getLastSyncedSeq()
 	if err != nil {
-		return fmt.Errorf("getLastSyncedSeq failed:%v", err)
+		return errors.Wrap(err, "getLastSyncedSeq failed")
 	}
 
 	// get tlog's latest flushed sequence and catch up if needed
@@ -275,12 +274,12 @@ func (ss *slaveSyncer) decodeLimiter(lastSeqSynced uint64) decoder.Limiter {
 func (ss *slaveSyncer) replay(rawAgg aggmq.AggMqMsg, lastSeqSynced uint64) (uint64, error) {
 	msg, err := capnp.NewDecoder(bytes.NewReader([]byte(rawAgg))).Decode()
 	if err != nil {
-		return 0, fmt.Errorf("failed to decode agg:%v", err)
+		return 0, errors.Wrap(err, "failed to decode agg")
 	}
 
 	agg, err := schema.ReadRootTlogAggregation(msg)
 	if err != nil {
-		return 0, fmt.Errorf("failed to read root tlog:%v", err)
+		return 0, errors.Wrap(err, "failed to read root tlog")
 	}
 
 	return ss.player.ReplayAggregationWithCallback(&agg, ss.decodeLimiter(lastSeqSynced), ss.setLastSyncedSeq)

@@ -1,18 +1,17 @@
 package stor
 
 import (
-	"errors"
 	"fmt"
 	"sync"
 
-	storclient "github.com/zero-os/0-stor/client"
-	"github.com/zero-os/0-stor/client/lib/hash"
-	"github.com/zero-os/0-stor/client/meta"
-
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
+	storclient "github.com/zero-os/0-stor/client"
+	"github.com/zero-os/0-stor/client/lib/hash"
+	"github.com/zero-os/0-stor/client/meta"
 )
 
 const (
@@ -172,7 +171,7 @@ func (c *Client) processStoreData(data []byte, lastSequence uint64, timestamp in
 		return err
 	}
 	if lastMd == nil {
-		return fmt.Errorf("empty meta returned by stor client")
+		return errors.Newf("empty meta returned by stor client")
 	}
 
 	// it is very first data, save first key to metadata server
@@ -297,7 +296,7 @@ func (c *Client) LoadLastSequence() (uint64, error) {
 
 	// it should never happen
 	if wr == nil {
-		return 0, fmt.Errorf("failed to walk on vdisk %v", c.vdiskID)
+		return 0, errors.Newf("failed to walk on vdisk %v", c.vdiskID)
 	}
 
 	if wr.Error != nil {
@@ -315,7 +314,7 @@ func (c *Client) LoadLastSequence() (uint64, error) {
 		return 0, err
 	}
 	if blocks.Len() == 0 {
-		return 0, fmt.Errorf("empty blocks for aggregation")
+		return 0, errors.Newf("empty blocks for aggregation")
 	}
 
 	c.lastMetaKey = wr.Key
