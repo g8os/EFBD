@@ -514,7 +514,8 @@ type nonDedupFetchResult struct {
 
 func nonDedupDataFetcher(ctx context.Context, storageKey string, server ardb.StorageServer) <-chan nonDedupFetchResult {
 	const (
-		itemCount = "1000"
+		startCursor = "0"
+		itemCount   = "1000"
 	)
 
 	ch := make(chan nonDedupFetchResult)
@@ -529,7 +530,7 @@ func nonDedupDataFetcher(ctx context.Context, storageKey string, server ardb.Sto
 		var result nonDedupFetchResult
 
 		// initial cursor and action
-		cursor := ardbStartCursor
+		cursor := startCursor
 		action := ardb.Command(command.HashScan, storageKey, cursor, "COUNT", itemCount)
 
 		// loop through all values of the mapping
@@ -550,7 +551,7 @@ func nonDedupDataFetcher(ctx context.Context, storageKey string, server ardb.Sto
 			}
 
 			// return in case of an error or when we iterated through all possible values
-			if result.Error != nil || cursor == ardbStartCursor {
+			if result.Error != nil || cursor == startCursor {
 				return
 			}
 

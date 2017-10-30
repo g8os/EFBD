@@ -400,8 +400,5 @@ func TestDedupStrings(t *testing.T) {
 }
 
 func init() {
-	// ledisDB...
-	ardbStartCursor = "" // TODO: remove once https://github.com/zero-os/0-Disk/issues/567 is fixed
-
 	log.SetLevel(log.DebugLevel)
 }

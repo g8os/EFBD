@@ -513,10 +513,3 @@ func isInterfaceValueNil(v interface{}) bool {
 	rv := reflect.ValueOf(v)
 	return rv.Kind() == reflect.Ptr && rv.IsNil()
 }
-
-// some variables that we wish to override
-// to make up for ledisdb shortcomings
-var (
-	// TODO: remove once https://github.com/zero-os/0-Disk/issues/567 is fixed
-	ardbStartCursor = "0"
-)
