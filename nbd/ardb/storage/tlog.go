@@ -1,8 +1,7 @@
 package storage
 
 import (
-	"fmt"
-
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/command"
@@ -71,15 +70,15 @@ func copyTlogMetadataBetweenClusters(sourceID, targetID string, sourceCluster, t
 	log.Debugf("load tlog metadata from source cluster for %s", sourceID)
 	metadata, err := LoadTlogMetadata(sourceID, sourceCluster)
 	if err != nil {
-		return fmt.Errorf(
-			"couldn't deserialize source tlog metadata for %s: %v", sourceID, err)
+		return errors.Wrapf(err,
+			"couldn't deserialize source tlog metadata for %s", sourceID)
 	}
 
 	log.Debugf("store tlog metadata on target cluster for %s", targetID)
 	err = StoreTlogMetadata(targetID, targetCluster, metadata)
 	if err != nil {
-		return fmt.Errorf(
-			"couldn't serialize destination tlog metadata for %s: %v", targetID, err)
+		return errors.Wrapf(err,
+			"couldn't serialize destination tlog metadata for %s", targetID)
 	}
 
 	return nil

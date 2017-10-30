@@ -2,9 +2,9 @@ package ardb
 
 import (
 	"context"
-	"errors"
 
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/errors"
 )
 
 // StorageCluster defines the interface of an

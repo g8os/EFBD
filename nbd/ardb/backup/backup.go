@@ -1,12 +1,11 @@
 package backup
 
 import (
-	"errors"
-	"fmt"
 	"io"
 	"runtime"
 
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/errors"
 )
 
 const (
@@ -73,7 +72,7 @@ func (cfg *Config) validate() error {
 		cfg.BlockSize = DefaultBlockSize
 	} else {
 		if !config.ValidateBlockSize(cfg.BlockSize) {
-			return fmt.Errorf("blockSize '%d' is not valid", cfg.BlockSize)
+			return errors.Newf("blockSize '%d' is not valid", cfg.BlockSize)
 		}
 	}
 
@@ -112,8 +111,10 @@ func newStorageDriver(storagDriverConfig interface{}) (StorageDriver, error) {
 		return LocalStorageDriver(sdCfg)
 
 	default:
-		return nil, fmt.Errorf(
-			"%[1]v (%[1]T) is not a valid BackupStoragDriverConfig", sdCfg)
+		return nil, errors.Newf(
+			"%[1]v (%[1]T) is not a valid BackupStoragDriverConfig",
+			sdCfg,
+		)
 	}
 }
 
@@ -205,7 +206,7 @@ func (ibf *inflationBlockFetcher) FetchBlock() (*blockIndexPair, error) {
 		// we have still space for an actual block, let's fetch it
 		blockPair, err = ibf.in.FetchBlock()
 		if err != nil {
-			if err == io.EOF {
+			if errors.Cause(err) == io.EOF {
 				break // this is OK, as we'll just concider the rest of dst block as 0
 			}
 
@@ -393,7 +394,6 @@ func createStorageConfig(vdiskID string, sourceConfig config.SourceConfig) (*sto
 }
 
 var (
-	errNilVdiskID       = errors.New("vdisk's identifier not given")
-	errInvalidCryptoKey = errors.New("invalid crypto key")
-	errStreamBlocked    = errors.New("stream block fetcher is blocked waiting for next expected block")
+	errNilVdiskID    = errors.New("vdisk's identifier not given")
+	errStreamBlocked = errors.New("stream block fetcher is blocked waiting for next expected block")
 )

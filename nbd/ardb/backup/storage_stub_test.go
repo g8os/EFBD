@@ -1,12 +1,12 @@
 package backup
 
 import (
-	"errors"
 	"io"
 	"io/ioutil"
 	"sync"
 
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/errors"
 )
 
 // newStubDriver creates an in-memory Storage Driver,
