@@ -74,7 +74,8 @@ $ zerodisk describe snapshot foo -s ftp://1.2.3.4:21 --pretty
   	  	"vdiskID": "foo",
   	  	"blockSize": 4096,
   	  	"size": 10737418240
-  	}
+  	},
+  	"version": "1.1.0-beta-1"
 }
 ```
 
