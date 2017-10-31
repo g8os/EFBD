@@ -270,13 +270,15 @@ type Metadata struct {
 	Version string `bencode:"v" valid:"optional"`
 }
 
+// Validate this Metadata,
+// returning an error if it isn't valid.
 func (m *Metadata) Validate() error {
 	if _, err := valid.ValidateStruct(m); err != nil {
 		return err
 	}
 
 	if _, err := zerodisk.VersionFromString(m.Version); err != nil {
-		return fmt.Errorf("invalid version number '%s': %s", m.Version, err)
+		return errors.Wrapf(err, "invalid version number '%s'", m.Version)
 	}
 
 	return nil
