@@ -2,15 +2,13 @@ package config
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
-
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -69,8 +67,11 @@ func (s *fileSource) Get(key Key) ([]byte, error) {
 		return serializeConfigReply(s.readNBDVdisksConfig())
 
 	default:
-		return nil, fmt.Errorf(
-			"%v is not a supported key type by the file config", key.Type)
+		return nil, errors.Wrapf(
+			ErrInvalidKey,
+			"%v is not a supported key type by the file config",
+			key.Type,
+		)
 	}
 }
 
@@ -96,7 +97,7 @@ func (s *fileSource) Watch(ctx context.Context, key Key) (<-chan []byte, error) 
 				log.Debug("Received SIGHUP for: ", s.path)
 				// read, deserialize and serialize sub config
 				output, err := s.Get(key)
-				if err == ErrSourceUnavailable {
+				if errors.Cause(err) == ErrSourceUnavailable {
 					log.Errorf(
 						"getting key %v failed, due to the source being unavailable",
 						key)
@@ -238,7 +239,8 @@ func (cfg *FileFormatCompleteConfig) VdiskConfig(id string) (*FileFormatVdiskCon
 	vdiskConfig, ok := cfg.Vdisks[id]
 	if !ok {
 		return nil, NewInvalidConfigError(
-			errors.New("file config has no vdisk config under the id " + id))
+			errors.New("file config has no vdisk config under the id " + id),
+		)
 	}
 	return &vdiskConfig, nil
 }
@@ -271,7 +273,8 @@ func (cfg *FileFormatCompleteConfig) TlogClusterConfig(id string) (*TlogClusterC
 	tlogClusterConfig, ok := cfg.TlogClusters[id]
 	if !ok {
 		return nil, NewInvalidConfigError(
-			errors.New("file config has no tlog cluster config under the id " + id))
+			errors.New("file config has no tlog cluster config under the id " + id),
+		)
 	}
 	return &tlogClusterConfig, nil
 }
