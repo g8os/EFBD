@@ -176,6 +176,7 @@ func (vd *vdisk) hash(tlb *schema.TlogBlock) (err error) {
 
 	return
 }
+
 func (vd *vdisk) attachConn(conn *net.TCPConn) error {
 	vd.clientConnLock.Lock()
 	defer vd.clientConnLock.Unlock()

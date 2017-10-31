@@ -171,7 +171,7 @@ func (c *Client) processStoreData(data []byte, lastSequence uint64, timestamp in
 		return err
 	}
 	if lastMd == nil {
-		return errors.Newf("empty meta returned by stor client")
+		return errors.New("empty meta returned by stor client")
 	}
 
 	// it is very first data, save first key to metadata server

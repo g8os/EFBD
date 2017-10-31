@@ -2,12 +2,12 @@ package backup
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"runtime"
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb/backup"
 

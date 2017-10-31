@@ -2,14 +2,12 @@ package restore
 
 import (
 	"context"
-	"errors"
-	"fmt"
-
-	"github.com/zero-os/0-Disk/nbd/ardb"
 
 	"github.com/spf13/cobra"
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/player"
@@ -82,48 +80,48 @@ func checkVdiskExists(vdiskID string, configSource config.Source) error {
 	// gather configs
 	staticConfig, err := config.ReadVdiskStaticConfig(configSource, vdiskID)
 	if err != nil {
-		return fmt.Errorf(
-			"cannot read static vdisk config for vdisk %s: %v", vdiskID, err)
+		return errors.Wrapf(err,
+			"cannot read static vdisk config for vdisk %s", vdiskID)
 	}
 	nbdStorageConfig, err := config.ReadVdiskNBDConfig(configSource, vdiskID)
 	if err != nil {
-		return fmt.Errorf(
-			"cannot read nbd storage config for vdisk %s: %v", vdiskID, err)
+		return errors.Wrapf(err,
+			"cannot read nbd storage config for vdisk %s", vdiskID)
 	}
 	clusterConfig, err := config.ReadStorageClusterConfig(configSource, nbdStorageConfig.StorageClusterID)
 	if err != nil {
-		return fmt.Errorf(
-			"cannot read storage cluster config for cluster %s: %v",
-			nbdStorageConfig.StorageClusterID, err)
+		return errors.Wrapf(err,
+			"cannot read storage cluster config for cluster %s",
+			nbdStorageConfig.StorageClusterID)
 	}
 
 	// create (primary) storage cluster
 	cluster, err := ardb.NewCluster(*clusterConfig, nil) // not pooled
 	if err != nil {
-		return fmt.Errorf(
-			"cannot create storage cluster model for cluster %s: %v",
-			nbdStorageConfig.StorageClusterID, err)
+		return errors.Wrapf(err,
+			"cannot create storage cluster model for cluster %s",
+			nbdStorageConfig.StorageClusterID)
 	}
 
 	// check if vdisk exists
 	exists, err := storage.VdiskExists(vdiskID, staticConfig.Type, cluster)
 	if err != nil {
-		return fmt.Errorf("couldn't check if vdisk %s already exists: %v", vdiskID, err)
+		return errors.Wrapf(err, "couldn't check if vdisk %s already exists", vdiskID)
 	}
 	if !exists {
 		return nil // vdisk doesn't exist, so nothing to do
 	}
 	if !vdiskCmdCfg.Force {
-		return fmt.Errorf("cannot restore vdisk %s as it already exists", vdiskID)
+		return errors.Newf("cannot restore vdisk %s as it already exists", vdiskID)
 	}
 
 	// delete vdisk, as it exists and `--force` is specified
 	deleted, err := storage.DeleteVdisk(vdiskID, staticConfig.Type, cluster)
 	if err != nil {
-		return fmt.Errorf("couldn't delete vdisk %s: %v", vdiskID, err)
+		return errors.Wrapf(err, "couldn't delete vdisk %s", vdiskID)
 	}
 	if !deleted {
-		return fmt.Errorf("couldn't delete vdisk %s for an unknown reason", vdiskID)
+		return errors.Newf("couldn't delete vdisk %s for an unknown reason", vdiskID)
 	}
 
 	// delete 0-Stor (meta)data for this vdisk
