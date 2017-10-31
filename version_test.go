@@ -1,10 +1,8 @@
 package zerodisk
 
 import (
-	"testing"
-
-	"fmt"
 	"github.com/stretchr/testify/assert"
+	"testing"
 )
 
 func TestVersionString(t *testing.T) {
@@ -102,9 +100,10 @@ func TestVersionFromString(t *testing.T) {
 
 	//faulty version numbers
 	bad := []string{
-		"1.1-alpha",     //no patch number
-		"abcd",          //rubbish
-		"1.1.1.alpha-2", //label separated by . instead of -
+		"1.1-alpha",                                  //no patch number
+		"abcd",                                       //rubbish
+		"1.1.1.alpha-2",                              //label separated by . instead of -
+		"123671.1231245.0-very-very-very-long-label", //numbers out of rage of uint8,
 	}
 
 	for _, s := range bad {
@@ -113,13 +112,4 @@ func TestVersionFromString(t *testing.T) {
 			t.Error()
 		}
 	}
-}
-
-func ExampleVersionFromString() {
-	v, err := VersionFromString("1.0.0-alpha")
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(v)
-	// Output: 1.0.0-alpha
 }

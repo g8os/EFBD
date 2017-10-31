@@ -101,6 +101,22 @@ type (
 	VersionLabel [8]byte
 )
 
+func (n VersionNumber) Major() uint8 {
+	return uint8(n & 0xFF0000 >> 16)
+}
+
+func (n VersionNumber) Minor() uint8 {
+	return uint8(n & 0xFF00 >> 8)
+}
+
+func (n VersionNumber) Patch() uint8 {
+	return uint8(n & 0xFF)
+}
+
+func (l *VersionLabel) String() string {
+	return string(bytes.Trim(l[:], "\x00"))
+}
+
 // Compare returns an integer comparing this version
 // with another version. { lt=-1 ; eq=0 ; gt=1 }
 func (v Version) Compare(other Version) int {
@@ -134,8 +150,7 @@ func (v Version) String() string {
 		return str
 	}
 
-	label := bytes.Trim(v.Label[:], "\x00")
-	return str + "-" + string(label)
+	return str + "-" + v.Label.String()
 }
 
 //VersionFromString returns a Version object from the string
