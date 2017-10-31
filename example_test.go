@@ -18,7 +18,8 @@ func ExampleVersionFromString() {
 	fmt.Println(v.Number.Patch())
 	fmt.Println(v.Label)
 
-	// Output: 1
+	// Output:
+	// 1
 	// 2
 	// 3
 	// alpha

@@ -8,7 +8,6 @@ import (
 	"github.com/zero-os/0-Disk/log"
 	"regexp"
 	"strconv"
-	"strings"
 )
 
 var (
@@ -21,7 +20,7 @@ var (
 	BuildDate string
 
 	//version parsing regex
-	verRegex = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$`)
+	verRegex = regexp.MustCompile(`^([01]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5]).([01]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5]).([01]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5])(?:-([A-Za-z0-9\-]{1,8}))?$`)
 
 	//default version when VersionFromString method is called with empty
 	//string (1.1.0)
@@ -166,17 +165,13 @@ func VersionFromString(ver string) (Version, error) {
 	}
 	num := make([]uint8, 3)
 	for i, n := range match[1:4] {
-		v, err := strconv.ParseUint(n, 10, 8)
-		if err != nil {
-			return Version{}, fmt.Errorf("failed to parse version number (%d): %v", n, err)
-		}
-
+		v, _ := strconv.ParseUint(n, 10, 8)
 		num[i] = uint8(v)
 	}
 
 	var label *VersionLabel
-	if l := strings.TrimSpace(match[4]); len(l) != 0 {
-		label = versionLabel(l)
+	if len(match[4]) != 0 {
+		label = versionLabel(match[4])
 	}
 
 	return NewVersion(num[0], num[1], num[2], label), nil

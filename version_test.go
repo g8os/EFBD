@@ -100,10 +100,13 @@ func TestVersionFromString(t *testing.T) {
 
 	//faulty version numbers
 	bad := []string{
-		"1.1-alpha",                                  //no patch number
-		"abcd",                                       //rubbish
-		"1.1.1.alpha-2",                              //label separated by . instead of -
-		"123671.1231245.0-very-very-very-long-label", //numbers out of rage of uint8,
+		"1.1-alpha",             //no patch number
+		"abcd",                  //rubbish
+		"1.1.1.alpha-2",         //label separated by . instead of -
+		"123671.0.0",            //numbers out of rage of uint8,
+		"0.1234.0",              //numbers out of rage of uint8,
+		"0.0.12345",             //numbers out of rage of uint8,
+		"0.0.0-very-long-label", //label is longer than 8 char
 	}
 
 	for _, s := range bad {
