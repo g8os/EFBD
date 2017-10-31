@@ -1,9 +1,8 @@
 package lba
 
 import (
-	"fmt"
-
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/errors"
 )
 
 const (
@@ -24,9 +23,12 @@ func NewSector() *Sector {
 // Note that the given byte slice's length hash to be equal to `BytesPerSector`.
 func SectorFromBytes(bytes []byte) (s *Sector, err error) {
 	if length := len(bytes); length != BytesPerSector {
-		err = fmt.Errorf(
+		err = errors.Newf(
 			"raw sector contains %d bytes, while expected %d bytes",
-			length, BytesPerSector)
+			length,
+			BytesPerSector,
+		)
+
 		return
 	}
 

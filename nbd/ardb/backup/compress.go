@@ -1,11 +1,11 @@
 package backup
 
 import (
-	"errors"
 	"io"
 
 	"github.com/pierrec/lz4"
 	"github.com/ulikunitz/xz"
+	"github.com/zero-os/0-Disk/errors"
 )
 
 const (

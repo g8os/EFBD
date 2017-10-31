@@ -15,6 +15,8 @@ import (
 	"testing"
 	"text/template"
 	"time"
+
+	"github.com/zero-os/0-Disk/errors"
 )
 
 const ConfigTemplate = `
@@ -192,28 +194,28 @@ func (ni *NbdInstance) Connect(t *testing.T) error {
 
 	var magic uint64
 	if err = binary.Read(ni.conn, binary.BigEndian, &magic); err != nil {
-		return fmt.Errorf("Read of magic errored: %v", err)
+		return errors.Wrap(err, "Read of magic errored")
 	}
 	if magic != NBD_MAGIC {
-		return fmt.Errorf("Bad magic")
+		return errors.New("Bad magic")
 	}
 	var optsMagic uint64
 	if err = binary.Read(ni.conn, binary.BigEndian, &optsMagic); err != nil {
-		return fmt.Errorf("Read of opts magic errored: %v", err)
+		return errors.Wrap(err, "Read of opts magic errored")
 	}
 	if optsMagic != NBD_OPTS_MAGIC {
-		return fmt.Errorf("Bad magic")
+		return errors.New("Bad magic")
 	}
 	var handshakeFlags uint16
 	if err = binary.Read(ni.conn, binary.BigEndian, &handshakeFlags); err != nil {
-		return fmt.Errorf("Read of handshake flags errored: %v", err)
+		return errors.Wrap(err, "Read of handshake flags errored")
 	}
 	if handshakeFlags != NBD_FLAG_FIXED_NEWSTYLE|NBD_FLAG_NO_ZEROES {
-		return fmt.Errorf("Unexpected handshake flags")
+		return errors.New("Unexpected handshake flags")
 	}
 	var clientFlags uint32 = NBD_FLAG_C_FIXED_NEWSTYLE | NBD_FLAG_C_NO_ZEROES
 	if err = binary.Write(ni.conn, binary.BigEndian, clientFlags); err != nil {
-		return fmt.Errorf("Could not send client flags")
+		return errors.New("Could not send client flags")
 	}
 
 	t.Logf("Connected")
@@ -225,28 +227,28 @@ func (ni *NbdInstance) Connect(t *testing.T) error {
 			NbdOptLen:   0,
 		}
 		if err = binary.Write(ni.conn, binary.BigEndian, tlsOpt); err != nil {
-			return fmt.Errorf("Could not send start tls option")
+			return errors.New("Could not send start tls option")
 		}
 		var tlsOptReply nbdOptReply
 		if err := binary.Read(ni.conn, binary.BigEndian, &tlsOptReply); err != nil {
-			return fmt.Errorf("Could not receive Tls option reply")
+			return errors.New("Could not receive Tls option reply")
 		}
 		if tlsOptReply.NbdOptReplyMagic != NBD_REP_MAGIC {
-			return fmt.Errorf("Tls option reply had wrong magic (%x)", tlsOptReply.NbdOptReplyMagic)
+			return errors.Newf("Tls option reply had wrong magic (%x)", tlsOptReply.NbdOptReplyMagic)
 		}
 		if tlsOptReply.NbdOptID != NBD_OPT_STARTTLS {
-			return fmt.Errorf("Tls option reply had wrong id")
+			return errors.New("Tls option reply had wrong id")
 		}
 		if tlsOptReply.NbdOptReplyType != NBD_REP_ACK {
-			return fmt.Errorf("Tls option reply had wrong reply type")
+			return errors.New("Tls option reply had wrong reply type")
 		}
 		if tlsOptReply.NbdOptReplyLength != 0 {
-			return fmt.Errorf("Tls option reply had bogus length")
+			return errors.New("Tls option reply had bogus length")
 		}
 
 		tlsConfig, err := ni.getTLSConfig(t)
 		if err != nil {
-			return fmt.Errorf("Could not get TLS config: %v", err)
+			return errors.Wrap(err, "Could not get TLS config")
 		}
 
 		tls := tls.Client(ni.conn, tlsConfig)
@@ -257,7 +259,7 @@ func (ni *NbdInstance) Connect(t *testing.T) error {
 
 		// explicitly handshake so we get an error here if there is an issue
 		if err := tls.Handshake(); err != nil {
-			return fmt.Errorf("TLS handshake failed: %s", err)
+			return errors.Wrap(err, "TLS handshake failed: %s")
 		}
 	}
 
@@ -267,7 +269,7 @@ func (ni *NbdInstance) Connect(t *testing.T) error {
 		NbdOptLen:   0,
 	}
 	if err = binary.Write(ni.conn, binary.BigEndian, listOpt); err != nil {
-		return fmt.Errorf("Could not send list option")
+		return errors.New("Could not send list option")
 	}
 
 	exports := 0
@@ -275,13 +277,13 @@ listloop:
 	for {
 		var listOptReply nbdOptReply
 		if err := binary.Read(ni.conn, binary.BigEndian, &listOptReply); err != nil {
-			return fmt.Errorf("Could not receive list option reply")
+			return errors.Wrap(err, "Could not receive list option reply")
 		}
 		if listOptReply.NbdOptReplyMagic != NBD_REP_MAGIC {
-			return fmt.Errorf("List option reply had wrong magic (%x)", listOptReply.NbdOptReplyMagic)
+			return errors.Newf("List option reply had wrong magic (%x)", listOptReply.NbdOptReplyMagic)
 		}
 		if listOptReply.NbdOptID != NBD_OPT_LIST {
-			return fmt.Errorf("List option reply had wrong id")
+			return errors.New("List option reply had wrong id")
 		}
 		switch listOptReply.NbdOptReplyType {
 		case NBD_REP_ACK:
@@ -289,26 +291,26 @@ listloop:
 		case NBD_REP_SERVER:
 			var namelen uint32
 			if err := binary.Read(ni.conn, binary.BigEndian, &namelen); err != nil {
-				return fmt.Errorf("Could not receive list option reply name length")
+				return errors.Wrap(err, "Could not receive list option reply name length")
 			}
 			name := make([]byte, namelen, namelen)
 			if err := binary.Read(ni.conn, binary.BigEndian, &name); err != nil {
-				return fmt.Errorf("Could not receive list option reply name")
+				return errors.Wrap(err, "Could not receive list option reply name")
 			}
 			if listOptReply.NbdOptReplyLength > namelen+4 {
 				junk := make([]byte, listOptReply.NbdOptReplyLength-namelen-4, listOptReply.NbdOptReplyLength-namelen-4)
 				if err := binary.Read(ni.conn, binary.BigEndian, &junk); err != nil {
-					return fmt.Errorf("Could not receive list option reply name junk")
+					return errors.Wrap(err, "Could not receive list option reply name junk")
 				}
 			}
 			t.Logf("Found export '%s'", string(name))
 			exports++
 		default:
-			return fmt.Errorf("List option reply type was unexpected")
+			return errors.New("List option reply type was unexpected")
 		}
 	}
 	if exports != 1 {
-		return fmt.Errorf("Unexpected number of exports")
+		return errors.New("Unexpected number of exports")
 	}
 
 	ni.conn.SetDeadline(time.Time{})
@@ -324,23 +326,23 @@ func (ni *NbdInstance) Abort(t *testing.T) error {
 		NbdOptLen:   0,
 	}
 	if err = binary.Write(ni.conn, binary.BigEndian, opt); err != nil {
-		return fmt.Errorf("Could not send start abort option")
+		return errors.Wrap(err, "Could not send start abort option")
 	}
 	var optReply nbdOptReply
 	if err := binary.Read(ni.conn, binary.BigEndian, &optReply); err != nil {
-		return fmt.Errorf("Could not receive abort option reply")
+		return errors.Wrap(err, "Could not receive abort option reply")
 	}
 	if optReply.NbdOptReplyMagic != NBD_REP_MAGIC {
-		return fmt.Errorf("abort option reply had wrong magic (%x)", optReply.NbdOptReplyMagic)
+		return errors.Newf("abort option reply had wrong magic (%x)", optReply.NbdOptReplyMagic)
 	}
 	if optReply.NbdOptID != NBD_OPT_ABORT {
-		return fmt.Errorf("abort option reply had wrong id")
+		return errors.New("abort option reply had wrong id")
 	}
 	if optReply.NbdOptReplyType != NBD_REP_ACK {
-		return fmt.Errorf("abort option reply had wrong reply type")
+		return errors.New("abort option reply had wrong reply type")
 	}
 	if optReply.NbdOptReplyLength != 0 {
-		return fmt.Errorf("abort option reply had bogus length")
+		return errors.New("abort option reply had bogus length")
 	}
 	return nil
 }
@@ -356,35 +358,35 @@ func (ni *NbdInstance) Go(t *testing.T) error {
 		NbdOptLen:   uint32(2 + 2*1 + 4 + len(export)),
 	}
 	if err = binary.Write(ni.conn, binary.BigEndian, opt); err != nil {
-		return fmt.Errorf("Could not send go option")
+		return errors.Wrap(err, "Could not send go option")
 	}
 	var numInfoElements uint16 = 1
 	if err = binary.Write(ni.conn, binary.BigEndian, numInfoElements); err != nil {
-		return fmt.Errorf("Could not send number of elements for go option")
+		return errors.Wrap(err, "Could not send number of elements for go option")
 	}
 	var infoElement uint16 = NBD_INFO_BLOCK_SIZE
 	if err = binary.Write(ni.conn, binary.BigEndian, infoElement); err != nil {
-		return fmt.Errorf("Could not send go info element")
+		return errors.Wrap(err, "Could not send go info element")
 	}
 
 	nameLength := uint32(len(export))
 	if err = binary.Write(ni.conn, binary.BigEndian, nameLength); err != nil {
-		return fmt.Errorf("Could not send go export length")
+		return errors.Wrap(err, "Could not send go export length")
 	}
 	if err = binary.Write(ni.conn, binary.BigEndian, []byte(export)); err != nil {
-		return fmt.Errorf("Could not send go export name")
+		return errors.Wrap(err, "Could not send go export name")
 	}
 infoloop:
 	for {
 		var optReply nbdOptReply
 		if err := binary.Read(ni.conn, binary.BigEndian, &optReply); err != nil {
-			return fmt.Errorf("Could not receive go option reply")
+			return errors.Wrap(err, "Could not receive go option reply")
 		}
 		if optReply.NbdOptReplyMagic != NBD_REP_MAGIC {
-			return fmt.Errorf("Go option reply had wrong magic (%x)", optReply.NbdOptReplyMagic)
+			return errors.Newf("Go option reply had wrong magic (%x)", optReply.NbdOptReplyMagic)
 		}
 		if optReply.NbdOptID != NBD_OPT_GO {
-			return fmt.Errorf("Go option reply had wrong id")
+			return errors.New("Go option reply had wrong id")
 		}
 		switch optReply.NbdOptReplyType {
 		case NBD_REP_ACK:
@@ -392,20 +394,20 @@ infoloop:
 		case NBD_REP_INFO:
 			var infotype uint16
 			if err := binary.Read(ni.conn, binary.BigEndian, &infotype); err != nil {
-				return fmt.Errorf("Could not receive go option reply name length")
+				return errors.Wrap(err, "Could not receive go option reply name length")
 			}
 			switch infotype {
 			case NBD_INFO_EXPORT:
 				if optReply.NbdOptReplyLength != 12 {
-					return fmt.Errorf("Bad length in NBD_INFO_EXPORT")
+					return errors.New("Bad length in NBD_INFO_EXPORT")
 				}
 				var exportSize uint64
 				var transmissionFlags uint16
 				if err := binary.Read(ni.conn, binary.BigEndian, &exportSize); err != nil {
-					return fmt.Errorf("Could not receive NBD_INFO_EXPORT export size")
+					return errors.Wrap(err, "Could not receive NBD_INFO_EXPORT export size")
 				}
 				if err := binary.Read(ni.conn, binary.BigEndian, &transmissionFlags); err != nil {
-					return fmt.Errorf("Could not receive NBD_INFO_EXPORT transmission flags")
+					return errors.Wrap(err, "Could not receive NBD_INFO_EXPORT transmission flags")
 				}
 				ni.transmissionFlags = transmissionFlags
 				t.Logf("Transmission flags: FLUSH=%v, FUA=%v",
@@ -416,12 +418,12 @@ infoloop:
 				if optReply.NbdOptReplyLength > 2 {
 					junk := make([]byte, optReply.NbdOptReplyLength-2, optReply.NbdOptReplyLength-2)
 					if err := binary.Read(ni.conn, binary.BigEndian, &junk); err != nil {
-						return fmt.Errorf("Could not receive go option reply name junk")
+						return errors.Wrap(err, "Could not receive go option reply name junk")
 					}
 				}
 			}
 		default:
-			return fmt.Errorf("List option reply type was unexpected")
+			return errors.New("List option reply type was unexpected")
 		}
 	}
 
@@ -452,7 +454,7 @@ func (ni *NbdInstance) Disconnect(t *testing.T) error {
 		NbdLength:       0,
 	}
 	if err = binary.Write(ni.conn, binary.BigEndian, cmd); err != nil {
-		return fmt.Errorf("Could not send disconnect command")
+		return errors.Wrap(err, "Could not send disconnect command")
 	}
 	time.Sleep(100 * time.Millisecond)
 	return nil

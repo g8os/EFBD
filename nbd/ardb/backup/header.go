@@ -2,13 +2,12 @@ package backup
 
 import (
 	"bytes"
-	"errors"
-	"fmt"
 	"io"
 
 	valid "github.com/asaskevich/govalidator"
 	"github.com/zeebo/bencode"
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/errors"
 )
 
 // LoadHeader loads (read=>[decrypt=>]decompress=>decode)
@@ -53,7 +52,7 @@ func LoadHeader(id string, src StorageDriver, key *CryptoKey, ct CompressionType
 		header.DedupedMap.Indices[0], header.DedupedMap.Hashes[0],
 		src, key, ct)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't read first deduped block of snapshot %s: %v", id, err)
+		return nil, errors.Wrapf(err, "couldn't read first deduped block of snapshot %s", id)
 	}
 	header.Metadata.BlockSize = int64(len(firstBlock))
 	return header, nil
@@ -114,20 +113,20 @@ func deserializeHeader(key *CryptoKey, ct CompressionType, src io.Reader, decode
 
 		err = Decrypt(key, src, bufA)
 		if err != nil {
-			return nil, fmt.Errorf("couldn't decrypt compressed header: %v", err)
+			return nil, errors.Wrap(err, "couldn't decrypt compressed header")
 		}
 
 		bufB = bytes.NewBuffer(nil)
 		err = decompressor.Decompress(bufA, bufB)
 		if err != nil {
-			return nil, fmt.Errorf("couldn't decompress header: %v", err)
+			return nil, errors.Wrap(err, "couldn't decompress header")
 		}
 	} else {
 		bufB = bytes.NewBuffer(nil)
 
 		err = decompressor.Decompress(src, bufB)
 		if err != nil {
-			return nil, fmt.Errorf("couldn't decompress header: %v", err)
+			return nil, errors.Wrap(err, "couldn't decompress header")
 		}
 	}
 
@@ -155,7 +154,7 @@ func decodeRawDedupedMap(src io.Reader) (*Header, error) {
 	var raw RawDedupedMap
 	err := bencode.NewDecoder(src).Decode(&raw)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't decode bencoded deduped map: %v", err)
+		return nil, errors.Wrap(err, "couldn't decode bencoded deduped map")
 	}
 	err = raw.Validate()
 	if err != nil {
@@ -202,18 +201,18 @@ func serializeHeader(header *Header, key *CryptoKey, ct CompressionType, dst io.
 		imbuffer := bytes.NewBuffer(nil)
 		err = compressor.Compress(hmbuffer, imbuffer)
 		if err != nil {
-			return fmt.Errorf("couldn't compress bencoded dedupd map: %v", err)
+			return errors.Wrap(err, "couldn't compress bencoded dedupd map")
 		}
 
 		err = Encrypt(key, imbuffer, dst)
 		if err != nil {
-			return fmt.Errorf("couldn't encrypt compressed dedupd map: %v", err)
+			return errors.Wrap(err, "couldn't encrypt compressed dedupd map")
 		}
 	} else {
 		// only compress
 		err = compressor.Compress(hmbuffer, dst)
 		if err != nil {
-			return fmt.Errorf("couldn't compress bencoded dedupd map: %v", err)
+			return errors.Wrap(err, "couldn't compress bencoded dedupd map")
 		}
 	}
 
@@ -224,7 +223,7 @@ func serializeHeader(header *Header, key *CryptoKey, ct CompressionType, dst io.
 func encodeHeader(header *Header, dst io.Writer) error {
 	err := bencode.NewEncoder(dst).Encode(header)
 	if err != nil {
-		return fmt.Errorf("couldn't bencode encode header: %v", err)
+		return errors.Wrap(err, "couldn't bencode encode header")
 	}
 	return nil
 }

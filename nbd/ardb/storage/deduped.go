@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/command"
@@ -145,7 +146,7 @@ func (ds *dedupedStorage) getPrimaryOrTemplateContent(hash zerodisk.Hash) (conte
 		// this error is returned, in case the cluster is simply not defined,
 		// which is an error we'll ignore, as it means we cannot use the template cluster,
 		// and thus no content is returned, and neither an error.
-		if err == ErrClusterNotDefined {
+		if errors.Cause(err) == ErrClusterNotDefined {
 			return nil, nil
 		}
 		// no content to return,
@@ -312,7 +313,7 @@ func listDedupedBlockIndices(vdiskID string, cluster ardb.StorageCluster) ([]int
 // from a sourceID to a targetID, within the same cluster or between different clusters.
 func copyDedupedMetadata(sourceID, targetID string, sourceBS, targetBS int64, sourceCluster, targetCluster ardb.StorageCluster) error {
 	if sourceBS != targetBS {
-		return fmt.Errorf(
+		return errors.Newf(
 			"vdisks %s and %s have non matching block sizes (%d != %d)",
 			sourceID, targetID, sourceBS, targetBS)
 	}
@@ -391,7 +392,7 @@ func copyDedupedSameCluster(sourceID, targetID string, cluster ardb.StorageClust
 	}
 
 	if totalCount == 0 {
-		return fmt.Errorf(
+		return errors.Newf(
 			"zero LBA sectors have been copied from vdisk %s to vdisk %s",
 			sourceID, targetID)
 	}
@@ -475,7 +476,7 @@ func copyDedupedSameServerCount(sourceID, targetID string, sourceCluster, target
 	}
 
 	if totalCount == 0 {
-		return fmt.Errorf(
+		return errors.Newf(
 			"zero LBA sectors have been copied from vdisk %s to vdisk %s",
 			sourceID, targetID)
 	}
@@ -530,7 +531,7 @@ func copyDedupedDifferentServerCount(sourceID, targetID string, sourceCluster, t
 	}
 
 	if totalCount == 0 {
-		return fmt.Errorf(
+		return errors.Newf(
 			"zero LBA sectors have been copied from vdisk %s to vdisk %s",
 			sourceID, targetID)
 	}
@@ -697,13 +698,13 @@ func copyDedupedMetadataToLBAStorage(sourceKey string, src ardb.StorageServer, s
 			for index, bytes := range input.Data {
 				sector, err = lba.SectorFromBytes(bytes)
 				if err != nil {
-					err = fmt.Errorf("invalid raw sector bytes at sector index %d: %v", index, err)
+					err = errors.Wrapf(err, "invalid raw sector bytes at sector index %d", index)
 					break
 				}
 
 				err = storage.SetSector(index, sector)
 				if err != nil {
-					err = fmt.Errorf("couldn't set sector %d: %v", index, err)
+					err = errors.Wrapf(err, "couldn't set sector %d", index)
 					break
 				}
 			}
