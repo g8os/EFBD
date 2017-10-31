@@ -1,8 +1,7 @@
 package log
 
 import (
-	"errors"
-
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-log"
 )
 
