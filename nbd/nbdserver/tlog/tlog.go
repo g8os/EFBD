@@ -515,7 +515,7 @@ func (tls *tlogStorage) tlogRPCReloader(ctx context.Context, vdiskID string, sou
 // See: https://github.com/zero-os/0-Disk/issues/357
 /*func (tls *tlogStorage) switchToArdbSlave() error {
 	if tls.configPath == "" {
-		return errors.Newf("no config found")
+		return errors.New("no config found")
 	}
 
 	// get config file permission

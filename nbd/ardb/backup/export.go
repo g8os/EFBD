@@ -286,7 +286,7 @@ func exportBS(ctx context.Context, src storage.BlockStorage, blockIndices []int6
 			// ensure that at the end of this function,
 			// the block fetcher is empty
 			_, err = obf.FetchBlock()
-			if errors.Cause(err) == nil || err != io.EOF {
+			if err == nil || errors.Cause(err) != io.EOF {
 				err = errors.New("export glue gouroutine's block fetcher still has unprocessed content left")
 				sendErr(err)
 				return
@@ -336,7 +336,8 @@ func exportBS(ctx context.Context, src storage.BlockStorage, blockIndices []int6
 				for {
 					pair, err = obf.FetchBlock()
 					if err != nil {
-						if errors.Cause(err) == io.EOF || errors.Cause(err) == errStreamBlocked {
+						cause := errors.Cause(err)
+						if cause == io.EOF || cause == errStreamBlocked {
 							err = nil
 							break // we have nothing more to send (for now)
 						}

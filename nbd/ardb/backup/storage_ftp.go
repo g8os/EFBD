@@ -186,13 +186,13 @@ func (cfg *FTPServerConfig) validate() error {
 // validate the TLS Client Config.
 func (tlsConfig *TLSClientConfig) validate() error {
 	if tlsConfig.CertFile != "" && tlsConfig.KeyFile == "" {
-		return errors.Newf("when certificate is given, key must be given")
+		return errors.New("when certificate is given, key must be given")
 	}
 	if tlsConfig.CertFile == "" && tlsConfig.KeyFile != "" {
-		return errors.Newf("when key is given, certificate must be given")
+		return errors.New("when key is given, certificate must be given")
 	}
 	if !tlsConfig.InsecureSkipVerify && tlsConfig.ServerName == "" {
-		return errors.Newf("server name must be given")
+		return errors.New("server name must be given")
 	}
 	return nil
 }

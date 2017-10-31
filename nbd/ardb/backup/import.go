@@ -63,7 +63,7 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 	header, err := LoadHeader(cfg.SnapshotID, src, &cfg.CryptoKey, cfg.CompressionType)
 	if err != nil {
 		if errors.Cause(err) == ErrDataDidNotExist {
-			return errors.Newf("no deduped map could be found using the id %s", cfg.SnapshotID)
+			return errors.Wrapf(err, "no deduped map could be found using the id %s", cfg.SnapshotID)
 		}
 
 		return err
@@ -295,7 +295,8 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 				for {
 					pair, err = obf.FetchBlock()
 					if err != nil {
-						if errors.Cause(err) == io.EOF || errors.Cause(err) == errStreamBlocked {
+						cause := errors.Cause(err)
+						if cause == io.EOF || cause == errStreamBlocked {
 							err = nil
 							break // we have nothing more to send (for now)
 						}
