@@ -248,6 +248,10 @@ func (header *Header) Validate() error {
 		return err
 	}
 
+	if err := header.Metadata.Validate(); err != nil {
+		return err
+	}
+
 	return header.DedupedMap.Validate()
 }
 
@@ -273,8 +277,10 @@ func (m *Metadata) Validate() error {
 	}
 
 	if _, err := zerodisk.VersionFromString(m.Version); err != nil {
-		return fmt.Errorf("invalid version number: %s")
+		return fmt.Errorf("invalid version number '%s': %s", m.Version, err)
 	}
+
+	return nil
 }
 
 // Source contains some optional metadata for a snapshot,
