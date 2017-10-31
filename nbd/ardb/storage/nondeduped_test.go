@@ -472,8 +472,4 @@ func TestListNonDedupedBlockIndices(t *testing.T) {
 
 func init() {
 	log.SetLevel(log.DebugLevel)
-
-	// ledisdb uses other names for *SCAN commands, for whatever reason
-	// TODO: remove once https://github.com/zero-os/0-Disk/issues/567 is fixed
-	command.HashScan.Name = "XHSCAN"
 }

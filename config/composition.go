@@ -1,8 +1,7 @@
 package config
 
 import (
-	"errors"
-	"fmt"
+	"github.com/zero-os/0-Disk/errors"
 )
 
 // composition.go
@@ -28,16 +27,16 @@ func (cfg *NBDStorageConfig) Validate() error {
 	// validate primary storage cluster
 	err := cfg.StorageCluster.Validate()
 	if err != nil {
-		return fmt.Errorf(
-			"invalid NBDStorageConfig, invalid primary storage cluster: %v", err)
+		return errors.Wrap(err,
+			"invalid NBDStorageConfig, invalid primary storage cluster")
 	}
 
 	// ensure that if the template cluster is given, it is valid
 	if cfg.TemplateStorageCluster != nil {
 		err = cfg.TemplateStorageCluster.Validate()
 		if err != nil {
-			return fmt.Errorf(
-				"invalid NBDStorageConfig, invalid template storage cluster: %v", err)
+			return errors.Wrap(err,
+				"invalid NBDStorageConfig, invalid template storage cluster")
 		}
 	}
 
@@ -46,15 +45,15 @@ func (cfg *NBDStorageConfig) Validate() error {
 		// ensure the static struct validation for the slave config checks out
 		err = cfg.SlaveStorageCluster.Validate()
 		if err != nil {
-			return fmt.Errorf(
-				"invalid NBDStorageConfig, invalid slave storage cluster: %v", err)
+			return errors.Wrap(err,
+				"invalid NBDStorageConfig, invalid slave storage cluster")
 		}
 
 		// ensure that the slave cluster defines enough data (storage) servers
 		slaveDataShardCount := len(cfg.SlaveStorageCluster.Servers)
 		primaryDataShardCount := len(cfg.StorageCluster.Servers)
 		if slaveDataShardCount < primaryDataShardCount {
-			return errInsufficientSlaveDataShards
+			return errors.WrapError(ErrInvalidConfig, errInsufficientSlaveDataShards)
 		}
 	}
 
@@ -105,16 +104,16 @@ func (cfg *TlogStorageConfig) Validate() error {
 	// validate primary storage cluster
 	err := cfg.ZeroStorCluster.Validate()
 	if err != nil {
-		return fmt.Errorf(
-			"invalid TlogStorageConfig, invalid 0-stor cluster: %v", err)
+		return errors.Wrap(err,
+			"invalid TlogStorageConfig, invalid 0-stor cluster")
 	}
 
 	// validate optional slave storage cluster
 	if cfg.SlaveStorageCluster != nil {
 		err = cfg.SlaveStorageCluster.Validate()
 		if err != nil {
-			return fmt.Errorf(
-				"invalid TlogStorageConfig, invalid slave storage cluster: %v", err)
+			return errors.Wrap(err,
+				"invalid TlogStorageConfig, invalid slave storage cluster")
 		}
 	}
 

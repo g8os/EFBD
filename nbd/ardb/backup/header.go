@@ -267,6 +267,16 @@ type Metadata struct {
 	Version string `bencode:"v" valid:"optional"`
 }
 
+func (m *Metadata) Validate() error {
+	if _, err := valid.ValidateStruct(m); err != nil {
+		return err
+	}
+
+	if _, err := zerodisk.VersionFromString(m.Version); err != nil {
+		return fmt.Errorf("invalid version number: %s")
+	}
+}
+
 // Source contains some optional metadata for a snapshot,
 // describing the source vdisk used to create the snapshot.
 type Source struct {

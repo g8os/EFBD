@@ -8,7 +8,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/zero-os/0-Disk/log"
-	"github.com/zero-os/0-Disk/nbd/ardb"
 )
 
 // shared test function to test all types of BlockStorage equally,
@@ -401,11 +400,5 @@ func TestDedupStrings(t *testing.T) {
 }
 
 func init() {
-	// ledisDB...
-	ardbStartCursor = "" // TODO: remove once https://github.com/zero-os/0-Disk/issues/567 is fixed
-	newARDBTransaction = func(cmds ...ardb.StorageAction) ardb.StorageAction {
-		return ardb.Commands(cmds...)
-	}
-
 	log.SetLevel(log.DebugLevel)
 }

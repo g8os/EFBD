@@ -514,7 +514,8 @@ type nonDedupFetchResult struct {
 
 func nonDedupDataFetcher(ctx context.Context, storageKey string, server ardb.StorageServer) <-chan nonDedupFetchResult {
 	const (
-		itemCount = "1000"
+		startCursor = "0"
+		itemCount   = "1000"
 	)
 
 	ch := make(chan nonDedupFetchResult)
@@ -529,7 +530,7 @@ func nonDedupDataFetcher(ctx context.Context, storageKey string, server ardb.Sto
 		var result nonDedupFetchResult
 
 		// initial cursor and action
-		cursor := ardbStartCursor
+		cursor := startCursor
 		action := ardb.Command(command.HashScan, storageKey, cursor, "COUNT", itemCount)
 
 		// loop through all values of the mapping
@@ -550,7 +551,7 @@ func nonDedupDataFetcher(ctx context.Context, storageKey string, server ardb.Sto
 			}
 
 			// return in case of an error or when we iterated through all possible values
-			if result.Error != nil || cursor == ardbStartCursor {
+			if result.Error != nil || cursor == startCursor {
 				return
 			}
 
@@ -600,17 +601,10 @@ func copyNonDedupedBetweenServers(sourceKey, targetKey string, src, dst ardb.Sto
 					ardb.Command(command.HashSet, targetKey, index, hash))
 			}
 
-			transaction := newARDBTransaction(cmds...)
+			action := ardb.Commands(cmds...)
 			log.Debugf("flushing buffered data to be stored at %s on %s...", targetKey, dst.Config())
-			// execute the transaction
-			response, err := dst.Do(transaction)
-			if err == nil && response == nil {
-				// if response == <nil> the transaction has failed
-				// more info: https://redis.io/topics/transactions
-				err = fmt.Errorf("%s was busy and couldn't be modified", targetKey)
-			}
+			result.Error = ardb.Error(dst.Do(action))
 
-			result.Error = err
 			select {
 			case resultChan <- result:
 			case <-ctx.Done():
