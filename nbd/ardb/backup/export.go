@@ -3,13 +3,12 @@ package backup
 import (
 	"bytes"
 	"context"
-	"errors"
-	"fmt"
 	"io"
 	"sync"
 	"time"
 
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
@@ -40,9 +39,9 @@ func Export(ctx context.Context, cfg Config) error {
 	log.Debugf("collecting all stored block indices for vdisk %s, this might take a while...", cfg.VdiskID)
 	indices, err := storage.ListBlockIndices(cfg.VdiskID, storageConfig.Vdisk.Type, storageCluster)
 	if err != nil {
-		return fmt.Errorf(
-			"couldn't list block (storage) indices: %v (does vdisk '%s' exist?)",
-			err, cfg.VdiskID)
+		return errors.Wrapf(err,
+			"couldn't list block (storage) indices (does vdisk '%s' exist?)",
+			cfg.VdiskID)
 	}
 
 	blockStorage, err := storage.BlockStorageFromConfig(
@@ -84,7 +83,7 @@ func Export(ctx context.Context, cfg Config) error {
 func existingOrNewHeader(cfg exportConfig, src StorageDriver, key *CryptoKey, ct CompressionType) (*Header, error) {
 	header, err := LoadHeader(cfg.SnapshotID, src, key, ct)
 
-	if err == ErrDataDidNotExist {
+	if errors.Cause(err) == ErrDataDidNotExist {
 		// deduped map did not exist yet,
 		// return a new one based on the given export config
 		return newExportHeader(cfg), nil
@@ -289,7 +288,7 @@ func exportBS(ctx context.Context, src storage.BlockStorage, blockIndices []int6
 			// ensure that at the end of this function,
 			// the block fetcher is empty
 			_, err = obf.FetchBlock()
-			if err == nil || err != io.EOF {
+			if err == nil || errors.Cause(err) != io.EOF {
 				err = errors.New("export glue gouroutine's block fetcher still has unprocessed content left")
 				sendErr(err)
 				return
@@ -309,9 +308,11 @@ func exportBS(ctx context.Context, src storage.BlockStorage, blockIndices []int6
 					if input.SequenceIndex < sbf.scursor {
 						// NOTE: this should never happen,
 						//       as it indicates a bug in the code
-						err = fmt.Errorf(
+						err = errors.Newf(
 							"unexpected sequence index returned, received %d, which is lower then %d",
-							input.SequenceIndex, sbf.scursor)
+							input.SequenceIndex,
+							sbf.scursor,
+						)
 						sendErr(err)
 						return
 					}
@@ -337,7 +338,8 @@ func exportBS(ctx context.Context, src storage.BlockStorage, blockIndices []int6
 				for {
 					pair, err = obf.FetchBlock()
 					if err != nil {
-						if err == io.EOF || err == errStreamBlocked {
+						cause := errors.Cause(err)
+						if cause == io.EOF || cause == errStreamBlocked {
 							err = nil
 							break // we have nothing more to send (for now)
 						}
@@ -422,7 +424,7 @@ func exportBS(ctx context.Context, src storage.BlockStorage, blockIndices []int6
 
 					err = pipeline.WriteBlock(input.Index, input.Block)
 					if err != nil {
-						sendErr(fmt.Errorf("error while processing block: %v", err))
+						sendErr(errors.Wrap(err, "error while processing block"))
 						return
 					}
 				}

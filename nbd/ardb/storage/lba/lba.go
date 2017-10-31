@@ -1,11 +1,10 @@
 package lba
 
 import (
-	"errors"
-	"fmt"
 	"sync"
 
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/errors"
 )
 
 const (
@@ -17,8 +16,10 @@ const (
 // NewLBA creates a new LBA
 func NewLBA(cacheLimitInBytes int64, storage SectorStorage) (*LBA, error) {
 	if cacheLimitInBytes < MinimumBucketSizeLimit {
-		return nil, fmt.Errorf(
-			"sectorCache requires at least %d bytes", MinimumBucketSizeLimit)
+		return nil, errors.Newf(
+			"sectorCache requires at least %d bytes",
+			MinimumBucketSizeLimit,
+		)
 	}
 	if storage == nil {
 		return nil, errors.New("LBA requires a non-nil storage")
@@ -80,19 +81,19 @@ func (lba *LBA) Get(blockIndex int64) (zerodisk.Hash, error) {
 // Flush stores all dirty sectors to the external storage
 func (lba *LBA) Flush() error {
 	var wg sync.WaitGroup
-	var errors flushError
+	errs := errors.NewErrorSlice()
 
 	for _, bucket := range lba.buckets {
 		wg.Add(1)
 		bucket := bucket
 		go func() {
 			defer wg.Done()
-			errors.AddError(bucket.Flush())
+			errs.Add(bucket.Flush())
 		}()
 	}
 
 	wg.Wait()
-	return errors.AsError()
+	return errs.AsError()
 }
 
 func (lba *LBA) getBucket(blockIndex int64) *sectorBucket {

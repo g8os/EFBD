@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 )
 
@@ -82,7 +83,7 @@ func (bucket *sectorBucket) Flush() error {
 	var entry *cacheEntry
 
 	var err error
-	var errors flushError
+	errs := errors.NewErrorSlice()
 
 	// mark all sectors for flushing
 	for elem := bucket.evictList.Front(); elem != nil; elem = elem.Next() {
@@ -94,7 +95,7 @@ func (bucket *sectorBucket) Flush() error {
 
 		// mark the sector for persistent storage
 		err = bucket.storage.SetSector(entry.sectorIndex, entry.sector)
-		errors.AddError(err)
+		errs.Add(err)
 	}
 
 	// clear bucket, which is something we want to do always
@@ -106,7 +107,7 @@ func (bucket *sectorBucket) Flush() error {
 	bucket.evictList.Init()
 
 	// flush bucket storage
-	return errors.AsError()
+	return errs.AsError()
 }
 
 // getSector returns a cached or fresh sector.
@@ -158,6 +159,10 @@ func (bucket *sectorBucket) flushOldest() error {
 
 	return errBucketIsEmpty
 }
+
+var (
+	errBucketIsEmpty = errors.New("bucket is empty")
+)
 
 // cacheEntry defines the entry for a bucket
 type cacheEntry struct {

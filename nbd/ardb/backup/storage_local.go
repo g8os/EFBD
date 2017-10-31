@@ -1,8 +1,6 @@
 package backup
 
 import (
-	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -10,6 +8,7 @@ import (
 	"path"
 
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 )
 
@@ -74,7 +73,7 @@ func (ld *localDriver) GetHeaders() (ids []string, err error) {
 	dir := path.Join(ld.root, backupDir)
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't read local backup dir (%s): %v", dir, err)
+		return nil, errors.Wrapf(err, "couldn't read local backup dir (%s)", dir)
 	}
 
 	for _, fileInfo := range files {

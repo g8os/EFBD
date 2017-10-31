@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
-	"errors"
 
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"

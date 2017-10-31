@@ -2,8 +2,8 @@ package storage
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/command"
@@ -110,7 +110,7 @@ func (ss *nonDedupedStorage) getPrimaryOrTemplateContent(blockIndex int64) (cont
 		// this error is returned, in case the cluster is simply not defined,
 		// which is an error we'll ignore, as it means we cannot use the template cluster,
 		// and thus no content is returned, and neither an error.
-		if err == ErrClusterNotDefined {
+		if errors.Cause(err) == ErrClusterNotDefined {
 			return nil, nil
 		}
 		// no content to return,
@@ -275,7 +275,7 @@ func listNonDedupedBlockIndices(vdiskID string, cluster ardb.StorageCluster) ([]
 // from a sourceID to a targetID, within the same cluster or between different clusters.
 func copyNonDedupedData(sourceID, targetID string, sourceBS, targetBS int64, sourceCluster, targetCluster ardb.StorageCluster) error {
 	if sourceBS != targetBS {
-		return fmt.Errorf(
+		return errors.Newf(
 			"vdisks %s and %s have non matching block sizes (%d != %d)",
 			sourceID, targetID, sourceBS, targetBS)
 	}
@@ -356,7 +356,7 @@ func copyNonDedupedSameCluster(sourceID, targetID string, cluster ardb.StorageCl
 	}
 
 	if totalCount == 0 {
-		return fmt.Errorf(
+		return errors.Newf(
 			"no non-deduped data was copied from vdisk %s to vdisk %s",
 			sourceID, targetID)
 	}
@@ -440,7 +440,7 @@ func copyNonDedupedSameServerCount(sourceID, targetID string, sourceCluster, tar
 	}
 
 	if totalCount == 0 {
-		return fmt.Errorf(
+		return errors.Newf(
 			"no non-deduped data was copied from vdisk %s to vdisk %s",
 			sourceID, targetID)
 	}
@@ -499,7 +499,7 @@ func copyNonDedupedDifferentServerCount(sourceID, targetID string, targetBS int6
 	}
 
 	if totalCount == 0 {
-		return fmt.Errorf(
+		return errors.Newf(
 			"no non-deduped data was copied from vdisk %s to vdisk %s",
 			sourceID, targetID)
 	}
@@ -666,7 +666,7 @@ func copyNonDedupDataToBlockStorage(sourceKey string, src ardb.StorageServer, st
 			for index, bytes := range input.Data {
 				result.Error = storage.SetBlock(index, bytes)
 				if result.Error != nil {
-					result.Error = fmt.Errorf("couldn't set block %d: %v", index, result.Error)
+					result.Error = errors.Wrapf(result.Error, "couldn't set block %d", index)
 					break
 				}
 			}

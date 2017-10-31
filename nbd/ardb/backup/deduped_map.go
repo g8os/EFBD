@@ -1,10 +1,10 @@
 package backup
 
 import (
-	"errors"
 	"sync"
 
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/errors"
 )
 
 // unpackRawDedupedMap allows you to unpack a raw deduped map

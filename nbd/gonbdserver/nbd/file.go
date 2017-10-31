@@ -2,9 +2,10 @@ package nbd
 
 import (
 	"context"
-	"errors"
 	"os"
 	"strconv"
+
+	"github.com/zero-os/0-Disk/errors"
 )
 
 // FileBackend implements Backend

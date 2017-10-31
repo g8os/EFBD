@@ -2,12 +2,12 @@ package storage
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net"
 	"sync"
 
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 )
@@ -124,7 +124,7 @@ func (pc *PrimaryCluster) doAt(serverIndex int64, cfg config.StorageServerConfig
 	if err == nil {
 		defer conn.Close()
 		reply, err = action.Do(conn)
-		if err == nil || err == ardb.ErrNil {
+		if err == nil || errors.Cause(err) == ardb.ErrNil {
 			return
 		}
 	}
@@ -413,7 +413,7 @@ func (tsc *TemplateCluster) doAt(serverIndex int64, cfg config.StorageServerConf
 	if err == nil {
 		defer conn.Close()
 		reply, err = action.Do(conn)
-		if err == nil || err == ardb.ErrNil {
+		if err == nil || errors.Cause(err) == ardb.ErrNil {
 			return
 		}
 	}
@@ -682,7 +682,7 @@ func mapErrorToBroadcastStatus(err error) log.MessageStatus {
 		if netErr.Temporary() {
 			return log.StatusServerTempError
 		}
-	} else if err == io.EOF {
+	} else if errors.Cause(err) == io.EOF {
 		return log.StatusServerDisconnect
 	}
 

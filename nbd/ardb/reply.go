@@ -1,9 +1,8 @@
 package ardb
 
 import (
-	"errors"
-
 	"github.com/garyburd/redigo/redis"
+	"github.com/zero-os/0-Disk/errors"
 )
 
 // Error is a helper that allows you to extract just the error from a reply.

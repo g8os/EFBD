@@ -3,8 +3,6 @@ package backup
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"path"
@@ -13,11 +11,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/zero-os/0-Disk"
-	"github.com/zero-os/0-Disk/log"
-
 	valid "github.com/asaskevich/govalidator"
 	"github.com/secsy/goftp"
+	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/errors"
+	"github.com/zero-os/0-Disk/log"
 )
 
 // FTPStorageDriverConfig is used to configure and create a FTP (Storage) Driver.
@@ -31,7 +29,7 @@ type FTPStorageDriverConfig struct {
 func NewFTPServerConfig(data string) (cfg FTPServerConfig, err error) {
 	parts := ftpURLRegexp.FindStringSubmatch(data)
 	if len(parts) != 6 {
-		err = fmt.Errorf("'%s' is not a valid FTP URL", data)
+		err = errors.Newf("'%s' is not a valid FTP URL", data)
 		return
 	}
 
@@ -123,7 +121,7 @@ func tlsClientAuth(cfg TLSClientConfig) (*tls.Config, error) {
 	if cfg.CertFile != "" {
 		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
 		if err != nil {
-			return nil, fmt.Errorf("tls client cert: %v", err)
+			return nil, errors.Wrap(err, "tls client cert")
 		}
 		tlsCfg.Certificates = []tls.Certificate{cert}
 	}
@@ -137,7 +135,7 @@ func tlsClientAuth(cfg TLSClientConfig) (*tls.Config, error) {
 		// load ca cert
 		caCert, err := ioutil.ReadFile(cfg.CAFile)
 		if err != nil {
-			return nil, fmt.Errorf("tls client ca: %v", err)
+			return nil, errors.Wrap(err, "tls client ca")
 		}
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
@@ -170,11 +168,11 @@ func (cfg *FTPServerConfig) validate() error {
 		return errors.New("no ftp server address given")
 	}
 	if !valid.IsDialString(cfg.Address) {
-		return fmt.Errorf("invalid ftp server address given: %s", cfg.Address)
+		return errors.Newf("invalid ftp server address given: %s", cfg.Address)
 	}
 	if cfg.RootDir != "" {
 		if ok, ft := valid.IsFilePath(cfg.RootDir); !ok || ft != valid.Unix {
-			return fmt.Errorf("invalid root dir given: %s", cfg.RootDir)
+			return errors.Newf("invalid root dir given: %s", cfg.RootDir)
 		}
 	}
 
@@ -188,13 +186,13 @@ func (cfg *FTPServerConfig) validate() error {
 // validate the TLS Client Config.
 func (tlsConfig *TLSClientConfig) validate() error {
 	if tlsConfig.CertFile != "" && tlsConfig.KeyFile == "" {
-		return fmt.Errorf("when certificate is given, key must be given")
+		return errors.New("when certificate is given, key must be given")
 	}
 	if tlsConfig.CertFile == "" && tlsConfig.KeyFile != "" {
-		return fmt.Errorf("when key is given, certificate must be given")
+		return errors.New("when key is given, certificate must be given")
 	}
 	if !tlsConfig.InsecureSkipVerify && tlsConfig.ServerName == "" {
-		return fmt.Errorf("server name must be given")
+		return errors.New("server name must be given")
 	}
 	return nil
 }
@@ -297,7 +295,7 @@ func (ftp *ftpStorageDriver) GetHeaders() (ids []string, err error) {
 	dir := path.Join(ftp.rootDir, backupDir)
 	files, err := ftp.client.ReadDir(dir)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't read FTP backup dir (%s): %v", dir, err)
+		return nil, errors.Wrapf(err, "couldn't read FTP backup dir (%s)", dir)
 	}
 
 	for _, fileInfo := range files {

@@ -2,14 +2,13 @@ package storage
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"reflect"
 	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/command"
@@ -166,7 +165,7 @@ func NewBlockStorage(cfg BlockStorageConfig, cluster, templateCluster ardb.Stora
 			templateCluster)
 
 	default:
-		return nil, fmt.Errorf(
+		return nil, errors.Newf(
 			"no block storage available for %s's storage type %s",
 			cfg.VdiskID, storageType)
 	}
@@ -186,7 +185,7 @@ func VdiskExists(id string, t config.VdiskType, cluster ardb.StorageCluster) (bo
 		return semiDedupedVdiskExists(id, cluster)
 
 	default:
-		return false, fmt.Errorf("%v is not a supported storage type", st)
+		return false, errors.Newf("%v is not a supported storage type", st)
 	}
 }
 
@@ -205,7 +204,7 @@ func CopyVdisk(source, target CopyVdiskConfig, sourceCluster, targetCluster ardb
 	sourceStorageType := source.Type.StorageType()
 	targetStorageType := target.Type.StorageType()
 	if sourceStorageType != targetStorageType {
-		return fmt.Errorf(
+		return errors.Newf(
 			"source vdisk %s and target vdisk %s have different storageTypes (%s != %s)",
 			source.VdiskID, target.VdiskID, sourceStorageType, targetStorageType)
 	}
@@ -228,7 +227,7 @@ func CopyVdisk(source, target CopyVdiskConfig, sourceCluster, targetCluster ardb
 			sourceCluster, targetCluster)
 
 	default:
-		err = fmt.Errorf(
+		err = errors.Newf(
 			"%v is not a supported storage type", sourceStorageType)
 	}
 
@@ -264,7 +263,7 @@ func DeleteVdisk(id string, t config.VdiskType, cluster ardb.StorageCluster) (bo
 	case config.StorageSemiDeduped:
 		deletedStorage, err = deleteSemiDedupedData(id, cluster)
 	default:
-		err = fmt.Errorf("%v is not a supported storage type", st)
+		err = errors.Newf("%v is not a supported storage type", st)
 	}
 
 	return deletedTlogMetadata || deletedStorage, err
@@ -429,7 +428,7 @@ func ListBlockIndices(id string, t config.VdiskType, cluster ardb.StorageCluster
 		return listSemiDedupedBlockIndices(id, cluster)
 
 	default:
-		return nil, fmt.Errorf("%v is not a supported storage type", st)
+		return nil, errors.Newf("%v is not a supported storage type", st)
 	}
 }
 

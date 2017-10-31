@@ -3,14 +3,13 @@ package backup
 import (
 	"bytes"
 	"context"
-	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"sort"
 	"sync"
 
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
@@ -63,8 +62,8 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 	// load the deduped map
 	header, err := LoadHeader(cfg.SnapshotID, src, &cfg.CryptoKey, cfg.CompressionType)
 	if err != nil {
-		if err == ErrDataDidNotExist {
-			return fmt.Errorf("no deduped map could be found using the id %s", cfg.SnapshotID)
+		if errors.Cause(err) == ErrDataDidNotExist {
+			return errors.Wrapf(err, "no deduped map could be found using the id %s", cfg.SnapshotID)
 		}
 
 		return err
@@ -247,7 +246,7 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 			// ensure that at the end of this function,
 			// the block fetcher is empty
 			_, err = obf.FetchBlock()
-			if err == nil || err != io.EOF {
+			if err == nil || errors.Cause(err) != io.EOF {
 				err = errors.New("output's block fetcher still has unstored content left")
 				sendErr(err)
 				return
@@ -268,7 +267,7 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 					if output.SequenceIndex < sbf.scursor {
 						// NOTE: this should never happen,
 						//       as it indicates a bug in the code
-						err = fmt.Errorf(
+						err = errors.Newf(
 							"unexpected sequence index returned, received %d, which is lower then %d",
 							output.SequenceIndex, sbf.scursor)
 						sendErr(err)
@@ -296,7 +295,8 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 				for {
 					pair, err = obf.FetchBlock()
 					if err != nil {
-						if err == io.EOF || err == errStreamBlocked {
+						cause := errors.Cause(err)
+						if cause == io.EOF || cause == errStreamBlocked {
 							err = nil
 							break // we have nothing more to send (for now)
 						}
@@ -376,7 +376,7 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 				// fetch the next available block
 				pair, err = hf.FetchHash()
 				if err != nil {
-					if err == io.EOF {
+					if errors.Cause(err) == io.EOF {
 						err = nil
 					} else {
 						sendErr(err)
@@ -460,7 +460,7 @@ func (p *importPipeline) ReadBlock(index int64, hash zerodisk.Hash) ([]byte, err
 
 	blockHash := p.Hasher.HashBytes(bytes)
 	if !hash.Equals(blockHash) {
-		return nil, fmt.Errorf("block %d's hash does not match its content", index)
+		return nil, errors.Newf("block %d's hash does not match its content", index)
 	}
 
 	return bytes, nil

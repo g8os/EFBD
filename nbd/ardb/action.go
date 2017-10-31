@@ -1,10 +1,10 @@
 package ardb
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/garyburd/redigo/redis"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/nbd/ardb/command"
 )
 

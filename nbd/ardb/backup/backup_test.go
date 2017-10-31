@@ -5,9 +5,8 @@ import (
 	"io"
 	"testing"
 
-	"github.com/zero-os/0-Disk"
-
 	"github.com/stretchr/testify/assert"
+	"github.com/zero-os/0-Disk"
 )
 
 func TestConfigValidation(t *testing.T) {

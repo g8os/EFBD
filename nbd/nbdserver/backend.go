@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"time"
 
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/nbd/gonbdserver/nbd"
@@ -264,7 +264,7 @@ func (ab *backend) GoBackground(ctx context.Context) {
 			// TODO :
 			// - how long is the reasonable waiting time?
 			// - put this value in the config?
-			err = fmt.Errorf("vdisk '%s' SIGTERM flush timed out", ab.vdiskID)
+			err = errors.Newf("vdisk '%s' SIGTERM flush timed out", ab.vdiskID)
 		}
 
 		// did flushing fail?
