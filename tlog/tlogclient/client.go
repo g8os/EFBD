@@ -3,13 +3,12 @@ package tlogclient
 import (
 	"bufio"
 	"context"
-	"errors"
-	"fmt"
 	"io"
 	"net"
 	"sync"
 	"time"
 
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/blockbuffer"
@@ -220,7 +219,7 @@ func (c *Client) runReceiver(ctx context.Context, cancelFunc context.CancelFunc)
 				}
 
 				// EOF and other network error triggers reconnection
-				if isNetErr || err == io.EOF {
+				if isNetErr || errors.Cause(err) == io.EOF {
 					if !c.isStopped() {
 						log.Errorf("error while reading: %v", err)
 					}
@@ -357,14 +356,14 @@ func (c *Client) connect() (err error) {
 	c.setCurServerFailedFlushStatus(false)
 
 	if err = c.createConn(); err != nil {
-		return fmt.Errorf("client couldn't be created: %s", err.Error())
+		return errors.Wrap(err, "client couldn't be created")
 	}
 
 	if err = c.handshake(); err != nil {
 		if errClose := c.conn.Close(); errClose != nil {
 			log.Debug("couldn't close open connection of invalid client:", errClose)
 		}
-		return fmt.Errorf("client handshake failed: %s", err.Error())
+		return errors.Wrap(err, "client handshake failed")
 	}
 	return nil
 }
@@ -577,7 +576,7 @@ func (c *Client) Disconnect() error {
 	select {
 	case <-time.After(10 * time.Second):
 		c.signalCond(c.disconnectedCond)
-		return fmt.Errorf("disconnect timed out")
+		return errors.New("disconnect timed out")
 	case <-doneCh:
 		return nil
 	}

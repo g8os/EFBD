@@ -1,10 +1,10 @@
 package tlogclient
 
 import (
-	"fmt"
 	"io"
 
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/tlog/schema"
 	"zombiezen.com/go/capnproto2"
 )
@@ -12,19 +12,19 @@ import (
 func (c *Client) encodeHandshakeCapnp() error {
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(c.capnpSegmentBuf))
 	if err != nil {
-		return fmt.Errorf("failed to build (handshake) capnp: %s", err.Error())
+		return errors.Wrap(err, "failed to build (handshake) capnp")
 	}
 
 	handshake, err := schema.NewRootHandshakeRequest(seg)
 	if err != nil {
-		return fmt.Errorf("couldn't create handshake: %s", err.Error())
+		return errors.Wrap(err, "couldn't create handshake")
 	}
 
 	handshake.SetVersion(zerodisk.CurrentVersion.UInt32())
 
 	err = handshake.SetVdiskID(c.vdiskID)
 	if err != nil {
-		return fmt.Errorf("couldn't set handshake vdiskID: %s", err.Error())
+		return errors.Wrap(err, "couldn't set handshake vdiskID")
 	}
 
 	return capnp.NewEncoder(c.bw).Encode(msg)
@@ -33,26 +33,26 @@ func (c *Client) encodeHandshakeCapnp() error {
 func encodeBlockCapnp(w io.Writer, op uint8, seq uint64, index int64, hash []byte, timestamp int64, data, segmentBuf []byte) (*schema.TlogBlock, error) {
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(segmentBuf))
 	if err != nil {
-		return nil, fmt.Errorf("failed to build build (block) capnp: %s", err.Error())
+		return nil, errors.Wrap(err, "failed to build build (block) capnp")
 	}
 
 	cmd, err := schema.NewRootTlogClientMessage(seg)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't create client message: %s", err.Error())
+		return nil, errors.Wrap(err, "couldn't create client message")
 	}
 
 	block, err := schema.NewTlogBlock(seg)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't create block: %s", err.Error())
+		return nil, errors.Wrap(err, "couldn't create block")
 	}
 
 	err = block.SetHash(hash)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't set block hash: %s", err.Error())
+		return nil, errors.Wrap(err, "couldn't set block hash")
 	}
 	err = block.SetData(data)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't set block data: %s", err.Error())
+		return nil, errors.Wrap(err, "couldn't set block data")
 	}
 
 	block.SetOperation(op)

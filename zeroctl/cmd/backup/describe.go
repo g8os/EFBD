@@ -2,10 +2,10 @@ package backup
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb/backup"
 

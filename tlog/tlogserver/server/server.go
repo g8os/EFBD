@@ -3,13 +3,12 @@ package server
 import (
 	"bufio"
 	"context"
-	"errors"
-	"fmt"
 	"io"
 	"net"
 
 	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
@@ -40,14 +39,14 @@ func NewServer(conf *Config, configSource config.Source) (*Server, error) {
 		// listen for tcp requests on given address
 		listener, err = net.Listen("tcp", conf.ListenAddr)
 		if err != nil {
-			return nil, fmt.Errorf("failed to listen to %v: %v", conf.ListenAddr, err)
+			return nil, errors.Wrapf(err, "failed to listen to %v", conf.ListenAddr)
 		}
 	} else {
 		// listen for tcp requests on localhost using any available port
 		listener, err = net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			if listener, err = net.Listen("tcp6", "[::1]:0"); err != nil {
-				return nil, fmt.Errorf("failed to listen on localhost, port: %v", err)
+				return nil, errors.Wrap(err, "failed to listen on localhost, port")
 			}
 		}
 		log.Infof("Started listening on local address %s", listener.Addr().String())
@@ -126,7 +125,7 @@ func (s *Server) handshake(r io.Reader, w io.Writer, conn *net.TCPConn) (vd *vdi
 	req, err := s.readDecodeHandshakeRequest(r)
 	if err != nil {
 		status = tlog.HandshakeStatusInvalidRequest
-		err = fmt.Errorf("couldn't decode client HandshakeReq: %s", err.Error())
+		err = errors.Wrap(err, "couldn't decode client HandshakeReq")
 		return
 	}
 
@@ -136,7 +135,7 @@ func (s *Server) handshake(r io.Reader, w io.Writer, conn *net.TCPConn) (vd *vdi
 	clientVersion := zerodisk.VersionFromUInt32(req.Version())
 	if clientVersion.Compare(tlog.MinSupportedVersion) < 0 {
 		status = tlog.HandshakeStatusInvalidVersion
-		err = fmt.Errorf("client version (%s) is not supported by this server", clientVersion)
+		err = errors.Newf("client version (%s) is not supported by this server", clientVersion)
 		return // error return
 	}
 
@@ -146,21 +145,21 @@ func (s *Server) handshake(r io.Reader, w io.Writer, conn *net.TCPConn) (vd *vdi
 	vdiskID, err := req.VdiskID()
 	if err != nil {
 		status = tlog.HandshakeStatusInvalidVdiskID
-		err = fmt.Errorf("couldn't get vdiskID from handshakeReq: %s", err.Error())
+		err = errors.Wrap(err, "couldn't get vdiskID from handshakeReq")
 		return // error return
 	}
 
 	vd, err = s.vdiskMgr.Get(s.ctx, vdiskID, conn, s.flusherConf)
 	if err != nil {
 		status = tlog.HandshakeStatusInternalServerError
-		err = fmt.Errorf("couldn't create vdisk %s: %s", vdiskID, err.Error())
+		err = errors.Wrapf(err, "couldn't create vdisk %s", vdiskID)
 		return
 	}
 
 	lastSeq, err = vd.connect(conn)
 	if err != nil {
 		status = tlog.HandshakeStatusInternalServerError
-		err = fmt.Errorf("couldn't connect to vdisk %s: %s", vdiskID, err.Error())
+		err = errors.Wrapf(err, "couldn't connect to vdisk %s", vdiskID)
 		return
 	}
 
@@ -196,7 +195,7 @@ func (s *Server) handle(conn *net.TCPConn) error {
 
 	vd, err := s.handshake(br, conn, conn)
 	if err != nil {
-		err = fmt.Errorf("handshake failed: %s", err.Error())
+		err = errors.Wrap(err, "handshake failed")
 		conn.Close()
 		return err
 	}

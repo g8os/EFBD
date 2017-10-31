@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/garyburd/redigo/redis"
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/errors"
 )
 
 func main() {
@@ -27,9 +27,9 @@ func main() {
 	for _, serverCfg := range cfg.Servers {
 		err = previewAndApplyChange(serverCfg)
 		if err != nil {
-			err = fmt.Errorf(
-				"an error occured while processing '%s@%d': %v",
-				serverCfg.Address, serverCfg.Database, err)
+			err = errors.Wrapf(err,
+				"an error occured while processing '%s@%d'",
+				serverCfg.Address, serverCfg.Database)
 			fmt.Fprintln(os.Stderr, err)
 			errs = append(errs, err.Error())
 		}
@@ -173,7 +173,7 @@ func previewAndApplyChange(serverCfg config.StorageServerConfig) error {
 	conn, err := redis.Dial("tcp", serverCfg.Address,
 		redis.DialDatabase(serverCfg.Database))
 	if err != nil {
-		return fmt.Errorf("couldn't dial to the storage server: %v", err)
+		return errors.Wrap(err, "couldn't dial to the storage server")
 	}
 	defer conn.Close()
 
@@ -249,7 +249,7 @@ func applyChange(conn redis.Conn, keys []string) error {
 	// start multi process
 	err := conn.Send("MULTI")
 	if err != nil {
-		return fmt.Errorf("could't start rename pipeline: %v", err)
+		return errors.Wrap(err, "couldn't start rename pipeline")
 	}
 
 	// add one rename cmd per found key in the pipeline
@@ -257,9 +257,9 @@ func applyChange(conn redis.Conn, keys []string) error {
 		fmt.Println(key, "->", renameKey(key))
 		err = conn.Send("RENAME", key, renameKey(key))
 		if err != nil {
-			return fmt.Errorf(
-				"couldn't add key (#%d) %s to the rename pipeline: %v",
-				index, key, err)
+			return errors.Wrapf(err,
+				"couldn't add key (#%d) %s to the rename pipeline",
+				index, key)
 		}
 	}
 
@@ -271,8 +271,8 @@ func applyChange(conn redis.Conn, keys []string) error {
 		// thanks the the MULTI/EXEC ardb feature,
 		// it is guaranteed that not a single key was renamed
 		// at this point
-		return fmt.Errorf(
-			"couldn't rename %d key(s): %v", len(keys), err)
+		return errors.Wrapf(err,
+			"couldn't rename %d key(s)", len(keys))
 	}
 
 	// all keys were renamed successfully
@@ -296,7 +296,7 @@ func parseFlagsAndArgs() error {
 	case config.StorageSemiDeduped:
 		cfg.VdiskPrefix = semiDedupMetadataPrefix
 	default:
-		return fmt.Errorf(
+		return errors.Newf(
 			"no migration needs to be done for vdisk %s", cfg.VdiskType.t)
 	}
 
@@ -306,8 +306,8 @@ func parseFlagsAndArgs() error {
 	if cfg.VdiskIDFilter != "" {
 		cfg.VdiskIDRegexp, err = regexp.Compile(cfg.VdiskIDFilter)
 		if err != nil {
-			return fmt.Errorf(
-				"invalid vdisk ID filter regex was given: %v", err)
+			return errors.Wrap(err,
+				"invalid vdisk ID filter regex was given")
 		}
 	}
 

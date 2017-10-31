@@ -2,9 +2,9 @@ package player
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/tlog/schema"
@@ -140,14 +140,14 @@ func (p *Player) ReplayAggregationWithCallback(agg *schema.TlogAggregation, lmt 
 		case schema.OpSet:
 			data, err = block.Data()
 			if err != nil {
-				return seq - 1, fmt.Errorf("failed to get data block %v, err=%v", index, err)
+				return seq - 1, errors.Wrapf(err, "failed to get data block %v", index)
 			}
 			if err = p.blockStorage.SetBlock(index, data); err != nil {
-				return seq - 1, fmt.Errorf("failed to set block %v, err=%v", index, err)
+				return seq - 1, errors.Wrapf(err, "failed to set block %v", index)
 			}
 		case schema.OpDelete:
 			if err = p.blockStorage.DeleteBlock(index); err != nil {
-				return seq - 1, fmt.Errorf("failed to delete block %v, err=%v", index, err)
+				return seq - 1, errors.Wrapf(err, "failed to delete block %v", index)
 			}
 		}
 

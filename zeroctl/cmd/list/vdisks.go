@@ -1,16 +1,15 @@
 package list
 
 import (
-	"errors"
 	"fmt"
 	"regexp"
 
-	"github.com/zero-os/0-Disk/nbd/ardb"
-	"github.com/zero-os/0-Disk/nbd/ardb/storage"
-
 	"github.com/spf13/cobra"
 	zerodiskcfg "github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/nbd/ardb"
+	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
 
@@ -53,7 +52,7 @@ func listVdisks(cmd *cobra.Command, args []string) error {
 	if vdisksCmdCfg.NameRegexp != "" {
 		regexp, err := regexp.Compile(vdisksCmdCfg.NameRegexp)
 		if err != nil {
-			return fmt.Errorf("invalid regexp given for `--name`: %v", err)
+			return errors.Wrap(err, "invalid regexp given for `--name`")
 		}
 		pred = regexp.MatchString
 	}
@@ -65,7 +64,7 @@ func listVdisks(cmd *cobra.Command, args []string) error {
 	}
 	if len(vdiskIDs) == 0 {
 		if pred != nil {
-			return fmt.Errorf(
+			return errors.Newf(
 				"no vdisks could be find in %s whose identifier match `%s`",
 				args[0], vdisksCmdCfg.NameRegexp)
 		}

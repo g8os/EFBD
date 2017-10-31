@@ -2,11 +2,11 @@ package copy
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
@@ -28,7 +28,7 @@ func NewGenerator(configSource config.Source, conf Config) (*Generator, error) {
 	flusher, err := flusher.New(configSource, conf.FlushSize,
 		conf.TargetVdiskID, conf.PrivKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create flusher: %v", err)
+		return nil, errors.Wrap(err, "failed to create flusher")
 	}
 	return &Generator{
 		sourceVdiskID: conf.SourceVdiskID,
@@ -48,7 +48,7 @@ func (g *Generator) GenerateFromStorage(parentCtx context.Context) (uint64, erro
 
 	storageConf, err := config.ReadNBDStorageConfig(g.configSource, g.sourceVdiskID)
 	if err != nil {
-		return 0, fmt.Errorf("failed to ReadNBDStorageConfig: %v", err)
+		return 0, errors.Wrap(err, "failed to ReadNBDStorageConfig")
 	}
 
 	// create (primary) storage cluster
@@ -56,14 +56,14 @@ func (g *Generator) GenerateFromStorage(parentCtx context.Context) (uint64, erro
 	// see: https://github.com/zero-os/0-Disk/issues/445
 	cluster, err := ardb.NewCluster(storageConf.StorageCluster, nil) // not pooled
 	if err != nil {
-		return 0, fmt.Errorf(
-			"cannot create storage cluster model for primary cluster of vdisk %s: %v",
-			g.sourceVdiskID, err)
+		return 0, errors.Wrapf(err,
+			"cannot create storage cluster model for primary cluster of vdisk %s",
+			g.sourceVdiskID)
 	}
 
 	indices, err := storage.ListBlockIndices(g.sourceVdiskID, staticConf.Type, cluster)
 	if err != nil {
-		return 0, fmt.Errorf("ListBlockIndices failed for vdisk `%v`: %v", g.sourceVdiskID, err)
+		return 0, errors.Wrapf(err, "ListBlockIndices failed for vdisk `%v`", g.sourceVdiskID)
 	}
 
 	pool := ardb.NewPool(nil)
