@@ -576,7 +576,7 @@ func (c *Client) Disconnect() error {
 	select {
 	case <-time.After(10 * time.Second):
 		c.signalCond(c.disconnectedCond)
-		return errors.Newf("disconnect timed out")
+		return errors.New("disconnect timed out")
 	case <-doneCh:
 		return nil
 	}

@@ -314,7 +314,7 @@ func (c *Client) LoadLastSequence() (uint64, error) {
 		return 0, err
 	}
 	if blocks.Len() == 0 {
-		return 0, errors.Newf("empty blocks for aggregation")
+		return 0, errors.New("empty blocks for aggregation")
 	}
 
 	c.lastMetaKey = wr.Key
