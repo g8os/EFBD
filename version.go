@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/zero-os/0-Disk/log"
 	"regexp"
 	"strconv"
+
+	"github.com/zero-os/0-Disk/log"
 )
 
 var (
@@ -100,18 +101,23 @@ type (
 	VersionLabel [8]byte
 )
 
+// Major returns the Major version of this version number.
 func (n VersionNumber) Major() uint8 {
-	return uint8(n & 0xFF0000 >> 16)
+	return uint8(n >> 16)
 }
 
+// Minor returns the Minor version of this version number.
 func (n VersionNumber) Minor() uint8 {
-	return uint8(n & 0xFF00 >> 8)
+	return uint8(n >> 8)
 }
 
+// Patch returns the Patch version of this version number.
 func (n VersionNumber) Patch() uint8 {
-	return uint8(n & 0xFF)
+	return uint8(n)
 }
 
+// String returns the string version
+// of this VersionLabel.
 func (l *VersionLabel) String() string {
 	return string(bytes.Trim(l[:], "\x00"))
 }
@@ -140,11 +146,7 @@ func (v Version) UInt32() uint32 {
 // of this Version.
 func (v Version) String() string {
 	str := fmt.Sprintf("%d.%d.%d",
-		(v.Number>>16)&0xFF, // major
-		(v.Number>>8)&0xFF,  // minor
-		v.Number&0xFF,       // patch
-	)
-
+		v.Number.Major(), v.Number.Minor(), v.Number.Patch())
 	if v.Label == nil {
 		return str
 	}
