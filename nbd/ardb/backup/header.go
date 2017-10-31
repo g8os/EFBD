@@ -247,6 +247,10 @@ func (header *Header) Validate() error {
 		return err
 	}
 
+	if err := header.Metadata.Validate(); err != nil {
+		return err
+	}
+
 	return header.DedupedMap.Validate()
 }
 
@@ -262,6 +266,22 @@ type Metadata struct {
 	// optional: information about the source
 	// used to created the backup from.
 	Source Source `bencode:"src" valid:"optional"`
+	// optional: version of the 0-disk toolchain
+	Version string `bencode:"v" valid:"optional"`
+}
+
+// Validate this Metadata,
+// returning an error if it isn't valid.
+func (m *Metadata) Validate() error {
+	if _, err := valid.ValidateStruct(m); err != nil {
+		return err
+	}
+
+	if _, err := zerodisk.VersionFromString(m.Version); err != nil {
+		return errors.Wrapf(err, "invalid version number '%s'", m.Version)
+	}
+
+	return nil
 }
 
 // Source contains some optional metadata for a snapshot,

@@ -56,6 +56,7 @@ func describeSnapshot(cmd *cobra.Command, args []string) error {
 	info.BlockSize = header.Metadata.BlockSize
 	info.Size = info.BlockSize * header.DedupedMap.Count
 	info.Created = header.Metadata.Created
+	info.Version = header.Metadata.Version
 
 	if header.Metadata.Source.VdiskID != "" {
 		info.Source = &SnapshotSourceInfo{
@@ -87,6 +88,7 @@ type SnapshotInfo struct {
 	Size       int64               `json:"size"`
 	Created    string              `json:"created,omitempty"`
 	Source     *SnapshotSourceInfo `json:"source,omitempty"`
+	Version    string              `json:"version,omitempty"`
 }
 
 // SnapshotSourceInfo describes optional information about

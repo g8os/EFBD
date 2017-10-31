@@ -7,6 +7,24 @@ import (
 	"github.com/zero-os/0-Disk"
 )
 
+func ExampleVersionFromString() {
+	v, err := zerodisk.VersionFromString("1.2.3-alpha")
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(v.Number.Major())
+	fmt.Println(v.Number.Minor())
+	fmt.Println(v.Number.Patch())
+	fmt.Println(v.Label)
+
+	// Output:
+	// 1
+	// 2
+	// 3
+	// alpha
+}
+
 func ExampleHashBytes() {
 	// given we have two sets of data ...
 	dataA := []byte("data to hash")

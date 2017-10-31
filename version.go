@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"runtime"
 
+	"regexp"
+	"strconv"
+
 	"github.com/zero-os/0-Disk/log"
 )
 
@@ -16,6 +19,13 @@ var (
 	CommitHash string
 	// BuildDate represents the date when this tool suite was built
 	BuildDate string
+
+	//version parsing regex
+	verRegex = regexp.MustCompile(`^([01]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5]).([01]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5]).([01]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5])(?:-([A-Za-z0-9\-]{1,8}))?$`)
+
+	//default version when VersionFromString method is called with empty
+	//string (1.1.0)
+	defaultVersion = NewVersion(1, 1, 0, nil)
 )
 
 // PrintVersion prints the current version
@@ -91,6 +101,27 @@ type (
 	VersionLabel [8]byte
 )
 
+// Major returns the Major version of this version number.
+func (n VersionNumber) Major() uint8 {
+	return uint8(n >> 16)
+}
+
+// Minor returns the Minor version of this version number.
+func (n VersionNumber) Minor() uint8 {
+	return uint8(n >> 8)
+}
+
+// Patch returns the Patch version of this version number.
+func (n VersionNumber) Patch() uint8 {
+	return uint8(n)
+}
+
+// String returns the string version
+// of this VersionLabel.
+func (l *VersionLabel) String() string {
+	return string(bytes.Trim(l[:], "\x00"))
+}
+
 // Compare returns an integer comparing this version
 // with another version. { lt=-1 ; eq=0 ; gt=1 }
 func (v Version) Compare(other Version) int {
@@ -115,17 +146,37 @@ func (v Version) UInt32() uint32 {
 // of this Version.
 func (v Version) String() string {
 	str := fmt.Sprintf("%d.%d.%d",
-		(v.Number>>16)&0xFF, // major
-		(v.Number>>8)&0xFF,  // minor
-		v.Number&0xFF,       // patch
-	)
-
+		v.Number.Major(), v.Number.Minor(), v.Number.Patch())
 	if v.Label == nil {
 		return str
 	}
 
-	label := bytes.Trim(v.Label[:], "\x00")
-	return str + "-" + string(label)
+	return str + "-" + v.Label.String()
+}
+
+//VersionFromString returns a Version object from the string
+//representation
+func VersionFromString(ver string) (Version, error) {
+	if ver == "" {
+		return defaultVersion, nil
+	}
+
+	match := verRegex.FindStringSubmatch(ver)
+	if len(match) == 0 {
+		return Version{}, fmt.Errorf("not a valid version format '%s'", ver)
+	}
+	num := make([]uint8, 3)
+	for i, n := range match[1:4] {
+		v, _ := strconv.ParseUint(n, 10, 8)
+		num[i] = uint8(v)
+	}
+
+	var label *VersionLabel
+	if len(match[4]) != 0 {
+		label = versionLabel(match[4])
+	}
+
+	return NewVersion(num[0], num[1], num[2], label), nil
 }
 
 func versionLabel(str string) *VersionLabel {
