@@ -84,5 +84,10 @@ You'll find there following sections about the NBD Server:
 
 For more information about the internals of the NBD Server you can find the following sections:
 
-- [The types of Backend Storage and how they work](/docs/nbd/backendstorage.md)
-- [The LBA Lookups of the Deduped Backend Storage](/docs/nbd/lbalookups.md)
+- [The types of Backend Storage and how they work](/docs/nbd/storage/storage.md):
+  - [The Deduped Backend Storage](/docs/nbd/storage/deduped.md) (used for [boot][boot] vdisks);
+  - [The Non Deduped Backend Storage](/docs/nbd/storage/nondeduped.md) (used for [db][db] and [cache][cache] vdisks);
+
+[boot]: /docs/glossary.md#boot
+[db]: /docs/glossary.md#db
+[cache]: /docs/glossary.md#cache
