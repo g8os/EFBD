@@ -125,7 +125,7 @@ func (ss *slaveSyncer) init() error {
 	if err != nil {
 		return err
 	}
-	slaveCluster, err := storage.NewSlaveCluster(ss.ctx, ss.vdiskID, ss.configSource)
+	slaveCluster, err := NewSlaveCluster(ss.ctx, ss.vdiskID, ss.configSource)
 	if err != nil {
 		return err
 	}
