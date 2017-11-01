@@ -133,16 +133,14 @@ See the [VdiskNBDConfig Godoc][VdiskNBDConfigGodoc] for more information.
 <a id="VdiskTlogConfig"></a>
 ### VdiskTlogConfig
 
-Stores [storage(1)][storage] cluster references for a ([boot][boot]- or [db][db]-) [vdisk][vdisk]:
+Stores a reference to a zeroStorCluster for a ([boot][boot]- or [db][db]-) [vdisk][vdisk] with active tlog-configuration:
 
 * ZeroStorClusterID: identifier of [0-Stor server][zerostorserver] cluster;
-* SlaveStorageClusterID: identifier of [slave storage][slave] cluster (the same id as given to the [VdiskNBDConfig](#VdiskNBDConfig));
 
 Example Config:
 
 ```yaml
 zeroStorClusterID: foo # required, id of primary 0-stor storage cluster
-slaveStorageClusterID: bar # optional, id of slave storage cluster
 ```
 
 Used by the [TLog Server][tlogServerConfig].
@@ -353,7 +351,6 @@ vdisks:
       tlogServerClusterID: main
     tlog:
       zeroStorClusterID: zerostorcluster
-      slaveStorageClusterID: slavecluster
 ```
 
 Please see the subconfigs' sections above for more information about each subsection.

@@ -177,8 +177,7 @@ func NewVdiskTlogConfig(data []byte) (*VdiskTlogConfig, error) {
 
 // VdiskTlogConfig represents the tlogserver-related information for a vdisk.
 type VdiskTlogConfig struct {
-	ZeroStorClusterID     string `yaml:"zeroStorClusterID" valid:"required"`
-	SlaveStorageClusterID string `yaml:"slaveStorageClusterID" valid:"optional"`
+	ZeroStorClusterID string `yaml:"zeroStorClusterID" valid:"required"`
 }
 
 // Validate implements FormatValidator.Validate.

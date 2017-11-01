@@ -90,8 +90,7 @@ func (cfg *NBDStorageConfig) Clone() NBDStorageConfig {
 // TlogStorageConfig contains all information needed
 // to store tlogserver-related (meta)data.
 type TlogStorageConfig struct {
-	ZeroStorCluster     ZeroStorClusterConfig
-	SlaveStorageCluster *StorageClusterConfig
+	ZeroStorCluster ZeroStorClusterConfig
 }
 
 // Validate the required properties of this config,
@@ -106,15 +105,6 @@ func (cfg *TlogStorageConfig) Validate() error {
 	if err != nil {
 		return errors.Wrap(err,
 			"invalid TlogStorageConfig, invalid 0-stor cluster")
-	}
-
-	// validate optional slave storage cluster
-	if cfg.SlaveStorageCluster != nil {
-		err = cfg.SlaveStorageCluster.Validate()
-		if err != nil {
-			return errors.Wrap(err,
-				"invalid TlogStorageConfig, invalid slave storage cluster")
-		}
 	}
 
 	// all valid

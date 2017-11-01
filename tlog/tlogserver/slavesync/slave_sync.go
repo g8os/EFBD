@@ -8,6 +8,8 @@ import (
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/nbd/ardb"
+	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/tlog/schema"
 	"github.com/zero-os/0-Disk/tlog/stor"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
@@ -118,9 +120,34 @@ func newSlaveSyncer(ctx context.Context, configSource config.Source, apc aggmq.A
 }
 
 func (ss *slaveSyncer) init() error {
-	// tlog replay player
-	player, err := player.NewPlayer(ss.ctx, ss.configSource, ss.apc.VdiskID, ss.apc.PrivKey)
+	// Create BlockStorage, to store in the slave cluster
+	vdiskConfig, err := config.ReadVdiskStaticConfig(ss.configSource, ss.vdiskID)
 	if err != nil {
+		return err
+	}
+	slaveCluster, err := NewSlaveCluster(ss.ctx, ss.vdiskID, ss.configSource)
+	if err != nil {
+		return err
+	}
+	blockStorage, err := storage.NewBlockStorage(storage.BlockStorageConfig{
+		VdiskID:         ss.vdiskID,
+		TemplateVdiskID: vdiskConfig.TemplateVdiskID,
+		VdiskType:       vdiskConfig.Type,
+		BlockSize:       int64(vdiskConfig.BlockSize),
+		LBACacheLimit:   ardb.DefaultLBACacheLimit,
+	}, slaveCluster, nil)
+	if err != nil {
+		slaveCluster.Close()
+		return err
+	}
+
+	// tlog replay player
+	player, err := player.NewPlayerWithStorage(
+		ss.ctx, ss.configSource, slaveCluster, blockStorage,
+		ss.vdiskID, ss.apc.PrivKey)
+	if err != nil {
+		blockStorage.Close()
+		slaveCluster.Close()
 		return err
 	}
 	ss.player = player
@@ -128,17 +155,26 @@ func (ss *slaveSyncer) init() error {
 	// create meta client
 	storConf, err := stor.ConfigFromConfigSource(ss.configSource, ss.vdiskID, "")
 	if err != nil {
+		player.Close()
 		return err
 	}
 
 	metaCli, err := stor.NewMetaClient(storConf.MetaShards)
 	if err != nil {
+		player.Close()
 		return err
 	}
 
 	ss.metaCli = metaCli
 
-	return ss.start()
+	err = ss.start()
+	if err != nil {
+		player.Close()
+		metaCli.Close()
+		return err
+	}
+
+	return nil
 }
 
 func (ss *slaveSyncer) Close() {
