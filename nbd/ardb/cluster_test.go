@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/nbd/ardb/command"
 	"github.com/zero-os/0-Disk/redisstub/ledisdb"
 )
@@ -245,7 +246,7 @@ func TestComputeServerIndex_SomeServersDead_SomeServersError(t *testing.T) {
 	const count = int64(3)
 
 	test := func(index, serverIndex int64, err error) {
-		if err == ErrServerUnavailable {
+		if errors.Cause(err) == ErrServerUnavailable {
 			return // this is possible
 		}
 

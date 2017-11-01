@@ -1,7 +1,7 @@
 package decoder
 
 import (
-	"errors"
+	"github.com/zero-os/0-Disk/errors"
 )
 
 var (

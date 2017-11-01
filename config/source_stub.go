@@ -2,10 +2,10 @@ package config
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 )
 
@@ -265,7 +265,7 @@ func (s *StubSource) triggerReload() {
 			// as we want to be able to mark any invalid key
 			// for those other error cases (e.g. invalid key, invalid id, ...)
 			bytes, err := s.Get(key)
-			if err == ErrSourceUnavailable {
+			if errors.Cause(err) == ErrSourceUnavailable {
 				log.Errorf(
 					"getting key %v failed, due to the source being unavailable",
 					key)

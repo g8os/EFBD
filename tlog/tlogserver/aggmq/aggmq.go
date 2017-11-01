@@ -1,10 +1,11 @@
 package aggmq
 
 import (
-	"errors"
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/zero-os/0-Disk/errors"
 )
 
 var (

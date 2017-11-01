@@ -1,11 +1,11 @@
 package backup
 
 import (
-	"errors"
 	"io"
 	"sync"
 
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/errors"
 )
 
 var (

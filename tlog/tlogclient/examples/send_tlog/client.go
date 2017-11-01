@@ -5,6 +5,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/pkg/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
@@ -59,7 +60,7 @@ func main() {
 		for {
 			r := <-respChan
 			if r.Err != nil {
-				if r.Err == io.EOF {
+				if errors.Cause(r.Err) == io.EOF {
 					continue
 				}
 				log.Fatalf("resp error:%v", r.Err)

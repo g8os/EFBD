@@ -30,6 +30,12 @@ See [the NBD Server Configuration docs](/docs/nbd/config.md) for more informatio
 > It is known and accepted that the nbdserver does not work
 > when used with `qemu 2.10` and any version other than `2.8`.
 > See [issue #523](https://github.com/zero-os/0-Disk/issues/523) for more information.
+>
+> When using nbd-client to connect to the nbdserver,
+> only nbd-client version `3.10` is supported,
+> it is known and accepted that the nbdserver does not work
+> with nbd-client version `3.11` and above.
+> See [issue #523](https://github.com/zero-os/0-Disk/issues/523) for more information.
 
 Use `nbdserver -h` or `nbdserver --help` to get more information about all available flags.
 
@@ -78,5 +84,10 @@ You'll find there following sections about the NBD Server:
 
 For more information about the internals of the NBD Server you can find the following sections:
 
-- [The types of Backend Storage and how they work](/docs/nbd/backendstorage.md)
-- [The LBA Lookups of the Deduped Backend Storage](/docs/nbd/lbalookups.md)
+- [The types of Backend Storage and how they work](/docs/nbd/storage/storage.md):
+  - [The Deduped Backend Storage](/docs/nbd/storage/deduped.md) (used for [boot][boot] vdisks);
+  - [The Non Deduped Backend Storage](/docs/nbd/storage/nondeduped.md) (used for [db][db] and [cache][cache] vdisks);
+
+[boot]: /docs/glossary.md#boot
+[db]: /docs/glossary.md#db
+[cache]: /docs/glossary.md#cache

@@ -3,6 +3,8 @@ package config
 import (
 	"context"
 	"fmt"
+
+	"github.com/zero-os/0-Disk/errors"
 )
 
 // NewSource creates a new Source based on the given configuration.
@@ -11,14 +13,14 @@ func NewSource(config SourceConfig) (SourceCloser, error) {
 	if config.SourceType == FileSourceType {
 		path, err := fileResource(config.Resource)
 		if err != nil {
-			return nil, fmt.Errorf("can't create source: %v", err)
+			return nil, errors.Wrap(err, "can't create source")
 		}
 		return FileSource(path)
 	}
 
 	endpoints, err := etcdResource(config.Resource)
 	if err != nil {
-		return nil, fmt.Errorf("can't create source: %v", err)
+		return nil, errors.Wrap(err, "can't create source")
 	}
 	return ETCDV3Source(endpoints)
 }

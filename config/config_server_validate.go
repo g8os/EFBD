@@ -1,8 +1,7 @@
 package config
 
 import (
-	"errors"
-
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 )
 
@@ -14,19 +13,15 @@ func ValidateNBDServerConfigs(source Source, serverID string) error {
 		return err
 	}
 
-	var errs validateErrors
+	errs := errors.NewErrorSlice()
 	for _, vdiskID := range cfg.Vdisks {
 		_, err = ReadNBDStorageConfig(source, vdiskID)
 		if err != nil {
-			errs = append(errs, err)
+			errs.Add(err)
 		}
 	}
 
-	if len(errs) > 0 {
-		return errs
-	}
-
-	return nil
+	return errs.AsError()
 }
 
 // ValidateTlogServerConfigs validates all available Tlog Vdisk Configurations,
@@ -41,12 +36,12 @@ func ValidateTlogServerConfigs(source Source, serverID string) error {
 	var nbdVdiskConfig *VdiskNBDConfig
 
 	var validTlogConfiguredVdiskCount int
-	var errs validateErrors
+	errs := errors.NewErrorSlice()
 
 	for _, vdiskID := range cfg.Vdisks {
 		vdiskStaticConfig, err = ReadVdiskStaticConfig(source, vdiskID)
 		if err != nil {
-			errs = append(errs, err)
+			errs.Add(err)
 			continue
 		}
 		if !vdiskStaticConfig.Type.TlogSupport() {
@@ -57,7 +52,7 @@ func ValidateTlogServerConfigs(source Source, serverID string) error {
 		}
 		nbdVdiskConfig, err = ReadVdiskNBDConfig(source, vdiskID)
 		if err != nil {
-			errs = append(errs, err)
+			errs.Add(err)
 			continue
 		}
 		if nbdVdiskConfig.TlogServerClusterID == "" {
@@ -71,35 +66,18 @@ func ValidateTlogServerConfigs(source Source, serverID string) error {
 		// now let's try to read the tlog storage
 		_, err = ReadTlogStorageConfig(source, vdiskID)
 		if err != nil {
-			errs = append(errs, err)
+			errs.Add(err)
 			continue
 		}
 
 		validTlogConfiguredVdiskCount++
 	}
 
-	if len(errs) > 0 {
-		return errs
-	}
-
 	if validTlogConfiguredVdiskCount == 0 {
-		return errors.New(
-			"there is no vdisk that has tlog configuration, while at least one is required")
+		errs.Add(errors.New(
+			"there is no vdisk that has tlog configuration, while at least one is required",
+		))
 	}
 
-	return nil
-}
-
-type validateErrors []error
-
-func (errs validateErrors) Error() string {
-	if len(errs) == 0 {
-		return ""
-	}
-
-	var str string
-	for _, err := range errs {
-		str += err.Error() + ";"
-	}
-	return str
+	return errs.AsError()
 }

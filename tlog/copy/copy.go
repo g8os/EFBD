@@ -2,12 +2,11 @@ package copy
 
 import (
 	"context"
-	"fmt"
-
-	"gopkg.in/validator.v2"
 
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
+	"gopkg.in/validator.v2"
 )
 
 // Config represents config for copy operation
@@ -27,14 +26,14 @@ type Config struct {
 func Copy(ctx context.Context, confSource config.Source, conf Config) error {
 	targetStaticConf, err := config.ReadVdiskStaticConfig(confSource, conf.TargetVdiskID)
 	if err != nil {
-		if err == config.ErrConfigUnavailable {
+		if errors.Cause(err) == config.ErrConfigUnavailable {
 			log.Infof(
 				"won't copy/generate tlog data as no VdiskStaticConfig was found for target vdisk `%s`",
 				conf.TargetVdiskID)
 			return nil // nothing to do
 		}
-		return fmt.Errorf(
-			"couldn't read target vdisk %s's static config: %v", conf.TargetVdiskID, err)
+		return errors.Wrapf(err,
+			"couldn't read target vdisk %s's static config", conf.TargetVdiskID)
 	}
 
 	// target vdisk has no tlog support
@@ -44,8 +43,8 @@ func Copy(ctx context.Context, confSource config.Source, conf Config) error {
 	}
 	targetNBDConf, err := config.ReadVdiskNBDConfig(confSource, conf.TargetVdiskID)
 	if err != nil {
-		return fmt.Errorf(
-			"couldn't read target vdisk %s's NBD vdisk config: %v", conf.TargetVdiskID, err)
+		return errors.Wrapf(err,
+			"couldn't read target vdisk %s's NBD vdisk config", conf.TargetVdiskID)
 	}
 	if targetNBDConf.TlogServerClusterID == "" {
 		return nil // nothing to do, no target tlog server cluster defined
@@ -57,15 +56,15 @@ func Copy(ctx context.Context, confSource config.Source, conf Config) error {
 
 	sourceStaticConf, err := config.ReadVdiskStaticConfig(confSource, conf.SourceVdiskID)
 	if err != nil {
-		return fmt.Errorf(
-			"couldn't read source vdisk %s's static config: %v", conf.SourceVdiskID, err)
+		return errors.Wrapf(err,
+			"couldn't read source vdisk %s's static config", conf.SourceVdiskID)
 	}
 
 	if sourceStaticConf.Type.TlogSupport() {
 		sourceNBDConf, err := config.ReadVdiskNBDConfig(confSource, conf.SourceVdiskID)
 		if err != nil {
-			return fmt.Errorf(
-				"couldn't read source vdisk %s's NBD vdisk config: %v", conf.SourceVdiskID, err)
+			return errors.Wrapf(err,
+				"couldn't read source vdisk %s's NBD vdisk config", conf.SourceVdiskID)
 		}
 		if sourceNBDConf.TlogServerClusterID != "" {
 			// copy tlog data

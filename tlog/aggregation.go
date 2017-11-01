@@ -2,11 +2,10 @@ package tlog
 
 import (
 	"bytes"
-	"errors"
 
-	"zombiezen.com/go/capnproto2"
-
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/tlog/schema"
+	"zombiezen.com/go/capnproto2"
 )
 
 var (

@@ -310,7 +310,7 @@
   branch = "master"
   name = "github.com/siddontang/ledisdb"
   packages = ["config","ledis","rpl","server","store","store/driver","store/goleveldb","store/leveldb","store/rocksdb"]
-  revision = "f49ad4d5ed26d265a64954ed0195d5ac1eabb42e"
+  revision = "015411f5ce5217c9778f8e9daf77177d200ce2b5"
 
 [[projects]]
   branch = "master"

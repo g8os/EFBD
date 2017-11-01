@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/command"
@@ -23,11 +24,8 @@ func Deduped(vdiskID string, blockSize, lbaCacheLimit int64, cluster, templateCl
 	}
 
 	// create the LBA (used to store deduped metadata)
-	vlba, err := lba.NewLBA(
-		vdiskID,
-		cacheLimit,
-		cluster,
-	)
+	lbaStorage := newLBASectorStorage(vdiskID, cluster)
+	vlba, err := lba.NewLBA(cacheLimit, lbaStorage)
 	if err != nil {
 		log.Errorf("couldn't create the LBA: %s", err.Error())
 		return nil, err
@@ -148,7 +146,7 @@ func (ds *dedupedStorage) getPrimaryOrTemplateContent(hash zerodisk.Hash) (conte
 		// this error is returned, in case the cluster is simply not defined,
 		// which is an error we'll ignore, as it means we cannot use the template cluster,
 		// and thus no content is returned, and neither an error.
-		if err == ErrClusterNotDefined {
+		if errors.Cause(err) == ErrClusterNotDefined {
 			return nil, nil
 		}
 		// no content to return,
@@ -203,7 +201,7 @@ func dedupedVdiskExists(vdiskID string, cluster ardb.StorageCluster) (bool, erro
 	}
 
 	var exists bool
-	action := ardb.Command(command.Exists, lba.StorageKey(vdiskID))
+	action := ardb.Command(command.Exists, lbaStorageKey(vdiskID))
 	for server := range serverCh {
 		log.Infof("checking if deduped vdisk %s exists on %v", vdiskID, server.Config())
 		exists, err = ardb.Bool(server.Do(action))
@@ -234,7 +232,7 @@ func deleteDedupedData(vdiskID string, cluster ardb.StorageCluster) (bool, error
 	var serverCount int
 	// TODO: dereference deduped blocks as well
 	// https://github.com/zero-os/0-Disk/issues/88
-	action := ardb.Command(command.Delete, lba.StorageKey(vdiskID))
+	action := ardb.Command(command.Delete, lbaStorageKey(vdiskID))
 	for server := range serverCh {
 		server := server
 		go func() {
@@ -279,7 +277,7 @@ func listDedupedBlockIndices(vdiskID string, cluster ardb.StorageCluster) ([]int
 	resultCh := make(chan serverResult)
 
 	var serverCount int
-	action := ardb.Script(0, listDedupedBlockIndicesScriptSource, nil, lba.StorageKey(vdiskID))
+	action := ardb.Script(0, listDedupedBlockIndicesScriptSource, nil, lbaStorageKey(vdiskID))
 	for server := range serverCh {
 		server := server
 		go func() {
@@ -315,7 +313,7 @@ func listDedupedBlockIndices(vdiskID string, cluster ardb.StorageCluster) ([]int
 // from a sourceID to a targetID, within the same cluster or between different clusters.
 func copyDedupedMetadata(sourceID, targetID string, sourceBS, targetBS int64, sourceCluster, targetCluster ardb.StorageCluster) error {
 	if sourceBS != targetBS {
-		return fmt.Errorf(
+		return errors.Newf(
 			"vdisks %s and %s have non matching block sizes (%d != %d)",
 			sourceID, targetID, sourceBS, targetBS)
 	}
@@ -349,7 +347,7 @@ func copyDedupedSameCluster(sourceID, targetID string, cluster ardb.StorageClust
 		return err
 	}
 
-	sourceKey, targetKey := lba.StorageKey(sourceID), lba.StorageKey(targetID)
+	sourceKey, targetKey := lbaStorageKey(sourceID), lbaStorageKey(targetID)
 	action := ardb.Script(0, copyDedupedSameConnScriptSource,
 		[]string{targetKey}, sourceKey, targetKey)
 
@@ -394,7 +392,7 @@ func copyDedupedSameCluster(sourceID, targetID string, cluster ardb.StorageClust
 	}
 
 	if totalCount == 0 {
-		return fmt.Errorf(
+		return errors.Newf(
 			"zero LBA sectors have been copied from vdisk %s to vdisk %s",
 			sourceID, targetID)
 	}
@@ -415,8 +413,8 @@ func copyDedupedSameServerCount(sourceID, targetID string, sourceCluster, target
 		return err
 	}
 
-	sourceKey := lba.StorageKey(sourceID)
-	targetKey := lba.StorageKey(targetID)
+	sourceKey := lbaStorageKey(sourceID)
+	targetKey := lbaStorageKey(targetID)
 
 	sameConnAction := ardb.Script(0, copyDedupedSameConnScriptSource,
 		[]string{targetKey}, sourceKey, targetKey)
@@ -478,7 +476,7 @@ func copyDedupedSameServerCount(sourceID, targetID string, sourceCluster, target
 	}
 
 	if totalCount == 0 {
-		return fmt.Errorf(
+		return errors.Newf(
 			"zero LBA sectors have been copied from vdisk %s to vdisk %s",
 			sourceID, targetID)
 	}
@@ -498,8 +496,8 @@ func copyDedupedDifferentServerCount(sourceID, targetID string, sourceCluster, t
 		return err
 	}
 
-	sourceKey := lba.StorageKey(sourceID)
-	targetStorage := lba.ARDBSectorStorage(targetID, targetCluster)
+	sourceKey := lbaStorageKey(sourceID)
+	targetStorage := newLBASectorStorage(targetID, targetCluster)
 
 	type copyResult struct {
 		Count int64
@@ -533,7 +531,7 @@ func copyDedupedDifferentServerCount(sourceID, targetID string, sourceCluster, t
 	}
 
 	if totalCount == 0 {
-		return fmt.Errorf(
+		return errors.Newf(
 			"zero LBA sectors have been copied from vdisk %s to vdisk %s",
 			sourceID, targetID)
 	}
@@ -585,7 +583,7 @@ func dedupMetadataFetcher(ctx context.Context, storageKey string, server ardb.St
 			}
 
 			// return in case of an error or when we iterated through all possible values
-			if result.Error != nil || cursor == startCursor || cursor == "" {
+			if result.Error != nil || cursor == startCursor {
 				return
 			}
 
@@ -634,17 +632,10 @@ func copyDedupedBetweenServers(sourceKey, targetKey string, src, dst ardb.Storag
 					ardb.Command(command.HashSet, targetKey, index, hash))
 			}
 
-			transaction := ardb.Transaction(cmds...)
+			action := ardb.Commands(cmds...)
 			log.Debugf("flushing buffered metadata to be stored at %s on %s...", targetKey, dst.Config())
-			// execute the transaction
-			response, err := dst.Do(transaction)
-			if err == nil && response == nil {
-				// if response == <nil> the transaction has failed
-				// more info: https://redis.io/topics/transactions
-				err = fmt.Errorf("%s was busy and couldn't be modified", targetKey)
-			}
+			result.Error = ardb.Error(dst.Do(action))
 
-			result.Error = err
 			select {
 			case resultChan <- result:
 			case <-ctx.Done():
@@ -707,13 +698,13 @@ func copyDedupedMetadataToLBAStorage(sourceKey string, src ardb.StorageServer, s
 			for index, bytes := range input.Data {
 				sector, err = lba.SectorFromBytes(bytes)
 				if err != nil {
-					err = fmt.Errorf("invalid raw sector bytes at sector index %d: %v", index, err)
+					err = errors.Wrapf(err, "invalid raw sector bytes at sector index %d", index)
 					break
 				}
 
 				err = storage.SetSector(index, sector)
 				if err != nil {
-					err = fmt.Errorf("couldn't set sector %d: %v", index, err)
+					err = errors.Wrapf(err, "couldn't set sector %d", index)
 					break
 				}
 			}

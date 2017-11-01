@@ -4,8 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"errors"
-	"fmt"
 	"io/ioutil"
 	"net"
 	"os"
@@ -14,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 )
 
@@ -87,7 +86,7 @@ func (l *Listener) GetExportConfig(name string) (cfg *ExportConfig, err error) {
 
 	// config could not be dynamically generated or statically found
 	cfg = nil
-	err = fmt.Errorf("no export config could be found for %q", name)
+	err = errors.Newf("no export config could be found for %q", name)
 	return
 }
 
@@ -221,13 +220,13 @@ func (l *Listener) initTLS() error {
 	if l.tls.MinVersion != "" {
 		minVersion, ok = tlsVersionMap[strings.ToLower(l.tls.MinVersion)]
 		if !ok {
-			return fmt.Errorf("Bad minimum TLS version: '%s'", l.tls.MinVersion)
+			return errors.Newf("Bad minimum TLS version: '%s'", l.tls.MinVersion)
 		}
 	}
 	if l.tls.MaxVersion != "" {
 		minVersion, ok = tlsVersionMap[strings.ToLower(l.tls.MaxVersion)]
 		if !ok {
-			return fmt.Errorf("Bad maximum TLS version: '%s'", l.tls.MaxVersion)
+			return errors.Newf("Bad maximum TLS version: '%s'", l.tls.MaxVersion)
 		}
 	}
 
@@ -235,7 +234,7 @@ func (l *Listener) initTLS() error {
 	if l.tls.ClientAuth != "" {
 		clientAuth, ok = tlsClientAuthMap[strings.ToLower(l.tls.ClientAuth)]
 		if !ok {
-			return fmt.Errorf("Bad TLS client auth type: '%s'", l.tls.ClientAuth)
+			return errors.Newf("Bad TLS client auth type: '%s'", l.tls.ClientAuth)
 		}
 	}
 
