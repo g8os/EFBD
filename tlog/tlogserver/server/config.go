@@ -8,7 +8,7 @@ import (
 const (
 	// WaitListenAddrRandom is wait listen addr which wait in random port.
 	// Only useful for test
-	WaitListenAddrRandom = "-"
+	WaitListenAddrRandom = "*"
 )
 
 // DefaultConfig creates a new config, using sane defaults

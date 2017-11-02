@@ -25,7 +25,7 @@ func (vd *vdisk) handle(conn *net.TCPConn, br *bufio.Reader, respSegmentBufLen i
 	// start response sender
 	go vd.sendResp(ctx, conn, respSegmentBufLen)
 
-	if !vd.Ready() && vd.coordConnectAddr != "" {
+	if !vd.Ready() {
 		lastSeq, err := vd.waitOther()
 		if err != nil {
 			return err

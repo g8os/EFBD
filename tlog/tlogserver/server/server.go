@@ -95,43 +95,7 @@ func (s *Server) Listen(ctx context.Context) {
 	defer s.listener.Close()
 
 	if s.coordListener != nil {
-		log.Infof("s.coordListener listen at: %v", s.coordListener.Addr().String())
-		go func() {
-			for {
-				// start listener for the coordination (wait-other-tlog) purposes
-				conn, err := s.coordListener.Accept()
-				if err != nil {
-					log.Errorf("couldn't accept coord connection:%v", err)
-					continue
-				}
-
-				log.Infof("accepted coordination connection from %s", conn.RemoteAddr().String())
-
-				go func(conn net.Conn) {
-					// start handler for tlog waiter
-					defer func() {
-						conn.Close()
-					}()
-					for {
-						select {
-						case <-ctx.Done():
-							return
-						default:
-							b := make([]byte, 1)
-							conn.SetReadDeadline(time.Now().Add(1 * time.Second))
-							_, err := conn.Read(b)
-							if err != nil {
-								nerr, isNetErr := err.(net.Error)
-								if isNetErr && nerr.Timeout() {
-									continue
-								}
-								return
-							}
-						}
-					}
-				}(conn)
-			}
-		}()
+		go s.listenTlogWait()
 	}
 
 	for {
@@ -154,7 +118,7 @@ func (s *Server) Listen(ctx context.Context) {
 			}
 
 			if s.acceptAddr != "" && s.acceptAddr != host {
-				log.Infof("connection from %s refused, it does not match the accept address configured %s", remoteAddr, s.acceptAddr)
+				log.Errorf("connection from %s refused, it does not match the accept address configured %s", remoteAddr, s.acceptAddr)
 				conn.Close()
 				continue
 			}
@@ -163,16 +127,15 @@ func (s *Server) Listen(ctx context.Context) {
 			tcpConn, ok := conn.(*net.TCPConn)
 			if !ok {
 				log.Info("received conn is not tcp conn")
+				conn.Close()
 				continue
 			}
 			go func() {
-				addr := conn.RemoteAddr()
-
 				err := s.handle(tcpConn)
 				if err == nil {
-					log.Infof("connection from %s dropped", addr.String())
+					log.Infof("connection from %s dropped", remoteAddr)
 				} else {
-					log.Errorf("connection from %s dropped with an error: %s", addr.String(), err.Error())
+					log.Errorf("connection from %s dropped with an error: %s", remoteAddr, err.Error())
 				}
 			}()
 		}
@@ -317,4 +280,84 @@ func (s *Server) ReadDecodeClientMessage(r io.Reader) (*schema.TlogClientMessage
 	}
 
 	return &cmd, nil
+}
+
+// listen for wait-tlog connection
+func (s *Server) listenTlogWait() {
+	log.Infof("s.coordListener listen at: %v", s.coordListener.Addr().String())
+	for {
+		// start listener for the coordination (wait-other-tlog) purposes
+		conn, err := s.coordListener.Accept()
+		if err != nil {
+			log.Errorf("couldn't accept coord connection:%v", err)
+			continue
+		}
+
+		log.Infof("accepted coordination connection from %s", conn.RemoteAddr().String())
+
+		go s.handleTlogWait(conn)
+	}
+}
+
+// handle wait-tlog connection
+// - handshake
+// - keep connection
+func (s *Server) handleTlogWait(conn net.Conn) {
+	// start handler for tlog waiter
+	defer conn.Close()
+
+	// read handshake request
+	msg, err := capnp.NewDecoder(conn).Decode()
+	if err != nil {
+		return
+	}
+
+	req, err := schema.ReadRootWaitTlogHandshakeRequest(msg)
+	if err != nil {
+		return
+	}
+	vdiskID, err := req.VdiskID()
+	if err != nil {
+		return
+	}
+
+	// send back handshake response
+	vdiskExists := s.vdiskMgr.exists(vdiskID)
+	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
+	if err != nil {
+		return
+	}
+	resp, err := schema.NewRootWaitTlogHandshakeResponse(seg)
+	if err != nil {
+		return
+	}
+
+	resp.SetExists(vdiskExists)
+	if err := capnp.NewEncoder(conn).Encode(msg); err != nil {
+		return
+	}
+
+	// vdisk is not exist, we can simply exit
+	if !vdiskExists {
+		return
+	}
+
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		default:
+			b := make([]byte, 1)
+			conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+			_, err := conn.Read(b)
+			if err != nil {
+				nerr, isNetErr := err.(net.Error)
+				if isNetErr && nerr.Timeout() {
+					continue
+				}
+				return
+			}
+		}
+	}
+
 }

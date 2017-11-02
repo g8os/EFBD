@@ -51,6 +51,14 @@ func (vt *vdiskManager) Get(ctx context.Context, vdiskID string,
 	return
 }
 
+// exists returns true if vdisk with given ID is exists
+func (vt *vdiskManager) exists(vdiskID string) bool {
+	vt.lock.Lock()
+	defer vt.lock.Unlock()
+	_, exists := vt.vdisks[vdiskID]
+	return exists
+}
+
 func (vt *vdiskManager) remove(vdiskID string) {
 	vt.lock.Lock()
 	defer vt.lock.Unlock()

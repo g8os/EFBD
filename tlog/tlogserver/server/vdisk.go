@@ -135,10 +135,7 @@ func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, config
 		ctx:              ctx,
 		cancelFunc:       cancelFunc,
 		coordConnectAddr: coordConnectAddr,
-	}
-
-	if vd.coordConnectAddr == "" {
-		vd.ready = true
+		ready:            coordConnectAddr == "",
 	}
 
 	if err := vd.watchConfig(); err != nil {
@@ -165,8 +162,10 @@ func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, config
 
 func (vd *vdisk) Ready() bool {
 	vd.mux.Lock()
-	defer vd.mux.Unlock()
-	return vd.ready
+	ready := vd.ready
+	vd.mux.Unlock()
+
+	return ready
 }
 
 func (vd *vdisk) watchConfig() error {

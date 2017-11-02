@@ -16,10 +16,6 @@ import (
 
 const (
 	capnpBufLen = 4096 * 4
-
-	// description of this constant can be found in the place where this constant
-	// is being used
-	lastMetaKeyStoreInterval = 25
 )
 
 var (
@@ -197,6 +193,7 @@ func (c *Client) processStoreData(data []byte, lastSequence uint64, timestamp in
 	// processing time.
 	// We still store it because otherwise we need to walk the entire disk
 	// on startup.
+	const lastMetaKeyStoreInterval = 25
 	if c.storeNum%lastMetaKeyStoreInterval == 0 {
 		if err := c.saveLastMetaKey(); err != nil {
 			return err

@@ -243,12 +243,13 @@ func (c *Client) runReceiver(ctx context.Context, cancelFunc context.CancelFunc)
 						c.blockBuffer.SetSent(tr.Sequences[0])
 					}
 				case tlog.BlockStatusReady:
+					if c.Ready() {
+						continue
+					}
+
 					seq := tr.Sequences[0]
 					if seq != 0 {
 						c.blockBuffer.SetLastFlushed(seq)
-					}
-					if c.Ready() {
-						continue
 					}
 
 					c.mux.Lock()
@@ -386,8 +387,8 @@ func (c *Client) connect() error {
 	}
 
 	c.mux.Lock()
-	defer c.mux.Unlock()
 	c.serverReady = ready
+	c.mux.Unlock()
 
 	return nil
 }
@@ -424,10 +425,9 @@ func (c *Client) resender() {
 
 // do handshaking process to tlogserver
 // it returns true if tlogserver is ready
-func (c *Client) handshake() (bool, error) {
-	ready := false
+func (c *Client) handshake() (ready bool, err error) {
 	// send handshake request
-	err := c.encodeHandshakeCapnp()
+	err = c.encodeHandshakeCapnp()
 	if err != nil {
 		return ready, err
 	}

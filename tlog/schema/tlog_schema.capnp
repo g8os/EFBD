@@ -52,3 +52,14 @@ struct TlogResponse {
 	status @0 :Int8;
 	sequences @1 :List(UInt64); # can be nil
 }
+
+## WaitTlog handshake request
+struct WaitTlogHandshakeRequest {
+	vdiskID @0 :Text;
+}
+
+
+## WaitTlog handshake response
+struct WaitTlogHandshakeResponse {
+	exists @0 :Bool;
+}

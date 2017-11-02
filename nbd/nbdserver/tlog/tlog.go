@@ -171,11 +171,11 @@ func (tls *tlogStorage) set(blockIndex int64, content []byte) error {
 			blockIndex, sequence)
 	}
 
-	if tls.tlogReady {
-		// copy the content to avoid race condition with value in cache
-		transactionContent := make([]byte, len(content))
-		copy(transactionContent, content)
+	// copy the content to avoid race condition with value in cache
+	transactionContent := make([]byte, len(content))
+	copy(transactionContent, content)
 
+	if tls.tlogReady {
 		// scheduele tlog transaction, to be sent to the server
 		tls.transactionCh <- &transaction{
 			Operation: op,
@@ -188,7 +188,7 @@ func (tls *tlogStorage) set(blockIndex int64, content []byte) error {
 		tls.tlogNotReadyBuff = append(tls.tlogNotReadyBuff, writeOp{
 			sequence:   sequence,
 			blockIndex: blockIndex,
-			content:    content,
+			content:    transactionContent,
 		})
 	}
 
