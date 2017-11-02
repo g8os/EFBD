@@ -1,8 +1,11 @@
 package bencode
 
 import (
+	"fmt"
 	"reflect"
+	"sort"
 	"testing"
+	"time"
 )
 
 func TestDecode(t *testing.T) {
@@ -18,6 +21,26 @@ func TestDecode(t *testing.T) {
 		Y int
 		Z string `bencode:"zff"`
 	}
+
+	type Embedded struct {
+		B string
+	}
+
+	type issue22 struct {
+		X     string       `bencode:"x"`
+		Time  myTimeType   `bencode:"t"`
+		Foo   myBoolType   `bencode:"f"`
+		Bar   myStringType `bencode:"b"`
+		Slice mySliceType  `bencode:"s"`
+		Y     string       `bencode:"y"`
+	}
+
+	type issue22WithErrorChild struct {
+		Name  string           `bencode:"n"`
+		Error errorMarshalType `bencode:"e"`
+	}
+
+	now := time.Now()
 
 	var decodeCases = []testCase{
 		//integers
@@ -57,12 +80,17 @@ func TestDecode(t *testing.T) {
 		}, false},
 
 		//dicts
+
 		{`d3:foo3:bar4:foob3:fooe`, new(map[string]string), map[string]string{
 			"foo":  "bar",
 			"foob": "foo",
 		}, false},
 		{`d1:X3:foo1:Yi10e3:zff3:bare`, new(dT), dT{"foo", 10, "bar"}, false},
-		{`d1:X3:foo1:Yi10e1:Z3:bare`, new(dT), dT{"foo", 10, "bar"}, false},
+
+		// encoding/json takes, if set, the tag as name and doesn't falls back to the
+		// struct field's name.
+		{`d1:X3:foo1:Yi10e1:Z3:bare`, new(dT), dT{"foo", 10, ""}, false},
+
 		{`d1:X3:foo1:Yi10e1:h3:bare`, new(dT), dT{"foo", 10, ""}, false},
 		{`d3:fooli0ei1ee3:barli2ei3eee`, new(map[string][]int), map[string][]int{
 			"foo": []int{0, 1},
@@ -76,6 +104,39 @@ func TestDecode(t *testing.T) {
 		{`5:hello`, new(interface{}), "hello", false},
 		{`d5:helloi5ee`, new(interface{}), map[string]interface{}{"hello": int64(5)}, false},
 
+		//into values whose type support the Unmarshaler interface
+		{`1:y`, new(myTimeType), nil, true},
+		{fmt.Sprintf("i%de", now.Unix()), new(myTimeType), myTimeType{time.Unix(now.Unix(), 0)}, false},
+		{`1:y`, new(myBoolType), myBoolType(true), false},
+		{`i42e`, new(myBoolType), nil, true},
+		{`1:n`, new(myBoolType), myBoolType(false), false},
+		{`1:n`, new(errorMarshalType), nil, true},
+		{`li102ei111ei111ee`, new(myStringType), myStringType("foo"), false},
+		{`i42e`, new(myStringType), nil, true},
+		{`d1:ai1e3:foo3:bare`, new(mySliceType), mySliceType{"a", int64(1), "foo", "bar"}, false},
+		{`i42e`, new(mySliceType), nil, true},
+
+		//into values who have a child which type supports the Unmarshaler interface
+		{
+			fmt.Sprintf(`d1:x1:x1:ti%de1:f1:y1:b3:foo1:sd1:f3:foo1:ai42ee1:y1:ye`, now.Unix()),
+			new(issue22),
+			issue22{
+				X:     "x",
+				Time:  myTimeType{time.Unix(now.Unix(), 0)},
+				Foo:   myBoolType(true),
+				Bar:   myStringType("foo"),
+				Slice: mySliceType{"a", int64(42), "f", "foo"},
+				Y:     "y",
+			},
+			false,
+		},
+		{
+			`d1:ei42e1:n3:fooe`,
+			new(issue22WithErrorChild),
+			nil,
+			true,
+		},
+
 		//malformed
 		{`i53:foo`, new(interface{}), nil, true},
 		{`6:foo`, new(interface{}), nil, true},
@@ -83,6 +144,15 @@ func TestDecode(t *testing.T) {
 		{`d3:fooe`, new(interface{}), nil, true},
 		{`l3:foo3:bar`, new(interface{}), nil, true},
 		{`d-1:`, new(interface{}), nil, true},
+
+		// embedded structs
+		{`d1:A3:foo1:B3:bare`, new(struct {
+			A string
+			Embedded
+		}), struct {
+			A string
+			Embedded
+		}{"foo", Embedded{"bar"}}, false},
 	}
 
 	for i, tt := range decodeCases {
@@ -133,6 +203,45 @@ func TestRawDecode(t *testing.T) {
 			t.Errorf("#%d: Val: %#v != %#v", i, x, tt.expect)
 		}
 	}
+}
+
+type myStringType string
+
+// UnmarshalBencode implements Unmarshaler.UnmarshalBencode
+func (mst *myStringType) UnmarshalBencode(b []byte) error {
+	var raw []byte
+	err := DecodeBytes(b, &raw)
+	if err != nil {
+		return err
+	}
+
+	*mst = myStringType(raw)
+	return nil
+}
+
+type mySliceType []interface{}
+
+// UnmarshalBencode implements Unmarshaler.UnmarshalBencode
+func (mst *mySliceType) UnmarshalBencode(b []byte) error {
+	m := make(map[string]interface{})
+	err := DecodeBytes(b, &m)
+	if err != nil {
+		return err
+	}
+
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	raw := make([]interface{}, 0, len(m)*2)
+	for _, key := range keys {
+		raw = append(raw, key, m[key])
+	}
+
+	*mst = mySliceType(raw)
+	return nil
 }
 
 func TestNestedRawDecode(t *testing.T) {

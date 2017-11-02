@@ -1,6 +1,10 @@
 package bencode
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+	"time"
+)
 
 func TestEncode(t *testing.T) {
 	type encodeTestCase struct {
@@ -28,6 +32,22 @@ func TestEncode(t *testing.T) {
 	type issue18 struct {
 		T *issue18Sub
 	}
+
+	type Embedded struct {
+		B string
+	}
+
+	type issue22 struct {
+		Time myTimeType `bencode:"t"`
+		Foo  myBoolType `bencode:"f"`
+	}
+
+	type issue22WithErrorChild struct {
+		Name  string           `bencode:"n"`
+		Error errorMarshalType `bencode:"e"`
+	}
+
+	now := time.Now()
 
 	var encodeCases = []encodeTestCase{
 		//integers
@@ -107,6 +127,41 @@ func TestEncode(t *testing.T) {
 		{issue18{}, `de`, false},
 		{map[string]interface{}{"a": nil}, `de`, false},
 		{struct{ A interface{} }{nil}, `de`, false},
+
+		// embedded structs
+		{struct {
+			A string
+			Embedded
+		}{"foo", Embedded{"bar"}}, `d1:A3:foo1:B3:bare`, false},
+		{struct {
+			A        string
+			Embedded `bencode:"C"`
+		}{"foo", Embedded{"bar"}}, `d1:A3:foo1:Cd1:B3:baree`, false},
+
+		// embedded structs order issue #20
+		{struct {
+			Embedded
+			A string
+		}{Embedded{"bar"}, "foo"}, `d1:A3:foo1:B3:bare`, false},
+
+		// types which implement the Marshal interface will
+		// be marshalled using this interface
+		{myBoolType(true), `1:y`, false},
+		{myBoolType(false), `1:n`, false},
+		{myTimeType{now}, fmt.Sprintf("i%de", now.Unix()), false},
+		{errorMarshalType{}, "", true},
+
+		// structures can also have children which support
+		// the marshal interface
+		{
+			issue22{Time: myTimeType{now}, Foo: myBoolType(true)},
+			fmt.Sprintf("d1:f1:y1:ti%dee", now.Unix()),
+			false,
+		},
+		{ // an error will be returned if a child can't be marshalled
+			issue22WithErrorChild{Name: "Foo", Error: errorMarshalType{}},
+			"", true,
+		},
 	}
 
 	for i, tt := range encodeCases {

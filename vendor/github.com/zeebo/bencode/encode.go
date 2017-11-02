@@ -14,20 +14,11 @@ func (p sortValues) Len() int           { return len(p) }
 func (p sortValues) Less(i, j int) bool { return p[i].String() < p[j].String() }
 func (p sortValues) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
-type sortFields []reflect.StructField
-
-func (p sortFields) Len() int { return len(p) }
-func (p sortFields) Less(i, j int) bool {
-	iName, jName := p[i].Name, p[j].Name
-	if name, _ := parseTag(p[i].Tag.Get("bencode")); name != "" {
-		iName = name
-	}
-	if name, _ := parseTag(p[j].Tag.Get("bencode")); name != "" {
-		jName = name
-	}
-	return iName < jName
+// Marshaler is the interface implemented by types
+// that can marshal themselves into valid bencode.
+type Marshaler interface {
+	MarshalBencode() ([]byte, error)
 }
-func (p sortFields) Swap(i, j int) { p[i], p[j] = p[j], p[i] }
 
 //An Encoder writes bencoded objects to an output stream.
 type Encoder struct {
@@ -79,6 +70,18 @@ func encodeValue(w io.Writer, val reflect.Value) error {
 	// pointer in the path somewhere.
 	if !v.IsValid() {
 		return nil
+	}
+
+	// marshal a type using the Marshaler type
+	// if it implements that interface.
+	if marshaler, ok := v.Interface().(Marshaler); ok {
+		bytes, err := marshaler.MarshalBencode()
+		if err != nil {
+			return err
+		}
+
+		_, err = w.Write(bytes)
+		return err
 	}
 
 	//send in a raw message if we have that type
@@ -158,79 +161,116 @@ func encodeValue(w io.Writer, val reflect.Value) error {
 		return err
 
 	case reflect.Struct:
-		t := v.Type()
 		if _, err := fmt.Fprint(w, "d"); err != nil {
 			return err
 		}
-		//put keys into keys
-		var (
-			keys       = make(sortFields, t.NumField())
-			fieldValue reflect.Value
-			rkey       reflect.Value
-		)
-		for i := range keys {
-			keys[i] = t.Field(i)
+
+		// add embedded structs to the dictionary
+		dict := make(dictionary, 0, v.NumField())
+		dict, err := readStruct(dict, v)
+		if err != nil {
+			return err
 		}
-		sort.Sort(keys)
-		for _, key := range keys {
-			rkey = reflect.ValueOf(key.Name)
-			fieldValue = v.FieldByIndex(key.Index)
 
-			// filter out unexported values etc.
-			if !fieldValue.CanInterface() {
-				continue
-			}
+		// sort the dictionary by keys
+		sort.Sort(dict)
 
-			// filter out nil pointer values
-			if isNilValue(fieldValue) {
-				continue
-			}
-
-			/* Tags
-			* Near identical to usage in JSON except with key 'bencode'
-
-			* Struct values encode as BEncode dictionaries. Each exported
-			  struct field becomes a set in the dictionary unless
-			  - the field's tag is "-", or
-			  - the field is empty and its tag specifies the "omitempty"
-			    option.
-
-			* The default key string is the struct field name but can be
-			  specified in the struct field's tag value.  The "bencode"
-			  key in struct field's tag value is the key name, followed
-			  by an optional comma and options.
-			*/
-			tagValue := key.Tag.Get("bencode")
-			if tagValue != "" {
-				// Keys with '-' are omit from output
-				if tagValue == "-" {
-					continue
-				}
-
-				name, options := parseTag(tagValue)
-				// Keys with 'omitempty' are omitted if the field is empty
-				if options.Contains("omitempty") && isEmptyValue(fieldValue) {
-					continue
-				}
-
-				// All other values are treated as the key string
-				if isValidTag(name) {
-					rkey = reflect.ValueOf(name)
-				}
-			}
-
-			//encode the key
-			if err := encodeValue(w, rkey); err != nil {
+		// encode the dictionary in order
+		for _, def := range dict {
+			// encode the key
+			err := encodeValue(w, reflect.ValueOf(def.key))
+			if err != nil {
 				return err
 			}
-			//encode the value
-			if err := encodeValue(w, fieldValue); err != nil {
+
+			// encode the value
+			err = encodeValue(w, def.value)
+			if err != nil {
 				return err
 			}
 		}
-		_, err := fmt.Fprint(w, "e")
+
+		_, err = fmt.Fprint(w, "e")
 		return err
 	}
 
 	return fmt.Errorf("Can't encode type: %s", v.Type())
+}
+
+type definition struct {
+	key   string
+	value reflect.Value
+}
+
+type dictionary []definition
+
+func (d dictionary) Len() int           { return len(d) }
+func (d dictionary) Less(i, j int) bool { return d[i].key < d[j].key }
+func (d dictionary) Swap(i, j int)      { d[i], d[j] = d[j], d[i] }
+
+func readStruct(dict dictionary, v reflect.Value) (dictionary, error) {
+	t := v.Type()
+	var (
+		fieldValue reflect.Value
+		rkey       string
+	)
+	for i := 0; i < t.NumField(); i++ {
+		key := t.Field(i)
+		rkey = key.Name
+		fieldValue = v.FieldByIndex(key.Index)
+
+		// filter out unexported values etc.
+		if !fieldValue.CanInterface() {
+			continue
+		}
+
+		// filter out nil pointer values
+		if isNilValue(fieldValue) {
+			continue
+		}
+
+		/* Tags
+		* Near identical to usage in JSON except with key 'bencode'
+
+		* Struct values encode as BEncode dictionaries. Each exported
+		  struct field becomes a set in the dictionary unless
+		  - the field's tag is "-", or
+		  - the field is empty and its tag specifies the "omitempty"
+		    option.
+
+		* The default key string is the struct field name but can be
+		  specified in the struct field's tag value.  The "bencode"
+		  key in struct field's tag value is the key name, followed
+		  by an optional comma and options.
+		*/
+		tagValue := key.Tag.Get("bencode")
+		if tagValue != "" {
+			// Keys with '-' are omit from output
+			if tagValue == "-" {
+				continue
+			}
+
+			name, options := parseTag(tagValue)
+			// Keys with 'omitempty' are omitted if the field is empty
+			if options.Contains("omitempty") && isEmptyValue(fieldValue) {
+				continue
+			}
+
+			// All other values are treated as the key string
+			if isValidTag(name) {
+				rkey = name
+			}
+		}
+
+		if key.Anonymous && key.Type.Kind() == reflect.Struct && tagValue == "" {
+			var err error
+			dict, err = readStruct(dict, fieldValue)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			dict = append(dict, definition{rkey, fieldValue})
+		}
+	}
+	return dict, nil
 }

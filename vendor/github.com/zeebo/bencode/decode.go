@@ -16,6 +16,14 @@ var (
 	reflectStringType    = reflect.TypeOf("")
 )
 
+// Unmarshaler is the interface implemented by types that can unmarshal
+// a bencode description of themselves.
+// The input can be assumed to be a valid encoding of a bencode value.
+// UnmarshalBencode must copy the bencode data if it wishes to retain the data after returning.
+type Unmarshaler interface {
+	UnmarshalBencode([]byte) error
+}
+
 //A Decoder reads and decodes bencoded data from an input stream.
 type Decoder struct {
 	r   *bufio.Reader
@@ -55,7 +63,7 @@ func (d *Decoder) readByte() (b byte, err error) {
 	if d.raw {
 		d.buf = append(d.buf, b)
 	}
-	d.n += 1
+	d.n++
 	return
 }
 
@@ -143,23 +151,42 @@ func indirect(v reflect.Value, alloc bool) reflect.Value {
 }
 
 func (d *Decoder) decodeInto(val reflect.Value) (err error) {
-	v := indirect(val, true)
+	var v reflect.Value
+	if d.raw {
+		v = val
+	} else {
+		v = indirect(val, true)
 
-	//if we're decoding into a RawMessage set raw to true for the rest of
-	//the call stack, and switch out the value with an interface{}.
-	if _, ok := v.Interface().(RawMessage); ok && !d.raw {
-		var x interface{}
-		v = reflect.ValueOf(&x).Elem()
+		// if we're decoding into an Unmarshaler,
+		// we pass on the next bencode value to this value instead,
+		// so it can decide what to do with it.
+		unmarshaler, ok := val.Interface().(Unmarshaler)
+		if !ok && val.CanAddr() {
+			unmarshaler, ok = val.Addr().Interface().(Unmarshaler)
+		}
+		if ok {
+			var x RawMessage
+			if err := d.decodeInto(reflect.ValueOf(&x)); err != nil {
+				return err
+			}
+			return unmarshaler.UnmarshalBencode([]byte(x))
+		}
 
-		//set d.raw for the lifetime of this function call, and set the raw
-		//message when the function is exiting.
-		d.buf = d.buf[:0]
-		d.raw = true
-		defer func() {
-			d.raw = false
-			v := indirect(val, true)
-			v.SetBytes(append([]byte(nil), d.buf...))
-		}()
+		//if we're decoding into a RawMessage set raw to true for the rest of
+		//the call stack, and switch out the value with an interface{}.
+		if _, ok := v.Interface().(RawMessage); ok && !d.raw {
+			v = reflect.Value{} // explicitly make v invalid
+
+			//set d.raw for the lifetime of this function call, and set the raw
+			//message when the function is exiting.
+			d.buf = d.buf[:0]
+			d.raw = true
+			defer func() {
+				d.raw = false
+				v := indirect(val, true)
+				v.SetBytes(append([]byte(nil), d.buf...))
+			}()
+		}
 	}
 
 	next, err := d.peekByte()
@@ -194,7 +221,7 @@ func (d *Decoder) decodeInt(v reflect.Value) error {
 	}
 
 	line, err := d.readBytes('e')
-	if err != nil {
+	if err != nil || d.raw {
 		return err
 	}
 
@@ -252,7 +279,7 @@ func (d *Decoder) decodeString(v reflect.Value) error {
 	//read exactly l bytes out and make our string
 	buf := make([]byte, l)
 	_, err = d.readFull(buf)
-	if err != nil {
+	if err != nil || d.raw {
 		return err
 	}
 
@@ -273,15 +300,17 @@ func (d *Decoder) decodeString(v reflect.Value) error {
 }
 
 func (d *Decoder) decodeList(v reflect.Value) error {
-	//if we have an interface, just put a []interface{} in it!
-	if v.Kind() == reflect.Interface {
-		var x []interface{}
-		defer func(p reflect.Value) { p.Set(v) }(v)
-		v = reflect.ValueOf(&x).Elem()
-	}
+	if !d.raw {
+		//if we have an interface, just put a []interface{} in it!
+		if v.Kind() == reflect.Interface {
+			var x []interface{}
+			defer func(p reflect.Value) { p.Set(v) }(v)
+			v = reflect.ValueOf(&x).Elem()
+		}
 
-	if v.Kind() != reflect.Array && v.Kind() != reflect.Slice {
-		return fmt.Errorf("Cant store a []interface{} into %s", v.Type())
+		if v.Kind() != reflect.Array && v.Kind() != reflect.Slice {
+			return fmt.Errorf("Cant store a []interface{} into %s", v.Type())
+		}
 	}
 
 	//read out the l that prefixes the list
@@ -291,6 +320,30 @@ func (d *Decoder) decodeList(v reflect.Value) error {
 	}
 	if ch != 'l' {
 		panic("got something other than a list head after a peek")
+	}
+
+	// if we're decoding in raw mode,
+	// we only want to read into the buffer,
+	// without actually parsing any values
+	if d.raw {
+		var ch byte
+		for {
+			//peek for the end token and read it out
+			ch, err = d.peekByte()
+			if err != nil {
+				return err
+			}
+			if ch == 'e' {
+				_, err = d.readByte() //consume the end
+				return err
+			}
+
+			//decode the next value
+			err = d.decodeInto(v)
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	for i := 0; ; i++ {
@@ -326,13 +379,11 @@ func (d *Decoder) decodeList(v reflect.Value) error {
 			return err
 		}
 	}
-
-	panic("unreachable")
 }
 
 func (d *Decoder) decodeDict(v reflect.Value) error {
 	//if we have an interface{}, just put a map[string]interface{} in it!
-	if v.Kind() == reflect.Interface {
+	if !d.raw && v.Kind() == reflect.Interface {
 		var x map[string]interface{}
 		defer func(p reflect.Value) { p.Set(v) }(v)
 		v = reflect.ValueOf(&x).Elem()
@@ -347,11 +398,38 @@ func (d *Decoder) decodeDict(v reflect.Value) error {
 		panic("got an incorrect token when it was checked already")
 	}
 
+	if d.raw {
+		// if we're decoding in raw mode,
+		// we only want to read into the buffer,
+		// without actually parsing any values
+		for {
+			//peek the next value type
+			ch, err := d.peekByte()
+			if err != nil {
+				return err
+			}
+			if ch == 'e' {
+				_, err = d.readByte() //consume the end token
+				return err
+			}
+
+			err = d.decodeString(v)
+			if err != nil {
+				return err
+			}
+
+			err = d.decodeInto(v)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
 	//check for correct type
 	var (
-		f       reflect.StructField
 		mapElem reflect.Value
 		isMap   bool
+		vals    map[string]reflect.Value
 	)
 
 	switch v.Kind() {
@@ -367,6 +445,8 @@ func (d *Decoder) decodeDict(v reflect.Value) error {
 		isMap = true
 		mapElem = reflect.New(t.Elem()).Elem()
 	case reflect.Struct:
+		vals = make(map[string]reflect.Value)
+		setStructValues(vals, v)
 	default:
 		return fmt.Errorf("Can't store a map[string]interface{} into %s", v.Type())
 	}
@@ -394,33 +474,7 @@ func (d *Decoder) decodeDict(v reflect.Value) error {
 			mapElem.Set(reflect.Zero(v.Type().Elem()))
 			subv = mapElem
 		} else {
-			var ok bool
-			t := v.Type()
-			if isValidTag(key) {
-				for i := 0; i < v.NumField(); i++ {
-					f = t.Field(i)
-					tagName, _ := parseTag(f.Tag.Get("bencode"))
-					if tagName == key && tagName != "-" {
-						// If we have found a matching tag
-						// that isn't '-'
-						ok = true
-						break
-					}
-				}
-			}
-			if !ok {
-				f, ok = t.FieldByName(key)
-			}
-			if !ok {
-				f, ok = t.FieldByNameFunc(matchName(key))
-			}
-
-			if ok {
-				if f.PkgPath != "" && !f.Anonymous {
-					return fmt.Errorf("Can't store into unexported field: %s", f)
-				}
-				subv = v.FieldByIndex(f.Index)
-			}
+			subv = vals[key]
 		}
 
 		if !subv.IsValid() {
@@ -442,8 +496,36 @@ func (d *Decoder) decodeDict(v reflect.Value) error {
 		if isMap {
 			v.SetMapIndex(reflect.ValueOf(key), subv)
 		}
-
 	}
+}
 
-	panic("unreachable")
+func setStructValues(m map[string]reflect.Value, v reflect.Value) {
+	if t := v.Type(); t.Kind() == reflect.Struct {
+		for i := 0; i < v.NumField(); i++ {
+			f := t.Field(i)
+			if f.PkgPath != "" {
+				continue
+			}
+			v := v.FieldByIndex(f.Index)
+			if f.Anonymous && f.Tag == "" {
+				setStructValues(m, v)
+			}
+		}
+
+		// overwrite embedded struct tags and names
+		for i := 0; i < v.NumField(); i++ {
+			f := t.Field(i)
+			if f.PkgPath != "" || f.Anonymous {
+				continue
+			}
+			v := v.FieldByIndex(f.Index)
+			name, _ := parseTag(f.Tag.Get("bencode"))
+			if name == "" {
+				name = f.Name
+			}
+			if isValidTag(name) {
+				m[name] = v
+			}
+		}
+	}
 }

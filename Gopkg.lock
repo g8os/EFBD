@@ -375,7 +375,7 @@
   branch = "master"
   name = "github.com/zeebo/bencode"
   packages = ["."]
-  revision = "03ce512f17ce5deb2c024518d504c6419f04d39d"
+  revision = "4604d49d3c7df6d418168fbd286351b70eba74e2"
 
 [[projects]]
   branch = "master"
@@ -446,6 +446,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "e331a16481d6db5ca4695bf757594409f4c1e1f77956143ffe1d156b080aa7e5"
+  inputs-digest = "c78bf3de753ff7fea25abac7c3eb6d0e5c7a52d09f4ea51ccbb0098ad227ea9e"
   solver-name = "gps-cdcl"
   solver-version = 1
