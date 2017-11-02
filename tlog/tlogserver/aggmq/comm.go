@@ -1,8 +1,9 @@
 package aggmq
 
 import (
-	"errors"
 	"time"
+
+	"github.com/zero-os/0-Disk/errors"
 )
 
 const (

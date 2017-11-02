@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"os"
 	"os/signal"
@@ -10,15 +9,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/zero-os/0-stor/client/lib"
-
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/flusher"
 	"github.com/zero-os/0-Disk/tlog/schema"
 	"github.com/zero-os/0-Disk/tlog/stor"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/aggmq"
+	"github.com/zero-os/0-stor/client/lib"
 )
 
 const (
@@ -148,7 +147,7 @@ func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, config
 	}
 	if err := vd.createFlusher(); err != nil {
 		cancelFunc()
-		return nil, fmt.Errorf("failed to create flusher: %v", err)
+		return nil, errors.Wrap(err, "failed to create flusher")
 	}
 	if err := vd.manageSlaveSync(); err != nil {
 		cancelFunc()
@@ -315,7 +314,7 @@ func (vd *vdisk) loadLastFlushedSequence() (uint64, error) {
 	vd.mux.Lock()
 	defer vd.mux.Unlock()
 
-	if err == stor.ErrNoFlushedBlock {
+	if errors.Cause(err) == stor.ErrNoFlushedBlock {
 		vd.expectedSequence = tlog.FirstSequence
 		return 0, nil
 	}
@@ -549,7 +548,7 @@ func (vd *vdisk) manageSlaveSync() error {
 		return nil
 	}
 
-	// read config
+	/*// read config
 	conf, err := config.ReadVdiskTlogConfig(vd.configSource, vd.id)
 	if err != nil {
 		return err
@@ -564,7 +563,7 @@ func (vd *vdisk) manageSlaveSync() error {
 			vd.withSlaveSyncer = false
 		}
 		return nil
-	}
+	}*/
 
 	if vd.withSlaveSyncer {
 		log.Infof("Restart slave syncer for vdisk: %v", vd.id)

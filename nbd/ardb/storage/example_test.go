@@ -5,9 +5,7 @@ import (
 
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/nbd/ardb"
-	"github.com/zero-os/0-Disk/nbd/ardb/command"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
-	"github.com/zero-os/0-Disk/nbd/ardb/storage/lba"
 	"github.com/zero-os/0-Disk/redisstub"
 )
 
@@ -108,20 +106,23 @@ func panicOnError(err error) {
 
 // simplified algorithm based on `zeroctl/cmd/copyvdisk/vdisk.go copyVdisk`
 func copyVdisk(vdiskIDA, vdiskIDB string, clusterA, clusterB ardb.StorageCluster) {
-	data, err := ardb.Int64ToBytesMapping(
-		clusterA.Do(ardb.Command(command.HashGetAll, lba.StorageKey(vdiskIDA))))
-	if err != nil {
-		panicOnError(err)
-	}
-
-	cmds := []ardb.StorageAction{ardb.Command(command.Delete, lba.StorageKey(vdiskIDB))}
-	for index, hash := range data {
-		cmds = append(cmds,
-			ardb.Command(command.HashSet, lba.StorageKey(vdiskIDB), index, hash))
-	}
-
-	_, err = clusterB.Do(ardb.Commands(cmds...))
-	if err != nil {
-		panicOnError(err)
-	}
+	const (
+		vtype     = config.VdiskTypeBoot
+		blockSize = int64(4096)
+	)
+	err := storage.CopyVdisk(
+		storage.CopyVdiskConfig{
+			VdiskID:   vdiskIDA,
+			Type:      vtype,
+			BlockSize: blockSize,
+		},
+		storage.CopyVdiskConfig{
+			VdiskID:   vdiskIDB,
+			Type:      vtype,
+			BlockSize: blockSize,
+		},
+		clusterA,
+		clusterB,
+	)
+	panicOnError(err)
 }

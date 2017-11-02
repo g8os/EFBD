@@ -2,12 +2,12 @@ package storage
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net"
 	"sync"
 
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 )
@@ -105,7 +105,6 @@ func (pc *PrimaryCluster) ServerIterator(ctx context.Context) (<-chan ardb.Stora
 // ServerCount implements StorageCluster.ServerCount.
 func (pc *PrimaryCluster) ServerCount() int64 {
 	pc.mux.RLock()
-	defer pc.mux.RUnlock()
 
 	count := pc.serverCount
 	for _, server := range pc.servers {
@@ -113,6 +112,7 @@ func (pc *PrimaryCluster) ServerCount() int64 {
 			count--
 		}
 	}
+	pc.mux.RUnlock()
 
 	return count
 }
@@ -124,7 +124,7 @@ func (pc *PrimaryCluster) doAt(serverIndex int64, cfg config.StorageServerConfig
 	if err == nil {
 		defer conn.Close()
 		reply, err = action.Do(conn)
-		if err == nil || err == ardb.ErrNil {
+		if err == nil || errors.Cause(err) == ardb.ErrNil {
 			return
 		}
 	}
@@ -135,7 +135,7 @@ func (pc *PrimaryCluster) doAt(serverIndex int64, cfg config.StorageServerConfig
 	// and  https://github.com/zero-os/0-Disk/issues/284
 
 	// an error has occured, broadcast it to AYS
-	status := mapErrorToBroadcastStatus(err)
+	status := MapErrorToBroadcastStatus(err)
 	log.Broadcast(
 		status,
 		log.SubjectStorage,
@@ -239,7 +239,7 @@ func (pc *PrimaryCluster) spawnConfigReloader(ctx context.Context, cs config.Sou
 	// create the primary storage cluster watcher,
 	// and execute the initial config update iff
 	// an internal watcher is created.
-	var primaryWatcher storageClusterWatcher
+	var primaryWatcher ClusterConfigWatcher
 	clusterExists, err := primaryWatcher.SetClusterID(ctx, cs, pc.vdiskID, vdiskNBDConfig.StorageClusterID)
 	if err != nil {
 		return err
@@ -389,7 +389,6 @@ func (tsc *TemplateCluster) ServerIterator(context.Context) (<-chan ardb.Storage
 // ServerCount implements StorageCluster.ServerCount.
 func (tsc *TemplateCluster) ServerCount() int64 {
 	tsc.mux.RLock()
-	defer tsc.mux.RUnlock()
 
 	count := tsc.serverCount
 	for _, server := range tsc.servers {
@@ -397,6 +396,7 @@ func (tsc *TemplateCluster) ServerCount() int64 {
 			count--
 		}
 	}
+	tsc.mux.RUnlock()
 
 	return count
 }
@@ -413,13 +413,13 @@ func (tsc *TemplateCluster) doAt(serverIndex int64, cfg config.StorageServerConf
 	if err == nil {
 		defer conn.Close()
 		reply, err = action.Do(conn)
-		if err == nil || err == ardb.ErrNil {
+		if err == nil || errors.Cause(err) == ardb.ErrNil {
 			return
 		}
 	}
 
 	// an error has occured, broadcast it to AYS
-	status := mapErrorToBroadcastStatus(err)
+	status := MapErrorToBroadcastStatus(err)
 	log.Broadcast(
 		status,
 		log.SubjectStorage,
@@ -460,7 +460,7 @@ func (tsc *TemplateCluster) spawnConfigReloader(ctx context.Context, cs config.S
 	// create the storage cluster watcher,
 	// and execute the initial config update iff
 	// an internal watcher is created.
-	var watcher storageClusterWatcher
+	var watcher ClusterConfigWatcher
 	clusterExists, err := watcher.SetClusterID(
 		ctx, cs, tsc.vdiskID, vdiskNBDConfig.TemplateStorageClusterID)
 	if err != nil {
@@ -594,49 +594,49 @@ func (tsc *TemplateCluster) serverOperational(index int64) (bool, error) {
 	}
 }
 
-// storageClusterWatcher is a small helper struct,
+// ClusterConfigWatcher is a small helper struct,
 // used to (un)set a storage cluster watcher for a given clusterID.
 // By centralizing this logic,
 // we only have to define it once and it keeps the callee's location clean.
-type storageClusterWatcher struct {
+type ClusterConfigWatcher struct {
 	clusterID string
 	channel   <-chan config.StorageClusterConfig
 	cancel    context.CancelFunc
 }
 
-// Receive an update on the returned channel by the storageClusterWatcher.
-func (scw *storageClusterWatcher) Receive() <-chan config.StorageClusterConfig {
-	return scw.channel
+// Receive an update on the returned channel by the ClusterConfigWatcher.
+func (ccw *ClusterConfigWatcher) Receive() <-chan config.StorageClusterConfig {
+	return ccw.channel
 }
 
 // Close all open resources,
-// openend and managed by this storageClusterWatcher
-func (scw *storageClusterWatcher) Close() {
-	if scw.cancel != nil {
-		scw.cancel()
+// openend and managed by this ClusterWatcher
+func (ccw *ClusterConfigWatcher) Close() {
+	if ccw.cancel != nil {
+		ccw.cancel()
 	}
 }
 
-// SetCluster allows you to (over)write the current internal cluster watcher.
+// SetClusterID allows you to (over)write the current internal cluster watcher.
 // If the given clusterID is equal to the already used clusterID, nothing will happen.
 // If the clusterID is different but the given one is nil, the current watcher will be stopped.
 // In all other cases a new watcher will be attempted to be created,
 // and used if succesfull (right before cancelling the old one), or otherwise an error is returned.
 // In an error case the boolean parameter indicates whether a watcher is active or not.
-func (scw *storageClusterWatcher) SetClusterID(ctx context.Context, cs config.Source, vdiskID, clusterID string) (bool, error) {
-	if scw.clusterID == clusterID {
+func (ccw *ClusterConfigWatcher) SetClusterID(ctx context.Context, cs config.Source, vdiskID, clusterID string) (bool, error) {
+	if ccw.clusterID == clusterID {
 		// if the given ID is equal to the one we have stored internally,
 		// we have nothing to do.
 		// Returning true, such that no existing cluster info is deleted by accident.
-		return scw.clusterID != "", nil
+		return ccw.clusterID != "", nil
 	}
 
 	// if the given clusterID is nil, but ours isn't,
 	// we'll simply want to close the watcher and clean up our internal state.
 	if clusterID == "" {
-		scw.cancel()
-		scw.cancel = nil
-		scw.clusterID = ""
+		ccw.cancel()
+		ccw.cancel = nil
+		ccw.clusterID = ""
 		return false, nil // no watcher is active, as no cluster exists
 	}
 
@@ -650,19 +650,19 @@ func (scw *storageClusterWatcher) SetClusterID(ctx context.Context, cs config.So
 	}
 
 	// close the previous watcher
-	scw.Close()
+	ccw.Close()
 
 	// use the new watcher and set the new state
-	scw.cancel = cancel
-	scw.clusterID = clusterID
-	scw.channel = channel
+	ccw.cancel = cancel
+	ccw.clusterID = clusterID
+	ccw.channel = channel
 	return true, nil // a watcher is active, because the cluster exists
 }
 
 // Defined returns `true` if this storage cluster watcher
 // has an internal watcher (for an existing cluster) defined.
-func (scw *storageClusterWatcher) Defined() bool {
-	return scw.clusterID != ""
+func (ccw *ClusterConfigWatcher) Defined() bool {
+	return ccw.clusterID != ""
 }
 
 // storageServersEqual compares if 2 storage server configs
@@ -672,9 +672,9 @@ func storageServersEqual(a, b config.StorageServerConfig) bool {
 		a.Address == b.Address
 }
 
-// mapErrorToBroadcastStatus maps the given error,
+// MapErrorToBroadcastStatus maps the given error,
 // returned by a `Connection` operation to a broadcast's message status.
-func mapErrorToBroadcastStatus(err error) log.MessageStatus {
+func MapErrorToBroadcastStatus(err error) log.MessageStatus {
 	if netErr, ok := err.(net.Error); ok {
 		if netErr.Timeout() {
 			return log.StatusServerTimeout
@@ -682,7 +682,7 @@ func mapErrorToBroadcastStatus(err error) log.MessageStatus {
 		if netErr.Temporary() {
 			return log.StatusServerTempError
 		}
-	} else if err == io.EOF {
+	} else if errors.Cause(err) == io.EOF {
 		return log.StatusServerDisconnect
 	}
 

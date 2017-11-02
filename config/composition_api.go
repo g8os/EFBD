@@ -2,9 +2,8 @@ package config
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 )
 
@@ -92,16 +91,6 @@ func ReadTlogStorageConfig(source Source, vdiskID string) (*TlogStorageConfig, e
 	}
 	tlogStorageConfig.ZeroStorCluster = *zeroStorClusterConfig
 
-	// if slave storage ID is given, fetch it
-	if tlogConfig.SlaveStorageClusterID != "" {
-		tlogStorageConfig.SlaveStorageCluster, err = ReadStorageClusterConfig(
-			source, tlogConfig.SlaveStorageClusterID)
-		if err != nil {
-			log.Debugf("ReadTlogStorageConfig failed, invalid SlaveStorageCluster: %v", err)
-			return nil, err
-		}
-	}
-
 	return tlogStorageConfig, nil
 }
 
@@ -142,7 +131,7 @@ type tlogStorageConfigWatcher struct {
 	vdiskID string
 
 	// cluster(s) info
-	zeroStorClusterID, slaveClusterID string
+	zeroStorClusterID string
 
 	// local master ctx used
 	ctx context.Context
@@ -154,11 +143,6 @@ type tlogStorageConfigWatcher struct {
 	zeroStorChan    <-chan ZeroStorClusterConfig
 	zeroStorCancel  func()
 	zeroStorCluster *ZeroStorClusterConfig
-
-	// slave storage cluster
-	slaveChan    <-chan StorageClusterConfig
-	slaveCancel  func()
-	slaveCluster *StorageClusterConfig
 }
 
 func (w *tlogStorageConfigWatcher) Watch(ctx context.Context) (<-chan TlogStorageConfig, error) {
@@ -174,8 +158,11 @@ func (w *tlogStorageConfigWatcher) Watch(ctx context.Context) (<-chan TlogStorag
 	select {
 	case <-ctx.Done():
 		cancelWatch()
-		return nil, fmt.Errorf(
-			"TlogStorageConfigWatcher (%s) failed: %v", w.vdiskID, ErrContextDone)
+		return nil, errors.Wrapf(
+			ErrContextDone,
+			"TlogStorageConfigWatcher (%s) failed: %v",
+			w.vdiskID,
+		)
 
 	case clusterInfo := <-clusterChan:
 		_, err = w.applyClusterInfo(clusterInfo)
@@ -239,22 +226,6 @@ func (w *tlogStorageConfigWatcher) Watch(ctx context.Context) (<-chan TlogStorag
 					continue
 				}
 				w.zeroStorCluster = &cluster
-
-			// update slave cluster
-			case cluster, open := <-w.slaveChan:
-				log.Debugf("TlogStorageConfigWatcher (%s) receives slave info", w.vdiskID)
-				if !open {
-					log.Debugf(
-						"close TlogStorageConfigWatcher (%s) because of closed slave chan", w.vdiskID)
-					return
-				}
-				if w.slaveCluster.Equal(cluster) {
-					log.Debugf(
-						"TlogStorageConfigWatcher (%s) received nop-update for slave cluster (%s)",
-						w.vdiskID, w.slaveClusterID)
-					continue
-				}
-				w.slaveCluster = &cluster
 			}
 
 			// send new output, as a cluster has been updated
@@ -270,15 +241,10 @@ func (w *tlogStorageConfigWatcher) Watch(ctx context.Context) (<-chan TlogStorag
 
 func (w *tlogStorageConfigWatcher) sendOutput() error {
 	if w.zeroStorCluster == nil {
-		return errors.New("0-stor storage is nil, while it is required")
+		return errors.Wrap(ErrNilStorage, "0-stor storage is nil")
 	}
 
 	cfg := TlogStorageConfig{ZeroStorCluster: w.zeroStorCluster.Clone()}
-	if w.slaveCluster != nil {
-		slaveCluster := w.slaveCluster.Clone()
-		cfg.SlaveStorageCluster = &slaveCluster
-	}
-
 	err := cfg.Validate()
 	if err != nil {
 		err = NewInvalidConfigError(err)
@@ -298,21 +264,7 @@ func (w *tlogStorageConfigWatcher) applyClusterInfo(info VdiskTlogConfig) (bool,
 	log.Debugf(
 		"TlogStorageConfigWatcher (%s) loading 0-stor storage cluster: %s",
 		w.vdiskID, info.ZeroStorClusterID)
-	zeroStorChanged, err := w.loadZeroStorChan(info.ZeroStorClusterID)
-	if err != nil {
-		return false, err
-	}
-
-	log.Debugf(
-		"TlogStorageConfigWatcher (%s) loading slave storage cluster: %s",
-		w.vdiskID, info.SlaveStorageClusterID)
-	slaveChanged, err := w.loadSlaveChan(info.SlaveStorageClusterID)
-	if err != nil {
-		return zeroStorChanged, nil
-	}
-
-	changed := zeroStorChanged || slaveChanged
-	return changed, nil
+	return w.loadZeroStorChan(info.ZeroStorClusterID)
 }
 
 func (w *tlogStorageConfigWatcher) loadZeroStorChan(clusterID string) (bool, error) {
@@ -357,56 +309,6 @@ func (w *tlogStorageConfigWatcher) loadZeroStorChan(clusterID string) (bool, err
 	w.zeroStorCluster = &config
 	w.zeroStorClusterID = clusterID
 
-	return true, nil
-}
-
-func (w *tlogStorageConfigWatcher) loadSlaveChan(clusterID string) (bool, error) {
-	if w.slaveClusterID == clusterID {
-		log.Debugf(
-			"TlogStorageConfigWatcher (%s) already watches slave cluster: %s",
-			w.vdiskID, clusterID)
-		return false, nil // nothing to do
-	}
-
-	if clusterID == "" {
-		log.Infof(
-			"deleting previously used slave cluster %s for vdisk %s",
-			clusterID, w.vdiskID)
-		// meaning we want to delete slave cluster
-		w.slaveClusterID = ""
-		w.slaveChan = nil
-		w.slaveCancel()
-		w.slaveCancel = nil
-		w.slaveCluster = nil // make sure storage is set to nil
-		return true, nil
-	}
-
-	// create watch
-	ctx, cancel := context.WithCancel(w.ctx)
-	ch, err := WatchStorageClusterConfig(ctx, w.source, clusterID)
-	if err != nil {
-		cancel()
-		log.Debugf("TlogStorageConfigWatcher failed, invalid SlaveStorageClusterConfig: %v", err)
-		return false, err
-	}
-
-	// read initial value
-	var config StorageClusterConfig
-	select {
-	case <-ctx.Done():
-		cancel()
-		return false, ErrContextDone
-	case config = <-ch:
-	}
-
-	// slave cluster has been switched successfully
-	w.slaveChan = ch
-	if w.slaveCancel != nil {
-		w.slaveCancel()
-	}
-	w.slaveCancel = cancel
-	w.slaveCluster = &config
-	w.slaveClusterID = clusterID
 	return true, nil
 }
 
@@ -595,7 +497,7 @@ func (w *nbdStorageConfigWatcher) Watch(ctx context.Context) (<-chan NBDStorageC
 
 func (w *nbdStorageConfigWatcher) sendOutput() error {
 	if w.primaryCluster == nil {
-		return errors.New("primary storage is nil, while it is required")
+		return errors.Wrap(ErrNilStorage, "primary storage is nil")
 	}
 
 	cfg := NBDStorageConfig{StorageCluster: w.primaryCluster.Clone()}

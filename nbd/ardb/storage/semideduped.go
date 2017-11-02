@@ -2,8 +2,8 @@ package storage
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/command"
@@ -108,34 +108,39 @@ func (sds *semiDedupedStorage) GetBlock(blockIndex int64) ([]byte, error) {
 
 // DeleteBlock implements BlockStorage.DeleteBlock
 func (sds *semiDedupedStorage) DeleteBlock(blockIndex int64) error {
-	tErr := sds.templateStorage.DeleteBlock(blockIndex)
+	errs := errors.NewErrorSlice()
+
+	errs.Add(sds.templateStorage.DeleteBlock(blockIndex))
 
 	// note that we don't unset the storage bit from the bitmask,
 	// as that would basically flip it back to use dedup storage for this index,
 	// which is not something we want,
 	// as from a user perspective that already has been overwritten
-	uErr := sds.userStorage.DeleteBlock(blockIndex)
+	errs.Add(sds.userStorage.DeleteBlock(blockIndex))
 
-	return combineErrorPair(tErr, uErr)
+	return errs.AsError()
 }
 
 // Flush implements BlockStorage.Flush
 func (sds *semiDedupedStorage) Flush() error {
-	tErr := sds.templateStorage.Flush()
-	uErr := sds.userStorage.Flush()
+	errs := errors.NewErrorSlice()
+
+	errs.Add(sds.templateStorage.Flush())
+	errs.Add(sds.userStorage.Flush())
 
 	// serialize bitmap
-	storageErr := combineErrorPair(tErr, uErr)
-	bitmapErr := sds.writeBitMap()
+	errs.Add(sds.writeBitMap())
 
-	return combineErrorPair(storageErr, bitmapErr)
+	return errs.AsError()
 }
 
 // Close implements BlockStorage.Close
 func (sds *semiDedupedStorage) Close() error {
-	tErr := sds.templateStorage.Close()
-	uErr := sds.userStorage.Close()
-	return combineErrorPair(tErr, uErr)
+	errs := errors.NewErrorSlice()
+
+	errs.Add(sds.templateStorage.Close())
+	errs.Add(sds.userStorage.Close())
+	return errs.AsError()
 }
 
 // readBitMap reads and decompresses (gzip) the bitmap from the ardb
@@ -157,18 +162,6 @@ func (sds *semiDedupedStorage) writeBitMap() error {
 
 	cmd := ardb.Command(command.Set, semiDedupBitMapKey(sds.vdiskID), bytes)
 	return ardb.Error(sds.cluster.Do(cmd))
-}
-
-func combineErrorPair(e1, e2 error) error {
-	if e1 == nil {
-		return e2
-	}
-
-	if e2 == nil {
-		return e1
-	}
-
-	return fmt.Errorf("%v; %v", e1, e2)
 }
 
 // semiDedupedVdiskExists checks if a semi deduped vdisks exists on a given cluster
@@ -223,7 +216,7 @@ func listSemiDedupedBlockIndices(vdiskID string, cluster ardb.StorageCluster) ([
 
 	// try to get nondeduped' indices
 	ndIndices, err := listNonDedupedBlockIndices(vdiskID, cluster)
-	if err == ardb.ErrNil {
+	if errors.Cause(err) == ardb.ErrNil {
 		// no nondeduped' (user) indices found,
 		// so early exit with a sorted slice containing only deduped' indices
 		sortInt64s(indices)
@@ -328,7 +321,7 @@ func copySemiDedupedDifferentServers(sourceID, targetID string, src, dst ardb.St
 		src.Config(), sourceID)
 	action := ardb.Command(command.Get, semiDedupBitMapKey(sourceID))
 	bytes, err := ardb.Bytes(src.Do(action))
-	if err == ardb.ErrNil {
+	if errors.Cause(err) == ardb.ErrNil {
 		log.Debugf("no semi-deduped bitmask found for source vdisk %q...", sourceID)
 		return false, nil
 	}

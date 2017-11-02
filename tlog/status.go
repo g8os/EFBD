@@ -1,8 +1,7 @@
 package tlog
 
 import (
-	"errors"
-	"fmt"
+	"github.com/zero-os/0-Disk/errors"
 )
 
 // BlockStatus is returned by the Tlog server
@@ -47,7 +46,7 @@ func (status BlockStatus) Error() error {
 	case BlockStatusRecvFailed:
 		return errors.New("didn't receive the tlog block")
 	default:
-		return fmt.Errorf("invalid connection with unknown status: %d", status)
+		return errors.Newf("invalid connection with unknown status: %d", status)
 	}
 }
 
@@ -110,7 +109,7 @@ func (status HandshakeStatus) Error() error {
 	case HandshakeStatusInvalidRequest:
 		return errors.New("client's HandshakeRequest could not be decoded")
 	default:
-		return fmt.Errorf("invalid connection with unknown status: %d", status)
+		return errors.Newf("invalid connection with unknown status: %d", status)
 	}
 }
 

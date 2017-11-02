@@ -2,13 +2,12 @@ package backup
 
 import (
 	"bytes"
-	"errors"
-	"fmt"
 	"io"
 
 	valid "github.com/asaskevich/govalidator"
 	"github.com/zeebo/bencode"
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/errors"
 )
 
 // LoadHeader loads (read=>[decrypt=>]decompress=>decode)
@@ -53,7 +52,7 @@ func LoadHeader(id string, src StorageDriver, key *CryptoKey, ct CompressionType
 		header.DedupedMap.Indices[0], header.DedupedMap.Hashes[0],
 		src, key, ct)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't read first deduped block of snapshot %s: %v", id, err)
+		return nil, errors.Wrapf(err, "couldn't read first deduped block of snapshot %s", id)
 	}
 	header.Metadata.BlockSize = int64(len(firstBlock))
 	return header, nil
@@ -114,20 +113,20 @@ func deserializeHeader(key *CryptoKey, ct CompressionType, src io.Reader, decode
 
 		err = Decrypt(key, src, bufA)
 		if err != nil {
-			return nil, fmt.Errorf("couldn't decrypt compressed header: %v", err)
+			return nil, errors.Wrap(err, "couldn't decrypt compressed header")
 		}
 
 		bufB = bytes.NewBuffer(nil)
 		err = decompressor.Decompress(bufA, bufB)
 		if err != nil {
-			return nil, fmt.Errorf("couldn't decompress header: %v", err)
+			return nil, errors.Wrap(err, "couldn't decompress header")
 		}
 	} else {
 		bufB = bytes.NewBuffer(nil)
 
 		err = decompressor.Decompress(src, bufB)
 		if err != nil {
-			return nil, fmt.Errorf("couldn't decompress header: %v", err)
+			return nil, errors.Wrap(err, "couldn't decompress header")
 		}
 	}
 
@@ -155,7 +154,7 @@ func decodeRawDedupedMap(src io.Reader) (*Header, error) {
 	var raw RawDedupedMap
 	err := bencode.NewDecoder(src).Decode(&raw)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't decode bencoded deduped map: %v", err)
+		return nil, errors.Wrap(err, "couldn't decode bencoded deduped map")
 	}
 	err = raw.Validate()
 	if err != nil {
@@ -202,18 +201,18 @@ func serializeHeader(header *Header, key *CryptoKey, ct CompressionType, dst io.
 		imbuffer := bytes.NewBuffer(nil)
 		err = compressor.Compress(hmbuffer, imbuffer)
 		if err != nil {
-			return fmt.Errorf("couldn't compress bencoded dedupd map: %v", err)
+			return errors.Wrap(err, "couldn't compress bencoded dedupd map")
 		}
 
 		err = Encrypt(key, imbuffer, dst)
 		if err != nil {
-			return fmt.Errorf("couldn't encrypt compressed dedupd map: %v", err)
+			return errors.Wrap(err, "couldn't encrypt compressed dedupd map")
 		}
 	} else {
 		// only compress
 		err = compressor.Compress(hmbuffer, dst)
 		if err != nil {
-			return fmt.Errorf("couldn't compress bencoded dedupd map: %v", err)
+			return errors.Wrap(err, "couldn't compress bencoded dedupd map")
 		}
 	}
 
@@ -224,7 +223,7 @@ func serializeHeader(header *Header, key *CryptoKey, ct CompressionType, dst io.
 func encodeHeader(header *Header, dst io.Writer) error {
 	err := bencode.NewEncoder(dst).Encode(header)
 	if err != nil {
-		return fmt.Errorf("couldn't bencode encode header: %v", err)
+		return errors.Wrap(err, "couldn't bencode encode header")
 	}
 	return nil
 }
@@ -248,6 +247,10 @@ func (header *Header) Validate() error {
 		return err
 	}
 
+	if err := header.Metadata.Validate(); err != nil {
+		return err
+	}
+
 	return header.DedupedMap.Validate()
 }
 
@@ -263,6 +266,22 @@ type Metadata struct {
 	// optional: information about the source
 	// used to created the backup from.
 	Source Source `bencode:"src" valid:"optional"`
+	// optional: version of the 0-disk toolchain
+	Version string `bencode:"v" valid:"optional"`
+}
+
+// Validate this Metadata,
+// returning an error if it isn't valid.
+func (m *Metadata) Validate() error {
+	if _, err := valid.ValidateStruct(m); err != nil {
+		return err
+	}
+
+	if _, err := zerodisk.VersionFromString(m.Version); err != nil {
+		return errors.Wrapf(err, "invalid version number '%s'", m.Version)
+	}
+
+	return nil
 }
 
 // Source contains some optional metadata for a snapshot,

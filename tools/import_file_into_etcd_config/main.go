@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/coreos/etcd/clientv3"
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/errors"
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -72,13 +72,13 @@ func etcdKey(id string, keyType config.KeyType) string {
 func readFileConfig() (*config.FileFormatCompleteConfig, error) {
 	bytes, err := ioutil.ReadFile(cfg.Path)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't real file config %s: %v", cfg.Path, err)
+		return nil, errors.Wrapf(err, "couldn't real file config %s", cfg.Path)
 	}
 
 	var fileConfig config.FileFormatCompleteConfig
 	err = yaml.Unmarshal(bytes, &fileConfig)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't parse file config %s: %v", cfg.Path, err)
+		return nil, errors.Wrapf(err, "couldn't parse file config %s", cfg.Path)
 	}
 
 	return &fileConfig, nil
@@ -106,8 +106,8 @@ type importer struct {
 func (im *importer) ImportConfig(key string, value interface{}) {
 	rawValue, err := yaml.Marshal(value)
 	if err != nil {
-		consumeError(fmt.Errorf(
-			"couldn't import config %s as value is invalid: %v", key, err))
+		consumeError(errors.Wrapf(err,
+			"couldn't import config %s as value is invalid", key))
 		return
 	}
 
@@ -119,7 +119,7 @@ func (im *importer) ImportConfig(key string, value interface{}) {
 				return
 			}
 			if !askPermission(key, resp.Kvs[0].Value, rawValue) {
-				consumeError(fmt.Errorf("user stopped writing config %s", key))
+				consumeError(errors.Wrap(err, "user stopped writing config"))
 				return
 			}
 		}

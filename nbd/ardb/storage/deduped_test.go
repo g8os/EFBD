@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/command"
@@ -19,20 +20,24 @@ import (
 
 // simplified algorithm based on `zeroctl/cmd/copyvdisk/vdisk.go`
 func copyTestMetaData(t *testing.T, vdiskIDA, vdiskIDB string, clusterA, clusterB ardb.StorageCluster) {
-	data, err := ardb.Int64ToBytesMapping(
-		clusterA.Do(ardb.Command(command.HashGetAll, lba.StorageKey(vdiskIDA))))
-	if err != nil {
-		debug.PrintStack()
-		t.Fatal(err)
-	}
-
-	cmds := []ardb.StorageAction{ardb.Command(command.Delete, lba.StorageKey(vdiskIDB))}
-	for index, hash := range data {
-		cmds = append(cmds,
-			ardb.Command(command.HashSet, lba.StorageKey(vdiskIDB), index, hash))
-	}
-
-	_, err = clusterB.Do(ardb.Commands(cmds...))
+	const (
+		vtype     = config.VdiskTypeBoot
+		blockSize = int64(4096)
+	)
+	err := CopyVdisk(
+		CopyVdiskConfig{
+			VdiskID:   vdiskIDA,
+			Type:      vtype,
+			BlockSize: blockSize,
+		},
+		CopyVdiskConfig{
+			VdiskID:   vdiskIDB,
+			Type:      vtype,
+			BlockSize: blockSize,
+		},
+		clusterA,
+		clusterB,
+	)
 	if err != nil {
 		debug.PrintStack()
 		t.Fatal(err)
@@ -570,7 +575,7 @@ func TestCopyDedupedDifferentServerCount(t *testing.T) {
 	sourceCluster := redisstub.NewCluster(4, true)
 	defer sourceCluster.Close()
 
-	sourceSectorStorage := lba.ARDBSectorStorage("source", sourceCluster)
+	sourceSectorStorage := newLBASectorStorage("source", sourceCluster)
 
 	// create random source sectors
 	var indices []int64
@@ -616,7 +621,7 @@ func testCopyDedupedDifferentServerCount(assert *assert.Assertions, indices []in
 
 	// now validate all sectors are correctly copied
 
-	targetSectorStorage := lba.ARDBSectorStorage(targetID, targetCluster)
+	targetSectorStorage := newLBASectorStorage(targetID, targetCluster)
 	for _, index := range indices {
 		sourceSector, err := sourceSectorStorage.GetSector(index)
 		if !assert.NoError(err) {
@@ -634,8 +639,5 @@ func testCopyDedupedDifferentServerCount(assert *assert.Assertions, indices []in
 }
 
 func init() {
-	// ledisdb uses other names, for whatever reason
-	command.HashScan.Name = "XHSCAN"
-
 	log.SetLevel(log.DebugLevel)
 }

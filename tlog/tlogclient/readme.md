@@ -78,7 +78,7 @@ func main() {
 		for {
 			r := <-respChan
 			if r.Err != nil {
-				if r.Err == io.EOF {
+				if errors.Cause(r.Err) == io.EOF {
 					continue
 				}
 				log.Fatalf("resp error:%v", r.Err)

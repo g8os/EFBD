@@ -1,14 +1,13 @@
 package backup
 
 import (
-	"errors"
 	"fmt"
 	"regexp"
 
 	"github.com/spf13/cobra"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb/backup"
-
 	cmdconfig "github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
 
@@ -35,7 +34,7 @@ func listSnapshots(cmd *cobra.Command, args []string) error {
 	if listSnapshotsCmdCfg.NameRegexp != "" {
 		regexp, err := regexp.Compile(listSnapshotsCmdCfg.NameRegexp)
 		if err != nil {
-			return fmt.Errorf("invalid regexp given for `--name`: %v", err)
+			return errors.Wrap(err, "invalid regexp given for `--name`")
 		}
 		pred = regexp.MatchString
 	}
@@ -50,7 +49,7 @@ func listSnapshots(cmd *cobra.Command, args []string) error {
 	}
 	if len(snapshotIDs) == 0 {
 		if pred != nil {
-			return fmt.Errorf(
+			return errors.Newf(
 				"no snapshots could be find at %s whose identifier match `%s`",
 				vdiskCmdCfg.BackupStorageConfig.String(), listSnapshotsCmdCfg.NameRegexp)
 		}

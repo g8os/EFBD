@@ -182,26 +182,9 @@ func TestReadTlogStorageConfig(t *testing.T) {
 		assert.Equal(originalZeroStorCfg, tlogStorCfg.ZeroStorCluster)
 	}
 
-	// add nil slave cluster
-	source.SetSlaveStorageCluster("a", "slaveCluster", nil)
-
-	_, err = ReadTlogStorageConfig(source, "a")
-	assert.Error(err, "should trigger error due to nil slave cluster")
-	testInvalidKey(Key{ID: "slaveCluster", Type: KeyClusterStorage})
-
-	// add slave cluster
-	slaveClusterCfg := StorageClusterConfig{
-		Servers: []StorageServerConfig{
-			StorageServerConfig{Address: "localhost:3000"},
-			StorageServerConfig{Address: "localhost:3002", Database: 42},
-		},
-	}
-	source.SetSlaveStorageCluster("a", "slaveCluster", &slaveClusterCfg)
-
 	tlogStorCfg, err = ReadTlogStorageConfig(source, "a")
 	if assert.NoError(err, "should be fine as both the vdisk and storages are properly configured") {
 		assert.Equal(originalZeroStorCfg, tlogStorCfg.ZeroStorCluster)
-		assert.Equal(slaveClusterCfg, *tlogStorCfg.SlaveStorageCluster)
 	}
 }
 
@@ -512,7 +495,6 @@ func TestWatchTlogStorageConfig_FailAfterSuccess(t *testing.T) {
 	assert.NoError(err, "should be valid")
 
 	output := <-ch
-	assert.Nil(output.SlaveStorageCluster)
 	if assert.Len(output.ZeroStorCluster.DataServers, 2) {
 		assert.Equal(
 			ServerConfig{"1.1.1.1:11"},
@@ -559,7 +541,6 @@ func TestWatchTlogStorageConfig_FailAfterSuccess(t *testing.T) {
 
 	// trigger reload (even though it was broken before)
 	output = <-ch
-	assert.Nil(output.SlaveStorageCluster)
 	if assert.Len(output.ZeroStorCluster.DataServers, 2) {
 		assert.Equal(
 			ServerConfig{"3.3.3.3:33"},
@@ -591,8 +572,6 @@ func TestWatchTlogStorageConfig_ChangeClusterReference(t *testing.T) {
 		ParityShards: 1,
 	}
 
-	var slaveStoragecluster *StorageClusterConfig
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -622,12 +601,6 @@ func TestWatchTlogStorageConfig_ChangeClusterReference(t *testing.T) {
 	testValue := func() {
 		select {
 		case output := <-ch:
-			if output.SlaveStorageCluster == nil {
-				assert.Nil(slaveStoragecluster)
-			} else if assert.NotNil(slaveStoragecluster) {
-				assert.True(output.SlaveStorageCluster.Equal(*slaveStoragecluster),
-					"unexpected slave cluster: %v", output.SlaveStorageCluster)
-			}
 			assert.True(output.ZeroStorCluster.Equal(zeroStorCluster),
 				"unexpected zeroStor cluster: %v", output.ZeroStorCluster)
 		case invalidKey := <-invalidKeyCh:
@@ -644,16 +617,6 @@ func TestWatchTlogStorageConfig_ChangeClusterReference(t *testing.T) {
 	source.SetZeroStorCluster("foocluster", &zeroStorCluster)
 	testValue()
 
-	// now let's set template cluster
-	slaveStoragecluster = &StorageClusterConfig{
-		Servers: []StorageServerConfig{
-			StorageServerConfig{Address: "231.201.201.200:2000"},
-			StorageServerConfig{Address: "231.201.201.200:2020"},
-		},
-	}
-	source.SetSlaveStorageCluster("a", "slave", slaveStoragecluster)
-	testValue()
-
 	// do another stupid illegal action
 	source.SetTlogZeroStorCluster("a", "zeroStorCluster", nil)
 	// trigger reload
@@ -662,10 +625,6 @@ func TestWatchTlogStorageConfig_ChangeClusterReference(t *testing.T) {
 	zeroStorCluster.DataServers[0].Address = "3.3.3.3:33"
 	source.SetTlogZeroStorCluster("a", "zeroStorCluster", &zeroStorCluster)
 	testValue() // updating a storage cluster should be ok
-
-	slaveStoragecluster = nil
-	source.SetSlaveStorageCluster("a", "", slaveStoragecluster)
-	testValue() // and slave storage cluster can even be dereferenced
 
 	// when updating a cluster, which makes the cluster not valid for the used vdisk,
 	// it should not apply the update either

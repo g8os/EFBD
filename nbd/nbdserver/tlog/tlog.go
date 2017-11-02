@@ -2,13 +2,12 @@ package tlog
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"math"
 	"sync"
 	"time"
 
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
@@ -30,7 +29,7 @@ func Storage(ctx context.Context, vdiskID string, configSource config.Source, bl
 
 	metadata, err := storage.LoadTlogMetadata(vdiskID, cluster)
 	if err != nil {
-		return nil, errors.New("tlogStorage requires a valid metadata ARDB provider: " + err.Error())
+		return nil, errors.Wrap(err, "tlogStorage requires a valid metadata ARDB provider")
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -50,7 +49,7 @@ func Storage(ctx context.Context, vdiskID string, configSource config.Source, bl
 	tlogClusterConfig, err := tlogStorage.tlogRPCReloader(ctx, vdiskID, configSource)
 	if err != nil {
 		cancel()
-		return nil, errors.New("tlogstorage couldn't retrieve data from config: " + err.Error())
+		return nil, errors.Wrap(err, "tlogstorage couldn't retrieve data from config")
 	}
 
 	if client == nil {
@@ -58,7 +57,7 @@ func Storage(ctx context.Context, vdiskID string, configSource config.Source, bl
 		client, err = tlogclient.New(tlogClusterConfig.Servers, vdiskID)
 		if err != nil {
 			cancel()
-			return nil, errors.New("tlogStorage requires valid tlogclient: " + err.Error())
+			return nil, errors.Wrap(err, "tlogStorage requires valid tlogclient")
 		}
 		log.Debugf("tlogclient for vdisk `%v` created", vdiskID)
 
@@ -167,9 +166,9 @@ func (tls *tlogStorage) set(blockIndex int64, content []byte) error {
 	// even though it is stored in the replay server
 	err := tls.cache.Add(sequence, blockIndex, content)
 	if err != nil {
-		return fmt.Errorf(
-			"tlogStorage couldn't set content at block %d (seq: %d): %s",
-			blockIndex, sequence, err)
+		return errors.Wrapf(err,
+			"tlogStorage couldn't set content at block %d (seq: %d)",
+			blockIndex, sequence)
 	}
 
 	if tls.tlogReady {
@@ -405,9 +404,9 @@ func (tls *tlogStorage) spawnBackgroundGoroutine(parentCtx context.Context) erro
 			select {
 			case res := <-recvCh:
 				if res.Err != nil {
-					panic(fmt.Errorf(
-						"tlog server resulted in error for vdisk %s: %s",
-						tls.vdiskID, res.Err))
+					panic(errors.Wrapf(res.Err,
+						"tlog server resulted in error for vdisk %s",
+						tls.vdiskID))
 				}
 				if res.Resp == nil {
 					log.Info(
@@ -435,7 +434,7 @@ func (tls *tlogStorage) spawnBackgroundGoroutine(parentCtx context.Context) erro
 				case tlog.BlockStatusReady:
 					log.Info("tlog connection is ready")
 				default:
-					panic(fmt.Errorf(
+					panic(errors.Newf(
 						"tlog server had fatal failure for vdisk %s: %s",
 						tls.vdiskID, res.Resp.Status))
 				}
@@ -465,14 +464,13 @@ func (tls *tlogStorage) transactionSender(ctx context.Context) {
 				transaction.Content,
 			)
 			if err != nil {
-				if err == tlogclient.ErrClientClosed {
+				if errors.Cause(err) == tlogclient.ErrClientClosed {
 					return
 				}
-				panic(fmt.Errorf(
-					"tlogStorage couldn't send block %d (seq: %d): %s",
+				panic(errors.Wrapf(err,
+					"tlogStorage couldn't send block %d (seq: %d)",
 					transaction.Index,
 					transaction.Sequence,
-					err,
 				))
 			}
 
@@ -492,9 +490,9 @@ func (tls *tlogStorage) flusher(ctx context.Context) {
 		case seqs := <-tls.toFlushCh:
 			err := tls.flushCachedContent(seqs)
 			if err != nil {
-				panic(fmt.Errorf(
+				panic(errors.Wrapf(err,
 					"failed to write cached content into storage for vdisk %s: %s",
-					tls.vdiskID, err))
+					tls.vdiskID))
 			}
 
 		case <-ctx.Done():
@@ -593,7 +591,7 @@ func (tls *tlogStorage) tlogRPCReloader(ctx context.Context, vdiskID string, sou
 // See: https://github.com/zero-os/0-Disk/issues/357
 /*func (tls *tlogStorage) switchToArdbSlave() error {
 	if tls.configPath == "" {
-		return fmt.Errorf("no config found")
+		return errors.New("no config found")
 	}
 
 	// get config file permission
@@ -618,11 +616,11 @@ func (tls *tlogStorage) tlogRPCReloader(ctx context.Context, vdiskID string, sou
 
 	vdiskConf, exist := conf.Vdisks[tls.vdiskID]
 	if !exist {
-		return fmt.Errorf("no config found for vdisk: %v", tls.vdiskID)
+		return errors.Newf("no config found for vdisk: %v", tls.vdiskID)
 	}
 
 	if vdiskConf.SlaveStorageCluster == "" {
-		return fmt.Errorf("vdisk %v doesn't have ardb slave", tls.vdiskID)
+		return errors.Newf("vdisk %v doesn't have ardb slave", tls.vdiskID)
 	}
 
 	// switch to slave (still in config only)
@@ -842,7 +840,7 @@ func (sq *inMemorySequenceCache) Add(sequenceIndex uint64, blockIndex int64, dat
 		sq.size++
 	}
 	if err := dh.Add(sequenceIndex, data); err != nil {
-		if err == errOutdated {
+		if errors.Cause(err) == errOutdated {
 			if log.GetLevel() == log.DebugLevel {
 				latest, _ := dh.LatestSequence()
 				log.Debugf(

@@ -2,9 +2,9 @@ package player
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/tlog/schema"
@@ -19,7 +19,7 @@ type Player struct {
 	vdiskID      string
 	storCli      *stor.Client
 	blockStorage storage.BlockStorage
-	ardbPool     *ardb.Pool
+	closer       Closer
 	ctx          context.Context
 }
 
@@ -28,9 +28,13 @@ type Player struct {
 // This callback is going to be executed on each block replay.
 type OnReplayCb func(seq uint64) error
 
+// Closer defines an interface of an object that can be closed
+type Closer interface {
+	Close() error
+}
+
 // NewPlayer creates new tlog player
 func NewPlayer(ctx context.Context, source config.Source, vdiskID, privKey string) (*Player, error) {
-
 	ardbPool := ardb.NewPool(nil)
 	blockStorage, err := storage.BlockStorageFromConfigSource(vdiskID, source, ardbPool)
 	if err != nil {
@@ -43,8 +47,7 @@ func NewPlayer(ctx context.Context, source config.Source, vdiskID, privKey strin
 
 // NewPlayerWithStorage create new tlog player
 // with given BlockStorage
-func NewPlayerWithStorage(ctx context.Context, source config.Source,
-	ardbPool *ardb.Pool, storage storage.BlockStorage,
+func NewPlayerWithStorage(ctx context.Context, source config.Source, closer Closer, storage storage.BlockStorage,
 	vdiskID, privKey string) (*Player, error) {
 
 	storConf, err := stor.ConfigFromConfigSource(source, vdiskID, privKey)
@@ -56,9 +59,13 @@ func NewPlayerWithStorage(ctx context.Context, source config.Source,
 		return nil, err
 	}
 
+	if storage == nil {
+		return nil, errors.New("Player requires non-nil BlockStorage")
+	}
+
 	return &Player{
 		blockStorage: storage,
-		ardbPool:     ardbPool,
+		closer:       closer,
 		ctx:          ctx,
 		vdiskID:      vdiskID,
 		storCli:      storCli,
@@ -69,8 +76,8 @@ func NewPlayerWithStorage(ctx context.Context, source config.Source,
 // Close releases all its resources
 func (p *Player) Close() error {
 	p.storCli.Close()
-	if p.ardbPool != nil {
-		p.ardbPool.Close()
+	if p.closer != nil {
+		p.closer.Close()
 	}
 
 	return p.blockStorage.Close()
@@ -140,14 +147,14 @@ func (p *Player) ReplayAggregationWithCallback(agg *schema.TlogAggregation, lmt 
 		case schema.OpSet:
 			data, err = block.Data()
 			if err != nil {
-				return seq - 1, fmt.Errorf("failed to get data block %v, err=%v", index, err)
+				return seq - 1, errors.Wrapf(err, "failed to get data block %v", index)
 			}
 			if err = p.blockStorage.SetBlock(index, data); err != nil {
-				return seq - 1, fmt.Errorf("failed to set block %v, err=%v", index, err)
+				return seq - 1, errors.Wrapf(err, "failed to set block %v", index)
 			}
 		case schema.OpDelete:
 			if err = p.blockStorage.DeleteBlock(index); err != nil {
-				return seq - 1, fmt.Errorf("failed to delete block %v, err=%v", index, err)
+				return seq - 1, errors.Wrapf(err, "failed to delete block %v", index)
 			}
 		}
 

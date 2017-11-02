@@ -1,12 +1,11 @@
 package backup
 
 import (
-	"errors"
-	"fmt"
 	"os"
 	"strings"
 
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/nbd/ardb/backup"
 )
 
@@ -86,7 +85,7 @@ func newStorageConfig(data string) (cfg storageConfig, err error) {
 	}
 
 	// invalid data given, cannot create a config based on it
-	err = fmt.Errorf("%v is an invalid storage config resource string", data)
+	err = errors.Newf("%v is an invalid storage config resource string", data)
 	return
 }
 

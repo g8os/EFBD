@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"crypto/rand"
-	"errors"
 	"io"
 	"testing"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/redisstub"
@@ -484,26 +484,26 @@ func TestMapErrorToBroadcastStatus(t *testing.T) {
 	assert := assert.New(t)
 
 	// unknown errors return true
-	status := mapErrorToBroadcastStatus(errors.New("foo"))
+	status := MapErrorToBroadcastStatus(errors.New("foo"))
 	assert.Equal(log.StatusUnknownError, status)
 
 	// all possible sucesfull map scenarios:
 
 	// map EOF errors
-	status = mapErrorToBroadcastStatus(io.EOF)
+	status = MapErrorToBroadcastStatus(io.EOF)
 	assert.Equal(log.StatusServerDisconnect, status)
 
 	// map net.Errors
-	status = mapErrorToBroadcastStatus(stubNetError{false, false})
+	status = MapErrorToBroadcastStatus(stubNetError{false, false})
 	assert.Equal(log.StatusUnknownError, status)
 
-	status = mapErrorToBroadcastStatus(stubNetError{false, true})
+	status = MapErrorToBroadcastStatus(stubNetError{false, true})
 	assert.Equal(log.StatusServerTempError, status)
 
-	status = mapErrorToBroadcastStatus(stubNetError{true, false})
+	status = MapErrorToBroadcastStatus(stubNetError{true, false})
 	assert.Equal(log.StatusServerTimeout, status)
 
-	status = mapErrorToBroadcastStatus(stubNetError{true, true})
+	status = MapErrorToBroadcastStatus(stubNetError{true, true})
 	assert.Equal(log.StatusServerTimeout, status)
 }
 

@@ -2,10 +2,10 @@ package config
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 )
 
@@ -186,14 +186,6 @@ func (s *StubSource) SetSlaveStorageCluster(vdiskID, clusterID string, cfg *Stor
 
 	vdiskCfg := s.getVdiskCfg(vdiskID)
 
-	if vdiskCfg.Tlog == nil {
-		vdiskCfg.Tlog = &VdiskTlogConfig{
-			SlaveStorageClusterID: clusterID,
-		}
-	} else {
-		vdiskCfg.Tlog.SlaveStorageClusterID = clusterID
-	}
-
 	if vdiskCfg.NBD == nil {
 		vdiskCfg.NBD = &VdiskNBDConfig{
 			SlaveStorageClusterID: clusterID,
@@ -273,7 +265,7 @@ func (s *StubSource) triggerReload() {
 			// as we want to be able to mark any invalid key
 			// for those other error cases (e.g. invalid key, invalid id, ...)
 			bytes, err := s.Get(key)
-			if err == ErrSourceUnavailable {
+			if errors.Cause(err) == ErrSourceUnavailable {
 				log.Errorf(
 					"getting key %v failed, due to the source being unavailable",
 					key)

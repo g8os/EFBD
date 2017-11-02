@@ -1,11 +1,11 @@
 package backup
 
 import (
-	"errors"
 	"io"
 	"sync"
 
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/errors"
 )
 
 var (
@@ -64,25 +64,25 @@ func ListSnapshots(storagDriverConfig interface{}, pred func(id string) bool) (i
 		return nil, err
 	}
 
-	snapshotIDs, err := driver.GetHeaders()
+	ids, err = driver.GetHeaders()
 	if err != nil {
 		return nil, err
 	}
 	if pred == nil {
-		return snapshotIDs, nil
+		return ids, nil
 	}
 
 	filterPos := 0
 	var ok bool
-	for _, snapshotID := range snapshotIDs {
-		ok = pred(snapshotID)
+	for _, id := range ids {
+		ok = pred(id)
 		if ok {
-			snapshotIDs[filterPos] = snapshotID
+			ids[filterPos] = id
 			filterPos++
 		}
 	}
 
-	return snapshotIDs[:filterPos], nil
+	return ids[:filterPos], nil
 }
 
 func hashAsDirAndFile(hash zerodisk.Hash) (string, string, bool) {

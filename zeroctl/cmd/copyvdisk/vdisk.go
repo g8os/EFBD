@@ -2,15 +2,14 @@ package copyvdisk
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"runtime"
 
-	"github.com/zero-os/0-Disk/nbd/ardb"
-
 	"github.com/spf13/cobra"
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
+	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/tlog/copy"
 	tlogserver "github.com/zero-os/0-Disk/tlog/tlogserver/server"
@@ -152,22 +151,22 @@ func checkVdiskExists(id string, t config.VdiskType, cluster ardb.StorageCluster
 	// check if vdisk exists
 	exists, err := storage.VdiskExists(id, t, cluster)
 	if err != nil {
-		return fmt.Errorf("couldn't check if vdisk %s already exists: %v", id, err)
+		return errors.Wrapf(err, "couldn't check if vdisk %s already exists", id)
 	}
 	if !exists {
 		return nil // vdisk doesn't exist, so nothing to do
 	}
 	if !vdiskCmdCfg.Force {
-		return fmt.Errorf("cannot copy to vdisk %s as it already exists", id)
+		return errors.Newf("cannot copy to vdisk %s as it already exists", id)
 	}
 
 	// delete vdisk, as it exists and `--force` is specified
 	deleted, err := storage.DeleteVdisk(id, t, cluster)
 	if err != nil {
-		return fmt.Errorf("couldn't delete vdisk %s: %v", id, err)
+		return errors.Wrapf(err, "couldn't delete vdisk %s", id)
 	}
 	if !deleted {
-		return fmt.Errorf("couldn't delete vdisk %s for an unknown reason", id)
+		return errors.Newf("couldn't delete vdisk %s for an unknown reason", id)
 	}
 
 	// delete 0-Stor (meta)data for this vdisk

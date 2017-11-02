@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-stack/stack"
 	log "github.com/inconshreveable/log15"
+	"github.com/zero-os/0-Disk/errors"
 )
 
 // Handler interface defines where and how log records are written.
@@ -28,7 +29,7 @@ func StderrHandler() Handler {
 func FileHandler(path string) (Handler, error) {
 	handler, err := log.FileHandler(path, log.LogfmtFormat())
 	if err != nil {
-		return nil, fmt.Errorf("couldn't create FileHandler: %s", err.Error())
+		return nil, errors.Wrap(err, "couldn't create FileHandler")
 	}
 
 	return handler, nil
@@ -39,7 +40,7 @@ func FileHandler(path string) (Handler, error) {
 func SyslogHandler(tag string) (Handler, error) {
 	handler, err := log.SyslogHandler(syslog.LOG_KERN, tag, log.LogfmtFormat())
 	if err != nil {
-		return nil, fmt.Errorf("couldn't create SyslogHandler: %s", err.Error())
+		return nil, errors.Wrap(err, "couldn't create SyslogHandler")
 	}
 
 	return handler, nil
@@ -73,5 +74,5 @@ func newLoggerHandler(level Level, extraStackDepth int, handlers []Handler) log.
 	}
 
 	return log.LvlFilterHandler(log.Lvl(level),
-	callerFileHandler(8+extraStackDepth, logHandler))
+		callerFileHandler(8+extraStackDepth, logHandler))
 }
