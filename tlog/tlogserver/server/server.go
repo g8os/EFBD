@@ -76,6 +76,7 @@ func (s *Server) Listen(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			return
 		default:
 			conn, err := s.listener.Accept()
 			if err != nil {

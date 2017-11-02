@@ -18,6 +18,10 @@ const (
 	readTimeout          = 2 * time.Second
 	resendTimeoutDur     = 2 * time.Second // duration to wait before re-send the tlog.
 	failedFlushSleepTime = 10 * time.Second
+
+	// Duration to wait before trying to
+	// reconnect to a previously failed server again.
+	retryReconnectAfter = 2 * time.Minute
 )
 
 var (
@@ -30,6 +34,10 @@ var (
 
 	// ErrFlushFailed returned when client failed to do flush
 	ErrFlushFailed = errors.New("tlogserver failed to flush")
+
+	// ErrServersExhausted represents an error where all servers have been exhausted
+	// trying to (re)connect to them
+	ErrServersExhausted = errors.New("all servers have been exhausted")
 )
 
 // Response defines a response from tlog server
@@ -47,10 +55,16 @@ type Result struct {
 	Err  error
 }
 
+type serverContext struct {
+	address   string
+	failed    bool
+	lastTried time.Time
+}
+
 // Client defines a Tlog Client.
 // This client is not thread/goroutine safe.
 type Client struct {
-	servers         []string
+	servers         []serverContext
 	vdiskID         string
 	conn            *net.TCPConn
 	bw              writerFlusher
@@ -71,22 +85,29 @@ type Client struct {
 	mux                  sync.Mutex
 	stopped              bool
 	curServerFailedFlush bool
+
+	failedStateMux sync.Mutex
+	failedState    bool
+	retryCh        chan struct{}
+	retryErrCh     chan error
 }
 
 // New creates a new tlog client for a vdisk with 'addrs' is the tlogserver addresses.
 // Client is going to use first address and then move to next addresses if the first address
 // is failed.
 // The client is not goroutine safe.
-func New(servers []string, vdiskID string) (*Client, error) {
-	client, err := newClient(servers, vdiskID)
+func New(serverAddresses []string, vdiskID string) (*Client, error) {
+	client, err := newClient(serverAddresses, vdiskID)
 	if err != nil {
 		return nil, err
 	}
 	go client.run(client.ctx)
 	return client, nil
 }
-func newClient(servers []string, vdiskID string) (*Client, error) {
+
+func newClient(serverAddresses []string, vdiskID string) (*Client, error) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
+	servers := initServer(serverAddresses)
 	client := &Client{
 		servers:           servers,
 		vdiskID:           vdiskID,
@@ -108,14 +129,35 @@ func newClient(servers []string, vdiskID string) (*Client, error) {
 		// - one for (hopefully) optimization, so we can read from network
 		//	 before needed and then put it to this channel.
 		respCh: make(chan *Result, 3),
+
+		// channel for retry signal
+		retryCh:    make(chan struct{}),
+		retryErrCh: make(chan error),
 	}
 
 	return client, client.connect()
 }
 
+// Inits a server slice with provided server addresses
+func initServer(addresses []string) []serverContext {
+	servers := make([]serverContext, len(addresses))
+	for i := 0; i < len(addresses); i++ {
+		servers[i].address = addresses[i]
+	}
+
+	return servers
+}
+
 func (c *Client) run(ctx context.Context) {
 	go c.resender()
 	for !c.isStopped() {
+		// if failed state, wait till retry signal
+		if c.isFailedState() {
+			log.Debug("Waiting for signal before reconnecting")
+			<-c.retryCh
+			log.Debug("Received reconnecting signal")
+		}
+
 		curCtx, cancelFunc := context.WithCancel(ctx)
 		// run receiver and sender
 		sendDoneCh := c.runSender(curCtx, cancelFunc)
@@ -126,19 +168,20 @@ func (c *Client) run(ctx context.Context) {
 		<-recvDoneCh
 
 		// reconnect
-		reconnected := false
-		for !reconnected && !c.isStopped() {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				err := c.reconnect(time.Now())
-				if err != nil {
-					log.Errorf("reconnect failed : %v", err)
-				} else {
-					reconnected = true
-				}
+		err := c.reconnect()
+		if err != nil {
+			log.Errorf("reconnect failed : %v", err)
+			cancelFunc()
+
+			if c.isFailedState() {
+				c.retryErrCh <- err
 			}
+			c.setFailedState(true)
+		} else {
+			if c.isFailedState() {
+				c.retryErrCh <- nil
+			}
+			c.setFailedState(false)
 		}
 	}
 }
@@ -262,6 +305,7 @@ func (c *Client) runReceiver(ctx context.Context, cancelFunc context.CancelFunc)
 
 // ChangeServerAddresses change servers to the given servers
 func (c *Client) ChangeServerAddresses(servers []string) {
+
 	c.mux.Lock()
 	defer c.mux.Unlock()
 
@@ -274,19 +318,18 @@ func (c *Client) ChangeServerAddresses(servers []string) {
 	// new addresses
 	curExist := func() bool {
 		for _, server := range servers {
-			if c.servers[0] == server {
+			if c.servers[0].address == server {
 				return true
 			}
 		}
 		return false
 	}()
-	c.servers = servers
+	c.servers = initServer(servers)
 
 	if !curExist {
 		log.Infof("tlogclient vdisk '%v' current server is not in new address, close it", c.vdiskID)
 		c.conn.Close()
 	}
-
 }
 
 // shift server address move current active client to the back
@@ -294,7 +337,6 @@ func (c *Client) ChangeServerAddresses(servers []string) {
 func (c *Client) shiftServer() {
 	c.mux.Lock()
 	defer c.mux.Unlock()
-
 	c.servers = append(c.servers[1:], c.servers[0])
 }
 
@@ -302,7 +344,7 @@ func (c *Client) curServerAddress() string {
 	c.mux.Lock()
 	defer c.mux.Unlock()
 
-	return c.servers[0]
+	return c.servers[0].address
 }
 
 func (c *Client) setCurServerFailedFlushStatus(status bool) {
@@ -320,23 +362,37 @@ func (c *Client) getCurServerFailedFlushStatus() bool {
 }
 
 // reconnect to server
-func (c *Client) reconnect(closedTime time.Time) error {
+// if timeout is 0 it will take the default timeout
+func (c *Client) reconnect() error {
 	var err error
 
-	log.Info("tlogclient reconnect")
+	log.Info("tlogclient reconnecting to tlog server...")
 
 	for {
-		// try other server
-		c.shiftServer()
+		log.Debugf("trying to reconnect to server %s...", c.servers[0].address)
 
 		if err = c.connect(); err == nil {
 			// if reconnect success, sent all unflushed blocks
 			// because we don't know what happens in servers.
 			// it might crashed
 			c.blockBuffer.SetResendAll()
+			log.Debugf("succeeded to reconnect to %v", c.servers[0].address)
 			return nil
 		}
 
+		// failed to reconnect
+		log.Debugf("failed to reconnect to %v: %s", c.servers[0].address, err)
+		c.servers[0].failed = true
+		c.servers[0].lastTried = time.Now()
+
+		// try another server
+		c.shiftServer()
+
+		// if current server has already failed we have exhausted all servers
+		// if it's been too long it can be tried again
+		if c.servers[0].failed && time.Now().Sub(c.servers[0].lastTried) < retryReconnectAfter {
+			return ErrServersExhausted
+		}
 	}
 }
 
@@ -463,6 +519,8 @@ func (c *Client) createConn() error {
 		return err
 	}
 
+	c.mux.Lock()
+	defer c.mux.Unlock()
 	conn := genericConn.(*net.TCPConn)
 
 	conn.SetKeepAlive(true)
@@ -474,6 +532,11 @@ func (c *Client) createConn() error {
 
 // ForceFlushAtSeq force flush at given sequence
 func (c *Client) ForceFlushAtSeq(seq uint64) error {
+	err := c.retryIfFailedState()
+	if err != nil {
+		return err
+	}
+
 	c.commandCh <- cmdForceFlushAtSeq{seq: seq}
 	return nil
 }
@@ -481,6 +544,11 @@ func (c *Client) ForceFlushAtSeq(seq uint64) error {
 // WaitNbdSlaveSync commands tlog server to wait
 // for nbd slave to be fully synced
 func (c *Client) WaitNbdSlaveSync() error {
+	err := c.retryIfFailedState()
+	if err != nil {
+		return err
+	}
+
 	// start the waiter now, so we don't miss the reply
 	doneCh := c.waitCond(c.waitSlaveSyncCond)
 
@@ -529,6 +597,11 @@ func (c *Client) signalCond(cond *sync.Cond) {
 // - failed to encode the capnp.
 // - failed to recover from broken network connection.
 func (c *Client) Send(op uint8, seq uint64, index int64, timestamp int64, data []byte) error {
+	err := c.retryIfFailedState()
+	if err != nil {
+		return err
+	}
+
 	cmd := cmdBlock{
 		op:         op,
 		seq:        seq,
@@ -550,8 +623,8 @@ func (c *Client) LastFlushedSequence() uint64 {
 // It is user responsibility to call this function.
 func (c *Client) Close() error {
 	c.mux.Lock()
+	defer c.mux.Unlock()
 	c.stopped = true
-	c.mux.Unlock()
 	c.cancelFunc()
 
 	if c.conn != nil {
@@ -586,4 +659,31 @@ func (c *Client) isStopped() bool {
 	c.mux.Lock()
 	defer c.mux.Unlock()
 	return c.stopped
+}
+
+func (c *Client) isFailedState() bool {
+	c.failedStateMux.Lock()
+	defer c.failedStateMux.Unlock()
+	return c.failedState
+}
+
+func (c *Client) setFailedState(failed bool) {
+	c.failedStateMux.Lock()
+	c.failedState = failed
+	c.failedStateMux.Unlock()
+	if failed {
+		log.Debug("client is set to failed state")
+	} else {
+		log.Debug("client recovered from failed state")
+	}
+}
+
+// retry sends a retry signal and returns the error from retrying
+func (c *Client) retryIfFailedState() error {
+	if !c.isFailedState() {
+		return nil
+	}
+
+	c.retryCh <- struct{}{}
+	return <-c.retryErrCh
 }

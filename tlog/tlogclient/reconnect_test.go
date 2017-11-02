@@ -6,14 +6,13 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
 )
 
 // TestReconnect test client can connect again after getting disconnected
-func TestReconnectFromSend(t *testing.T) {
+func testReconnectFromSend(t *testing.T) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
@@ -53,7 +52,7 @@ func TestReconnectFromSend(t *testing.T) {
 	waitForBlockReceivedResponse(t, client, 1, uint64(numLogs))
 }
 
-func TestReconnectFromForceFlush(t *testing.T) {
+func testReconnectFromForceFlush(t *testing.T) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
@@ -71,6 +70,7 @@ func TestReconnectFromForceFlush(t *testing.T) {
 	// Create client
 	client, err := New([]string{s.ListenAddr()}, vdisk)
 	require.Nil(t, err)
+	defer client.Close()
 
 	// Simulate closed connection
 	client.conn.Close()
@@ -90,4 +90,64 @@ func TestReconnectFromForceFlush(t *testing.T) {
 		require.NotNil(t, resp.Resp)
 		require.Equal(t, resp.Resp.Status, tlog.BlockStatusForceFlushReceived)
 	}
+}
+
+func TestFailedState(t *testing.T) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
+	const (
+		vdisk = "12345"
+	)
+
+	// test server
+	clean, configSource, _ := newZeroStorDefaultConfig(t, vdisk)
+	defer clean()
+
+	s1, err := server.NewServer(testConf, configSource)
+	require.Nil(t, err)
+	go s1.Listen(ctx)
+
+	// Create client
+	client, err := New([]string{s1.ListenAddr()}, vdisk)
+	require.Nil(t, err)
+	defer client.Close()
+
+	data := make([]byte, 4096)
+
+	// test if can send
+	err = client.Send(schema.OpSet, 1, 2, 3, data)
+	require.Nil(t, err)
+
+	// stop server
+	cancelFunc()
+
+	// wait for server to die
+	timeout := time.After(5 * time.Second)
+	exitloop := false
+	for !exitloop {
+		select {
+		case <-timeout:
+			require.FailNow(t, "timed out waiting for error from sending to closed tlog server")
+		default:
+			time.Sleep(100 * time.Millisecond)
+			err = client.Send(schema.OpSet, 1, 2, 3, data)
+			if err != nil {
+				exitloop = true
+			}
+		}
+	}
+
+	// replace server with new one
+	ctx, cancelFunc = context.WithCancel(context.Background())
+	defer cancelFunc()
+	s2, err := server.NewServer(testConf, configSource)
+	require.Nil(t, err)
+	go s2.Listen(ctx)
+
+	client.ChangeServerAddresses([]string{s2.ListenAddr()})
+
+	// test if recovered from failed state
+	err = client.Send(schema.OpSet, 1, 2, 3, data)
+	require.Nil(t, err)
 }
