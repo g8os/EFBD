@@ -7,11 +7,13 @@ import (
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
+	tlogdelete "github.com/zero-os/0-Disk/tlog/delete"
 	cmdconfig "github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
 
 var vdiskCmdCfg struct {
 	SourceConfig config.SourceConfig
+	PrivKey      string
 }
 
 // VdiskCmd represents the vdisks delete subcommand
@@ -64,7 +66,11 @@ func deleteVdisk(cmd *cobra.Command, args []string) error {
 	}
 
 	_, err = storage.DeleteVdisk(vdiskID, staticCfg.Type, cluster)
-	return err
+	if err != nil {
+		return err
+	}
+
+	return tlogdelete.Delete(source, vdiskID, vdiskCmdCfg.PrivKey)
 }
 
 func init() {
@@ -78,4 +84,10 @@ WARNING: until issue #88 has been resolved,
 	VdiskCmd.Flags().Var(
 		&vdiskCmdCfg.SourceConfig, "config",
 		"config resource: dialstrings (etcd cluster) or path (yaml file)")
+
+	VdiskCmd.Flags().StringVar(
+		&vdiskCmdCfg.PrivKey,
+		"priv-key", "12345678901234567890123456789012",
+		"32 bytes tlog private key")
+
 }

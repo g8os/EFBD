@@ -15,6 +15,7 @@ Usage:
 Flags:
       --config SourceConfig   config resource: dialstrings (etcd cluster) or path (yaml file) (default config.yml)
   -h, --help                  help for vdisk
+      --priv-key string       32 bytes tlog private key (default "12345678901234567890123456789012")
 
 Global Flags:
   -v, --verbose   log available information

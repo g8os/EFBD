@@ -43,6 +43,7 @@ type Client struct {
 
 	// 0-stor client
 	storClient *storclient.Client
+	metaShards []string
 
 	hasher *hash.Hasher
 
@@ -98,6 +99,7 @@ func NewClient(conf Config) (*Client, error) {
 		firstMetaEtcdKey: []byte(fmt.Sprintf("tlog:%v:first_meta", conf.VdiskID)),
 		lastMetaEtcdKey:  []byte(fmt.Sprintf("tlog:%v:last_meta", conf.VdiskID)),
 		refList:          []string{conf.VdiskID},
+		metaShards:       conf.MetaShards,
 	}
 
 	firstMetaKey, err := cli.getFirstMetaKey()

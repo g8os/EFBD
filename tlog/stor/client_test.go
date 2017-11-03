@@ -15,32 +15,22 @@ import (
 
 func TestRoundTrip(t *testing.T) {
 	const (
-		vdiskID = "1234567890"
-		numData = 10
+		vdiskID      = "12345678"
+		numData      = 10
+		dataShards   = 4
+		parityShards = 2
 	)
 
 	mdServer, err := embedserver.New()
 	require.Nil(t, err)
 	defer mdServer.Stop()
 
-	storCluster, err := embeddedserver.NewZeroStorCluster(3)
+	storCluster, err := embeddedserver.NewZeroStorCluster(dataShards + parityShards)
 	require.Nil(t, err)
 	defer storCluster.Close()
 
-	conf := Config{
-		VdiskID:         vdiskID,
-		Organization:    "testorg",
-		Namespace:       "thedisk",
-		IyoClientID:     "",
-		IyoSecret:       "",
-		ZeroStorShards:  storCluster.Addrs(),
-		MetaShards:      []string{mdServer.ListenAddr()},
-		DataShardsNum:   1,
-		ParityShardsNum: 1,
-		EncryptPrivKey:  "12345678901234567890123456789012",
-	}
-	cli, err := NewClient(conf)
-	require.Nil(t, err)
+	cli := createTestClient(t, vdiskID, dataShards, parityShards, mdServer.ListenAddr(),
+		storCluster.Addrs())
 
 	// send the data
 	var vals [][]byte
@@ -87,4 +77,25 @@ func encodeBlock(t *testing.T, data []byte) *schema.TlogBlock {
 	require.Nil(t, err)
 
 	return &block
+}
+
+func createTestClient(t *testing.T, vdiskID string, dataShards, parityShards int,
+	mdServerAddr string, storClusterAddrs []string) *Client {
+
+	conf := Config{
+		VdiskID:         vdiskID,
+		Organization:    "testorg",
+		Namespace:       "thedisk",
+		IyoClientID:     "",
+		IyoSecret:       "",
+		ZeroStorShards:  storClusterAddrs,
+		MetaShards:      []string{mdServerAddr},
+		DataShardsNum:   dataShards,
+		ParityShardsNum: parityShards,
+		EncryptPrivKey:  "12345678901234567890123456789012",
+	}
+	cli, err := NewClient(conf)
+	require.Nil(t, err)
+
+	return cli
 }
