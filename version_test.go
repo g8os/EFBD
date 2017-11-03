@@ -1,8 +1,9 @@
 package zerodisk
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestVersionString(t *testing.T) {
@@ -91,7 +92,7 @@ func TestVersionFromString(t *testing.T) {
 
 	//default version
 	if dv, err := VersionFromString(""); err == nil {
-		if ok := assert.Zero(t, defaultVersion.Compare(dv)); !ok {
+		if ok := assert.Zero(t, DefaultVersion.Compare(dv)); !ok {
 			t.Fatal()
 		}
 	} else {

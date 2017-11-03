@@ -162,6 +162,9 @@ func decodeRawDedupedMap(src io.Reader) (*Header, error) {
 	}
 	return &Header{
 		DedupedMap: raw,
+		Metadata: Metadata{
+			Version: zerodisk.DefaultVersion,
+		},
 	}, nil
 }
 
@@ -247,10 +250,6 @@ func (header *Header) Validate() error {
 		return err
 	}
 
-	if err := header.Metadata.Validate(); err != nil {
-		return err
-	}
-
 	return header.DedupedMap.Validate()
 }
 
@@ -267,20 +266,23 @@ type Metadata struct {
 	// used to created the backup from.
 	Source Source `bencode:"src" valid:"optional"`
 	// optional: version of the 0-disk toolchain
-	Version string `bencode:"v" valid:"optional"`
+	Version zerodisk.Version `bencode:"v" valid:"optional"`
 }
 
-// Validate this Metadata,
-// returning an error if it isn't valid.
-func (m *Metadata) Validate() error {
-	if _, err := valid.ValidateStruct(m); err != nil {
+// UnmarshalBencode implements bencode.Unmarshaler.UnmarshalBencode
+func (meta *Metadata) UnmarshalBencode(b []byte) error {
+	type snapshotMetadata Metadata
+	var metadata snapshotMetadata
+	err := bencode.DecodeBytes(b, &metadata)
+	if err != nil {
 		return err
 	}
 
-	if _, err := zerodisk.VersionFromString(m.Version); err != nil {
-		return errors.Wrapf(err, "invalid version number '%s'", m.Version)
+	if metadata.Version.Compare(zerodisk.NilVersion) == 0 {
+		metadata.Version = zerodisk.DefaultVersion
 	}
 
+	*meta = Metadata(metadata)
 	return nil
 }
 

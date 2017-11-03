@@ -56,7 +56,7 @@ func describeSnapshot(cmd *cobra.Command, args []string) error {
 	info.BlockSize = header.Metadata.BlockSize
 	info.Size = info.BlockSize * header.DedupedMap.Count
 	info.Created = header.Metadata.Created
-	info.Version = header.Metadata.Version
+	info.Version = header.Metadata.Version.String()
 
 	if header.Metadata.Source.VdiskID != "" {
 		info.Source = &SnapshotSourceInfo{

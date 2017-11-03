@@ -119,7 +119,7 @@ func existingOrNewHeader(cfg exportConfig, src StorageDriver, key *CryptoKey, ct
 	header.Metadata.Source.VdiskID = cfg.VdiskID
 	header.Metadata.Source.BlockSize = cfg.SrcBlockSize
 	header.Metadata.Source.Size = int64(cfg.VdiskSize)
-	header.Metadata.Version = zerodisk.CurrentVersion.String()
+	header.Metadata.Version = zerodisk.CurrentVersion
 
 	// return existing header, which was updated
 	log.Debugf("loaded and updated existing header for snapshot %s", cfg.SnapshotID)
@@ -141,7 +141,7 @@ func newExportHeader(cfg exportConfig) *Header {
 				BlockSize: cfg.SrcBlockSize,
 				Size:      int64(cfg.VdiskSize),
 			},
-			Version: zerodisk.CurrentVersion.String(),
+			Version: zerodisk.CurrentVersion,
 		},
 		DedupedMap: RawDedupedMap{},
 	}

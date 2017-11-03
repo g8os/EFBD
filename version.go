@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 
+	"github.com/zeebo/bencode"
 	"github.com/zero-os/0-Disk/log"
 )
 
@@ -15,6 +16,8 @@ var (
 	// CurrentVersion represents the current global
 	// version of the zerodisk modules
 	CurrentVersion = NewVersion(1, 1, 0, versionLabel("beta-1"))
+	// NilVersion represents the Nil Version.
+	NilVersion = Version{}
 	// CommitHash represents the Git commit hash at built time
 	CommitHash string
 	// BuildDate represents the date when this tool suite was built
@@ -23,9 +26,9 @@ var (
 	//version parsing regex
 	verRegex = regexp.MustCompile(`^([01]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5]).([01]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5]).([01]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5])(?:-([A-Za-z0-9\-]{1,8}))?$`)
 
-	//default version when VersionFromString method is called with empty
-	//string (1.1.0)
-	defaultVersion = NewVersion(1, 1, 0, nil)
+	// DefaultVersion is the default version that can be assumed,
+	// when a version is empty.
+	DefaultVersion = NewVersion(1, 1, 0, nil)
 )
 
 // PrintVersion prints the current version
@@ -85,19 +88,19 @@ func NewVersion(major, minor, patch uint8, label *VersionLabel) Version {
 }
 
 type (
-	// Version defines the version version information,
-	// used by zeroctl services.
+	// Version defines the version information,
+	// used by zerodisk services.
 	Version struct {
-		Number VersionNumber
-		Label  *VersionLabel
+		Number VersionNumber `valid:"required"`
+		Label  *VersionLabel `valid:"optional"`
 	}
 
 	// VersionNumber defines the semantic version number,
-	// used by zeroctl services.
+	// used by zerodisk services.
 	VersionNumber uint32
 
 	// VersionLabel defines an optional version extension,
-	// used by zeroctl services.
+	// used by zerodisk services.
 	VersionLabel [8]byte
 )
 
@@ -154,11 +157,29 @@ func (v Version) String() string {
 	return str + "-" + v.Label.String()
 }
 
+// MarshalBencode implements bencode.Marshaler.MarshalBencode
+func (v Version) MarshalBencode() ([]byte, error) {
+	str := v.String()
+	return bencode.EncodeBytes(str)
+}
+
+// UnmarshalBencode implements bencode.Unmarshaler.UnmarshalBencode
+func (v *Version) UnmarshalBencode(b []byte) error {
+	var str string
+	err := bencode.DecodeBytes(b, &str)
+	if err != nil {
+		return err
+	}
+
+	*v, err = VersionFromString(str)
+	return err
+}
+
 //VersionFromString returns a Version object from the string
 //representation
 func VersionFromString(ver string) (Version, error) {
 	if ver == "" {
-		return defaultVersion, nil
+		return DefaultVersion, nil
 	}
 
 	match := verRegex.FindStringSubmatch(ver)
