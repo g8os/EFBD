@@ -1,4 +1,6 @@
-# Zero-OS 0-Disk [![Build Status](https://travis-ci.org/zero-os/0-Disk.svg?branch=master)](https://travis-ci.org/zero-os/0-Disk)
+# Zero-OS 0-Disk
+
+[![GoDoc](https://godoc.org/github.com/zero-os/0-Disk?status.svg)](https://godoc.org/github.com/zero-os/0-Disk) [![Build Status](https://travis-ci.org/zero-os/0-Disk.png?branch=master)](https://travis-ci.org/zero-os/0-Disk) [![Sourcegraph](https://sourcegraph.com/github.com/zero-os/0-Disk/-/badge.svg)](https://sourcegraph.com/github.com/zero-os/0-Disk?badge)
 
 This repository implements the components required for supporting block storage in Zero-OS nodes.
 
