@@ -63,6 +63,14 @@ func (cli *MetaClient) SaveMeta(key, val []byte) error {
 	return err
 }
 
+func (cli *MetaClient) deleteMeta(key []byte) error {
+	ctx, cancel := context.WithTimeout(context.Background(), metaOpTimeout)
+	defer cancel()
+
+	_, err := cli.cli.Delete(ctx, string(key))
+	return err
+}
+
 func (c *Client) getFirstMetaKey() ([]byte, error) {
 	return c.metaCli.GetMeta(c.firstMetaEtcdKey)
 }
