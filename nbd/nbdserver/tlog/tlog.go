@@ -53,11 +53,13 @@ func Storage(ctx context.Context, vdiskID string, configSource config.Source, bl
 	}
 
 	if client == nil {
+		log.Infof("creating tlogclient for vdisk `%v`", vdiskID)
 		client, err = tlogclient.New(tlogClusterConfig.Servers, vdiskID)
 		if err != nil {
 			cancel()
 			return nil, errors.Wrap(err, "tlogStorage requires valid tlogclient")
 		}
+		log.Debugf("tlogclient for vdisk `%v` created", vdiskID)
 
 		if metadata.LastFlushedSequence < client.LastFlushedSequence() {
 			// TODO call tlog player if last flushed sequence from tlog server is
@@ -66,8 +68,10 @@ func Storage(ctx context.Context, vdiskID string, configSource config.Source, bl
 			log.Infof("possible error when starting vdisk `%v`: might need to sync with tlog", vdiskID)
 		}
 	}
+
 	tlogStorage.tlog = client
 	tlogStorage.sequence = client.LastFlushedSequence() + 1
+	tlogStorage.tlogReady = client.Ready()
 
 	err = tlogStorage.spawnBackgroundGoroutine(ctx)
 	if err != nil {
@@ -107,7 +111,9 @@ type tlogStorage struct {
 	// condition variable used to signal when the cache is empty
 	cacheEmptyCond *sync.Cond
 
-	cancel context.CancelFunc
+	tlogReady        bool
+	tlogNotReadyBuff []writeOp
+	cancel           context.CancelFunc
 }
 
 type transaction struct {
@@ -116,6 +122,12 @@ type transaction struct {
 	Content   []byte
 	Index     int64
 	Timestamp int64
+}
+
+type writeOp struct {
+	sequence   uint64
+	blockIndex int64
+	content    []byte
 }
 
 // SetBlock implements BlockStorage.SetBlock
@@ -163,13 +175,21 @@ func (tls *tlogStorage) set(blockIndex int64, content []byte) error {
 	transactionContent := make([]byte, len(content))
 	copy(transactionContent, content)
 
-	// scheduele tlog transaction, to be sent to the server
-	tls.transactionCh <- &transaction{
-		Operation: op,
-		Sequence:  sequence,
-		Index:     blockIndex,
-		Timestamp: tlog.TimeNowTimestamp(),
-		Content:   transactionContent,
+	if tls.tlogReady {
+		// scheduele tlog transaction, to be sent to the server
+		tls.transactionCh <- &transaction{
+			Operation: op,
+			Sequence:  sequence,
+			Index:     blockIndex,
+			Timestamp: tlog.TimeNowTimestamp(),
+			Content:   transactionContent,
+		}
+	} else {
+		tls.tlogNotReadyBuff = append(tls.tlogNotReadyBuff, writeOp{
+			sequence:   sequence,
+			blockIndex: blockIndex,
+			content:    transactionContent,
+		})
 	}
 
 	// success!
@@ -215,11 +235,32 @@ func (tls *tlogStorage) DeleteBlock(blockIndex int64) (err error) {
 // Flush implements BlockStorage.Flush
 func (tls *tlogStorage) Flush() error {
 	tls.mux.Lock()
+
+	if !tls.tlogReady {
+		// wait for tlog to be ready
+		// TODO : find a way without waiting
+		waitTlogReadyUntil := time.Now().Add(FlushWaitRetryNum * FlushWaitRetry)
+		for {
+			tls.mux.Unlock()
+
+			time.Sleep(time.Second)
+			tls.mux.Lock()
+
+			if tls.tlogReady {
+				break
+			}
+
+			if time.Now().After(waitTlogReadyUntil) {
+				tls.mux.Unlock()
+				return errFlushTimeout
+			}
+		}
+	}
+
 	defer tls.mux.Unlock()
 
 	// ForceFlush at the latest sequence
-	latestSeq := tls.getLatestSequence()
-	tls.tlog.ForceFlushAtSeq(latestSeq)
+	tls.tlog.ForceFlushAtSeq(tls.getLatestSequence())
 
 	// wait until the cache is empty or timeout
 	doneCh := make(chan struct{})
@@ -237,7 +278,7 @@ func (tls *tlogStorage) Flush() error {
 	for !finished {
 		select {
 		case <-time.After(FlushWaitRetry): // retry it
-			tls.tlog.ForceFlushAtSeq(latestSeq)
+			tls.tlog.ForceFlushAtSeq(tls.getLatestSequence())
 
 			forceFlushNum++
 
@@ -302,9 +343,42 @@ func (tls *tlogStorage) Close() (err error) {
 	return
 }
 
+func (tls *tlogStorage) waitTlogServerReady() {
+	defer log.Infof("tlogServer for %v is ready", tls.vdiskID)
+	tls.tlog.WaitReady()
+
+	tls.mux.Lock()
+	defer tls.mux.Unlock()
+	tls.tlogReady = true
+
+	// update last sequence
+	tls.sequenceMux.Lock()
+	tls.sequence = tls.tlog.LastFlushedSequence() + 1
+	tls.sequenceMux.Unlock()
+
+	// resume all helds IO
+	for _, op := range tls.tlogNotReadyBuff {
+		tls.cache.Evict(op.sequence)
+	}
+
+	for _, op := range tls.tlogNotReadyBuff {
+		tls.set(op.blockIndex, op.content)
+	}
+
+	tls.tlogNotReadyBuff = nil
+}
+
 func (tls *tlogStorage) spawnBackgroundGoroutine(parentCtx context.Context) error {
 	ctx, cancelFunc := context.WithCancel(parentCtx)
 	recvCh := tls.tlog.Recv()
+
+	if !tls.tlogReady { // wait until our server is ready
+		go func() {
+			log.Infof("waiting tlogserver for vdisk `%v` to be ready", tls.vdiskID)
+
+			tls.waitTlogServerReady()
+		}()
+	}
 
 	// used for sending our transactions
 	go tls.transactionSender(ctx)
@@ -357,6 +431,8 @@ func (tls *tlogStorage) spawnBackgroundGoroutine(parentCtx context.Context) erro
 						tls.vdiskID)
 				case tlog.BlockStatusDisconnected:
 					log.Info("tlog connection disconnected")
+				case tlog.BlockStatusReady:
+					log.Info("tlog connection is ready")
 				default:
 					panic(errors.Newf(
 						"tlog server had fatal failure for vdisk %s: %s",
@@ -711,6 +787,8 @@ type tlogClient interface {
 	ChangeServerAddresses([]string)
 	Recv() <-chan *tlogclient.Result
 	LastFlushedSequence() uint64
+	Ready() bool
+	WaitReady()
 	Close() error
 }
 

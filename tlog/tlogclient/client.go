@@ -70,6 +70,8 @@ type Client struct {
 
 	mux                  sync.Mutex
 	stopped              bool
+	serverReady          bool
+	serverReadyCh        chan struct{}
 	curServerFailedFlush bool
 }
 
@@ -77,13 +79,13 @@ type Client struct {
 // Client is going to use first address and then move to next addresses if the first address
 // is failed.
 // The client is not goroutine safe.
-func New(servers []string, vdiskID string) (*Client, error) {
-	client, err := newClient(servers, vdiskID)
+func New(servers []string, vdiskID string) (client *Client, err error) {
+	client, err = newClient(servers, vdiskID)
 	if err != nil {
-		return nil, err
+		return
 	}
 	go client.run(client.ctx)
-	return client, nil
+	return
 }
 func newClient(servers []string, vdiskID string) (*Client, error) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
@@ -108,6 +110,8 @@ func newClient(servers []string, vdiskID string) (*Client, error) {
 		// - one for (hopefully) optimization, so we can read from network
 		//	 before needed and then put it to this channel.
 		respCh: make(chan *Result, 3),
+
+		serverReadyCh: make(chan struct{}, 1),
 	}
 
 	return client, client.connect()
@@ -238,6 +242,21 @@ func (c *Client) runReceiver(ctx context.Context, cancelFunc context.CancelFunc)
 					if len(tr.Sequences) > 0 { // should always be true, but we anticipate.
 						c.blockBuffer.SetSent(tr.Sequences[0])
 					}
+				case tlog.BlockStatusReady:
+					if c.Ready() {
+						continue
+					}
+
+					seq := tr.Sequences[0]
+					if seq != 0 {
+						c.blockBuffer.SetLastFlushed(seq)
+					}
+
+					c.mux.Lock()
+					c.serverReady = true
+					c.mux.Unlock()
+					c.serverReadyCh <- struct{}{}
+					log.Infof("tlogserver is ready")
 				case tlog.BlockStatusFlushOK:
 					c.blockBuffer.SetFlushed(tr.Sequences)
 				case tlog.BlockStatusWaitNbdSlaveSyncReceived:
@@ -341,7 +360,7 @@ func (c *Client) reconnect(closedTime time.Time) error {
 }
 
 // connect to server
-func (c *Client) connect() (err error) {
+func (c *Client) connect() error {
 	if c.conn != nil {
 		c.conn.CloseRead() // interrupt the receiver
 	}
@@ -355,16 +374,22 @@ func (c *Client) connect() (err error) {
 
 	c.setCurServerFailedFlushStatus(false)
 
-	if err = c.createConn(); err != nil {
+	if err := c.createConn(); err != nil {
 		return errors.Wrap(err, "client couldn't be created")
 	}
 
-	if err = c.handshake(); err != nil {
+	ready, err := c.handshake()
+	if err != nil {
 		if errClose := c.conn.Close(); errClose != nil {
 			log.Debug("couldn't close open connection of invalid client:", errClose)
 		}
 		return errors.Wrap(err, "client handshake failed")
 	}
+
+	c.mux.Lock()
+	c.serverReady = ready
+	c.mux.Unlock()
+
 	return nil
 }
 
@@ -398,27 +423,29 @@ func (c *Client) resender() {
 	}
 }
 
-func (c *Client) handshake() error {
+// do handshaking process to tlogserver
+// it returns true if tlogserver is ready
+func (c *Client) handshake() (ready bool, err error) {
 	// send handshake request
-	err := c.encodeHandshakeCapnp()
+	err = c.encodeHandshakeCapnp()
 	if err != nil {
-		return err
+		return ready, err
 	}
 	err = c.bw.Flush()
 	if err != nil {
-		return err
+		return ready, err
 	}
 
 	// receive handshake response
 	resp, err := c.decodeHandshakeResponse()
 	if err != nil {
-		return err
+		return ready, err
 	}
 
 	// check server response status
 	err = tlog.HandshakeStatus(resp.Status()).Error()
 	if err != nil {
-		return err
+		return ready, err
 	}
 
 	serverLastFlushed := resp.LastFlushedSequence()
@@ -426,8 +453,10 @@ func (c *Client) handshake() error {
 		c.blockBuffer.SetLastFlushed(serverLastFlushed)
 	}
 
+	ready = !resp.WaitTlogReady()
+
 	// all checks out, ready to go!
-	return nil
+	return ready, nil
 }
 
 // Recv get channel of responses and errors (Result)
@@ -559,6 +588,24 @@ func (c *Client) Close() error {
 		return c.conn.Close()
 	}
 	return nil
+}
+
+// Ready returns true if server is ready and thus this client
+// is ready to be used
+func (c *Client) Ready() bool {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+	return c.serverReady
+}
+
+func (c *Client) WaitReady() {
+	if c.Ready() {
+		return
+	}
+	<-c.serverReadyCh
+	c.mux.Lock()
+	c.serverReady = true
+	c.mux.Unlock()
 }
 
 // Disconnect disconnects client gracefully

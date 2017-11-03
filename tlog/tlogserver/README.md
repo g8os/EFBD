@@ -47,6 +47,25 @@ operation			# disk operation
 
 See [the Tlog Server Configuration docs](/docs/tlog/config.md) for more information about how to configure the Tlog Server.
 
+
+## Wait for other tlog to finish
+
+In some specific situations we need to have two tlogservers active for same vdisk in a short time.
+An example of this is Qemu Live Migration.
+
+In this case a vdisk which previously handled by tlogserver 1 need to be migrated to tlogserver 2.
+
+For this to work, tlogserver 2 needs to connect to a designated port of tlogserver 1 to monitor
+the tlogserver 1 live.
+(tlogserver 1 has the designated port from `--wait-listen-addr` option while tlogserver 2 has it from
+`--wait-connect-addr` option)
+During this waiting time, user's of tlogclient 2 must hold all transactions and use tlogclient's
+`WaitReady` API to wait for tlogserver 2 to be ready 2.
+
+After tlogserver 1 finished, tlogserver 2 mark itself as ready and notify the tlogclient 2.
+Then user of tlogclient 2 could send the transactions.
+
+
 ## Nbdserver slave sync feature
 
 Tlog server has feature to sync all nbdserver operation to the ardb slave.

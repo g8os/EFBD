@@ -30,6 +30,8 @@ func main() {
 	flag.IntVar(&conf.FlushSize, "flush-size", conf.FlushSize, "flush size")
 	flag.IntVar(&conf.FlushTime, "flush-time", conf.FlushTime, "flush time (seconds)")
 	flag.IntVar(&conf.BlockSize, "block-size", conf.BlockSize, "block size (bytes)")
+	flag.StringVar(&conf.WaitListenAddr, "wait-listen-addr", conf.WaitListenAddr, "wait listen addr")
+	flag.StringVar(&conf.WaitConnectAddr, "wait-connect-addr", conf.WaitConnectAddr, "wait connect addr")
 	flag.StringVar(&conf.PrivKey, "priv-key", conf.PrivKey, "private key")
 	flag.StringVar(&profileAddr, "profile-address", "", "Enables profiling of this server as an http service")
 	flag.Var(&sourceConfig, "config", "config resource: dialstrings (etcd cluster) or path (yaml file)")
@@ -37,6 +39,7 @@ func main() {
 	flag.BoolVar(&verbose, "v", false, "log verbose (debug) statements")
 	flag.StringVar(&logPath, "logfile", "", "optionally log to the specified file, instead of the stderr")
 	flag.StringVar(&serverID, "id", "default", "The server ID (default: default)")
+	flag.StringVar(&conf.AcceptAddr, "accept-address", "", "Address from which the tlog server can accept connection from")
 	flag.BoolVar(&version, "version", false, "prints build version and exits")
 
 	flag.Parse()
@@ -63,7 +66,7 @@ func main() {
 
 	zerodisk.LogVersion()
 
-	log.Debugf("flags parsed: address=%q flush-size=%d flush-time=%d block-size=%d priv-key=%q profile-address=%q config=%q storage-addresses=%q logfile=%q id=%q",
+	log.Debugf("flags parsed: address=%q flush-size=%d flush-time=%d block-size=%d priv-key=%q profile-address=%q config=%q storage-addresses=%q logfile=%q id=%q accept-address=%q",
 		conf.ListenAddr,
 		conf.FlushSize,
 		conf.FlushTime,
@@ -74,6 +77,7 @@ func main() {
 		storageAddresses,
 		logPath,
 		serverID,
+		conf.AcceptAddr,
 	)
 
 	// let's create the source and defer close it

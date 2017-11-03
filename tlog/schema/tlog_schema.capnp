@@ -15,6 +15,7 @@ struct HandshakeResponse {
 	version @0 :UInt32;
 	status @1 :Int8;
 	lastFlushedSequence @2: UInt64;
+	waitTlogReady @3: Bool;
 }
 
 # tlog block aggregation
@@ -50,4 +51,15 @@ struct TlogBlock {
 struct TlogResponse {
 	status @0 :Int8;
 	sequences @1 :List(UInt64); # can be nil
+}
+
+## WaitTlog handshake request
+struct WaitTlogHandshakeRequest {
+	vdiskID @0 :Text;
+}
+
+
+## WaitTlog handshake response
+struct WaitTlogHandshakeResponse {
+	exists @0 :Bool;
 }

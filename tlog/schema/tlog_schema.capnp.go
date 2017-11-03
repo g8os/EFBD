@@ -138,6 +138,14 @@ func (s HandshakeResponse) SetLastFlushedSequence(v uint64) {
 	s.Struct.SetUint64(8, v)
 }
 
+func (s HandshakeResponse) WaitTlogReady() bool {
+	return s.Struct.Bit(40)
+}
+
+func (s HandshakeResponse) SetWaitTlogReady(v bool) {
+	s.Struct.SetBit(40, v)
+}
+
 // HandshakeResponse_List is a list of HandshakeResponse.
 type HandshakeResponse_List struct{ capnp.List }
 
@@ -625,66 +633,212 @@ func (p TlogResponse_Promise) Struct() (TlogResponse, error) {
 	return TlogResponse{s}, err
 }
 
-const schema_f4533cbae6e08506 = "x\xda\x8cS_\x88TU\x18\xff\xfd\xce\xb93\xb3\xc2" +
-	"\xee\xce^f\x04\x15b\x1f2\xd0%K\xdd\x9eDp" +
-	"w[E\x97\x8c=;A\xb0\x08q\xbbs\x9c\x99\xf6" +
-	"\xce\xbd\xd79wv\xd7RDq\xc1\xa4\xa8 \xc3\xa2" +
-	"\x87v1(P*\xd0\x88\x9e|\xab\x1e\x05\x09z\x89" +
-	"\x15\xc2\xde\x02\xa1zj\xbbqf\x9c\xd9i[\xd2\xb7" +
-	"s>~|\xdf\xf7\xfb\xf3\xed]\xe3\x98\xd8\x97Y\x90" +
-	"\x80\xda\x95\xc9\xa6\xfb\xee^8\xf8\xf3\xe2\x83\xb7\xa0\xb6" +
-	"\xd3I\xb3K\xab\xf7\xbf=X\xfa\x1d\x19\x91\x03F\x97" +
-	"\xb9\x83\x85\xafh\x9f7\xf82\xc1\xf4\xa7\x9d\x97\xbf\xbb" +
-	"\xb7\xe3\xceU\x0bg\x0f\xbc\x85\xc9\xc8\xfd,l\x959" +
-	"\xa0\xe0\xca\x050]\xb9\xf3\xe7\xda\x93o\x8c}o\xd1" +
-	"b\x1d}\x989\x07\x18=/gY\xb8\xd2\x82\xbf'" +
-	"\x7f\x05\xd3\xdbS+\xef\xfcx\xff\xee\xea\xa6\xcd\x9b\xce" +
-	"\x0c\x0bo:\x16\xbd\xe4\xd8\xe6\xef\xafn\xff\xfa\xe6\xad" +
-	"\xd7~\xd9\xd0<c\x1b\x8e\xdes\xa6X\xf8\xc3\xa2G" +
-	"\x1f8\xc3v\xf3\xf1\x93?|p\xf6\xa3+\xbfm\x80" +
-	"\xb7 [\xb3\xb3,\xec\xce\xda\xdeOe\xbf\xc0\x9e\xd4" +
-	"\xf8U]\xf7\x9eMd\x10U^i\x7f\x9e\xf1\xbd8" +
-	"\x8c\x0f\xbc\x14D\x95\x89 \x92\xfe\xdc4\xa9\xb6I\x07" +
-	"p\x08\xb8\x1fN\x01\xea\xaa\xa4\xba&\xe8\x92E\xda\xe2" +
-	"\xf2~@},\xa9>\x13\xa4(R\x00\xee\xa7#\x80" +
-	"\xfaDR]\x17t%\x8b\x94\x80\xfb\xb9-^\x93T" +
-	"_\x0a\xba\x8e(\xd2\x01\xdc\x1b3\x80\xba.\xa9\xbe\x11" +
-	"t3\xdb\x8a\xcc\x00\xee-[\xbc)\xa9n\x0b\xa6F" +
-	"\x9fj\xea\xd0\xd7\x00\xb8\x05\x82[\xc0\xe1ZX\xd6\x8b" +
-	"\xcc@0\x03\xe6\xab\x9e\xa9r\x00\x82\x03`\xbe\xec%" +
-	"^\xe7\x93&\xb5\xba6\x89W\x07\xe3\x0e:\x8db\xdd" +
-	"\xf0\x92Z\x04\x86\xccB0\x0b>B\x8a\x19m\x86\xe3" +
-	"(4\xda\xaa\xd1\xd7Uc\xf7\x01@\xed\x94T{\x05" +
-	";b\xec\xb1\x9b?-\xa9\x8e\x0a\x1e2\x89\x974\x0d" +
-	"\x05\x04\x05z\x88\xd0p\x10\x9c\x96l\xf1\x19\xec\x99\xef" +
-	"l:\xff\xf9\xa0\xa6\xc3\xe4\xb86\xc6\x93\x95\xd6\x12C" +
-	"\xd2\xe9O\xd3\xd6\x16\x9e\x95\xff\x84\xa4\xaa\x0a>\xc1\xbf" +
-	"\xd3\x87\x8b\xe8\x0b\x80*K\xaaXp@\xac\xa5m_" +
-	"\xea\x97\x01\x15K\xaa3\x82\x03\xf2\xaf\xb4m\xcc\xe9Y" +
-	"@-J\xaa\x8b\x82\xc3\xaf\x06\x91?\xc7\xa1\xf5\x9b\x01" +
-	"9\x04\xa6'\xa3\x86\xaf\x8f\x04M\x9a\xeaxR\xd2\xa7" +
-	"\xbaf\xa4\x0b^-yqb\xb2\xc4\xc0\x9b\xd7\xa5\xd3" +
-	"\xa1\x8f\\Z\xae\x19?\x0aC\x0d\xe9'\xc8\xfe\x0f\xbf" +
-	"\xa3^X6UoN\xcfXu\x0c\x93\x0d\x1aOl" +
-	"\xa2\xb1\xad\xed\x92T\xcf\x09\x9e\x9b\xd7\x0dS\x8bB\xf6" +
-	"A\xb0\x0f<7_\xae\x99\xb9c\x93\xec\x87`\xff#" +
-	"\x95\x1d\xafT\x1a\xbab\xd3\x10\x02vr\xb1;\xf9\xec" +
-	"\xc8\xba(\x9d\xc9\xe7m\xed\x8c\xa4\xba$\xe8\x0a\xb65" +
-	"]\xb2\x96_\x94T\xef\xf6d\xfdm\x9b\x8dK\x0f/" +
-	"\xa5\x93\xf5\xe5\x91\xf5K\xc9\x87^]w\xb6\xcc\x9b\xda" +
-	"\xeb\xba\xab\xe7&\xa1=\xd4r\xa5\x1b\x9b\x7f\xbb3\x08" +
-	"\xe6\xe3\x86\x9e\xef\xa6\xfe\xb1\xd46q\x14\xcav\xa4\xfb" +
-	"\xbb\xa4\x0f[i\xc7$\xd5\x0b\xf6\xc0\x9d6\xebc\x96" +
-	"\xcb\xa4\xa4\x9a\xeea}|\x05P\xd3\x92\xea\xc4\x7fM" +
-	"\xd8\x18\xfc\xc03\xc9\x91\xa0iX\xd5\xe5\x92\xb59\x17" +
-	"\xfa]\xba\xff\x04\x00\x00\xff\xff\xeeia\x93"
+type WaitTlogHandshakeRequest struct{ capnp.Struct }
+
+// WaitTlogHandshakeRequest_TypeID is the unique identifier for the type WaitTlogHandshakeRequest.
+const WaitTlogHandshakeRequest_TypeID = 0xb52fe5db64314d44
+
+func NewWaitTlogHandshakeRequest(s *capnp.Segment) (WaitTlogHandshakeRequest, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return WaitTlogHandshakeRequest{st}, err
+}
+
+func NewRootWaitTlogHandshakeRequest(s *capnp.Segment) (WaitTlogHandshakeRequest, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return WaitTlogHandshakeRequest{st}, err
+}
+
+func ReadRootWaitTlogHandshakeRequest(msg *capnp.Message) (WaitTlogHandshakeRequest, error) {
+	root, err := msg.RootPtr()
+	return WaitTlogHandshakeRequest{root.Struct()}, err
+}
+
+func (s WaitTlogHandshakeRequest) String() string {
+	str, _ := text.Marshal(0xb52fe5db64314d44, s.Struct)
+	return str
+}
+
+func (s WaitTlogHandshakeRequest) VdiskID() (string, error) {
+	p, err := s.Struct.Ptr(0)
+	return p.Text(), err
+}
+
+func (s WaitTlogHandshakeRequest) HasVdiskID() bool {
+	p, err := s.Struct.Ptr(0)
+	return p.IsValid() || err != nil
+}
+
+func (s WaitTlogHandshakeRequest) VdiskIDBytes() ([]byte, error) {
+	p, err := s.Struct.Ptr(0)
+	return p.TextBytes(), err
+}
+
+func (s WaitTlogHandshakeRequest) SetVdiskID(v string) error {
+	return s.Struct.SetText(0, v)
+}
+
+// WaitTlogHandshakeRequest_List is a list of WaitTlogHandshakeRequest.
+type WaitTlogHandshakeRequest_List struct{ capnp.List }
+
+// NewWaitTlogHandshakeRequest creates a new list of WaitTlogHandshakeRequest.
+func NewWaitTlogHandshakeRequest_List(s *capnp.Segment, sz int32) (WaitTlogHandshakeRequest_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1}, sz)
+	return WaitTlogHandshakeRequest_List{l}, err
+}
+
+func (s WaitTlogHandshakeRequest_List) At(i int) WaitTlogHandshakeRequest {
+	return WaitTlogHandshakeRequest{s.List.Struct(i)}
+}
+
+func (s WaitTlogHandshakeRequest_List) Set(i int, v WaitTlogHandshakeRequest) error {
+	return s.List.SetStruct(i, v.Struct)
+}
+
+func (s WaitTlogHandshakeRequest_List) String() string {
+	str, _ := text.MarshalList(0xb52fe5db64314d44, s.List)
+	return str
+}
+
+// WaitTlogHandshakeRequest_Promise is a wrapper for a WaitTlogHandshakeRequest promised by a client call.
+type WaitTlogHandshakeRequest_Promise struct{ *capnp.Pipeline }
+
+func (p WaitTlogHandshakeRequest_Promise) Struct() (WaitTlogHandshakeRequest, error) {
+	s, err := p.Pipeline.Struct()
+	return WaitTlogHandshakeRequest{s}, err
+}
+
+type WaitTlogHandshakeResponse struct{ capnp.Struct }
+
+// WaitTlogHandshakeResponse_TypeID is the unique identifier for the type WaitTlogHandshakeResponse.
+const WaitTlogHandshakeResponse_TypeID = 0xe431d9b4cf4a9e13
+
+func NewWaitTlogHandshakeResponse(s *capnp.Segment) (WaitTlogHandshakeResponse, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 0})
+	return WaitTlogHandshakeResponse{st}, err
+}
+
+func NewRootWaitTlogHandshakeResponse(s *capnp.Segment) (WaitTlogHandshakeResponse, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 0})
+	return WaitTlogHandshakeResponse{st}, err
+}
+
+func ReadRootWaitTlogHandshakeResponse(msg *capnp.Message) (WaitTlogHandshakeResponse, error) {
+	root, err := msg.RootPtr()
+	return WaitTlogHandshakeResponse{root.Struct()}, err
+}
+
+func (s WaitTlogHandshakeResponse) String() string {
+	str, _ := text.Marshal(0xe431d9b4cf4a9e13, s.Struct)
+	return str
+}
+
+func (s WaitTlogHandshakeResponse) Exists() bool {
+	return s.Struct.Bit(0)
+}
+
+func (s WaitTlogHandshakeResponse) SetExists(v bool) {
+	s.Struct.SetBit(0, v)
+}
+
+// WaitTlogHandshakeResponse_List is a list of WaitTlogHandshakeResponse.
+type WaitTlogHandshakeResponse_List struct{ capnp.List }
+
+// NewWaitTlogHandshakeResponse creates a new list of WaitTlogHandshakeResponse.
+func NewWaitTlogHandshakeResponse_List(s *capnp.Segment, sz int32) (WaitTlogHandshakeResponse_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 8, PointerCount: 0}, sz)
+	return WaitTlogHandshakeResponse_List{l}, err
+}
+
+func (s WaitTlogHandshakeResponse_List) At(i int) WaitTlogHandshakeResponse {
+	return WaitTlogHandshakeResponse{s.List.Struct(i)}
+}
+
+func (s WaitTlogHandshakeResponse_List) Set(i int, v WaitTlogHandshakeResponse) error {
+	return s.List.SetStruct(i, v.Struct)
+}
+
+func (s WaitTlogHandshakeResponse_List) String() string {
+	str, _ := text.MarshalList(0xe431d9b4cf4a9e13, s.List)
+	return str
+}
+
+// WaitTlogHandshakeResponse_Promise is a wrapper for a WaitTlogHandshakeResponse promised by a client call.
+type WaitTlogHandshakeResponse_Promise struct{ *capnp.Pipeline }
+
+func (p WaitTlogHandshakeResponse_Promise) Struct() (WaitTlogHandshakeResponse, error) {
+	s, err := p.Pipeline.Struct()
+	return WaitTlogHandshakeResponse{s}, err
+}
+
+const schema_f4533cbae6e08506 = "x\xda\x8cS]h\x1cU\x14>\xdf\xbd3\x9b\x14\xb2" +
+	"I\x86Y\xa1)\x94E,X\x83\xb5I\xd7\xa7PH" +
+	"\xb3\xc6R\x03\x95\xde]\xa1\x10\x14\x1dgow\xc7\xcc" +
+	"\xcel\xf7\xce\xa6\x1bm\xd1\x96\x06JQ\x14Q\xa9E" +
+	"\xc4\x84\x0a\x0a\x15\x14\x12\x11\x9f\xfa\xa6>I\xa1\x0aA" +
+	"\x90\x08\xfd\xc1\x07\x85\x82\x08\x82u\xe4\xeef\x7f\x9a\xac" +
+	"\xb6o3\x87\x8f\xef~?\xe7\x8c\xe5\xd9\x016n>" +
+	"l\x10\x8913\x11\x8f_;\xb3\xff\xe7\xfa\xed\xd7I" +
+	"\x8c\xc0\x88\x13\x8b\xeb7\xbf\xde\x9f\xff\x83L\xd6G\x94" +
+	"\xf9\x0b;`ok|\x9a\xec(\x08\xf1\xda\xae\xf3\xdf" +
+	"\xfc\xb2\xe3\xea\x05\x0dG\x17\x1c\x1a\xf3\x1c\xdf\x07\xbb\xcc" +
+	"\xfb\x88l\x8f\x9f \xc4\xd3\x87\xc7\x0b?\xdd\xd8\xbbJ" +
+	"\xd6\xc8\x16\xf0\x1a\x7f\x1b\xf6\xed\x06\xf87>I\x88\x97" +
+	"\xaf\xfey\xe7\xa1W\x0e|\xab\xa9Y\x07\xfd$\xfa\x0c" +
+	"\xa2L\xd2\x98\x85\xfd\xa0\xa1\xe1;\x8d[\x84\xf8\xca\xcc" +
+	"\xf2\x9b?\xde\xbc\xb6\xdeS\x09\xcc\x1c\xec\x07L\x8d\xb6" +
+	"L\xad\xc4\xfep\xe6\xfb\x95\xb5\xf1\xeb\x9b\xd0\x9a/S" +
+	"6/\xc2^l\x80O\x9bZ\xc9;\xeb#_\xae\xac" +
+	"\xbet}\x93\x12S\x8b\xcd,\x993\xb0W5:\xf3" +
+	"\x85\x99\xd6\x99L\x1d\xfb\xee\xbdS\x17\xdf\xfd}\x13\xbc" +
+	"\xc1\xfdCb\x16\xf6\xaf\x09\xcd}#q\x8b\xf6\xc4\xca" +
+	"-\xc9\xb2\xb37\xe2~X|\xbe\xf9\xf3\x98\xebT\x82" +
+	"\xca\xc43~X\xcc\xfa!w\xe7\x8e\x00b;7\x88" +
+	"\x0c\x10Y\xef\xcf\x10\x89\x0b\x1c\xe2\x12\x83\x05\xa4\xa0\x87" +
+	"K\xfb\x88\xc4\x07\x1c\xe2\x13\x06\xb0\x14\x18\x91\xf5\xf1(" +
+	"\x91\xf8\x88C\\f\xb08R\xe0D\xd6\xa7zx\x89" +
+	"C|\xce`\x19,\x05\x83\xc8\xfa,G$.s\x88" +
+	"\xaf\x18,s{\x0a&\x91\xb5\xaa\x87+\x1c\xe2\x0aC" +
+	"\xac\xe4\xf1\x9a\x0c\\ID\xd8F\x0c\xdb\x08i/(" +
+	"\xc8:Lb0\x09C%G\x95\x90$\x86$a\xa8" +
+	"\xe0DN\xeb'\x8e\xbc\xb2T\x91S&TZ\xe88" +
+	"\xac\xc8\xaa\x13y!!@\x82\x18\x12\x84{D\x91\x93" +
+	"*]\x09\x03%u\x1a\xfd\xed4\x1e\x99 \x12\xbb8" +
+	"\xc4\x18C+\x8c=Z\xf9\xa3\x1c\xe2\x10\xc3\xa4\x8a\x9c" +
+	"\xa8\xa6\xc0\x88\x81Q\x97\x11(\x0c\x12\x8ep4\xfc\x0c" +
+	"v\xbdony\xff\xa8\xe3EZ\xc3!'(\xa8\x92" +
+	"3's\x9aE!\xd2Z\x8c\xb6\x96d\x96H\xf4s" +
+	"\x88\x14\xc3\xab\xf3\x05O\xcd=5\x8d\x01b\x18\xe8b" +
+	"7z\xba{\xc2\xf7d\x10\x1d\x96J9\xbc\xd8\xb08" +
+	"\xcc\x8d\x818n\xf0:\xba\xdcg9D\x89a'\xfe" +
+	"\x897l\xca3D\xa2\xc0!*\x0cIv'n\xb6" +
+	"^>O$*\x1c\xe2$C\x92\xff\x1d7k_\x98" +
+	"%\x12u\x0eq\x96!\xfd\xa2\x1f\xbas\x18\xee\xdc:" +
+	"\x01\xc3\x84\xf8XXu\xe5A\xbf\x06U\x9a\x8a\xf2\xf2" +
+	"x\xbb\xea\xf8\x84\xe3EOg\xa7\xf3\xf0\x9dy\x99_" +
+	"\x08\\\xea\x8b\x0b\x9er\xc3 \x90\xc4\xdd\x88\x12\xff\xe3" +
+	"\xafgj]\x0df{4\xa8g\xbb9\xc4\xe3:I" +
+	"YU^\x18\xa0\x9f\x18\xfa\xe9\xbf\x93\xbd\xaf\xdeT%" +
+	"\x0cxs\x89\xba\x8a\x9b\xe8\x147)\xeb\x9e\x8a\x14@" +
+	"\x0c\xb8goS\xc5bU\x16\xf5&\x07D\x9a4\xd5" +
+	"&=5\xda\x89\xbc\xe5\xeb\xb4\x9e\x9d\xe4\x10\xe7\x18," +
+	"\x86fc\x8bz]\xcfr\x88\xb7\xba\xee\xf4\x0d-\xe9" +
+	"\xdc\xc6\x95\xb7\xeeti\xb4s\xe5C\x81S\x96\xad\x0c" +
+	"\x86\x94\xf7\xb2l\xb7\xd5\xe3\xe0&\x1b\x9d\xb7W\xfe\xee" +
+	"\xee\x07\x09C\x95\xaa\x9co_\xec}u\xd9\x95\xe4p" +
+	"\xdb\xb4\x93\xed\xac\xaa\x05ccQ\xb5\x97\x178\x84\xdf" +
+	"\xe5\xda[&\x12>\x87\xa8k\xd7\xbb\x9b\xaekU\"" +
+	"\x11q\x88\xd7\xb6\xf6\xbe\xf9\x92}GE\x07\xfd\x9aB" +
+	"I\x16\xf2z\xb3\xfa\x02W\xde\xb5\xb1\xba J\xe7\xa4" +
+	"SXh\xd5\xf9o\x00\x00\x00\xff\xff\x0cs\xb9y"
 
 func init() {
 	schemas.Register(schema_f4533cbae6e08506,
 		0x8cf178de3c82d431,
 		0x98d11ae1c78a24d9,
+		0xb52fe5db64314d44,
 		0xc8407b23fdf6d1a2,
 		0xe0d4e6d68fa24ac0,
+		0xe431d9b4cf4a9e13,
 		0xe46ab5b4b619e094,
 		0xee959a7d96c96641)
 }

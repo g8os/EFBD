@@ -1096,3 +1096,10 @@ func (stls *stubTlogClient) LastFlushedSequence() uint64 {
 func (stls *stubTlogClient) Close() error {
 	return nil
 }
+
+func (stls *stubTlogClient) Ready() bool {
+	return true
+}
+
+func (stls *stubTlogClient) WaitReady() {
+}

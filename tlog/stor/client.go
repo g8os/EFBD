@@ -19,6 +19,7 @@ const (
 )
 
 var (
+	// ErrNoFlushedBlock returned when there is no flushed block for a vdisk
 	ErrNoFlushedBlock = errors.New("no flushed block")
 )
 
@@ -188,11 +189,12 @@ func (c *Client) processStoreData(data []byte, lastSequence uint64, timestamp in
 
 	c.storeNum++
 	// we don't store last sequence on each iteration because
-	// we can easily fetch it using `Walk` method while it certainly increase
+	// we can easily fetch it using `Walk` method, while it certainly increase
 	// processing time.
 	// We still store it because otherwise we need to walk the entire disk
 	// on startup.
-	if c.storeNum%100 == 0 {
+	const lastMetaKeyStoreInterval = 25
+	if c.storeNum%lastMetaKeyStoreInterval == 0 {
 		if err := c.saveLastMetaKey(); err != nil {
 			return err
 		}
@@ -276,8 +278,6 @@ func (c *Client) LoadLastSequence() (uint64, error) {
 		return 0, ErrNoFlushedBlock
 	}
 
-	var wr *storclient.WalkResult
-
 	if len(c.lastMetaKey) == 0 { // never loaded before
 		lastMetaKey, err := c.getLastMetaKey()
 		if err != nil {
@@ -289,22 +289,23 @@ func (c *Client) LoadLastSequence() (uint64, error) {
 		}
 	}
 
-	// walk it until the end
-	for res := range c.storClient.Walk(c.lastMetaKey, 0, tlog.TimeNowTimestamp()) {
-		wr = res
+	// because we don't always write last meta key
+	// the last meta key in this stage might be not really the last
+	// we get the real last meta now
+	lastMeta, err := c.findLastMeta(c.lastMetaKey)
+	if err != nil {
+		return 0, err
 	}
+	c.lastMetaKey = lastMeta.Key
 
-	// it should never happen
-	if wr == nil {
-		return 0, errors.Newf("failed to walk on vdisk %v", c.vdiskID)
-	}
-
-	if wr.Error != nil {
-		return 0, wr.Error
+	// get last aggregation
+	data, _, err := c.storClient.Read(c.lastMetaKey)
+	if err != nil {
+		return 0, err
 	}
 
 	// decode aggregation
-	agg, err := c.decodeCapnp(wr.Data)
+	agg, err := c.decodeCapnp(data)
 	if err != nil {
 		return 0, err
 	}
@@ -317,10 +318,25 @@ func (c *Client) LoadLastSequence() (uint64, error) {
 		return 0, errors.New("empty blocks for aggregation")
 	}
 
-	c.lastMetaKey = wr.Key
 	c.lastSequence = blocks.At(blocks.Len() - 1).Sequence()
 
 	return c.lastSequence, nil
+}
+
+// find last metadata of this vdisk
+func (c *Client) findLastMeta(startKey []byte) (*meta.Meta, error) {
+	key := startKey
+	for {
+		md, err := c.storClient.GetMeta(key)
+		if err != nil {
+			return nil, err
+		}
+
+		key = md.Next
+		if key == nil {
+			return md, nil
+		}
+	}
 }
 
 // creates 0-stor client config from Config
