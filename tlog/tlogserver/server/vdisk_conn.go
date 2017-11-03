@@ -42,9 +42,10 @@ func (vd *vdisk) handle(conn *net.TCPConn, br *bufio.Reader, respSegmentBufLen i
 		}
 	}
 
+	capnpDec := capnp.NewDecoder(br)
 	for {
 		// decode message
-		msg, err := capnp.NewDecoder(br).Decode()
+		msg, err := capnpDec.Decode()
 		if err != nil {
 			if errors.Cause(err) == io.EOF {
 				return nil // EOF in this stage is not an error
@@ -91,12 +92,14 @@ func (vd *vdisk) handle(conn *net.TCPConn, br *bufio.Reader, respSegmentBufLen i
 func (vd *vdisk) sendResp(ctx context.Context, conn *net.TCPConn, respSegmentBufLen int) {
 	segmentBuf := make([]byte, 0, respSegmentBufLen)
 
+	capnpEnc := capnp.NewEncoder(conn)
+
 	defer func() {
 		log.Infof("sendResp cleanup for vdisk %v", vd.id)
 		resp := BlockResponse{
 			Status: tlog.BlockStatusDisconnected.Int8(),
 		}
-		if err := resp.Write(conn, segmentBuf); err != nil {
+		if err := resp.Write(capnpEnc, segmentBuf); err != nil {
 			log.Errorf("failed to send disconnect command: %v", err)
 		}
 
@@ -106,7 +109,7 @@ func (vd *vdisk) sendResp(ctx context.Context, conn *net.TCPConn, respSegmentBuf
 	for {
 		select {
 		case resp := <-vd.respChan:
-			if err := resp.Write(conn, segmentBuf); err != nil && resp != nil {
+			if err := resp.Write(capnpEnc, segmentBuf); err != nil && resp != nil {
 				log.Infof("failed to send resp to :%v, err:%v", vd.id, err)
 				return
 			}

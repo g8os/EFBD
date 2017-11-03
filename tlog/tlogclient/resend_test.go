@@ -99,6 +99,7 @@ func readDecodeClientMessage(r io.Reader) (*schema.TlogClientMessage, error) {
 
 // run this dummy server.
 func (ds *dummyServer) run(t *testing.T, logsToIgnore map[uint64]struct{}) error {
+	capnpEnc := capnp.NewEncoder(ds.respPipeWriter)
 	for {
 		// read client command
 		cmd, err := readDecodeClientMessage(ds.reqPipeReader)
@@ -128,7 +129,7 @@ func (ds *dummyServer) run(t *testing.T, logsToIgnore map[uint64]struct{}) error
 			Status:    int8(tlog.BlockStatusRecvOK),
 			Sequences: []uint64{block.Sequence()},
 		}
-		resp.Write(ds.respPipeWriter, nil)
+		resp.Write(capnpEnc, nil)
 	}
 }
 

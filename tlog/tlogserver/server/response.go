@@ -1,8 +1,6 @@
 package server
 
 import (
-	"io"
-
 	"zombiezen.com/go/capnproto2"
 
 	"github.com/zero-os/0-Disk/tlog/schema"
@@ -40,12 +38,12 @@ func (r *BlockResponse) toCapnp(segmentBuf []byte) (*capnp.Message, error) {
 	return msg, nil
 }
 
-// Write encode and writes this response to the given io.Writer
-func (r *BlockResponse) Write(w io.Writer, segmentBuf []byte) error {
+// Write encode and writes this response using the given capnp encoder
+func (r *BlockResponse) Write(capnpEnc *capnp.Encoder, segmentBuf []byte) error {
 	msg, err := r.toCapnp(segmentBuf)
 	if err != nil {
 		return err
 	}
 
-	return capnp.NewEncoder(w).Encode(msg)
+	return capnpEnc.Encode(msg)
 }
