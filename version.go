@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"strconv"
 
-	"github.com/zeebo/bencode"
 	"github.com/zero-os/0-Disk/log"
 )
 
@@ -157,21 +156,16 @@ func (v Version) String() string {
 	return str + "-" + v.Label.String()
 }
 
-// MarshalBencode implements bencode.Marshaler.MarshalBencode
-func (v Version) MarshalBencode() ([]byte, error) {
+// MarshalText implements encoding.TextMarshaler.MarshalText
+func (v Version) MarshalText() ([]byte, error) {
 	str := v.String()
-	return bencode.EncodeBytes(str)
+	return []byte(str), nil
 }
 
-// UnmarshalBencode implements bencode.Unmarshaler.UnmarshalBencode
-func (v *Version) UnmarshalBencode(b []byte) error {
-	var str string
-	err := bencode.DecodeBytes(b, &str)
-	if err != nil {
-		return err
-	}
-
-	*v, err = VersionFromString(str)
+// UnmarshalText implements encoding.TextUnmarshaler.UnmarshalText
+func (v *Version) UnmarshalText(b []byte) error {
+	var err error
+	*v, err = VersionFromString(string(b))
 	return err
 }
 
