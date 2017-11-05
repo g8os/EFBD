@@ -74,30 +74,13 @@ func BlockStorageFromConfigSource(vdiskID string, cs config.Source, dialer ardb.
 	if err != nil {
 		return nil, err
 	}
-	nbdStorageConfig, err := config.ReadNBDStorageConfig(cs, vdiskID)
-	if err != nil {
-		return nil, err
-	}
-
-	return BlockStorageFromConfig(vdiskID, *vdiskConfig, *nbdStorageConfig, dialer)
-}
-
-// BlockStorageFromConfig creates a block storage from the given config.
-// It is the simplest way to create a BlockStorage,
-// but it also has the disadvantage that
-// it does not support SelfHealing or HotReloading of the used configuration.
-func BlockStorageFromConfig(vdiskID string, vdiskConfig config.VdiskStaticConfig, nbdConfig config.NBDStorageConfig, dialer ardb.ConnectionDialer) (BlockStorage, error) {
-	err := vdiskConfig.Validate()
-	if err != nil {
-		return nil, err
-	}
-	err = nbdConfig.Validate()
+	nbdConfig, err := config.ReadNBDStorageConfig(cs, vdiskID)
 	if err != nil {
 		return nil, err
 	}
 
 	var cluster ardb.StorageCluster
-	if nbdConfig.SlaveStorageCluster == nil {
+	if nbdConfig.SlaveStorageCluster == nil || !vdiskConfig.Type.TlogSupport() {
 		// create primary cluster
 		cluster, err = ardb.NewCluster(nbdConfig.StorageCluster, dialer)
 		if err != nil {
@@ -112,7 +95,7 @@ func BlockStorageFromConfig(vdiskID string, vdiskConfig config.VdiskStaticConfig
 	}
 	// create template cluster if needed
 	var templateCluster ardb.StorageCluster
-	if vdiskConfig.Type.TemplateSupport() && nbdConfig.TemplateStorageCluster != nil {
+	if nbdConfig.TemplateStorageCluster != nil && vdiskConfig.Type.TemplateSupport() {
 		templateCluster, err = ardb.NewCluster(*nbdConfig.TemplateStorageCluster, dialer)
 		if err != nil {
 			return nil, err
