@@ -96,12 +96,20 @@ func BlockStorageFromConfig(vdiskID string, vdiskConfig config.VdiskStaticConfig
 		return nil, err
 	}
 
-	// create primary cluster
-	cluster, err := ardb.NewCluster(nbdConfig.StorageCluster, dialer)
-	if err != nil {
-		return nil, err
+	var cluster ardb.StorageCluster
+	if nbdConfig.SlaveStorageCluster == nil {
+		// create primary cluster
+		cluster, err = ardb.NewCluster(nbdConfig.StorageCluster, dialer)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// create primary-slave cluster pair
+		cluster, err = ardb.NewClusterPair(nbdConfig.StorageCluster, *nbdConfig.SlaveStorageCluster, dialer)
+		if err != nil {
+			return nil, err
+		}
 	}
-
 	// create template cluster if needed
 	var templateCluster ardb.StorageCluster
 	if vdiskConfig.Type.TemplateSupport() && nbdConfig.TemplateStorageCluster != nil {

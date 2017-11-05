@@ -81,26 +81,14 @@ func checkVdiskExists(vdiskID string, configSource config.Source) error {
 	staticConfig, err := config.ReadVdiskStaticConfig(configSource, vdiskID)
 	if err != nil {
 		return errors.Wrapf(err,
-			"cannot read static vdisk config for vdisk %s", vdiskID)
-	}
-	nbdStorageConfig, err := config.ReadVdiskNBDConfig(configSource, vdiskID)
-	if err != nil {
-		return errors.Wrapf(err,
-			"cannot read nbd storage config for vdisk %s", vdiskID)
-	}
-	clusterConfig, err := config.ReadStorageClusterConfig(configSource, nbdStorageConfig.StorageClusterID)
-	if err != nil {
-		return errors.Wrapf(err,
-			"cannot read storage cluster config for cluster %s",
-			nbdStorageConfig.StorageClusterID)
+			"couldn't read static vdisk config for vdisk %s", vdiskID)
 	}
 
-	// create (primary) storage cluster
-	cluster, err := ardb.NewCluster(*clusterConfig, nil) // not pooled
+	// create non-pooled cluster
+	cluster, err := ardb.NewClusterForVdisk(vdiskID, configSource, nil)
 	if err != nil {
 		return errors.Wrapf(err,
-			"cannot create storage cluster model for cluster %s",
-			nbdStorageConfig.StorageClusterID)
+			"couldn't create cluster for vdisk %s", vdiskID)
 	}
 
 	// check if vdisk exists

@@ -84,18 +84,6 @@ func importVdisk(cmd *cobra.Command, args []string) error {
 
 	log.Infof("generate tlog data")
 
-	vdiskNbdConf, err := config.ReadVdiskNBDConfig(configSource, vdiskCmdCfg.VdiskID)
-	if err != nil {
-		log.Errorf("failed to read vdisk nbd config of `%v`: %v", vdiskCmdCfg.VdiskID, err)
-		return err
-	}
-
-	clusterConf, err := config.ReadStorageClusterConfig(configSource, vdiskNbdConf.StorageClusterID)
-	if err != nil {
-		log.Errorf("failed to read storage cluster config of `%v`: %v", vdiskCmdCfg.VdiskID, err)
-		return err
-	}
-
 	generator, err := copy.NewGenerator(configSource, copy.Config{
 		SourceVdiskID: vdiskCmdCfg.VdiskID,
 		TargetVdiskID: vdiskCmdCfg.VdiskID,
@@ -114,7 +102,7 @@ func importVdisk(cmd *cobra.Command, args []string) error {
 	}
 
 	// store nbd's tlog metadata
-	cluster, err := ardb.NewCluster(*clusterConf, nil)
+	cluster, err := ardb.NewClusterForVdisk(vdiskCmdCfg.VdiskID, configSource, nil)
 	if err != nil {
 		return err
 	}

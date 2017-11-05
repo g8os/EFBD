@@ -53,17 +53,27 @@ func deleteVdisk(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	clusterConfig, err := config.ReadStorageClusterConfig(source, nbdConfig.StorageClusterID)
-	if err != nil {
+
+	// delete vdisk from primary cluster
+	err = deleteVdiskFromCluster(vdiskID, staticCfg.Type, nbdConfig.StorageClusterID, source)
+	if err != nil || nbdConfig.SlaveStorageClusterID == "" {
 		return err
 	}
 
+	// delete vdisk from slave cluster
+	return deleteVdiskFromCluster(vdiskID, staticCfg.Type, nbdConfig.SlaveStorageClusterID, source)
+}
+
+func deleteVdiskFromCluster(vdiskID string, vdiskType config.VdiskType, clusterID string, cs config.Source) error {
+	clusterConfig, err := config.ReadStorageClusterConfig(cs, clusterID)
+	if err != nil {
+		return err
+	}
 	cluster, err := ardb.NewCluster(*clusterConfig, nil)
 	if err != nil {
 		return err
 	}
-
-	_, err = storage.DeleteVdisk(vdiskID, staticCfg.Type, cluster)
+	_, err = storage.DeleteVdisk(vdiskID, vdiskType, cluster)
 	return err
 }
 

@@ -101,7 +101,7 @@ func createCluster(str string) (ardb.StorageCluster, error) {
 		return nil, err
 	}
 
-	// create cluster
+	// create non-pooled cluster
 	return ardb.NewCluster(*clusterConfig, nil)
 }
 

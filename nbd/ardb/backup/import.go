@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
@@ -23,7 +24,12 @@ func Import(ctx context.Context, cfg Config) error {
 		return err
 	}
 
-	storageConfig, err := createStorageConfig(cfg.VdiskID, cfg.BlockStorageConfig)
+	cs, err := config.NewSource(cfg.BlockStorageConfig)
+	if err != nil {
+		return err
+	}
+
+	staticCfg, err := config.ReadVdiskStaticConfig(cs, cfg.VdiskID)
 	if err != nil {
 		return err
 	}
@@ -31,10 +37,7 @@ func Import(ctx context.Context, cfg Config) error {
 	pool := ardb.NewPool(nil)
 	defer pool.Close()
 
-	blockStorage, err := storage.BlockStorageFromConfig(
-		cfg.VdiskID,
-		storageConfig.Vdisk, storageConfig.NBD,
-		pool)
+	blockStorage, err := storage.BlockStorageFromConfigSource(cfg.VdiskID, cs, pool)
 	if err != nil {
 		return err
 	}
@@ -48,8 +51,8 @@ func Import(ctx context.Context, cfg Config) error {
 
 	importConfig := importConfig{
 		JobCount:        cfg.JobCount,
-		DstBlockSize:    int64(storageConfig.Vdisk.BlockSize),
-		DstVdiskSize:    storageConfig.Vdisk.Size * 1024 * 1024 * 1024, // GiB to bytes
+		DstBlockSize:    int64(staticCfg.BlockSize),
+		DstVdiskSize:    staticCfg.Size * 1024 * 1024 * 1024, // GiB to bytes
 		CompressionType: cfg.CompressionType,
 		CryptoKey:       cfg.CryptoKey,
 		SnapshotID:      cfg.SnapshotID,

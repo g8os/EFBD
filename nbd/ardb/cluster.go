@@ -24,6 +24,41 @@ type StorageCluster interface {
 	ServerCount() int64
 }
 
+// NewClusterForVdisk creates a cluster with no config hot-reloading and no self-healing capabilities.
+// If a slave cluster is configured for the given vdisk, it will be combined with the primary cluster into a single cluster,
+// otherwise just the primary cluster will be used.
+// If no slave cluster is configured, an error will be returned if a primary server is marked as offline.
+func NewClusterForVdisk(vdiskID string, cs config.Source, dialer ConnectionDialer) (StorageCluster, error) {
+	storageCfg, err := config.ReadVdiskNBDConfig(cs, vdiskID)
+	if err != nil {
+		return nil, errors.Wrapf(err,
+			"cannot read nbd storage config for vdisk %s", vdiskID)
+	}
+
+	primaryCluster, err := config.ReadStorageClusterConfig(cs, storageCfg.StorageClusterID)
+	if err != nil {
+		return nil, errors.Wrapf(err,
+			"cannot read storage cluster config for primary cluster %s",
+			storageCfg.StorageClusterID)
+	}
+
+	if storageCfg.SlaveStorageClusterID == "" {
+		// no slave cluster configured,
+		// create a cluster with just the primary cluster
+		return NewCluster(*primaryCluster, dialer)
+	}
+
+	slaveCluster, err := config.ReadStorageClusterConfig(cs, storageCfg.SlaveStorageClusterID)
+	if err != nil {
+		return nil, errors.Wrapf(err,
+			"cannot read storage cluster config for slave cluster %s",
+			storageCfg.SlaveStorageClusterID)
+	}
+
+	// create primary-secondary cluster pair
+	return NewClusterPair(*primaryCluster, *slaveCluster, dialer)
+}
+
 // NewUniCluster creates a new (ARDB) uni-cluster.
 // See `UniCluster` for more information.
 //   ErrNoServersAvailable is returned in case the given server isn't available.
@@ -135,6 +170,63 @@ func NewCluster(cfg config.StorageClusterConfig, dialer ConnectionDialer) (*Clus
 
 	return &Cluster{
 		servers:              cfg.Servers,
+		serverCount:          serverCount,
+		availableServerCount: availableServerCount,
+		dialer:               dialer,
+	}, nil
+}
+
+// NewClusterPair creates a new (ARDB) cluster, combined from the servers of two given clusters.
+// One cluster acts as the primary cluster, while the other one acts as the secondary cluster.
+// Both clusters are required to have an equal amount of servers.
+// Each primary server is directly mapped to the secondary server at the same index.
+// A secondary server is only used if its mapped primary server is marked as offline.
+func NewClusterPair(primary, secondary config.StorageClusterConfig, dialer ConnectionDialer) (*Cluster, error) {
+	if err := primary.Validate(); err != nil {
+		return nil, err
+	}
+	if err := secondary.Validate(); err != nil {
+		return nil, err
+	}
+	if len(primary.Servers) != len(secondary.Servers) {
+		return nil, errIncompatibleServerCount
+	}
+
+	serverCount := int64(len(primary.Servers))
+	availableServerCount := serverCount
+	servers := make([]config.StorageServerConfig, serverCount)
+
+	for index, server := range primary.Servers {
+		switch server.State {
+		case config.StorageServerStateOnline:
+			servers[index] = server // use primary server
+
+		case config.StorageServerStateOffline:
+			server = secondary.Servers[index]
+			if server.State != config.StorageServerStateOnline {
+				return nil, errServerPairNotAvailable
+			}
+			servers[index] = server // use secondary server
+
+		case config.StorageServerStateRIP:
+			// don't use any server, index is RIP
+			servers[index].State = config.StorageServerStateRIP
+			availableServerCount--
+
+		default:
+			return nil, ErrServerStateNotSupported
+		}
+	}
+	if availableServerCount == 0 {
+		return nil, ErrNoServersAvailable
+	}
+
+	if dialer == nil {
+		dialer = stdConnDialer
+	}
+
+	return &Cluster{
+		servers:              servers,
 		serverCount:          serverCount,
 		availableServerCount: availableServerCount,
 		dialer:               dialer,
@@ -481,4 +573,9 @@ var (
 	// when a server is updated to a state,
 	// while the cluster (type) does not support that kind of state.
 	ErrServerStateNotSupported = errors.New("server state is not supported")
+)
+
+var (
+	errIncompatibleServerCount = errors.New("incompatible server count between primary and secondary cluster")
+	errServerPairNotAvailable  = errors.New("server pair not available")
 )

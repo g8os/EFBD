@@ -46,31 +46,20 @@ func (g *Generator) GenerateFromStorage(parentCtx context.Context) (uint64, erro
 		return 0, err
 	}
 
-	storageConf, err := config.ReadNBDStorageConfig(g.configSource, g.sourceVdiskID)
+	cluster, err := ardb.NewClusterForVdisk(g.sourceVdiskID, g.configSource, nil)
 	if err != nil {
-		return 0, errors.Wrap(err, "failed to ReadNBDStorageConfig")
+		return 0, err
 	}
-
-	// create (primary) storage cluster
-	// TODO: support optional slave cluster here
-	// see: https://github.com/zero-os/0-Disk/issues/445
-	cluster, err := ardb.NewCluster(storageConf.StorageCluster, nil) // not pooled
-	if err != nil {
-		return 0, errors.Wrapf(err,
-			"cannot create storage cluster model for primary cluster of vdisk %s",
-			g.sourceVdiskID)
-	}
-
 	indices, err := storage.ListBlockIndices(g.sourceVdiskID, staticConf.Type, cluster)
 	if err != nil {
 		return 0, errors.Wrapf(err, "ListBlockIndices failed for vdisk `%v`", g.sourceVdiskID)
 	}
 
+	// create block storage using a pooled cluster
 	pool := ardb.NewPool(nil)
 	defer pool.Close()
 
-	sourceStorage, err := storage.BlockStorageFromConfig(
-		g.sourceVdiskID, *staticConf, *storageConf, pool)
+	sourceStorage, err := storage.BlockStorageFromConfigSource(g.sourceVdiskID, g.configSource, pool)
 	if err != nil {
 		return 0, err
 	}

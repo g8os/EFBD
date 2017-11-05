@@ -59,69 +59,45 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 	// store pos arguments in named variables
 	sourceVdiskID, targetVdiskID := args[0], args[1]
 
-	// TODO: support slave clusters!!!
-
-	// try to read the configs of source vdisk
-	srcStaticCfg, err := config.ReadVdiskStaticConfig(configSource, sourceVdiskID)
+	// read the static config of source vdisk
+	sourceStaticCfg, err := config.ReadVdiskStaticConfig(configSource, sourceVdiskID)
 	if err != nil {
 		return err
 	}
-	srcNBDConfig, err := config.ReadVdiskNBDConfig(configSource, sourceVdiskID)
-	if err != nil {
-		return err
-	}
-	srcClusterConfig, err := config.ReadStorageClusterConfig(configSource, srcNBDConfig.StorageClusterID)
-	if err != nil {
-		return err
-	}
-	sourceCluster, err := ardb.NewCluster(*srcClusterConfig, nil)
+	// create the non-pooled cluster (pair) for the source vdisk
+	sourceCluster, err := ardb.NewClusterForVdisk(
+		sourceVdiskID, configSource, nil)
 	if err != nil {
 		return err
 	}
 
-	// try to read the configs of target vdisk
-	dstStaticConfig, err := config.ReadVdiskStaticConfig(configSource, targetVdiskID)
+	// read the static config of target vdisk
+	targetStaticConfig, err := config.ReadVdiskStaticConfig(configSource, targetVdiskID)
 	if err != nil {
 		return err
 	}
-	dstNBDConfig, err := config.ReadVdiskNBDConfig(configSource, targetVdiskID)
+	// create the non-pooled cluster (pair) for the target vdisk
+	targetCluster, err := ardb.NewClusterForVdisk(
+		targetVdiskID, configSource, nil)
 	if err != nil {
 		return err
 	}
-
-	var targetCluster ardb.StorageCluster
-	// only create target cluster if the source and target cluster IDs are different
-	if srcNBDConfig.StorageClusterID != dstNBDConfig.StorageClusterID {
-		dstClusterConfig, err := config.ReadStorageClusterConfig(configSource, dstNBDConfig.StorageClusterID)
-		if err != nil {
-			return err
-		}
-		targetCluster, err = ardb.NewCluster(*dstClusterConfig, nil)
-		if err != nil {
-			return err
-		}
-		err = checkVdiskExists(targetVdiskID, dstStaticConfig.Type, targetCluster)
-		if err != nil {
-			return err
-		}
-	} else {
-		err = checkVdiskExists(targetVdiskID, dstStaticConfig.Type, sourceCluster)
-		if err != nil {
-			return err
-		}
+	err = checkVdiskExists(targetVdiskID, targetStaticConfig.Type, targetCluster)
+	if err != nil {
+		return err
 	}
 
 	// 1. copy the ARDB (meta)data
 
 	sourceConfig := storage.CopyVdiskConfig{
 		VdiskID:   sourceVdiskID,
-		Type:      srcStaticCfg.Type,
-		BlockSize: int64(srcStaticCfg.BlockSize),
+		Type:      sourceStaticCfg.Type,
+		BlockSize: int64(sourceStaticCfg.BlockSize),
 	}
 	targetConfig := storage.CopyVdiskConfig{
 		VdiskID:   targetVdiskID,
-		Type:      dstStaticConfig.Type,
-		BlockSize: int64(dstStaticConfig.BlockSize),
+		Type:      targetStaticConfig.Type,
+		BlockSize: int64(targetStaticConfig.BlockSize),
 	}
 
 	err = storage.CopyVdisk(sourceConfig, targetConfig, sourceCluster, targetCluster)
