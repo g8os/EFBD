@@ -122,6 +122,10 @@ func (cluster *Cluster) Close() error {
 // applyAction applies the storage action to the server
 // that can be dialer for the given action.
 func (cluster *Cluster) applyAction(state *ServerState, action ardb.StorageAction) (reply interface{}, err error) {
+	if state.Config.State != config.StorageServerStateOnline {
+		return nil, ardb.ErrServerUnavailable
+	}
+
 	// try to open connection,
 	// and apply the action to that connection if it could be dialed.
 	conn, err := cluster.pool.Dial(state.Config)
@@ -224,6 +228,207 @@ type ServerState struct {
 	Config config.StorageServerConfig
 	// Type of the server: {primary, slave, template}
 	Type log.ARDBServerType
+}
+
+// NewTemplateCluster creates a new TemplateCluster.
+// See `Cluster` for more information.
+func NewTemplateCluster(ctx context.Context, vdiskID string, cs config.Source) (*Cluster, error) {
+	controller := &templateClusterStateController{vdiskID: vdiskID}
+	err := controller.spawnConfigReloader(ctx, cs)
+	if err != nil {
+		controller.Close()
+		return nil, err
+	}
+
+	return NewCluster(vdiskID, controller)
+}
+
+type templateClusterStateController struct {
+	vdiskID string
+
+	servers     []config.StorageServerConfig
+	serverCount int64
+
+	mux sync.RWMutex
+
+	cancel context.CancelFunc
+}
+
+// ServerState implements ClusterStateController.ServerState
+func (ctrl *templateClusterStateController) ServerState() (state ServerState, err error) {
+	ctrl.mux.RLock()
+	defer ctrl.mux.RUnlock()
+
+	if ctrl.serverCount == 0 {
+		err = ErrClusterNotDefined
+		return
+	}
+
+	state.Index, err = ardb.FindFirstServerIndex(ctrl.serverCount, ctrl.serverOperational)
+	if err != nil {
+		return
+	}
+
+	state.Config = ctrl.servers[state.Index]
+	state.Type = log.ARDBTemplateServer
+	return
+}
+
+// ServerStateFor implements ClusterStateController.ServerStateFor
+func (ctrl *templateClusterStateController) ServerStateFor(objectIndex int64) (state ServerState, err error) {
+	ctrl.mux.RLock()
+	defer ctrl.mux.RUnlock()
+
+	if ctrl.serverCount == 0 {
+		err = ErrClusterNotDefined
+		return
+	}
+
+	state.Index, err = ardb.ComputeServerIndex(ctrl.serverCount, objectIndex, ctrl.serverOperational)
+	if err != nil {
+		return
+	}
+
+	state.Config = ctrl.servers[state.Index]
+	state.Type = log.ARDBTemplateServer
+	return
+}
+
+// ServerStateAt implements ClusterStateController.ServerStateAt
+func (ctrl *templateClusterStateController) ServerStateAt(serverIndex int64) (state ServerState, err error) {
+	ctrl.mux.RLock()
+	defer ctrl.mux.RUnlock()
+
+	if ctrl.serverCount == 0 {
+		err = ErrClusterNotDefined
+		return
+	}
+	if serverIndex < 0 || serverIndex >= ctrl.serverCount {
+		err = ardb.ErrServerIndexOOB
+		return
+	}
+
+	state.Index = serverIndex
+	state.Config = ctrl.servers[state.Index]
+	state.Type = log.ARDBTemplateServer
+	return
+}
+
+// UpdateServerState implements ClusterStateController.UpdateServerState
+func (ctrl *templateClusterStateController) UpdateServerState(state ServerState) bool {
+	ctrl.mux.Lock()
+	defer ctrl.mux.Unlock()
+	// ensure index is within range
+	if state.Index >= ctrl.serverCount {
+		log.Debugf("couldn't update template server for vdisk %s: index is OOB", ctrl.vdiskID)
+		return false // OOB
+	}
+	if state.Config.Equal(ctrl.servers[state.Index]) {
+		log.Debugf("couldn't update template server for vdisk %s: state remains unchanged", ctrl.vdiskID)
+		return false // no update happened
+	}
+
+	// update applied
+	ctrl.servers[state.Index] = state.Config
+	return true
+}
+
+// ServerCount implements ClusterStateController.ServerCount
+func (ctrl *templateClusterStateController) ServerCount() int64 {
+	ctrl.mux.RLock()
+	count := ctrl.serverCount
+	ctrl.mux.RUnlock()
+	return count
+}
+
+// Close implements ClusterStateController.Close
+func (ctrl *templateClusterStateController) Close() error {
+	ctrl.cancel()
+	return nil
+}
+
+// serverOperational returns if a server is operational
+func (ctrl *templateClusterStateController) serverOperational(index int64) (bool, error) {
+	switch ctrl.servers[index].State {
+	case config.StorageServerStateOnline:
+		return true, nil
+	case config.StorageServerStateRIP:
+		return false, nil
+	default:
+		return false, ardb.ErrServerUnavailable
+	}
+}
+
+// spawnConfigReloader starts all needed config watchers,
+// and spawns a goroutine to receive the updates.
+// An error is returned in case the initial watch-creation and config-update failed.
+// All future errors will be logged without stopping this goroutine.
+func (ctrl *templateClusterStateController) spawnConfigReloader(ctx context.Context, cs config.Source) error {
+	// create the context and cancelFunc used for the master watcher.
+	ctx, ctrl.cancel = context.WithCancel(ctx)
+
+	// create the master watcher if possible
+	vdiskNBDRefCh, err := config.WatchVdiskNBDConfig(ctx, cs, ctrl.vdiskID)
+	if err != nil {
+		return err
+	}
+	vdiskNBDConfig := <-vdiskNBDRefCh
+
+	var clusterCfg config.StorageClusterConfig
+
+	// create the storage cluster watcher,
+	// and execute the initial config update iff
+	// an internal watcher is created.
+	var clusterWatcher ClusterConfigWatcher
+	clusterExists, err := clusterWatcher.SetClusterID(ctx, cs, ctrl.vdiskID, vdiskNBDConfig.TemplateStorageClusterID)
+	if err != nil {
+		return err
+	}
+	if clusterExists {
+		clusterCfg = <-clusterWatcher.Receive()
+		ctrl.servers = clusterCfg.Servers
+		ctrl.serverCount = int64(len(clusterCfg.Servers))
+	}
+
+	// spawn the config update goroutine
+	go func() {
+		var ok bool
+		for {
+			select {
+			case <-ctx.Done():
+				return
+
+			// handle clusterID reference updates
+			case vdiskNBDConfig, ok = <-vdiskNBDRefCh:
+				if !ok {
+					return
+				}
+
+				clusterExists, err := clusterWatcher.SetClusterID(ctx, cs, ctrl.vdiskID, vdiskNBDConfig.TemplateStorageClusterID)
+				if err != nil {
+					log.Errorf("failed to watch new template cluster %s: %v",
+						vdiskNBDConfig.TemplateStorageClusterID, err)
+					continue
+				}
+				if !clusterExists {
+					ctrl.mux.Lock()
+					ctrl.servers = nil
+					ctrl.serverCount = 0
+					ctrl.mux.Unlock()
+				}
+
+			// handle cluster storage updates
+			case clusterCfg = <-clusterWatcher.Receive():
+				ctrl.mux.Lock()
+				ctrl.servers = clusterCfg.Servers
+				ctrl.serverCount = int64(len(clusterCfg.Servers))
+				ctrl.mux.Unlock()
+			}
+		}
+	}()
+
+	// all is operational, no error to return
+	return nil
 }
 
 // NewPrimaryCluster creates a new PrimaryCluster.
@@ -549,265 +754,6 @@ func (server primaryStorageServer) Config() config.StorageServerConfig {
 	return server.cluster.servers[server.index]
 }
 
-// NewTemplateCluster creates a new TemplateCluster.
-// See `TemplateCluster` for more information.
-func NewTemplateCluster(ctx context.Context, vdiskID string, cs config.Source) (*TemplateCluster, error) {
-	templateCluster := &TemplateCluster{
-		vdiskID: vdiskID,
-		pool:    ardb.NewPool(nil),
-	}
-	err := templateCluster.spawnConfigReloader(ctx, cs)
-	if err != nil {
-		templateCluster.Close()
-		return nil, err
-	}
-
-	return templateCluster, nil
-}
-
-// TemplateCluster defines a vdisk'stemplate cluster (configured or not).
-// It supports hot reloading of the configuration.
-type TemplateCluster struct {
-	vdiskID string
-
-	servers     []config.StorageServerConfig
-	serverCount int64
-
-	pool   *ardb.Pool
-	cancel context.CancelFunc
-
-	mux sync.RWMutex
-}
-
-// Do implements StorageCluster.Do
-func (tsc *TemplateCluster) Do(_ ardb.StorageAction) (reply interface{}, err error) {
-	return nil, ErrMethodNotSupported
-}
-
-// DoFor implements StorageCluster.DoFor
-func (tsc *TemplateCluster) DoFor(objectIndex int64, action ardb.StorageAction) (reply interface{}, err error) {
-	tsc.mux.RLock()
-	cfg, serverIndex, err := tsc.serverConfigFor(objectIndex)
-	tsc.mux.RUnlock()
-	if err != nil {
-		return nil, err
-	}
-	return tsc.doAt(serverIndex, cfg, action)
-}
-
-// ServerIterator implements StorageCluster.ServerIterator.
-func (tsc *TemplateCluster) ServerIterator(context.Context) (<-chan ardb.StorageServer, error) {
-	return nil, ErrMethodNotSupported
-}
-
-// ServerCount implements StorageCluster.ServerCount.
-func (tsc *TemplateCluster) ServerCount() int64 {
-	tsc.mux.RLock()
-
-	count := tsc.serverCount
-	for _, server := range tsc.servers {
-		if server.State != config.StorageServerStateOnline {
-			count--
-		}
-	}
-	tsc.mux.RUnlock()
-
-	return count
-}
-
-// Close any open resources
-func (tsc *TemplateCluster) Close() error {
-	tsc.cancel()
-	tsc.pool.Close()
-	return nil
-}
-
-func (tsc *TemplateCluster) doAt(serverIndex int64, cfg config.StorageServerConfig, action ardb.StorageAction) (reply interface{}, err error) {
-	conn, err := tsc.pool.Dial(cfg)
-	if err == nil {
-		defer conn.Close()
-		reply, err = action.Do(conn)
-		if err == nil || errors.Cause(err) == ardb.ErrNil {
-			return
-		}
-	}
-
-	// an error has occured, broadcast it to AYS
-	status := MapErrorToBroadcastStatus(err)
-	log.Broadcast(
-		status,
-		log.SubjectStorage,
-		log.ARDBServerTimeoutBody{
-			Address:  cfg.Address,
-			Database: cfg.Database,
-			Type:     log.ARDBTemplateServer,
-			VdiskID:  tsc.vdiskID,
-		},
-	)
-
-	tsc.mux.Lock()
-	updateErr := tsc.updateServerState(serverIndex, config.StorageServerStateOffline)
-	tsc.mux.Unlock()
-	if updateErr != nil {
-		log.Errorf("couldn't update template server (%d) state to offline: %v", serverIndex, updateErr)
-	}
-
-	return nil, ardb.ErrServerUnavailable
-}
-
-// spawnConfigReloader starts all needed config watchers,
-// and spawns a goroutine to receive the updates.
-// An error is returned in case the initial watch-creation and config-update failed.
-// All future errors will be logged (and optionally broadcasted),
-// without stopping this goroutine.
-func (tsc *TemplateCluster) spawnConfigReloader(ctx context.Context, cs config.Source) error {
-	// create the context and cancelFunc used for the master watcher.
-	ctx, tsc.cancel = context.WithCancel(ctx)
-
-	// create the master watcher if possible
-	vdiskNBDRefCh, err := config.WatchVdiskNBDConfig(ctx, cs, tsc.vdiskID)
-	if err != nil {
-		return err
-	}
-	vdiskNBDConfig := <-vdiskNBDRefCh
-
-	// create the storage cluster watcher,
-	// and execute the initial config update iff
-	// an internal watcher is created.
-	var watcher ClusterConfigWatcher
-	clusterExists, err := watcher.SetClusterID(
-		ctx, cs, tsc.vdiskID, vdiskNBDConfig.TemplateStorageClusterID)
-	if err != nil {
-		return err
-	}
-	var templateClusterCfg config.StorageClusterConfig
-	if clusterExists {
-		templateClusterCfg = <-watcher.Receive()
-		err = tsc.updateStorageConfig(templateClusterCfg)
-		if err != nil {
-			return err
-		}
-	}
-
-	// spawn the config update goroutine
-	go func() {
-		var ok bool
-		for {
-			select {
-			case <-ctx.Done():
-				return
-
-			// handle clusterID reference updates
-			case vdiskNBDConfig, ok = <-vdiskNBDRefCh:
-				if !ok {
-					return
-				}
-
-				clusterWasDefined := watcher.Defined()
-				clusterExists, err = watcher.SetClusterID(
-					ctx, cs, tsc.vdiskID, vdiskNBDConfig.TemplateStorageClusterID)
-				if err != nil {
-					log.Errorf("failed to watch new template cluster config: %v", err)
-					continue
-				}
-				if clusterWasDefined && !clusterExists {
-					// no cluster exists any longer, we need to delete the old state
-					tsc.mux.Lock()
-					tsc.servers, tsc.serverCount = nil, 0
-					tsc.mux.Unlock()
-				}
-
-			// handle cluster storage updates
-			case templateClusterCfg = <-watcher.Receive():
-				err = tsc.updateStorageConfig(templateClusterCfg)
-				if err != nil {
-					log.Errorf("failed to update new template cluster config: %v", err)
-				}
-			}
-		}
-	}()
-
-	// all is operational, no error to return
-	return nil
-}
-
-// updateStorageConfig overwrites the currently used storage config,
-// iff the given config is valid.
-func (tsc *TemplateCluster) updateStorageConfig(cfg config.StorageClusterConfig) error {
-	var clusterOperational bool
-	for _, server := range cfg.Servers {
-		if server.State == config.StorageServerStateOnline {
-			clusterOperational = true
-			break
-		}
-	}
-	if !clusterOperational {
-		// no servers are available,
-		// so no need to use the config at all
-		tsc.mux.Lock()
-		tsc.servers, tsc.serverCount = nil, 0
-		tsc.mux.Unlock()
-		return nil
-	}
-
-	tsc.mux.Lock()
-	tsc.servers = cfg.Servers
-	tsc.serverCount = int64(len(cfg.Servers))
-	tsc.mux.Unlock()
-	return nil
-}
-
-func (tsc *TemplateCluster) serverConfigFor(objectIndex int64) (cfg config.StorageServerConfig, serverIndex int64, err error) {
-	// ensure the template cluster is actually defined,
-	// as it is created even when no clusterID is referenced,
-	// just in case one would be defined via a hotreload.
-	if tsc.serverCount == 0 {
-		err = ErrClusterNotDefined
-		return
-	}
-
-	// compute server index for the server which maps to the given object index
-	serverIndex, err = ardb.ComputeServerIndex(tsc.serverCount, objectIndex, tsc.serverOperational)
-	if err != nil {
-		return
-	}
-
-	// establish a connection for that serverIndex
-	cfg = tsc.servers[serverIndex]
-	return
-}
-
-func (tsc *TemplateCluster) updateServerState(index int64, state config.StorageServerState) error {
-	switch state {
-	case config.StorageServerStateOnline, config.StorageServerStateOffline, config.StorageServerStateRIP:
-
-		log.Debugf("updating vdisk %s' template server #%d state to %s", tsc.vdiskID, index, state)
-		tsc.servers[index].State = state
-		return nil
-
-	default:
-		return ardb.ErrServerStateNotSupported
-	}
-}
-
-// serverOperational returns true if
-// a server on the given index is available for operation.
-func (tsc *TemplateCluster) serverOperational(index int64) (bool, error) {
-	switch tsc.servers[index].State {
-	case config.StorageServerStateOnline:
-		return true, nil
-
-	case config.StorageServerStateOffline:
-		return false, ardb.ErrServerUnavailable
-
-	case config.StorageServerStateRIP:
-		return false, nil
-
-	default:
-		return false, ardb.ErrServerStateNotSupported
-	}
-}
-
 // ClusterConfigWatcher is a small helper struct,
 // used to (un)set a storage cluster watcher for a given clusterID.
 // By centralizing this logic,
@@ -910,7 +856,6 @@ var (
 
 	// deprecated
 	_ ardb.StorageCluster = (*PrimaryCluster)(nil)
-	_ ardb.StorageCluster = (*TemplateCluster)(nil)
 )
 
 // enforces that our ServerIterators
@@ -920,6 +865,12 @@ var (
 
 	// deprecated
 	_ ardb.StorageServer = primaryStorageServer{}
+)
+
+// enforces that our ClusterStateControllers
+// are actually ClusterStateControllers
+var (
+	_ ClusterStateController = (*templateClusterStateController)(nil)
 )
 
 var (
@@ -933,5 +884,7 @@ var (
 )
 
 var (
+	// an error used as a dummy error,
+	// it should never be returned
 	errActionNotApplied = errors.New("storage action not applied")
 )

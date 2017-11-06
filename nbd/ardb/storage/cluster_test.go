@@ -367,10 +367,9 @@ func TestTemplateServerFailsByNotification(t *testing.T) {
 	templateClusterConfig.Servers[1].State = config.StorageServerStateOffline
 	source.SetStorageCluster(templateClusterID, &templateClusterConfig)
 	waitForAsyncClusterUpdate(t, func() bool {
-		templateCluster.mux.RLock()
-		ok := len(templateCluster.servers) == 2 && templateCluster.servers[1].State == config.StorageServerStateOffline
-		templateCluster.mux.RUnlock()
-		return ok
+		cfg, err := templateCluster.controller.ServerStateAt(1)
+		require.NoError(err)
+		return cfg.Config.State == config.StorageServerStateOffline
 	})
 
 	// create new primary servers
