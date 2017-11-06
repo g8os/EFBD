@@ -12,6 +12,220 @@ import (
 	"github.com/zero-os/0-Disk/nbd/ardb"
 )
 
+// NewCluster creates a new storage cluster for the given vdiskID,
+// using the given controller to control the server state and fetch that state from.
+func NewCluster(vdiskID string, controller ClusterStateController) (*Cluster, error) {
+	if vdiskID == "" {
+		return nil, errors.New("storage.Cluster requires a non-nil vdiskID")
+	}
+	if isInterfaceValueNil(controller) {
+		return nil, errors.New("storage.Cluster requires a non-nil ClusterStateController")
+	}
+	return &Cluster{
+		vdiskID:    vdiskID,
+		pool:       ardb.NewPool(nil),
+		controller: controller,
+	}, nil
+}
+
+// Cluster defines a cluster which applies actions on servers,
+// which are configured within a state controller.
+// This state is both updated by external events (config hot reloading),
+// as well as internal events (updating a server based on state changes).
+type Cluster struct {
+	vdiskID    string
+	pool       *ardb.Pool
+	controller ClusterStateController
+}
+
+// Do implements StorageCluster.Do
+func (cluster *Cluster) Do(action ardb.StorageAction) (reply interface{}, err error) {
+	var state ServerState
+	// keep trying to apply action, until it works out,
+	// or until no server is available any longer.
+	for {
+		state, err = cluster.controller.ServerState()
+		if err != nil {
+			// server wasn't avaialable for some illegal reason,
+			// or no server was available at all
+			return nil, err
+		}
+
+		// apply action, and return its results if the action was indeed applied.
+		reply, err = cluster.applyAction(&state, action)
+		if err != errActionNotApplied {
+			return reply, err
+		}
+	}
+}
+
+// DoFor implements StorageCluster.DoFor
+func (cluster *Cluster) DoFor(objectIndex int64, action ardb.StorageAction) (reply interface{}, err error) {
+	var state ServerState
+	// keep trying to apply action, until it works out,
+	// or until no server is available any longer.
+	for {
+		state, err = cluster.controller.ServerStateFor(objectIndex)
+		if err != nil {
+			// server wasn't avaialable for some illegal reason,
+			// or no server was available at all
+			return nil, err
+		}
+
+		// apply action, and return its results if the action was indeed applied.
+		reply, err = cluster.applyAction(&state, action)
+		if err != errActionNotApplied {
+			return reply, err
+		}
+	}
+}
+
+// ServerIterator implements StorageCluster.ServerIterator
+func (cluster *Cluster) ServerIterator(ctx context.Context) (<-chan ardb.StorageServer, error) {
+	ch := make(chan ardb.StorageServer)
+	go func() {
+		log.Debugf("starting server iterator for vdisk %s's storage.Cluster", cluster.vdiskID)
+		defer func() {
+			close(ch) // close channel iterator when finished
+			log.Debugf("stopping server iterator for vdisk %s's storage.Cluster", cluster.vdiskID)
+		}()
+
+		for index := int64(0); index < cluster.controller.ServerCount(); index++ {
+			server := smartServer{
+				Index:   index,
+				Cluster: cluster,
+			}
+
+			select {
+			case ch <- server:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return ch, nil
+}
+
+// ServerCount implements StorageCluster.ServerCount
+func (cluster *Cluster) ServerCount() int64 {
+	return cluster.controller.ServerCount()
+}
+
+// Close this storage cluster's open resources.
+func (cluster *Cluster) Close() error {
+	var slice errors.ErrorSlice
+	slice.Add(cluster.controller.Close())
+	slice.Add(cluster.pool.Close())
+	return slice.AsError()
+}
+
+// applyAction applies the storage action to the server
+// that can be dialer for the given action.
+func (cluster *Cluster) applyAction(state *ServerState, action ardb.StorageAction) (reply interface{}, err error) {
+	// try to open connection,
+	// and apply the action to that connection if it could be dialed.
+	conn, err := cluster.pool.Dial(state.Config)
+	if err == nil {
+		defer conn.Close()
+		reply, err = action.Do(conn)
+		if err == nil || errors.Cause(err) == ardb.ErrNil {
+			return reply, err
+		}
+	}
+
+	// mark the server as offline,
+	// as something went wrong
+	state.Config.State = config.StorageServerStateOffline
+	if cluster.controller.UpdateServerState(*state) {
+		// broadcast the error to AYS
+		status := MapErrorToBroadcastStatus(err)
+		log.Broadcast(
+			status,
+			log.SubjectStorage,
+			log.ARDBServerTimeoutBody{
+				Address:  state.Config.Address,
+				Database: state.Config.Database,
+				Type:     state.Type,
+				VdiskID:  cluster.vdiskID,
+			},
+		)
+	}
+
+	return nil, errActionNotApplied
+}
+
+// smartServer defines an ardb.StorageServer returned
+// by the default storage.Cluster, and applies a connection to
+// whatever server that functions first for the given server index.
+type smartServer struct {
+	Index   int64
+	Cluster *Cluster
+}
+
+// Do implements StorageServer.Do
+func (server smartServer) Do(action ardb.StorageAction) (reply interface{}, err error) {
+	var state ServerState
+	// keep trying to apply action, until it works out,
+	// or until no server is available any longer.
+	for {
+		state, err = server.Cluster.controller.ServerStateAt(server.Index)
+		if err != nil {
+			// server wasn't avaialable for some illegal reason,
+			// or no server was available at all
+			return nil, err
+		}
+
+		// apply action, and return its results if the action was indeed applied.
+		reply, err = server.Cluster.applyAction(&state, action)
+		if err != errActionNotApplied {
+			return reply, err
+		}
+	}
+}
+
+// Config implements StorageServer.Config
+func (server smartServer) Config() config.StorageServerConfig {
+	state, err := server.Cluster.controller.ServerStateAt(server.Index)
+	if err != nil {
+		return config.StorageServerConfig{State: config.StorageServerStateRIP}
+	}
+	return state.Config
+}
+
+// ClusterStateController is used as the internal state controller for the storage Cluster.
+// It is used to retrieve server configs and update server configs (internal and external).
+type ClusterStateController interface {
+	// Retrieve the first available server state.
+	ServerState() (state ServerState, err error)
+	// Retrieve the server state which maps to a given objectIndex.
+	ServerStateFor(objectIndex int64) (state ServerState, err error)
+	// Retrieve the server state at the given serverIndex.
+	ServerStateAt(serverIndex int64) (state ServerState, err error)
+
+	// Update the server state.
+	// An update might be ignored if it is deemed to be out of date.
+	// True is returned in case the update was applied.
+	UpdateServerState(state ServerState) bool
+
+	// ServerCount returns the (flat) amount of servers,
+	// this state has in one dimension.
+	ServerCount() int64
+
+	// Close any open resources, previously in-use by this controller.
+	Close() error
+}
+
+// ServerState is a snapshot of the state of a server,
+// as it is retrieved from a ClusterStateController.
+type ServerState struct {
+	// Index of the server within the internal cluster (model)
+	Index int64
+	// Config of the server in its current state
+	Config config.StorageServerConfig
+	// Type of the server: {primary, slave, template}
+	Type log.ARDBServerType
+}
+
 // NewPrimaryCluster creates a new PrimaryCluster.
 // See `PrimaryCluster` for more information.
 func NewPrimaryCluster(ctx context.Context, vdiskID string, cs config.Source) (*PrimaryCluster, error) {
@@ -692,6 +906,9 @@ func MapErrorToBroadcastStatus(err error) log.MessageStatus {
 // enforces that our StorageClusters
 // are actually StorageClusters
 var (
+	_ ardb.StorageCluster = (*Cluster)(nil)
+
+	// deprecated
 	_ ardb.StorageCluster = (*PrimaryCluster)(nil)
 	_ ardb.StorageCluster = (*TemplateCluster)(nil)
 )
@@ -699,6 +916,9 @@ var (
 // enforces that our ServerIterators
 // are actually ServerIterators
 var (
+	_ ardb.StorageServer = smartServer{}
+
+	// deprecated
 	_ ardb.StorageServer = primaryStorageServer{}
 )
 
@@ -710,4 +930,8 @@ var (
 	// ErrClusterNotDefined is an error returned
 	// in case a cluster is used which is not defined.
 	ErrClusterNotDefined = errors.New("ARDB storage cluster is not defined")
+)
+
+var (
+	errActionNotApplied = errors.New("storage action not applied")
 )
