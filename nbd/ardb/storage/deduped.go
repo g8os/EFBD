@@ -39,6 +39,8 @@ func Deduped(vdiskID string, blockSize, lbaCacheLimit int64, cluster, templateCl
 		lba:             vlba,
 	}
 
+	dedupedStorage.cache = NewCache(dedupedStorage.commitContent, 0, 0, 0)
+
 	// getContent is ALWAYS defined,
 	// but the actual function used depends on
 	// whether or not this storage has template support.
@@ -65,6 +67,7 @@ type dedupedStorage struct {
 	templateCluster ardb.StorageCluster  // used to interact with the ARDB (StorageEngine) Template Cluster
 	lba             *lba.LBA             // the LBA used to get/set/modify the metadata (content hashes)
 	getContent      dedupedContentGetter // getContent function used to get content, is always defined
+	cache           *Cache               // write cache
 }
 
 // used to provide different content getters based on the vdisk properties
@@ -81,10 +84,7 @@ func (ds *dedupedStorage) SetBlock(blockIndex int64, content []byte) (err error)
 
 	// reference the content to this vdisk,
 	// and set the content itself, if it didn't exist yet
-	err = ds.setContent(hash, content)
-	if err != nil {
-		return
-	}
+	ds.setContent(hash, content)
 
 	return ds.lba.Set(blockIndex, hash)
 }
@@ -115,13 +115,18 @@ func (ds *dedupedStorage) DeleteBlock(blockIndex int64) (err error) {
 
 // Flush implements BlockStorage.Flush
 func (ds *dedupedStorage) Flush() (err error) {
+	ds.cache.Flush()
 	err = ds.lba.Flush()
 	return
 }
 
 // getPrimaryContent gets content from the primary storage.
 // Assigned to (*dedupedStorage).getContent in case this storage has no template support.
-func (ds *dedupedStorage) getPrimaryContent(hash zerodisk.Hash) (content []byte, err error) {
+func (ds *dedupedStorage) getPrimaryContent(hash zerodisk.Hash) ([]byte, error) {
+	if content, ok := ds.cache.Get(hash); ok {
+		return content, nil
+	}
+
 	cmd := ardb.Command(command.Get, hash.Bytes())
 	return ardb.OptBytes(ds.cluster.DoFor(int64(hash[0]), cmd))
 }
@@ -159,19 +164,7 @@ func (ds *dedupedStorage) getPrimaryOrTemplateContent(hash zerodisk.Hash) (conte
 	}
 
 	// store template content in primary/slave storage asynchronously
-	go func() {
-		err := ds.setContent(hash, content)
-		if err != nil {
-			// we won't return error however, but just log it
-			log.Errorf("couldn't store template content in primary/slave storage: %s", err.Error())
-			return
-		}
-
-		log.Debugf(
-			"stored template content for %v in primary/slave storage (asynchronously)",
-			hash)
-	}()
-
+	ds.setContent(hash, content)
 	log.Debugf(
 		"content not available in primary/slave storage for %v, but did find it in template storage",
 		hash)
@@ -180,11 +173,17 @@ func (ds *dedupedStorage) getPrimaryOrTemplateContent(hash zerodisk.Hash) (conte
 	return
 }
 
+func (ds *dedupedStorage) commitContent(hash zerodisk.Hash, content []byte) {
+	cmd := ardb.Command(command.Set, hash.Bytes(), content)
+	if err := ardb.Error(ds.cluster.DoFor(int64(hash[0]), cmd)); err != nil {
+		log.Errorf("couldn't store content in primary/slave storage: %s", err.Error())
+	}
+}
+
 // setContent if it doesn't exist yet,
 // and increase the reference counter, by adding this vdiskID
-func (ds *dedupedStorage) setContent(hash zerodisk.Hash, content []byte) error {
-	cmd := ardb.Command(command.Set, hash.Bytes(), content)
-	return ardb.Error(ds.cluster.DoFor(int64(hash[0]), cmd))
+func (ds *dedupedStorage) setContent(hash zerodisk.Hash, content []byte) {
+	ds.cache.Set(hash, content)
 }
 
 // Close implements BlockStorage.Close

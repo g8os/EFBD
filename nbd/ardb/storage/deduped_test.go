@@ -6,7 +6,6 @@ import (
 	mrand "math/rand"
 	"runtime/debug"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/zero-os/0-Disk"
@@ -170,6 +169,7 @@ func TestGetPrimaryOrTemplateContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	storageA.Flush()
 	// content should now exist in storageA, but not yet in storageB
 	testDedupContentExists(t, clusterA, testContent)
 	testDedupContentDoesNotExist(t, clusterB, testContent)
@@ -223,12 +223,12 @@ func TestGetPrimaryOrTemplateContent(t *testing.T) {
 		t.Fatal("content should exist now, while received nil-content")
 	}
 
+	storageB.Flush()
+
 	// content should now be in both storages
 	// as the template content should also be in primary storage
 	testDedupContentExists(t, clusterA, testContent)
 
-	// wait until the Get method saves the content async
-	time.Sleep(time.Millisecond * 200)
 	testDedupContentExists(t, clusterB, testContent)
 
 	// let's store some new content in storageB
@@ -239,6 +239,8 @@ func TestGetPrimaryOrTemplateContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	storageB.Flush()
 	// content should now exist in storageB, but not yet in storageA
 	testDedupContentExists(t, clusterB, testContent)
 	testDedupContentDoesNotExist(t, clusterA, testContent)
@@ -298,12 +300,11 @@ func TestGetPrimaryOrTemplateContent(t *testing.T) {
 		t.Fatal("content should exist now, while received nil-content")
 	}
 
+	storageA.Flush()
 	// and also our direct test should show that
 	// the content now exists in both storages
 	testDedupContentExists(t, clusterB, testContent)
 
-	// wait until the Get method saves the content async
-	time.Sleep(time.Millisecond * 200)
 	testDedupContentExists(t, clusterA, testContent)
 }
 
