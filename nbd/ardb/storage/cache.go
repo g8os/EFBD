@@ -1,32 +1,27 @@
 package storage
 
 import (
-	"github.com/patrickmn/go-cache"
+	"github.com/bluele/gcache"
 	"github.com/zero-os/0-Disk"
 	"time"
 )
 
 const (
 	cacheDefaultExpiration = 30 * time.Second
-	cacheCleanupInterval   = 10 * time.Second
 	cacheMaxSize           = 100 //each chunk is 512K so this is around 2.5M of memory
 )
 
 type Cache struct {
-	cache   *cache.Cache
+	cache   gcache.Cache
 	evict   CacheEvict
 	maxSize int
 }
 
 type CacheEvict func(hash zerodisk.Hash, content []byte)
 
-func NewCache(evict CacheEvict, expiration, cleanupInterval time.Duration, maxSize int) *Cache {
+func NewCache(evict CacheEvict, expiration time.Duration, maxSize int) *Cache {
 	if expiration == time.Duration(0) {
 		expiration = cacheDefaultExpiration
-	}
-
-	if cleanupInterval == time.Duration(0) {
-		cleanupInterval = cacheCleanupInterval
 	}
 
 	if maxSize == 0 {
@@ -34,39 +29,34 @@ func NewCache(evict CacheEvict, expiration, cleanupInterval time.Duration, maxSi
 	}
 
 	c := &Cache{
-		cache:   cache.New(expiration, cleanupInterval),
 		evict:   evict,
 		maxSize: maxSize,
 	}
 
-	c.cache.OnEvicted(c.onEvict)
+	c.cache = gcache.New(maxSize).LRU().Expiration(expiration).EvictedFunc(c.onEvict).Build()
 	return c
 }
 
 func (c *Cache) Flush() {
-	for key := range c.cache.Items() {
-		c.cache.Delete(key)
+	for key := range c.cache.GetALL() {
+		c.cache.Remove(key)
 	}
 }
 
-func (c *Cache) onEvict(key string, value interface{}) {
+func (c *Cache) onEvict(key, value interface{}) {
 	if c.evict == nil {
 		return
 	}
-	c.evict(zerodisk.Hash(key), value.([]byte))
+	c.evict(zerodisk.Hash(key.(string)), value.([]byte))
 }
 
 func (c *Cache) Set(hash zerodisk.Hash, content []byte) {
-	c.cache.Set(string(hash), content, cache.DefaultExpiration)
-
-	if c.cache.ItemCount() >= c.maxSize {
-		c.Flush()
-	}
+	c.cache.Set(string(hash), content)
 }
 
 func (c *Cache) Get(hash zerodisk.Hash) ([]byte, bool) {
-	data, exists := c.cache.Get(string(hash))
-	if !exists {
+	data, err := c.cache.Get(string(hash))
+	if err != nil {
 		return nil, false
 	}
 
@@ -74,5 +64,5 @@ func (c *Cache) Get(hash zerodisk.Hash) ([]byte, bool) {
 }
 
 func (c *Cache) Count() int {
-	return c.cache.ItemCount()
+	return c.cache.Len()
 }

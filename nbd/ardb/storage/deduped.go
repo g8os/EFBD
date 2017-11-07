@@ -39,7 +39,7 @@ func Deduped(vdiskID string, blockSize, lbaCacheLimit int64, cluster, templateCl
 		lba:             vlba,
 	}
 
-	dedupedStorage.cache = NewCache(dedupedStorage.commitContent, 0, 0, 0)
+	dedupedStorage.cache = NewCache(dedupedStorage.commitContent, 0, 0)
 
 	// getContent is ALWAYS defined,
 	// but the actual function used depends on

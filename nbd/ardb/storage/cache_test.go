@@ -14,18 +14,18 @@ func TestCacheSizeLimit(t *testing.T) {
 		flushed++
 	}
 
-	cache := NewCache(evict, 0, 0, 5)
+	cache := NewCache(evict, 0, 5)
 
 	for i := 0; i < 10; i++ {
 		key := fmt.Sprint(i)
 		cache.Set(zerodisk.Hash(key), nil)
 	}
 
-	if ok := assert.Equal(t, 0, cache.Count()); !ok {
+	if ok := assert.Equal(t, 5, cache.Count()); !ok {
 		t.Fatal()
 	}
 
-	if ok := assert.Equal(t, 10, flushed); !ok {
+	if ok := assert.Equal(t, 5, flushed); !ok {
 		t.Fatal()
 	}
 }
@@ -33,23 +33,11 @@ func TestCacheSizeLimit(t *testing.T) {
 func TestCacheTimeLimit(t *testing.T) {
 	key := zerodisk.Hash("test-key")
 
-	ch := make(chan bool)
-	evict := func(h zerodisk.Hash, block []byte) {
-		if ok := assert.Equal(t, key, h); !ok {
-			t.Fatal()
-		}
-		ch <- true
-	}
-
-	cache := NewCache(evict, 2*time.Second, 1*time.Second, 5)
+	cache := NewCache(nil, 2*time.Second, 5)
 
 	cache.Set(key, nil)
 
-	select {
-	case <-ch:
-	case <-time.After(3 * time.Second):
-		t.Fatal("timedout")
-	}
+	<-time.After(3 * time.Second)
 
 	if ok := assert.Equal(t, 0, cache.Count()); !ok {
 		t.Fatal()
@@ -57,7 +45,7 @@ func TestCacheTimeLimit(t *testing.T) {
 }
 
 func TestCacheGet(t *testing.T) {
-	cache := NewCache(nil, 0, 0, 0)
+	cache := NewCache(nil, 0, 0)
 
 	key := zerodisk.Hash("test-key")
 	data := []byte("hello world")
