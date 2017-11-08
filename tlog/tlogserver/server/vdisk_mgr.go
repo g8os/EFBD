@@ -7,19 +7,19 @@ import (
 
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/log"
-	"github.com/zero-os/0-Disk/tlog/tlogserver/aggmq"
+	"github.com/zero-os/0-Disk/tlog"
 )
 
 type vdiskManager struct {
 	vdisks       map[string]*vdisk
 	lock         sync.Mutex
-	aggMq        *aggmq.MQ
 	configSource config.Source
+	slaveSyncMgr tlog.SlaveSyncerManager
 }
 
-func newVdiskManager(aggMq *aggmq.MQ, flushSize int, configSource config.Source) *vdiskManager {
+func newVdiskManager(slaveSyncMgr tlog.SlaveSyncerManager, flushSize int, configSource config.Source) *vdiskManager {
 	return &vdiskManager{
-		aggMq:        aggMq,
+		slaveSyncMgr: slaveSyncMgr,
 		vdisks:       map[string]*vdisk{},
 		configSource: configSource,
 	}
@@ -39,7 +39,7 @@ func (vt *vdiskManager) Get(ctx context.Context, vdiskID string,
 	}
 
 	// create vdisk
-	vd, err = newVdisk(ctx, vdiskID, vt.aggMq, vt.configSource,
+	vd, err = newVdisk(ctx, vdiskID, vt.slaveSyncMgr, vt.configSource,
 		flusherConf, vt.remove, coordConnectAddr)
 	if err != nil {
 		return

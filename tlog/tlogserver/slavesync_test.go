@@ -17,7 +17,6 @@ import (
 	"github.com/zero-os/0-Disk/tlog/stor"
 	"github.com/zero-os/0-Disk/tlog/stor/embeddedserver"
 	"github.com/zero-os/0-Disk/tlog/tlogclient"
-	"github.com/zero-os/0-Disk/tlog/tlogserver/aggmq"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/server"
 	"github.com/zero-os/0-Disk/tlog/tlogserver/slavesync"
 	"github.com/zero-os/0-stor/client/meta/embedserver"
@@ -43,9 +42,8 @@ func TestSlaveSyncEndToEnd(t *testing.T) {
 	defer cleanFunc()
 
 	// Slave syncer
-	conf.AggMq = aggmq.NewMQ()
-	ssm := slavesync.NewManager(ctx, conf.AggMq, stubSource)
-	go ssm.Run()
+	ssm := slavesync.NewManager(ctx, stubSource, conf.PrivKey)
+	conf.SlaveSyncerMgr = ssm
 
 	// TLOG
 

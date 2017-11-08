@@ -105,19 +105,10 @@ func main() {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
-	// [TODO]
-	// disabled until we work on a solution for
-	// issue https://github.com/zero-os/0-Disk/issues/475,
-	// as right now this feature writes to primary cluster which is not good for anything!
-	// > This also disabled the slave sync stuff within the tlog vdisk code
-	// > (due to conf.AggMq not being defined)
 	/*if withSlaveSync {
-		// aggregation MQ
-		conf.AggMq = aggmq.NewMQ()
-
 		// slave syncer manager
-		ssm := slavesync.NewManager(ctx, conf.AggMq, configSource)
-		go ssm.Run()
+		ssm := slavesync.NewManager(ctx, configSource, conf.PrivKey)
+		conf.SlaveSyncerMgr = ssm
 	}*/
 
 	// create server

@@ -3,10 +3,11 @@ package slavesync
 import (
 	"bytes"
 	"context"
-	"sync"
+	"errors"
+	"time"
 
 	"github.com/zero-os/0-Disk/config"
-	"github.com/zero-os/0-Disk/errors"
+	zerodiskerror "github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
@@ -14,87 +15,61 @@ import (
 	"github.com/zero-os/0-Disk/tlog/stor"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/player"
-	"github.com/zero-os/0-Disk/tlog/tlogserver/aggmq"
 	"zombiezen.com/go/capnproto2"
 )
 
-// Manager defines slave syncer manager
-type Manager struct {
-	apMq         *aggmq.MQ
-	syncers      map[string]*slaveSyncer
-	configSource config.Source
-	mux          sync.Mutex
-	ctx          context.Context
+const (
+	_ = iota
+
+	// cmdWaitSlaveSync is command given to slave syncer.
+	// It indicates to the syncer that we want to wait for slave syncer to finish it's work
+	cmdWaitSlaveSync
+
+	// cmdRestartSlaveSyncer is command to restart the slave syncer
+	cmdRestartSlaveSyncer
+
+	// cmdKillMe is command to kill the slave syncer
+	cmdKillMe
+)
+
+var (
+	// ErrSlaveSyncTimeout returned in case of slave syncing
+	// couldn't be done in the given duration
+	ErrSlaveSyncTimeout = errors.New("slave sync timeout")
+)
+
+// command to this slave syncer
+type command struct {
+	Type int
+	Seq  uint64
 }
 
-// NewManager creates new slave syncer manager
-func NewManager(ctx context.Context, apMq *aggmq.MQ, configSource config.Source) *Manager {
-	m := &Manager{
-		apMq:         apMq,
-		configSource: configSource,
-		syncers:      make(map[string]*slaveSyncer),
-		ctx:          ctx,
-	}
-	return m
-}
-
-// Run runs the slave syncer manager
-func (m *Manager) Run() {
-	for {
-		select {
-		case <-m.ctx.Done():
-			return
-		case apr := <-m.apMq.NeedProcessorCh:
-			m.handleReq(apr)
-		}
-	}
-}
-
-// handle request
-func (m *Manager) handleReq(apr aggmq.AggProcessorReq) {
-	m.mux.Lock()
-	defer m.mux.Unlock()
-
-	log.Infof("slavesync mgr: create for vdisk: %v", apr.Config.VdiskID)
-
-	// check if the syncer already exist
-	if _, ok := m.syncers[apr.Config.VdiskID]; ok {
-		m.apMq.NeedProcessorResp <- nil
-		return
-	}
-
-	// create slave syncer
-	ss, err := newSlaveSyncer(m.ctx, m.configSource, apr.Config, apr.Comm, m)
-	if err != nil {
-		log.Errorf("slavesync mgr: failed to create syncer for vdisk: %v, err: %v", apr.Config.VdiskID, err)
-		m.apMq.NeedProcessorResp <- err
-		return
-	}
-	m.syncers[apr.Config.VdiskID] = ss
-
-	// send response
-	m.apMq.NeedProcessorResp <- nil
-}
-
-// remove slave syncer for given vdiskID
-func (m *Manager) remove(vdiskID string) {
-	m.mux.Lock()
-	defer m.mux.Unlock()
-
-	delete(m.syncers, vdiskID)
+type syncResult struct {
+	lastSeq uint64
+	err     error
 }
 
 // slaveSyncer defines a tlog slave syncer
+// which implementes SlaveSyncer interface
 type slaveSyncer struct {
 	ctx              context.Context
 	vdiskID          string
-	aggComm          *aggmq.AggComm // the communication channel
 	player           *player.Player // tlog replay player
 	mgr              *Manager
 	metaCli          *stor.MetaClient
 	lastSeqSyncedKey []byte // key of the last sequence synced
 	configSource     config.Source
-	apc              aggmq.AggProcessorConfig
+	privKey          string
+
+	// channel of the raw aggregations sent to this slave syncer
+	aggCh chan []byte
+
+	// channel of the command send to slave syncer
+	cmdCh chan command
+
+	// channel of last synced sequence
+	// it only used while waitForSync = true
+	lastSyncedCh chan syncResult
 
 	// we put these three  variables here
 	// to make it survive in case of restart
@@ -104,17 +79,18 @@ type slaveSyncer struct {
 }
 
 // newSlaveSyncer creates a new slave syncer
-func newSlaveSyncer(ctx context.Context, configSource config.Source, apc aggmq.AggProcessorConfig,
-	aggComm *aggmq.AggComm, mgr *Manager) (*slaveSyncer, error) {
+func newSlaveSyncer(ctx context.Context, configSource config.Source, vdiskID, privKey string, mgr *Manager) (*slaveSyncer, error) {
 
 	ss := &slaveSyncer{
-		vdiskID:          apc.VdiskID,
 		ctx:              ctx,
-		aggComm:          aggComm,
 		mgr:              mgr,
 		configSource:     configSource,
-		apc:              apc,
-		lastSeqSyncedKey: []byte("tlog:last_slave_sync_seq:" + apc.VdiskID),
+		vdiskID:          vdiskID,
+		privKey:          privKey,
+		aggCh:            make(chan []byte, 1000),
+		cmdCh:            make(chan command, 1),
+		lastSyncedCh:     make(chan syncResult),
+		lastSeqSyncedKey: []byte("tlog:last_slave_sync_seq:" + vdiskID),
 	}
 	return ss, ss.init()
 }
@@ -144,7 +120,7 @@ func (ss *slaveSyncer) init() error {
 	// tlog replay player
 	player, err := player.NewPlayerWithStorage(
 		ss.ctx, ss.configSource, slaveCluster, blockStorage,
-		ss.vdiskID, ss.apc.PrivKey)
+		ss.vdiskID, ss.privKey)
 	if err != nil {
 		blockStorage.Close()
 		slaveCluster.Close()
@@ -177,10 +153,6 @@ func (ss *slaveSyncer) init() error {
 	return nil
 }
 
-func (ss *slaveSyncer) Close() {
-	ss.player.Close()
-}
-
 func (ss *slaveSyncer) restart() {
 	if err := ss.init(); err != nil {
 		log.Errorf("restarting slave syncer for `%v` failed: %v", ss.vdiskID, err)
@@ -196,7 +168,7 @@ func (ss *slaveSyncer) start() error {
 	// get slavesyncer's latest synced sequence
 	ss.lastSyncedSeq, err = ss.getLastSyncedSeq()
 	if err != nil {
-		return errors.Wrap(err, "getLastSyncedSeq failed")
+		return zerodiskerror.Wrap(err, "getLastSyncedSeq failed")
 	}
 
 	// get tlog's latest flushed sequence and catch up if needed
@@ -212,6 +184,58 @@ func (ss *slaveSyncer) start() error {
 	return nil
 }
 
+// Close closes this slave syncer
+func (ss *slaveSyncer) Close() {
+	ss.player.Close()
+}
+
+func (ss *slaveSyncer) Restart() {
+	ss.cmdCh <- command{
+		Type: cmdRestartSlaveSyncer,
+	}
+}
+
+// SendAgg implements SlaveSyncer.SendAgg interface
+func (ss *slaveSyncer) SendAgg(rawAgg []byte) {
+	ss.aggCh <- rawAgg
+}
+
+// WaitSync implements SlaveSyncer.WaitSync interface
+func (ss *slaveSyncer) WaitSync(seq uint64, timeout time.Duration) error {
+	ss.cmdCh <- command{
+		Type: cmdWaitSlaveSync,
+		Seq:  seq,
+	}
+
+	ctx, cancelFunc := context.WithTimeout(ss.ctx, timeout)
+	defer cancelFunc()
+
+	// wait until the sequence synced
+	// or timeout
+	for {
+		select {
+		case <-ctx.Done():
+			return ErrSlaveSyncTimeout
+		case syncRes := <-ss.lastSyncedCh:
+			if syncRes.err != nil {
+				return syncRes.err
+			}
+
+			if syncRes.lastSeq >= seq {
+				return nil
+			}
+		}
+	}
+}
+
+// Stop implements SlaveSyncer.Stop interface
+func (ss *slaveSyncer) Stop() {
+	ss.cmdCh <- command{
+		Type: cmdKillMe,
+	}
+}
+
+// run this slave syncer
 func (ss *slaveSyncer) run() {
 	log.Infof("slave syncer (%v): started", ss.vdiskID)
 
@@ -222,18 +246,37 @@ func (ss *slaveSyncer) run() {
 
 	// true if tlog vdisk already exited
 	// we also need to exit :)
-	var vdiskExited bool
+	var needToExit bool
 
 	// closure to mark that we've synced the slave
-	finishWaitForSync := func() {
-		if ss.waitForSync && ss.lastSyncedSeq >= ss.seqToWait {
+	// we put it here so we don't need to worry about mutex
+	finishWaitForSync := func(err error) {
+		if !ss.waitForSync {
+			return
+		}
+
+		// got error in sync
+		// finish our waiting
+		if err != nil {
 			ss.waitForSync = false
-			ss.aggComm.SendResp(nil)
+			ss.lastSyncedCh <- syncResult{
+				err: err,
+			}
+			return
+		}
+
+		// last synced is more than our waited sequence
+		// finish our wait
+		if ss.lastSyncedSeq >= ss.seqToWait {
+			ss.waitForSync = false
+			ss.lastSyncedCh <- syncResult{
+				lastSeq: ss.lastSyncedSeq,
+			}
 		}
 	}
 
 	defer func() {
-		if needRestart && !vdiskExited {
+		if needRestart && !needToExit {
 			ss.restart()
 		} else {
 			ss.mgr.remove(ss.vdiskID)
@@ -246,54 +289,58 @@ func (ss *slaveSyncer) run() {
 			// our producer (tlog's vdisk) exited
 			// so we are!
 			// but we need to wait until we sync all of it
-			if len(ss.aggComm.RecvAgg()) == 0 {
+			if len(ss.aggCh) == 0 {
 				return
 			}
-			vdiskExited = true
+			needToExit = true
 
-		case rawAgg, more := <-ss.aggComm.RecvAgg():
-			if !more {
-				return
-			}
+		case rawAgg := <-ss.aggCh:
 			// raw aggregation []byte
 			seq, err := ss.replay(rawAgg, ss.lastSyncedSeq)
 			if err != nil {
-				needRestart = true
+				log.Errorf("replay failed : %v", err)
+
+				// TODO report to ays
+
+				finishWaitForSync(err)
+
+				// exit
+				needToExit = true
 				return
 			}
 			ss.lastSyncedSeq = seq
 
-			finishWaitForSync()
+			finishWaitForSync(nil)
 
-			if vdiskExited {
+			if needToExit && len(ss.aggCh) == 0 {
 				return
 			}
 
-		case cmd := <-ss.aggComm.RecvCmd():
+		case cmd := <-ss.cmdCh:
 			// receive a command
 			switch cmd.Type {
-			case aggmq.CmdKillMe:
+			case cmdKillMe:
 				log.Infof("slave syncer (%v): killed", ss.vdiskID)
 
 				ss.Close()
 				ss.mgr.remove(ss.vdiskID)
 
 				return
-			case aggmq.CmdRestartSlaveSyncer:
+			case cmdRestartSlaveSyncer:
 				log.Infof("slave syncer (%v): restarted", ss.vdiskID)
 
 				ss.Close()
 				needRestart = true
 
 				return
-
-			case aggmq.CmdWaitSlaveSync:
+			case cmdWaitSlaveSync:
 				// wait for slave to be fully synced
 				ss.seqToWait = cmd.Seq
 				ss.waitForSync = true
 
-				finishWaitForSync()
+				finishWaitForSync(nil)
 			}
+
 		}
 	}
 }
@@ -307,15 +354,15 @@ func (ss *slaveSyncer) decodeLimiter(lastSeqSynced uint64) decoder.Limiter {
 }
 
 // replay a raw aggregation (in []byte) to the ardb slave
-func (ss *slaveSyncer) replay(rawAgg aggmq.AggMqMsg, lastSeqSynced uint64) (uint64, error) {
-	msg, err := capnp.NewDecoder(bytes.NewReader([]byte(rawAgg))).Decode()
+func (ss *slaveSyncer) replay(rawAgg []byte, lastSeqSynced uint64) (uint64, error) {
+	msg, err := capnp.NewDecoder(bytes.NewReader(rawAgg)).Decode()
 	if err != nil {
-		return 0, errors.Wrap(err, "failed to decode agg")
+		return 0, zerodiskerror.Wrap(err, "failed to decode agg")
 	}
 
 	agg, err := schema.ReadRootTlogAggregation(msg)
 	if err != nil {
-		return 0, errors.Wrap(err, "failed to read root tlog")
+		return 0, zerodiskerror.Wrap(err, "failed to read root tlog")
 	}
 
 	return ss.player.ReplayAggregationWithCallback(&agg, ss.decodeLimiter(lastSeqSynced), ss.setLastSyncedSeq)
