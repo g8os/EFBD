@@ -239,6 +239,7 @@ type ServerState struct {
 func NewPrimaryCluster(ctx context.Context, vdiskID string, cs config.Source) (*Cluster, error) {
 	controller := &singleClusterStateController{
 		vdiskID:      vdiskID,
+		optional:     false,
 		serverType:   log.ARDBPrimaryServer,
 		getClusterID: getPrimaryClusterID,
 	}
@@ -254,9 +255,10 @@ func NewPrimaryCluster(ctx context.Context, vdiskID string, cs config.Source) (*
 // NewSlaveCluster creates a new SlaveCluster.
 // This cluster type supports config hot-reloading, but no self-healing of servers.
 // See `Cluster` for more information.
-func NewSlaveCluster(ctx context.Context, vdiskID string, cs config.Source) (*Cluster, error) {
+func NewSlaveCluster(ctx context.Context, vdiskID string, optional bool, cs config.Source) (*Cluster, error) {
 	controller := &singleClusterStateController{
 		vdiskID:      vdiskID,
+		optional:     optional,
 		serverType:   log.ARDBSlaveServer,
 		getClusterID: getSlaveClusterID,
 	}
@@ -272,9 +274,10 @@ func NewSlaveCluster(ctx context.Context, vdiskID string, cs config.Source) (*Cl
 // NewTemplateCluster creates a new TemplateCluster.
 // This cluster type supports config hot-reloading, but no self-healing of servers.
 // See `Cluster` for more information.
-func NewTemplateCluster(ctx context.Context, vdiskID string, cs config.Source) (*Cluster, error) {
+func NewTemplateCluster(ctx context.Context, vdiskID string, optional bool, cs config.Source) (*Cluster, error) {
 	controller := &singleClusterStateController{
 		vdiskID:      vdiskID,
+		optional:     optional,
 		serverType:   log.ARDBTemplateServer,
 		getClusterID: getTemplateClusterID,
 	}
@@ -289,6 +292,10 @@ func NewTemplateCluster(ctx context.Context, vdiskID string, cs config.Source) (
 
 type singleClusterStateController struct {
 	vdiskID string
+
+	// when true, it means it's acceptable for the cluster not to exist
+	// otherwise this will be tracked as an error.
+	optional bool
 
 	serverType log.ARDBServerType
 
@@ -437,6 +444,9 @@ func (ctrl *singleClusterStateController) spawnConfigReloader(ctx context.Contex
 		clusterCfg = <-clusterWatcher.Receive()
 		ctrl.servers = clusterCfg.Servers
 		ctrl.serverCount = int64(len(clusterCfg.Servers))
+	} else if !ctrl.optional {
+		return errors.Wrapf(ErrClusterNotDefined,
+			"%s cluster %s does not exist", ctrl.serverType, clusterID)
 	}
 
 	// spawn the config update goroutine
@@ -460,6 +470,11 @@ func (ctrl *singleClusterStateController) spawnConfigReloader(ctx context.Contex
 					continue
 				}
 				if !clusterExists {
+					if !ctrl.optional {
+						log.Errorf("%s cluster no longer exists, while it is required for vdisk %s",
+							ctrl.serverType, ctrl.vdiskID)
+						// [TODO] Notify AYS about this
+					}
 					ctrl.mux.Lock()
 					ctrl.servers = nil
 					ctrl.serverCount = 0

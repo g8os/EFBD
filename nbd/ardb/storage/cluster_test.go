@@ -231,7 +231,7 @@ func TestTemplateServerFails(t *testing.T) {
 	require.NoError(err)
 	defer cluster.Close()
 
-	templateCluster, err := NewTemplateCluster(ctx, vdiskID, source)
+	templateCluster, err := NewTemplateCluster(ctx, vdiskID, false, source)
 	require.NoError(err)
 	defer templateCluster.Close()
 
@@ -327,7 +327,7 @@ func TestTemplateServerFailsByNotification(t *testing.T) {
 	require.NoError(err)
 	defer cluster.Close()
 
-	templateCluster, err := NewTemplateCluster(ctx, vdiskID, source)
+	templateCluster, err := NewTemplateCluster(ctx, vdiskID, false, source)
 	require.NoError(err)
 	defer templateCluster.Close()
 
@@ -433,7 +433,7 @@ func TestTemplateServerRIP(t *testing.T) {
 	require.NoError(err)
 	defer cluster.Close()
 
-	templateCluster, err := NewTemplateCluster(ctx, vdiskID, source)
+	templateCluster, err := NewTemplateCluster(ctx, vdiskID, false, source)
 	require.NoError(err)
 	defer templateCluster.Close()
 

@@ -97,7 +97,9 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 	// NOTE: internal template cluster may be nil, this is OK
 	var templateCluster *storage.Cluster
 	if staticConfig.Type.TemplateSupport() {
-		templateCluster, err = storage.NewTemplateCluster(ctx, vdiskID, f.configSource)
+		// even though the template cluster is supported by the vdiskType,
+		// it is still optional (true) and might not be configured for this vdisk in specific.
+		templateCluster, err = storage.NewTemplateCluster(ctx, vdiskID, true, f.configSource)
 		if err != nil {
 			resourceCloser.Close()
 			log.Error(err)
