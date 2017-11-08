@@ -3,10 +3,7 @@ package server
 import (
 	"context"
 	"net"
-	"os"
-	"os/signal"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/zero-os/0-Disk/config"
@@ -16,7 +13,6 @@ import (
 	"github.com/zero-os/0-Disk/tlog/flusher"
 	"github.com/zero-os/0-Disk/tlog/schema"
 	"github.com/zero-os/0-Disk/tlog/stor"
-	"github.com/zero-os/0-Disk/tlog/tlogserver/aggmq"
 	"github.com/zero-os/0-stor/client/lib"
 )
 
@@ -72,11 +68,9 @@ type vdisk struct {
 	clientConn     *net.TCPConn
 	clientConnLock sync.Mutex
 
-	aggComm         *aggmq.AggComm
-	aggMq           *aggmq.MQ
-	apc             aggmq.AggProcessorConfig
-	withSlaveSyncer bool
-	ssMux           sync.Mutex
+	slaveSyncMgr tlog.SlaveSyncerManager
+	slaveSyncer  tlog.SlaveSyncer
+	ssMux        sync.Mutex
 
 	ctx        context.Context
 	cancelFunc context.CancelFunc
@@ -102,17 +96,10 @@ func (vd *vdisk) ResponseChan() <-chan *BlockResponse {
 }
 
 // creates vdisk with given vdiskID
-func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, configSource config.Source,
+func newVdisk(parentCtx context.Context, vdiskID string, slaveSyncMgr tlog.SlaveSyncerManager, configSource config.Source,
 	flusherConf *flusherConfig, cleanup vdiskCleanupFunc, coordConnectAddr string) (*vdisk, error) {
 
-	var aggComm *aggmq.AggComm
-
 	ctx, cancelFunc := context.WithCancel(parentCtx)
-	// create slave syncer
-	apc := aggmq.AggProcessorConfig{
-		VdiskID: vdiskID,
-		PrivKey: flusherConf.PrivKey,
-	}
 
 	maxTlbInBuffer := flusherConf.FlushSize * tlogBlockFactorSize
 
@@ -127,10 +114,8 @@ func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, config
 		flusherCmdRespChan: make(chan struct{}, 1),
 		flusherConf:        flusherConf,
 
-		withSlaveSyncer: false,
-		aggComm:         aggComm,
-		aggMq:           aggMq,
-		apc:             apc,
+		// slave syncer
+		slaveSyncMgr: slaveSyncMgr,
 
 		ctx:              ctx,
 		cancelFunc:       cancelFunc,
@@ -146,6 +131,11 @@ func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, config
 		cancelFunc()
 		return nil, errors.Wrap(err, "failed to create flusher")
 	}
+	if err := vd.watchSlaveConfig(); err != nil {
+		cancelFunc()
+		return nil, errors.Wrap(err, "failed to watch slave config")
+	}
+
 	if err := vd.manageSlaveSync(); err != nil {
 		cancelFunc()
 		return nil, err
@@ -153,7 +143,6 @@ func newVdisk(parentCtx context.Context, vdiskID string, aggMq *aggmq.MQ, config
 
 	// run vdisk goroutines
 	go vd.runFlusher()
-	go vd.handleSighup()
 	go vd.cleanup(cleanup)
 
 	log.Infof("vdisk %v created", vd.id)
@@ -190,9 +179,6 @@ func (vd *vdisk) watchConfig() error {
 			select {
 			case <-vd.ctx.Done():
 				return
-				//case _, err := <-config.WatchTlogStorageConfig(ctx, vd.configSource, vd.id):
-				// TODO listen to this to watch for slave storage cluster
-				// enable it while fixing https://github.com/zero-os/0-Disk/issues/401
 			case vtc := <-vtcCh:
 				if err != nil {
 					continue
@@ -248,44 +234,6 @@ func (vd *vdisk) forceFlushAtSeq(seq uint64) {
 		cmdType:  vdiskCmdForceFlushAtSeq,
 		sequence: seq,
 	}
-}
-
-// send wait slave sync command to the flusher
-// we do it in blocking way
-func (vd *vdisk) waitSlaveSync() error {
-	// make sure it has syncer
-	if !vd.withSlaveSyncer {
-		log.Error("waitSlaveSync command received on vdisk with no slave syncer")
-		return nil
-	}
-	log.Debugf("waitSlaveSync for vdisk: %v", vd.id)
-
-	// send the command
-	cmd := vdiskFlusherCmd{
-		cmdType: vdiskCmdWaitSlaveSync,
-		respCh:  make(chan error),
-	}
-	vd.flusherCmdChan <- cmd
-
-	// wait and return the response
-	err := <-cmd.respCh
-	if err == nil {
-		// we've successfully synced the slave
-		// it means the slave is going to be used by nbdserver as it's master
-		// so we disable it and kill the slave syncer
-		vd.destroySlaveSync()
-	}
-	log.Debugf("waitSlaveSync for vdisk %v finished with err:%v", vd.id, err)
-
-	return err
-}
-
-func (vd *vdisk) doWaitSlaveSync(respCh chan error, lastSeqFlushed uint64) {
-	if !vd.withSlaveSyncer {
-		respCh <- nil
-		return
-	}
-	respCh <- vd.aggComm.SendCmd(aggmq.CmdWaitSlaveSync, lastSeqFlushed)
 }
 
 // connects the given connection to this vdisk
@@ -497,88 +445,4 @@ func notifyFlushError(err error) {
 		}()
 		log.Broadcast(status, subj, e.Addrs)
 	}
-}
-
-// handle SIGHUP
-func (vd *vdisk) handleSighup() {
-	sigs := make(chan os.Signal)
-	signal.Notify(sigs, syscall.SIGHUP)
-
-	for {
-		select {
-		case <-vd.ctx.Done():
-			return
-		case <-sigs:
-			vd.manageSlaveSync()
-		}
-	}
-}
-
-// send raw aggregation to slave syncer
-func (vd *vdisk) sendAggToSlaveSync(rawAgg []byte) {
-	vd.ssMux.Lock()
-	defer vd.ssMux.Unlock()
-
-	if vd.withSlaveSyncer {
-		vd.aggComm.SendAgg(aggmq.AggMqMsg(rawAgg))
-	}
-}
-
-// destroy slave syncer
-func (vd *vdisk) destroySlaveSync() {
-	vd.ssMux.Lock()
-	defer vd.ssMux.Unlock()
-
-	if !vd.withSlaveSyncer {
-		return
-	}
-	vd.withSlaveSyncer = false
-	vd.aggComm.Destroy()
-	vd.aggComm = nil
-}
-
-// manage slave syncer life cycle
-func (vd *vdisk) manageSlaveSync() error {
-	vd.ssMux.Lock()
-	defer vd.ssMux.Unlock()
-
-	// it means the slave syncer doesn't activated globally
-	if vd.aggMq == nil {
-		return nil
-	}
-
-	/*// read config
-	conf, err := config.ReadVdiskTlogConfig(vd.configSource, vd.id)
-	if err != nil {
-		return err
-	}
-
-	// we have no slave to sync, simply return
-	if conf.SlaveStorageClusterID == "" {
-		log.Infof("No slave for vdisk ID %v", vd.id)
-		// kill the slave syncer first
-		if vd.withSlaveSyncer {
-			vd.aggComm.Destroy()
-			vd.withSlaveSyncer = false
-		}
-		return nil
-	}*/
-
-	if vd.withSlaveSyncer {
-		log.Infof("Restart slave syncer for vdisk: %v", vd.id)
-		// slave syncer already exist, simply restart it
-		vd.aggComm.SendCmd(aggmq.CmdRestartSlaveSyncer, 0)
-		return nil
-	}
-
-	log.Infof("Activate slave syncer for vdisk: %v", vd.id)
-	// activate slave syncer
-	aggComm, err := vd.aggMq.AskProcessor(vd.apc)
-	if err != nil {
-		return err
-	}
-
-	vd.aggComm = aggComm
-	vd.withSlaveSyncer = true
-	return nil
 }

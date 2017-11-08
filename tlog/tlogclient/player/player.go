@@ -130,7 +130,7 @@ func (p *Player) ReplayAggregationWithCallback(agg *schema.TlogAggregation, lmt 
 
 	// replay all the blocks
 	blocks, err := agg.Blocks()
-	for i := 0; i < blocks.Len(); i++ {
+	for i := 0; i < int(agg.Size()); i++ {
 		block := blocks.At(i)
 
 		if !lmt.StartBlock(block) {

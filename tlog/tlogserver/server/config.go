@@ -1,8 +1,8 @@
 package server
 
 import (
+	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/flusher"
-	"github.com/zero-os/0-Disk/tlog/tlogserver/aggmq"
 )
 
 const (
@@ -30,7 +30,7 @@ type Config struct {
 	FlushSize       int
 	FlushTime       int
 	PrivKey         string
-	AggMq           *aggmq.MQ
+	SlaveSyncerMgr  tlog.SlaveSyncerManager
 	WaitListenAddr  string
 	WaitConnectAddr string
 }
