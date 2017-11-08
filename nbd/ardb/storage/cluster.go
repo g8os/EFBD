@@ -434,11 +434,64 @@ func (ctrl *templateClusterStateController) spawnConfigReloader(ctx context.Cont
 	return nil
 }
 
-type primarySlaveClusterPairStateController struct {
-	vdiskID string
+// SlaveSyncController defines the interface of a controller,
+// which allows us to start/stop the syncing of one or multiple slave servers,
+// such that we can start writing to it without getting ourself in race conditions
+// with the regular slave syncer.
+type SlaveSyncController interface {
+	// StartSlaveSync commands the controller to
+	// start syncing one or multiple slave servers for a given vdisk.
+	// An error should be returned in case the syncing could not happen.
+	StartSlaveSync(vdiskID string, indices ...int64) error
+	// StopSlaveSync commands the controller to
+	// stop syncing one or multiple slave servers for a given vdisk.
+	// An error should be returned in case the syncing couldn't be stopped.
+	StopSlaveSync(vdiskID string, indices ...int64) error
+}
 
-	servers                       []primarySlavePairController
-	serverCount, slaveServerCount int64
+// a context shared with the primarySlavePairController,
+// while updating or transforming primarySlavePairController
+// by overwriting or deleting server configs.
+type primarySlavePairContext struct {
+	vdiskID                          string
+	primaryClusterID, slaveClusterID string
+	slaveSyncer                      SlaveSyncController
+}
+
+// VdiskID returns the identifier of the vdisk,
+// which uses this all composing PrimarySlaveClusterPair.
+// This function guarantees to always return a non-empty string.
+func (ctx *primarySlavePairContext) VdiskID() string {
+	return ctx.vdiskID
+}
+
+// PrimaryClusterID returns the identifier of the storage cluster,
+// currently used as the primary storage cluster for this vdisk.
+// This function guarantees to always return a non-empty string.
+func (ctx *primarySlavePairContext) PrimaryClusterID() string {
+	return ctx.primaryClusterID
+}
+
+// SlaveClusterID returns the identifier of the slave cluster,
+// currently used as the slave storage cluster for this vdisk.
+// This function might return an empty string,
+// in case no cluster is currently referenced as the slave cluster for this vdisk.
+func (ctx *primarySlavePairContext) SlaveClusterID() string {
+	return ctx.slaveClusterID
+}
+
+// SlaveSyncer returns the SlaveSyncController currently used by this vdisk,
+// to sync the primary data to the slave server.
+// This function guarantees to return a non-nil SlaveSyncController.
+func (ctx *primarySlavePairContext) SlaveSyncer() SlaveSyncController {
+	return ctx.slaveSyncer
+}
+
+type primarySlaveClusterPairStateController struct {
+	ctx primarySlavePairContext
+
+	servers     []primarySlavePairController
+	serverCount int64
 
 	mux sync.RWMutex
 
@@ -498,7 +551,7 @@ func (ctrl *primarySlaveClusterPairStateController) UpdateServerState(state Serv
 
 	// ensure index is within range
 	if state.Index >= ctrl.serverCount {
-		log.Infof("couldn't update %s server for vdisk %s: index is OOB", state.Type, ctrl.vdiskID)
+		log.Infof("couldn't update %s server for vdisk %s: index is OOB", state.Type, ctrl.ctx.vdiskID)
 		return false // OOB
 	}
 
@@ -550,7 +603,7 @@ func (ctrl *primarySlaveClusterPairStateController) spawnConfigReloader(ctx cont
 	ctx, ctrl.cancel = context.WithCancel(ctx)
 
 	// create the master watcher if possible
-	vdiskNBDRefCh, err := config.WatchVdiskNBDConfig(ctx, cs, ctrl.vdiskID)
+	vdiskNBDRefCh, err := config.WatchVdiskNBDConfig(ctx, cs, ctrl.ctx.vdiskID)
 	if err != nil {
 		return err
 	}
@@ -562,7 +615,7 @@ func (ctrl *primarySlaveClusterPairStateController) spawnConfigReloader(ctx cont
 	// create the primary storage cluster watcher,
 	// and execute the initial config update iff
 	// an internal watcher is created.
-	clusterExists, err := primClusterWatcher.SetClusterID(ctx, cs, ctrl.vdiskID, vdiskNBDConfig.StorageClusterID)
+	clusterExists, err := primClusterWatcher.SetClusterID(ctx, cs, ctrl.ctx.vdiskID, vdiskNBDConfig.StorageClusterID)
 	if err != nil {
 		return err
 	}
@@ -575,7 +628,7 @@ func (ctrl *primarySlaveClusterPairStateController) spawnConfigReloader(ctx cont
 	}
 
 	// do the same for the slave cluster watcher
-	clusterExists, err = slaveClusterWatcher.SetClusterID(ctx, cs, ctrl.vdiskID, vdiskNBDConfig.SlaveStorageClusterID)
+	clusterExists, err = slaveClusterWatcher.SetClusterID(ctx, cs, ctrl.ctx.vdiskID, vdiskNBDConfig.SlaveStorageClusterID)
 	if err != nil {
 		return err
 	}
@@ -601,7 +654,8 @@ func (ctrl *primarySlaveClusterPairStateController) spawnConfigReloader(ctx cont
 				}
 
 				// update primary cluster config watcher
-				clusterExists, err = primClusterWatcher.SetClusterID(ctx, cs, ctrl.vdiskID, vdiskNBDConfig.StorageClusterID)
+				clusterExists, err = primClusterWatcher.SetClusterID(
+					ctx, cs, ctrl.ctx.vdiskID, vdiskNBDConfig.StorageClusterID)
 				if err != nil {
 					log.Errorf("failed to watch new primary cluster %s: %v",
 						vdiskNBDConfig.StorageClusterID, err)
@@ -610,18 +664,19 @@ func (ctrl *primarySlaveClusterPairStateController) spawnConfigReloader(ctx cont
 				}
 
 				// update slave cluster config watcher
-				clusterExists, err = slaveClusterWatcher.SetClusterID(ctx, cs, ctrl.vdiskID, vdiskNBDConfig.SlaveStorageClusterID)
+				clusterExists, err = slaveClusterWatcher.SetClusterID(
+					ctx, cs, ctrl.ctx.vdiskID, vdiskNBDConfig.SlaveStorageClusterID)
 				if err != nil {
 					log.Errorf("failed to watch new slave cluster %s: %v",
 						vdiskNBDConfig.SlaveStorageClusterID, err)
 				}
 				// unset slave cluster if it no longer exists
 				if !clusterExists {
-					log.Infof("vdisk %s no longer has a slave cluster defined", ctrl.vdiskID)
+					log.Infof("vdisk %s no longer has a slave cluster defined", ctrl.ctx.vdiskID)
 					err = ctrl.setSlaveClusterConfig(config.StorageClusterConfig{})
 					if err != nil {
 						log.Errorf("couldn't undefine slave cluster config for vdisk %s: %v",
-							ctrl.vdiskID, err)
+							ctrl.ctx.vdiskID, err)
 					}
 				}
 
@@ -630,11 +685,11 @@ func (ctrl *primarySlaveClusterPairStateController) spawnConfigReloader(ctx cont
 				err = ctrl.setPrimaryClusterConfig(clusterCfg)
 				if err != nil {
 					log.Errorf("couldn't set primary cluster config %s for vdisk %s: %v",
-						vdiskNBDConfig.StorageClusterID, ctrl.vdiskID, err)
+						vdiskNBDConfig.StorageClusterID, ctrl.ctx.vdiskID, err)
 					cs.MarkInvalidKey(config.Key{
 						ID:   vdiskNBDConfig.StorageClusterID,
 						Type: config.KeyClusterStorage,
-					}, ctrl.vdiskID)
+					}, ctrl.ctx.vdiskID)
 				}
 
 			// handle slave cluster storage updates
@@ -642,11 +697,11 @@ func (ctrl *primarySlaveClusterPairStateController) spawnConfigReloader(ctx cont
 				err = ctrl.setSlaveClusterConfig(clusterCfg)
 				if err != nil {
 					log.Errorf("couldn't set slave cluster config %s for vdisk %s: %v",
-						vdiskNBDConfig.SlaveStorageClusterID, ctrl.vdiskID, err)
+						vdiskNBDConfig.SlaveStorageClusterID, ctrl.ctx.vdiskID, err)
 					cs.MarkInvalidKey(config.Key{
 						ID:   vdiskNBDConfig.SlaveStorageClusterID,
 						Type: config.KeyClusterStorage,
-					}, ctrl.vdiskID)
+					}, ctrl.ctx.vdiskID)
 				}
 			}
 		}
