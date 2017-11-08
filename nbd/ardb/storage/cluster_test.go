@@ -182,10 +182,9 @@ func TestPrimaryServerFailsByNotification(t *testing.T) {
 	sourceClusterConfig.Servers[1].State = config.StorageServerStateOffline
 	source.SetStorageCluster(clusterID, &sourceClusterConfig)
 	waitForAsyncClusterUpdate(t, func() bool {
-		cluster.mux.RLock()
-		ok := len(cluster.servers) == 2 && cluster.servers[1].State == config.StorageServerStateOffline
-		cluster.mux.RUnlock()
-		return ok
+		state, err := cluster.controller.ServerStateAt(1)
+		require.NoError(err)
+		return state.Config.State == config.StorageServerStateOffline
 	})
 
 	// getting all content from the 1st server should still work
@@ -276,10 +275,13 @@ func TestTemplateServerFails(t *testing.T) {
 	// create new primary servers
 	newSlice := redisstub.NewMemoryRedisSlice(2)
 	defer newSlice.Close()
-	cluster.mux.Lock()
-	cluster.servers = newSlice.StorageClusterConfig().Servers
-	cluster.serverCount = int64(len(cluster.servers))
-	cluster.mux.Unlock()
+
+	for index, server := range newSlice.StorageClusterConfig().Servers {
+		require.True(cluster.controller.UpdateServerState(ServerState{
+			Index:  int64(index),
+			Config: server,
+		}))
+	}
 
 	// getting all content from the 1st server should still work
 	for index := int64(0); index < blockCount; index += 2 {
@@ -375,10 +377,12 @@ func TestTemplateServerFailsByNotification(t *testing.T) {
 	// create new primary servers
 	newSlice := redisstub.NewMemoryRedisSlice(2)
 	defer newSlice.Close()
-	cluster.mux.Lock()
-	cluster.servers = newSlice.StorageClusterConfig().Servers
-	cluster.serverCount = int64(len(cluster.servers))
-	cluster.mux.Unlock()
+	for index, server := range newSlice.StorageClusterConfig().Servers {
+		require.True(cluster.controller.UpdateServerState(ServerState{
+			Index:  int64(index),
+			Config: server,
+		}))
+	}
 
 	// getting all content from the 1st server should still work
 	for index := int64(0); index < blockCount; index += 2 {
