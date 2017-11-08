@@ -7,8 +7,9 @@ import (
 )
 
 const (
+	CacheSize              = 5 * 1024 * 1024 //CacheSize in MB
 	cacheDefaultExpiration = 30 * time.Second
-	cacheMaxSize           = 100 //each chunk is 512K so this is around 2.5M of memory
+	cacheDefaultMaxSize    = 100 //each chunk is 512K so this is around 2.5M of memory
 )
 
 type Cache struct {
@@ -25,7 +26,7 @@ func NewCache(evict CacheEvict, expiration time.Duration, maxSize int) *Cache {
 	}
 
 	if maxSize == 0 {
-		maxSize = cacheMaxSize
+		maxSize = cacheDefaultMaxSize
 	}
 
 	c := &Cache{
@@ -33,14 +34,17 @@ func NewCache(evict CacheEvict, expiration time.Duration, maxSize int) *Cache {
 		maxSize: maxSize,
 	}
 
-	c.cache = gcache.New(maxSize).LRU().Expiration(expiration).EvictedFunc(c.onEvict).Build()
+	c.cache = gcache.New(maxSize).LRU().
+		Expiration(expiration).
+		EvictedFunc(c.onEvict).
+		PurgeVisitorFunc(c.onEvict).
+		Build()
+
 	return c
 }
 
 func (c *Cache) Flush() {
-	for key := range c.cache.GetALL() {
-		c.cache.Remove(key)
-	}
+	c.cache.Purge()
 }
 
 func (c *Cache) onEvict(key, value interface{}) {
