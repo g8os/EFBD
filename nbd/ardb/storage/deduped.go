@@ -39,10 +39,8 @@ func Deduped(vdiskID string, blockSize, lbaCacheLimit int64, cluster, templateCl
 		lba:             vlba,
 	}
 
-	//1MB cache 1*1024*1024/blockSize
-	size := int(1048576 / blockSize)
-	log.Debugf("Deduped storage cache size: %dx%d", size, blockSize)
-	dedupedStorage.cache = NewCache(dedupedStorage.commitContent, 0, size)
+	size := int(CacheSize / blockSize)
+	dedupedStorage.cache = NewCache(dedupedStorage.evictCache, 0, 0, size)
 
 	// getContent is ALWAYS defined,
 	// but the actual function used depends on
@@ -176,7 +174,7 @@ func (ds *dedupedStorage) getPrimaryOrTemplateContent(hash zerodisk.Hash) (conte
 	return
 }
 
-func (ds *dedupedStorage) commitContent(hash zerodisk.Hash, content []byte) {
+func (ds *dedupedStorage) evictCache(hash zerodisk.Hash, content []byte) {
 	cmd := ardb.Command(command.Set, hash.Bytes(), content)
 	if err := ardb.Error(ds.cluster.DoFor(int64(hash[0]), cmd)); err != nil {
 		log.Errorf("couldn't store content in primary/slave storage: %s", err.Error())
@@ -190,7 +188,11 @@ func (ds *dedupedStorage) setContent(hash zerodisk.Hash, content []byte) {
 }
 
 // Close implements BlockStorage.Close
-func (ds *dedupedStorage) Close() error { return nil }
+func (ds *dedupedStorage) Close() error {
+	ds.cache.Close()
+
+	return nil
+}
 
 // dedupedVdiskExists checks if a deduped vdisks exists on a given cluster
 func dedupedVdiskExists(vdiskID string, cluster ardb.StorageCluster) (bool, error) {

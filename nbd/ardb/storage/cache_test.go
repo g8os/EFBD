@@ -14,7 +14,7 @@ func TestCacheSizeLimit(t *testing.T) {
 		flushed++
 	}
 
-	cache := NewCache(evict, 0, 5)
+	cache := NewCache(evict, 0, 0, 5)
 
 	for i := 0; i < 10; i++ {
 		key := fmt.Sprint(i)
@@ -33,7 +33,7 @@ func TestCacheSizeLimit(t *testing.T) {
 func TestCacheTimeLimit(t *testing.T) {
 	key := zerodisk.Hash("test-key")
 
-	cache := NewCache(nil, 2*time.Second, 5)
+	cache := NewCache(nil, 2*time.Second, 0, 5)
 
 	cache.Set(key, nil)
 
@@ -45,7 +45,7 @@ func TestCacheTimeLimit(t *testing.T) {
 }
 
 func TestCacheGet(t *testing.T) {
-	cache := NewCache(nil, 0, 0)
+	cache := NewCache(nil, 0, 0, 0)
 
 	key := zerodisk.Hash("test-key")
 	data := []byte("hello world")
