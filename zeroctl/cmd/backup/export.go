@@ -107,10 +107,12 @@ no (fatal) error occured, at the end of the command's lifetime.
 
   The FTP information is given using the --storage flag,
 here are some examples of valid values for that flag:
-	+ localhost:22
-	+ ftp://1.2.3.4:200
-	+ ftp://user@127.0.0.1:200
-	+ ftp://user:pass@12.30.120.200:3000
+	+ localhost:22;
+	+ ftp://1.2.3.4:200;
+	+ ftp://1.2.3.4:200/root/dir;
+	+ ftp://user@127.0.0.1:200;
+	+ ftp://user:pass@12.30.120.200:3000;
+	+ ftp://user:pass@12.30.120.200:3000/root/dir;
 
 Alternatively you can also give a local directory path to the --storage flag,
 to backup to the local file system instead.
