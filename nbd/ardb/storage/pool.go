@@ -16,12 +16,12 @@ type payload struct {
 	cb Callback
 }
 
-//Pool is a worker pool that grantees that if a job is submitted (Do call) *before* the pool is closed
-//that it is granted to be executed, even if the pool has been closed immediately afterwards (from another go routine)
+// Pool is a worker pool that grantees that if a job is submitted (Do call) *before* the pool is closed
+// that it is granted to be executed, even if the pool has been closed immediately afterwards (from another go routine)
 //
-//Pool is defined by 2 arguments Workers which is number of workers, and Work function
+// Pool is defined by 2 arguments Workers which is number of workers, and Work function
 type Pool struct {
-	//Workers defines number of workers
+	//Workers defines number of workers, default to number of cpus
 	Workers int
 	//Work function
 	Work Work
@@ -33,11 +33,11 @@ type Pool struct {
 	cancel context.CancelFunc
 }
 
-//Do schedule a job for processing, will block if there are no free workers to immediately process your request.
-//If Do is called while pool is open, and no free workers to process it, Do will block until a free worker is available,
-//During that time, if the pool was closed, the Job will not get canceled, but no more jobs will be able to schedule.
-//The call to close will block until all job on the queue is processed
-//If cb is provided, it will get called with the output of the Work function.
+// Do schedule a job for processing, will block if there are no free workers to immediately process your request.
+// If Do is called while pool is open, and no free workers to process it, Do will block until a free worker is available,
+// During that time, if the pool was closed, the Job will not get canceled, but no more jobs will be able to schedule.
+// The call to close will block until all job on the queue is processed
+// If cb is provided, it will get called with the output of the Work function.
 func (p *Pool) Do(in interface{}, cb func(out interface{})) error {
 	p.m.Lock()
 	if !p.open {
@@ -92,7 +92,7 @@ func (p *Pool) work(ctx context.Context) {
 	}
 }
 
-//Open prepares this pool, successive calls to Open will fail.
+// Open prepares this pool, successive calls to Open will fail.
 func (p *Pool) Open() error {
 	p.m.Lock()
 	defer p.m.Unlock()
@@ -117,8 +117,8 @@ func (p *Pool) Open() error {
 	return nil
 }
 
-//Close closes the pool, return only when all workers process all waiting jobs. Close will prevent new jobs
-//from being scheduled. Also successive calls to Close will fail
+// Close closes the pool, return only when all workers process all waiting jobs. Close will prevent new jobs
+// from being scheduled. Also successive calls to Close will fail
 func (p *Pool) Close() error {
 	//on close, we need to make sure that there are NO queued jobs
 	//a close should return ONLY if all workers has processed all waiting jobs
@@ -138,7 +138,7 @@ func (p *Pool) Close() error {
 	return nil
 }
 
-//IsRunning returns true if pool is running.
+// IsRunning returns true if pool is running.
 func (p *Pool) IsRunning() bool {
 	p.m.Lock()
 	defer p.m.Unlock()

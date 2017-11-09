@@ -39,6 +39,14 @@ func Deduped(vdiskID string, blockSize, lbaCacheLimit int64, cluster, templateCl
 		lba:             vlba,
 	}
 
+	dedupedStorage.wpool = Pool{
+		Work: dedupedStorage.commitBlock,
+	}
+
+	if err := dedupedStorage.wpool.Open(); err != nil {
+		return nil, err
+	}
+
 	size := int(CacheSize / blockSize)
 	dedupedStorage.cache = NewCache(dedupedStorage.evictCache, 0, 0, size)
 
@@ -69,6 +77,12 @@ type dedupedStorage struct {
 	lba             *lba.LBA             // the LBA used to get/set/modify the metadata (content hashes)
 	getContent      dedupedContentGetter // getContent function used to get content, is always defined
 	cache           *Cache               // write cache
+	wpool           Pool                 // writer pool
+}
+
+type writeRequest struct {
+	hash    zerodisk.Hash
+	content []byte
 }
 
 // used to provide different content getters based on the vdisk properties
@@ -174,9 +188,19 @@ func (ds *dedupedStorage) getPrimaryOrTemplateContent(hash zerodisk.Hash) (conte
 	return
 }
 
-func (ds *dedupedStorage) evictCache(hash zerodisk.Hash, content []byte) {
-	cmd := ardb.Command(command.Set, hash.Bytes(), content)
+func (ds *dedupedStorage) commitBlock(in interface{}) interface{} {
+	request := in.(*writeRequest)
+	hash := request.hash
+	cmd := ardb.Command(command.Set, hash.Bytes(), request.content)
 	if err := ardb.Error(ds.cluster.DoFor(int64(hash[0]), cmd)); err != nil {
+		log.Errorf("couldn't store content in primary/slave storage: %s", err.Error())
+	}
+
+	return nil
+}
+
+func (ds *dedupedStorage) evictCache(hash zerodisk.Hash, content []byte) {
+	if err := ds.wpool.Do(&writeRequest{hash: hash, content: content}, nil); err != nil {
 		log.Errorf("couldn't store content in primary/slave storage: %s", err.Error())
 	}
 }
@@ -190,8 +214,7 @@ func (ds *dedupedStorage) setContent(hash zerodisk.Hash, content []byte) {
 // Close implements BlockStorage.Close
 func (ds *dedupedStorage) Close() error {
 	ds.cache.Close()
-
-	return nil
+	return ds.wpool.Close()
 }
 
 // dedupedVdiskExists checks if a deduped vdisks exists on a given cluster
