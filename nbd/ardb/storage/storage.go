@@ -63,12 +63,12 @@ func (cfg *BlockStorageConfig) Validate() error {
 	return nil
 }
 
-// BlockStorageFromConfigSource creates a block storage
+// BlockStorageFromConfig creates a block storage
 // from the config retrieved from the given config source.
 // It is the simplest way to create a BlockStorage,
 // but it also has the disadvantage that
 // it does not support SelfHealing or HotReloading of the used configuration.
-func BlockStorageFromConfigSource(vdiskID string, cs config.Source, dialer ardb.ConnectionDialer) (BlockStorage, error) {
+func BlockStorageFromConfig(vdiskID string, cs config.Source, dialer ardb.ConnectionDialer) (BlockStorage, error) {
 	// get configs from source
 	vdiskConfig, err := config.ReadVdiskStaticConfig(cs, vdiskID)
 	if err != nil {
@@ -79,33 +79,25 @@ func BlockStorageFromConfigSource(vdiskID string, cs config.Source, dialer ardb.
 		return nil, err
 	}
 
-	return BlockStorageFromConfig(vdiskID, *vdiskConfig, *nbdStorageConfig, dialer)
-}
-
-// BlockStorageFromConfig creates a block storage from the given config.
-// It is the simplest way to create a BlockStorage,
-// but it also has the disadvantage that
-// it does not support SelfHealing or HotReloading of the used configuration.
-func BlockStorageFromConfig(vdiskID string, vdiskConfig config.VdiskStaticConfig, nbdConfig config.NBDStorageConfig, dialer ardb.ConnectionDialer) (BlockStorage, error) {
-	err := vdiskConfig.Validate()
+	err = vdiskConfig.Validate()
 	if err != nil {
 		return nil, err
 	}
-	err = nbdConfig.Validate()
+	err = nbdStorageConfig.Validate()
 	if err != nil {
 		return nil, err
 	}
 
 	// create primary cluster
-	cluster, err := ardb.NewCluster(nbdConfig.StorageCluster, dialer)
+	cluster, err := ardb.NewCluster(nbdStorageConfig.StorageCluster, dialer)
 	if err != nil {
 		return nil, err
 	}
 
 	// create template cluster if needed
 	var templateCluster ardb.StorageCluster
-	if vdiskConfig.Type.TemplateSupport() && nbdConfig.TemplateStorageCluster != nil {
-		templateCluster, err = ardb.NewCluster(*nbdConfig.TemplateStorageCluster, dialer)
+	if vdiskConfig.Type.TemplateSupport() && nbdStorageConfig.TemplateStorageCluster != nil {
+		templateCluster, err = ardb.NewCluster(*nbdStorageConfig.TemplateStorageCluster, dialer)
 		if err != nil {
 			return nil, err
 		}

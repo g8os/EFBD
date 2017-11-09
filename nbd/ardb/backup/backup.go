@@ -25,8 +25,8 @@ type Config struct {
 	// NOTE: only used by export funcs (ignored by import funcs)
 	BlockSize int64
 
-	// Required: SourceConfig to configure the storage with
-	BlockStorageConfig config.SourceConfig
+	// Required: config Source to configure the storage with
+	ConfigSource config.Source
 
 	// Optional: BackupStoragDriverConfig used to configure the backup storage driver.
 	//  - When not given, defaults to LocalStorageDriver, using the DefaultLocalRoot as the path.
@@ -76,16 +76,11 @@ func (cfg *Config) validate() error {
 		}
 	}
 
-	err := cfg.BlockStorageConfig.Validate()
-	if err != nil {
-		return err
-	}
-
 	if cfg.JobCount <= 0 {
 		cfg.JobCount = runtime.NumCPU()
 	}
 
-	err = cfg.CompressionType.validate()
+	err := cfg.CompressionType.validate()
 	if err != nil {
 		return err
 	}
@@ -370,19 +365,13 @@ func isNilBlock(block []byte) bool {
 }
 
 // Create a block storage ready for importing/exporting to/from a backup.
-func createStorageConfig(vdiskID string, sourceConfig config.SourceConfig) (*storageConfig, error) {
-	storageConfigCloser, err := config.NewSource(sourceConfig)
-	if err != nil {
-		return nil, err
-	}
-	defer storageConfigCloser.Close()
-
-	vdiskConfig, err := config.ReadVdiskStaticConfig(storageConfigCloser, vdiskID)
+func createStorageConfig(vdiskID string, configSource config.Source) (*storageConfig, error) {
+	vdiskConfig, err := config.ReadVdiskStaticConfig(configSource, vdiskID)
 	if err != nil {
 		return nil, err
 	}
 
-	nbdStorageConfig, err := config.ReadNBDStorageConfig(storageConfigCloser, vdiskID)
+	nbdStorageConfig, err := config.ReadNBDStorageConfig(configSource, vdiskID)
 	if err != nil {
 		return nil, err
 	}

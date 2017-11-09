@@ -70,7 +70,7 @@ func (g *Generator) GenerateFromStorage(parentCtx context.Context) (uint64, erro
 	defer pool.Close()
 
 	sourceStorage, err := storage.BlockStorageFromConfig(
-		g.sourceVdiskID, *staticConf, *storageConf, pool)
+		g.sourceVdiskID, g.configSource, pool)
 	if err != nil {
 		return 0, err
 	}

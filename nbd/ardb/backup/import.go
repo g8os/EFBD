@@ -23,7 +23,7 @@ func Import(ctx context.Context, cfg Config) error {
 		return err
 	}
 
-	storageConfig, err := createStorageConfig(cfg.VdiskID, cfg.BlockStorageConfig)
+	storageConfig, err := createStorageConfig(cfg.VdiskID, cfg.ConfigSource)
 	if err != nil {
 		return err
 	}
@@ -33,7 +33,7 @@ func Import(ctx context.Context, cfg Config) error {
 
 	blockStorage, err := storage.BlockStorageFromConfig(
 		cfg.VdiskID,
-		storageConfig.Vdisk, storageConfig.NBD,
+		cfg.ConfigSource,
 		pool)
 	if err != nil {
 		return err

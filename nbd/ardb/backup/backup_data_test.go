@@ -3,20 +3,18 @@ package backup
 import (
 	"sync"
 
-	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/testdata"
 )
 
 var validConfigs = []Config{
 	// Explicit Example
 	Config{
-		VdiskID:            "foo",
-		SnapshotID:         "foo",
-		BlockSize:          DefaultBlockSize,
-		BlockStorageConfig: config.SourceConfig{},
-		JobCount:           0,
-		CompressionType:    LZ4Compression,
-		CryptoKey:          CryptoKey{4, 2},
+		VdiskID:         "foo",
+		SnapshotID:      "foo",
+		BlockSize:       DefaultBlockSize,
+		JobCount:        0,
+		CompressionType: LZ4Compression,
+		CryptoKey:       CryptoKey{4, 2},
 	},
 	// implicit version of first example
 	Config{
@@ -25,13 +23,9 @@ var validConfigs = []Config{
 	},
 	// full (FTP) example
 	Config{
-		VdiskID:    "foo",
-		SnapshotID: "bar",
-		BlockSize:  4096,
-		BlockStorageConfig: config.SourceConfig{
-			Resource:   "localhost:20021",
-			SourceType: config.ETCDSourceType,
-		},
+		VdiskID:         "foo",
+		SnapshotID:      "bar",
+		BlockSize:       4096,
 		JobCount:        1,
 		CompressionType: XZCompression,
 		CryptoKey: CryptoKey{
@@ -52,18 +46,6 @@ var invalidConfigs = []Config{
 	},
 	// Missing VdiskID
 	Config{},
-	// Bad Config Source
-	Config{
-		VdiskID: "foo",
-		BlockStorageConfig: config.SourceConfig{
-			SourceType: config.ETCDSourceType,
-		},
-	},
-	// bad compression type
-	Config{
-		VdiskID:         "foo",
-		CompressionType: CompressionType(42),
-	},
 }
 
 func getLedeImageBlocks() map[int64][]byte {

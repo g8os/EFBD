@@ -46,7 +46,11 @@ func importVdisk(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	err = checkVdiskExists(vdiskCmdCfg.VdiskID)
+	source, err := config.NewSource(vdiskCmdCfg.SourceConfig)
+	defer source.Close()
+	configSource := config.NewOnceSource(source)
+
+	err = checkVdiskExists(vdiskCmdCfg.VdiskID, configSource)
 	if err != nil {
 		return err
 	}
@@ -54,20 +58,15 @@ func importVdisk(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	configSource, err := config.NewSource(vdiskCmdCfg.SourceConfig)
-	if err != nil {
-		return err
-	}
-
 	cfg := backup.Config{
 		VdiskID:                  vdiskCmdCfg.VdiskID,
 		SnapshotID:               vdiskCmdCfg.SnapshotID,
-		BlockStorageConfig:       vdiskCmdCfg.SourceConfig,
 		BackupStoragDriverConfig: createBackupStorageConfigFromFlags(),
 		JobCount:                 vdiskCmdCfg.JobCount,
 		CompressionType:          vdiskCmdCfg.CompressionType,
 		CryptoKey:                vdiskCmdCfg.PrivateKey,
 		Force:                    vdiskCmdCfg.Force,
+		ConfigSource:             source,
 	}
 
 	log.Info("Importing the vdisk")
@@ -123,26 +122,20 @@ func importVdisk(cmd *cobra.Command, args []string) error {
 
 // checkVdiskExists checks if the vdisk in question already/still exists,
 // and if so, and the force flag is specified, delete the vdisk.
-func checkVdiskExists(vdiskID string) error {
-	// create config source
-	configSource, err := config.NewSource(vdiskCmdCfg.SourceConfig)
-	if err != nil {
-		return err
-	}
-	defer configSource.Close()
+func checkVdiskExists(vdiskID string, cfgSource config.Source) error {
 
 	// gather configs
-	staticConfig, err := config.ReadVdiskStaticConfig(configSource, vdiskID)
+	staticConfig, err := config.ReadVdiskStaticConfig(cfgSource, vdiskID)
 	if err != nil {
 		return errors.Wrapf(err,
 			"cannot read static vdisk config for vdisk %s", vdiskID)
 	}
-	nbdStorageConfig, err := config.ReadVdiskNBDConfig(configSource, vdiskID)
+	nbdStorageConfig, err := config.ReadVdiskNBDConfig(cfgSource, vdiskID)
 	if err != nil {
 		return errors.Wrapf(err,
 			"cannot read nbd storage config for vdisk %s", vdiskID)
 	}
-	clusterConfig, err := config.ReadStorageClusterConfig(configSource, nbdStorageConfig.StorageClusterID)
+	clusterConfig, err := config.ReadStorageClusterConfig(cfgSource, nbdStorageConfig.StorageClusterID)
 	if err != nil {
 		return errors.Wrapf(err,
 			"cannot read storage cluster config for cluster %s",

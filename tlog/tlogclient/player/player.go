@@ -36,7 +36,7 @@ type Closer interface {
 // NewPlayer creates new tlog player
 func NewPlayer(ctx context.Context, source config.Source, vdiskID, privKey string) (*Player, error) {
 	ardbPool := ardb.NewPool(nil)
-	blockStorage, err := storage.BlockStorageFromConfigSource(vdiskID, source, ardbPool)
+	blockStorage, err := storage.BlockStorageFromConfig(vdiskID, source, ardbPool)
 	if err != nil {
 		ardbPool.Close()
 		return nil, err

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb/backup"
@@ -41,6 +42,10 @@ func exportVdisk(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	s, err := config.NewSource(vdiskCmdCfg.SourceConfig)
+	defer s.Close()
+	source := config.NewOnceSource(s)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -48,12 +53,12 @@ func exportVdisk(cmd *cobra.Command, args []string) error {
 		VdiskID:                  vdiskCmdCfg.VdiskID,
 		SnapshotID:               vdiskCmdCfg.SnapshotID,
 		BlockSize:                exportVdiskCmdCfg.ExportBlockSize,
-		BlockStorageConfig:       vdiskCmdCfg.SourceConfig,
 		BackupStoragDriverConfig: createBackupStorageConfigFromFlags(),
 		JobCount:                 vdiskCmdCfg.JobCount,
 		CompressionType:          vdiskCmdCfg.CompressionType,
 		CryptoKey:                vdiskCmdCfg.PrivateKey,
 		Force:                    vdiskCmdCfg.Force,
+		ConfigSource:             source,
 	}
 
 	err = backup.Export(ctx, cfg)
