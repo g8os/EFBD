@@ -276,12 +276,11 @@ func TestTemplateServerFails(t *testing.T) {
 	newSlice := redisstub.NewMemoryRedisSlice(2)
 	defer newSlice.Close()
 
-	for index, server := range newSlice.StorageClusterConfig().Servers {
-		require.True(cluster.controller.UpdateServerState(ServerState{
-			Index:  int64(index),
-			Config: server,
-		}))
-	}
+	pcc := cluster.controller.(*singleClusterStateController)
+	pcc.mux.Lock()
+	pcc.servers = newSlice.StorageClusterConfig().Servers
+	pcc.serverCount = int64(len(pcc.servers))
+	pcc.mux.Unlock()
 
 	// getting all content from the 1st server should still work
 	for index := int64(0); index < blockCount; index += 2 {
@@ -377,12 +376,12 @@ func TestTemplateServerFailsByNotification(t *testing.T) {
 	// create new primary servers
 	newSlice := redisstub.NewMemoryRedisSlice(2)
 	defer newSlice.Close()
-	for index, server := range newSlice.StorageClusterConfig().Servers {
-		require.True(cluster.controller.UpdateServerState(ServerState{
-			Index:  int64(index),
-			Config: server,
-		}))
-	}
+
+	pcc := cluster.controller.(*singleClusterStateController)
+	pcc.mux.Lock()
+	pcc.servers = newSlice.StorageClusterConfig().Servers
+	pcc.serverCount = int64(len(pcc.servers))
+	pcc.mux.Unlock()
 
 	// getting all content from the 1st server should still work
 	for index := int64(0); index < blockCount; index += 2 {
