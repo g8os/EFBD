@@ -371,7 +371,7 @@ func (action listVdisksAction) Do(conn ardb.Conn) (reply interface{}, err error)
 		// get new cursor and raw data
 		cursor, slice, err = ardb.CursorAndValues(scan.Do(conn))
 		// convert the raw data to a string slice we can use
-		output, err = ardb.Strings(slice, err)
+		output, err = ardb.OptStrings(slice, err)
 		// return early in case of error
 		if err != nil {
 			return nil, err

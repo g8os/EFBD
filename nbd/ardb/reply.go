@@ -186,6 +186,21 @@ func Strings(reply interface{}, err error) ([]string, error) {
 	return strings, nil
 }
 
+// OptStrings is a helper that converts an array command reply to a []string.
+// If err is not equal to nil, then Strings returns the error.
+// Strings returns an error if an array item is not an string.
+// If a reply is nil, a nil slice will be returned.
+func OptStrings(reply interface{}, err error) ([]string, error) {
+	if reply == nil {
+		return nil, err
+	}
+	slice, err := Strings(reply, err)
+	if err != nil && err != ErrNil {
+		return nil, err
+	}
+	return slice, nil
+}
+
 // Int64ToBytesMapping is a helper that converts an array command reply to a map[int64][]byte.
 // If err is not equal to nil, then this function returns the error.
 // If the given reply can also not be transformed into a `map[int64][]byte` this function returns an error as well.
