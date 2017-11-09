@@ -62,14 +62,19 @@ func listVdisks(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	// When no vdisks could be found, log this as info to the user,
+	// and return without printing anything.
+	// Not finding a vdisk is not concidered an error.
 	if len(vdiskIDs) == 0 {
 		if pred != nil {
-			return errors.Newf(
+			log.Infof(
 				"no vdisks could be find in %s whose identifier match `%s`",
 				args[0], vdisksCmdCfg.NameRegexp)
+			return nil
 		}
 
-		return errors.New("no vdisks could be found in " + args[0])
+		log.Infof("no vdisks could be found in %s", args[0])
+		return nil
 	}
 
 	// print at least 1 vdisk found from the specified storage
