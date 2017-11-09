@@ -16,6 +16,7 @@ The FTP information is given using the `--storage` flag,
 here are some examples of valid values for that flag:
 + `localhost:22`;
 + `ftp://1.2.3.4:200`;
++ `ftp://1.2.3.4:200/root/dir`;
 + `ftp://user@127.0.0.1:200`;
 + `ftp://user:pass@12.30.120.200:3000`;
 + `ftp://user:pass@12.30.120.200:3000/root/dir`;
