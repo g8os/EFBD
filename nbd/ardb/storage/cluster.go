@@ -251,11 +251,14 @@ type ServerState struct {
 
 // NewPrimaryCluster creates a new PrimaryCluster.
 // This cluster type supports config hot-reloading, but no self-healing of servers.
+// This cluster type does support hot-swapping of 2 online servers (which share the same index),
+// meaning that prior to swapping, the data for this vdisk will be copied from the old to the new server.
 // See `Cluster` for more information.
 func NewPrimaryCluster(ctx context.Context, vdiskID string, cs config.Source) (*Cluster, error) {
 	controller := &singleClusterStateController{
 		vdiskID:      vdiskID,
 		optional:     false,
+		configSource: cs,
 		serverType:   log.ARDBPrimaryServer,
 		getClusterID: getPrimaryClusterID,
 	}
@@ -270,11 +273,14 @@ func NewPrimaryCluster(ctx context.Context, vdiskID string, cs config.Source) (*
 
 // NewSlaveCluster creates a new SlaveCluster.
 // This cluster type supports config hot-reloading, but no self-healing of servers.
+// This cluster type does support hot-swapping of 2 online servers (which share the same index),
+// meaning that prior to swapping, the data for this vdisk will be copied from the old to the new server.
 // See `Cluster` for more information.
 func NewSlaveCluster(ctx context.Context, vdiskID string, optional bool, cs config.Source) (*Cluster, error) {
 	controller := &singleClusterStateController{
 		vdiskID:      vdiskID,
 		optional:     optional,
+		configSource: cs,
 		serverType:   log.ARDBSlaveServer,
 		getClusterID: getSlaveClusterID,
 	}
@@ -289,11 +295,14 @@ func NewSlaveCluster(ctx context.Context, vdiskID string, optional bool, cs conf
 
 // NewTemplateCluster creates a new TemplateCluster.
 // This cluster type supports config hot-reloading, but no self-healing of servers.
+// This cluster type does support hot-swapping of 2 online servers (which share the same index),
+// meaning that prior to swapping, the data for this vdisk will be copied from the old to the new server.
 // See `Cluster` for more information.
 func NewTemplateCluster(ctx context.Context, vdiskID string, optional bool, cs config.Source) (*Cluster, error) {
 	controller := &singleClusterStateController{
 		vdiskID:      vdiskID,
 		optional:     optional,
+		configSource: cs,
 		serverType:   log.ARDBTemplateServer,
 		getClusterID: getTemplateClusterID,
 	}
@@ -307,11 +316,14 @@ func NewTemplateCluster(ctx context.Context, vdiskID string, optional bool, cs c
 }
 
 type singleClusterStateController struct {
-	vdiskID string
+	vdiskID   string
+	clusterID string
 
 	// when true, it means it's acceptable for the cluster not to exist
 	// otherwise this will be tracked as an error.
 	optional bool
+
+	configSource config.Source
 
 	serverType log.ARDBServerType
 
@@ -461,8 +473,8 @@ func (ctrl *singleClusterStateController) spawnConfigReloader(ctx context.Contex
 	// and execute the initial config update iff
 	// an internal watcher is created.
 	var clusterWatcher ClusterConfigWatcher
-	clusterID := ctrl.getClusterID(vdiskNBDConfig)
-	clusterExists, err := clusterWatcher.SetClusterID(ctx, cs, ctrl.vdiskID, clusterID)
+	ctrl.clusterID = ctrl.getClusterID(vdiskNBDConfig)
+	clusterExists, err := clusterWatcher.SetClusterID(ctx, cs, ctrl.vdiskID, ctrl.clusterID)
 	if err != nil {
 		return err
 	}
@@ -472,7 +484,7 @@ func (ctrl *singleClusterStateController) spawnConfigReloader(ctx context.Contex
 		ctrl.serverCount = int64(len(clusterCfg.Servers))
 	} else if !ctrl.optional {
 		return errors.Wrapf(ErrClusterNotDefined,
-			"%s cluster %s does not exist", ctrl.serverType, clusterID)
+			"%s cluster %s does not exist", ctrl.serverType, ctrl.clusterID)
 	}
 
 	// spawn the config update goroutine
@@ -489,36 +501,119 @@ func (ctrl *singleClusterStateController) spawnConfigReloader(ctx context.Contex
 					return
 				}
 
-				clusterID = ctrl.getClusterID(vdiskNBDConfig)
-				clusterExists, err := clusterWatcher.SetClusterID(ctx, cs, ctrl.vdiskID, clusterID)
+				ctrl.clusterID = ctrl.getClusterID(vdiskNBDConfig)
+				clusterExists, err := clusterWatcher.SetClusterID(ctx, cs, ctrl.vdiskID, ctrl.clusterID)
 				if err != nil {
-					log.Errorf("failed to watch new %s cluster %s: %v", ctrl.serverType, clusterID, err)
+					log.Errorf("failed to watch new %s cluster %s: %v", ctrl.serverType, ctrl.clusterID, err)
 					continue
 				}
 				if !clusterExists {
 					if !ctrl.optional {
 						log.Errorf("%s cluster no longer exists, while it is required for vdisk %s",
 							ctrl.serverType, ctrl.vdiskID)
-						// [TODO] Notify AYS about this
+						// [TODO] Notify AYS about this error
 					}
-					ctrl.mux.Lock()
-					ctrl.servers = nil
-					ctrl.serverCount = 0
-					ctrl.mux.Unlock()
+					ctrl.setServers(nil)
 				}
 
 			// handle cluster storage updates
 			case clusterCfg = <-clusterWatcher.Receive():
-				ctrl.mux.Lock()
-				ctrl.servers = clusterCfg.Servers
-				ctrl.serverCount = int64(len(clusterCfg.Servers))
-				ctrl.mux.Unlock()
+				ctrl.setServers(clusterCfg.Servers)
 			}
 		}
 	}()
 
 	// all is operational, no error to return
 	return nil
+}
+
+func (ctrl *singleClusterStateController) setServers(servers []config.StorageServerConfig) {
+	ctrl.mux.Lock()
+	defer ctrl.mux.Unlock()
+	serverCount := int64(len(servers))
+
+	// shrinking is now allowed, so handle this scenario
+	if serverCount < ctrl.serverCount {
+		// mark all "deleted" servers as state unknown, which will make this vdisk fail
+		// [TODO] Notify AYS about this error
+		for index := serverCount; index < ctrl.serverCount; index++ {
+			ctrl.servers[index].State = config.StorageServerStateUnknown
+		}
+	} else if serverCount > ctrl.serverCount { // growing isn't allowed either
+		// however if no serverCount was previously defined, we're OK with it
+		if ctrl.serverCount == 0 { // simply set servers without needing to do any handling
+			ctrl.servers = servers
+			ctrl.serverCount = serverCount
+			return
+		}
+
+		// ignore all extra servers
+		// [TODO] Notify AYS about this error
+		log.Errorf("hot-growing a cluster is not allowed, ignoring extra servers: %v", servers[ctrl.serverCount:])
+		// trim input servers so we don't get an overflow error
+		servers = servers[:ctrl.serverCount]
+	}
+
+	// update all servers
+	var server, curServer config.StorageServerConfig
+	for index := range servers {
+		server, curServer = servers[index], ctrl.servers[index]
+
+		// ignore nop-updates (but do log them for sake of completion)
+		if server.Equal(curServer) {
+			log.Debugf("ignoring update for %s server #%d %s (state: %s), as it remains unchanged",
+				ctrl.serverType, index, &curServer, curServer.State)
+			continue
+		}
+
+		// a server marked as RIP should never change state again
+		if curServer.State == config.StorageServerStateRIP {
+			if server.State != config.StorageServerStateRIP {
+				// [TODO] Notify AYS about this error
+				log.Errorf("cannot change state of %s server #%d as it is marked as RIP, forcing new server (%s) state to RIP as well",
+					ctrl.serverType, index, &server)
+				server.State = config.StorageServerStateRIP
+			}
+		}
+
+		// handle the expected and unexpected server state changes
+		switch server.State {
+		case config.StorageServerStateOnline:
+			// hot-swap defined and input server if both are online
+			if server.State == curServer.State && !storageServersEqual(server, curServer) {
+				log.Infof("swapping online %s server #%d %s with newly defined server %s",
+					ctrl.serverType, index, &curServer, &server)
+				err := repairStorageServer(ctrl.vdiskID, ctrl.configSource, curServer, server)
+				if err != nil {
+					log.Errorf("couldn't hot-swap online %s server #%d %s with newly defined server %s: %v",
+						ctrl.serverType, index, curServer, server, err)
+					// [TODO] Notify AYS about this error
+
+					// use new server config, but mark server as unknown
+					log.Errorf("%s server #%d %s has been marked as status unknown", ctrl.serverType, index, &server)
+					server.State = config.StorageServerStateUnknown
+				}
+			}
+
+		case config.StorageServerStateRIP:
+			if curServer.State != config.StorageServerStateRIP {
+				log.Errorf("%s server #%d %s (state: %s) is being replaced by a RIP server (%s)",
+					ctrl.serverType, index, &curServer, curServer.State, &server)
+				// [TODO] Notify AYS about this error
+			}
+
+		default:
+			log.Errorf("%s server #%d %s (state: %s) is being replaced by a server (%s) with an unexpected state %s",
+				ctrl.serverType, index, &curServer, curServer.State, &server, server.State)
+			// [TODO] Notify AYS about this error
+		}
+
+		log.Infof("replacing %s server #%d %s (state: %s) with server %s (state: %s)",
+			ctrl.serverType, index, &curServer, curServer.State, &server, server.State)
+		// simply overwrite config, nothing else to do
+		// [TODO] Notify AYS about this (informational)
+		ctrl.servers[index] = server
+	}
 }
 
 // getters to get a specific clusterID,
@@ -1745,6 +1840,12 @@ func repairStorageServer(vdiskID string, cs config.Source, source, target config
 	// Copy the data from the source to the target cluster (see: repair a storage server)
 	err = CopyVdisk(cfg, cfg, sourceCluster, targetCluster)
 	if err != nil {
+		if errors.Cause(err) == ErrNilCopy {
+			log.Info(err)
+			// don't log a ErrNilCopy, as it is fine to not copy anything for our purpose
+			return nil
+		}
+
 		return errors.Wrapf(err, "couldn't repair storage server %s", &target)
 	}
 	return nil

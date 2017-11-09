@@ -16,6 +16,18 @@ import (
 	"github.com/zero-os/0-Disk/redisstub"
 )
 
+// TODO:
+// Test for NewPrimaryCluster:
+//   + that we get panic when no primary cluster is defined when we create it;
+// Test for NewSlaveCluster and NewTemplateCluster:
+//   + that we can create an optional cluster with no servers, and hot-configure them afterwards;
+// Test for NewPrimaryCluster, NewSlaveCluster and NewTemplateCluster:
+//   + that we can update the configuration of servers;
+//   + that we can hot-swap 2 online servers (and automatically copy the data from the old one to the new one);
+//      + add also a test to ensure that there cannot be a window between the hot-swap
+//        and another command still writing to the previous server
+//   + that we cannot grow or shrink a cluster in terms of server size;
+
 func TestPrimaryServerRIP(t *testing.T) {
 	mr := redisstub.NewMemoryRedis()
 	defer mr.Close()

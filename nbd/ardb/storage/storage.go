@@ -503,3 +503,9 @@ func isInterfaceValueNil(v interface{}) bool {
 	rv := reflect.ValueOf(v)
 	return rv.Kind() == reflect.Ptr && rv.IsNil()
 }
+
+var (
+	// ErrNilCopy is returned (as the cause) of a CopyVdisk call,
+	// where no data has been copied.
+	ErrNilCopy = errors.New("no (meta)data has been copied")
+)

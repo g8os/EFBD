@@ -527,6 +527,16 @@ func (cfg *StorageServerConfig) Equal(other StorageServerConfig) bool {
 
 // String implements Stringer.String
 func (cfg StorageServerConfig) String() string {
+	if cfg.Address == "" {
+		switch cfg.State {
+		case StorageServerStateRIP:
+			return "✝"
+		case StorageServerStateUnknown:
+			return "?"
+		default:
+			return ""
+		}
+	}
 	return fmt.Sprintf("%s@%d", cfg.Address, cfg.Database)
 }
 

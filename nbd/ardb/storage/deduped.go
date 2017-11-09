@@ -392,7 +392,7 @@ func copyDedupedSameCluster(sourceID, targetID string, cluster ardb.StorageClust
 	}
 
 	if totalCount == 0 {
-		return errors.Newf(
+		return errors.Wrapf(ErrNilCopy,
 			"zero LBA sectors have been copied from vdisk %s to vdisk %s",
 			sourceID, targetID)
 	}
@@ -476,7 +476,7 @@ func copyDedupedSameServerCount(sourceID, targetID string, sourceCluster, target
 	}
 
 	if totalCount == 0 {
-		return errors.Newf(
+		return errors.Wrapf(ErrNilCopy,
 			"zero LBA sectors have been copied from vdisk %s to vdisk %s",
 			sourceID, targetID)
 	}
@@ -531,7 +531,7 @@ func copyDedupedDifferentServerCount(sourceID, targetID string, sourceCluster, t
 	}
 
 	if totalCount == 0 {
-		return errors.Newf(
+		return errors.Wrapf(ErrNilCopy,
 			"zero LBA sectors have been copied from vdisk %s to vdisk %s",
 			sourceID, targetID)
 	}

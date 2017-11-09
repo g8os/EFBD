@@ -440,7 +440,7 @@ func copyNonDedupedSameServerCount(sourceID, targetID string, sourceCluster, tar
 	}
 
 	if totalCount == 0 {
-		return errors.Newf(
+		return errors.Wrapf(ErrNilCopy,
 			"no non-deduped data was copied from vdisk %s to vdisk %s",
 			sourceID, targetID)
 	}
@@ -499,7 +499,7 @@ func copyNonDedupedDifferentServerCount(sourceID, targetID string, targetBS int6
 	}
 
 	if totalCount == 0 {
-		return errors.Newf(
+		return errors.Wrapf(ErrNilCopy,
 			"no non-deduped data was copied from vdisk %s to vdisk %s",
 			sourceID, targetID)
 	}
