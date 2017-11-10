@@ -249,11 +249,12 @@ type ServerState struct {
 // See `Cluster` for more information.
 func NewPrimaryCluster(ctx context.Context, vdiskID string, cs config.Source) (*Cluster, error) {
 	controller := &singleClusterStateController{
-		vdiskID:      vdiskID,
-		optional:     false,
-		configSource: cs,
-		serverType:   log.ARDBPrimaryServer,
-		getClusterID: getPrimaryClusterID,
+		vdiskID:       vdiskID,
+		optional:      false,
+		copyOnHotSwap: true,
+		configSource:  cs,
+		serverType:    log.ARDBPrimaryServer,
+		getClusterID:  getPrimaryClusterID,
 	}
 	err := controller.spawnConfigReloader(ctx, cs)
 	if err != nil {
@@ -271,11 +272,12 @@ func NewPrimaryCluster(ctx context.Context, vdiskID string, cs config.Source) (*
 // See `Cluster` for more information.
 func NewSlaveCluster(ctx context.Context, vdiskID string, optional bool, cs config.Source) (*Cluster, error) {
 	controller := &singleClusterStateController{
-		vdiskID:      vdiskID,
-		optional:     optional,
-		configSource: cs,
-		serverType:   log.ARDBSlaveServer,
-		getClusterID: getSlaveClusterID,
+		vdiskID:       vdiskID,
+		optional:      optional,
+		copyOnHotSwap: true,
+		configSource:  cs,
+		serverType:    log.ARDBSlaveServer,
+		getClusterID:  getSlaveClusterID,
 	}
 	err := controller.spawnConfigReloader(ctx, cs)
 	if err != nil {
@@ -293,11 +295,14 @@ func NewSlaveCluster(ctx context.Context, vdiskID string, optional bool, cs conf
 // See `Cluster` for more information.
 func NewTemplateCluster(ctx context.Context, vdiskID string, optional bool, cs config.Source) (*Cluster, error) {
 	controller := &singleClusterStateController{
-		vdiskID:      vdiskID,
-		optional:     optional,
-		configSource: cs,
-		serverType:   log.ARDBTemplateServer,
-		getClusterID: getTemplateClusterID,
+		vdiskID:  vdiskID,
+		optional: optional,
+		// template cluster is read-only,
+		// hot-swapping is entirely an external responsibility
+		copyOnHotSwap: false,
+		configSource:  cs,
+		serverType:    log.ARDBTemplateServer,
+		getClusterID:  getTemplateClusterID,
 	}
 	err := controller.spawnConfigReloader(ctx, cs)
 	if err != nil {
@@ -315,6 +320,11 @@ type singleClusterStateController struct {
 	// when true, it means it's acceptable for the cluster not to exist
 	// otherwise this will be tracked as an error.
 	optional bool
+
+	// an optioan bool,
+	// when enabled data will be copied from the old to the new server,
+	// iff the new sever replaces the old server AND both are in state `online`
+	copyOnHotSwap bool
 
 	configSource config.Source
 
@@ -586,17 +596,24 @@ func (ctrl *singleClusterStateController) setServers(servers []config.StorageSer
 		case config.StorageServerStateOnline:
 			// hot-swap defined and input server if both are online
 			if server.State == curServer.State && !storageServersEqual(server, curServer) {
-				log.Infof("swapping online %s server #%d %s with newly defined server %s",
-					ctrl.serverType, index, &curServer, &server)
-				err := repairStorageServer(ctrl.vdiskID, ctrl.configSource, curServer, server)
-				if err != nil {
-					log.Errorf("couldn't hot-swap online %s server #%d %s with newly defined server %s: %v",
-						ctrl.serverType, index, curServer, server, err)
-					// [TODO] Notify AYS about this error
+				if ctrl.copyOnHotSwap {
+					log.Infof("swapping online %s server #%d %s with newly defined server %s",
+						ctrl.serverType, index, &curServer, &server)
+					err := repairStorageServer(ctrl.vdiskID, ctrl.configSource, curServer, server)
+					if err != nil {
+						log.Errorf("couldn't hot-swap online %s server #%d %s with newly defined server %s: %v",
+							ctrl.serverType, index, curServer, server, err)
+						// [TODO] Notify AYS about this error
 
-					// use new server config, but mark server as unknown
-					log.Errorf("%s server #%d %s has been marked as status unknown", ctrl.serverType, index, &server)
-					server.State = config.StorageServerStateUnknown
+						// use new server config, but mark server as unknown
+						log.Errorf("%s server #%d %s has been marked as status unknown", ctrl.serverType, index, &server)
+						server.State = config.StorageServerStateUnknown
+					}
+				} else {
+					log.Infof("swapping online %s server #%d %s with newly defined server %s, "+
+						"without (automatically) copying the data [DANGEROUS]",
+						ctrl.serverType, index, &curServer, &server)
+					// [TODO] Notify AYS about this potentially dangerous situation
 				}
 			}
 
