@@ -1847,6 +1847,13 @@ func repairStorageServer(vdiskID string, cs config.Source, source, target config
 		return errors.Wrapf(err, "couldn't repair storage server %s", &target)
 	}
 
+	// First delete any (old) vdisk (meta)data from target cluster
+	_, err = DeleteVdisk(vdiskID, staticCfg.Type, targetCluster)
+	if err != nil {
+		return errors.Wrapf(err,
+			"couldn't clean up target server prior to repairing storage server %s", &target)
+	}
+
 	// Copy the data from the source to the target cluster (see: repair a storage server)
 	err = CopyVdisk(cfg, cfg, sourceCluster, targetCluster)
 	if err != nil {
@@ -1862,11 +1869,11 @@ func repairStorageServer(vdiskID string, cs config.Source, source, target config
 }
 
 // copy and respread data from a slave server to a primary cluster for a given vdisk
-func respreadStorageServer(vdiskID string, cs config.Source, source config.StorageServerConfig, target config.StorageClusterConfig) error {
+func respreadStorageServer(vdiskID string, cs config.Source, targetCluster config.StorageClusterConfig, sourceServers ...config.StorageServerConfig) error {
 	// get static vdisk info
 	staticCfg, err := config.ReadVdiskStaticConfig(cs, vdiskID)
 	if err != nil {
-		return errors.Wrapf(err, "couldn't respread storage server %s", &target)
+		return errors.Wrap(err, "couldn't respread storage server(s)")
 	}
 	cfg := CopyVdiskConfig{
 		VdiskID:   vdiskID,
@@ -1874,26 +1881,42 @@ func respreadStorageServer(vdiskID string, cs config.Source, source config.Stora
 		BlockSize: int64(staticCfg.BlockSize),
 	}
 
-	// create source uni cluster
-	sourceCluster, err := ardb.NewUniCluster(source, nil)
+	var src ardb.StorageCluster
+
+	// create source cluster
+	switch len(sourceServers) {
+	case 0:
+		// no source servers given, nothing to do
+		log.Debugf("no source servers given to respread (meta)data for vdisk %s over the given target cluster", vdiskID)
+		return nil
+	case 1:
+		src, err = ardb.NewUniCluster(sourceServers[0], nil)
+	default:
+		src, err = ardb.NewCluster(config.StorageClusterConfig{
+			Servers: sourceServers,
+		}, nil)
+	}
 	if err != nil {
-		return errors.Wrapf(err, "couldn't respread storage server %s", &target)
+		return errors.Wrap(err, "couldn't respread storage server(s)")
 	}
 
 	// create target cluster
 	pool := ardb.NewPool(nil)
 	defer pool.Close()
-	targetCluster, err := ardb.NewCluster(target, pool)
+	dst, err := ardb.NewCluster(targetCluster, pool)
 	if err != nil {
-		return errors.Wrapf(err, "couldn't respread storage server %s", &target)
+		return errors.Wrap(err, "couldn't respread storage server(s)")
 	}
 
-	// Copy and respreadthe data from the source server to the target cluster
-	err = CopyVdisk(cfg, cfg, sourceCluster, targetCluster)
-	if err != nil {
-		return errors.Wrapf(err, "couldn't respread storage server %s", &target)
+	// Copy and respreadthe data from the source server(s) to the target cluster
+	err = CopyVdisk(cfg, cfg, src, dst)
+	if errors.Cause(err) == ErrNilCopy {
+		log.Info(err)
+		// don't log a ErrNilCopy, as it is fine to not copy anything for our purpose
+		return nil
 	}
-	return nil
+
+	return errors.Wrap(err, "couldn't respread storage server(s)")
 }
 
 // storageServersEqual compares if 2 storage server configs
