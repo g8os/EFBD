@@ -13,19 +13,12 @@ import (
 )
 
 // [TODO]
-// next steps:
-// + add hot swapping of servers as a capability to the singleCluster;
-// + find way to prevent/handle scenario where cluster grows/shrinks;
-//
 // check if we can hugely simplify the primarySlaveCluster controllers to only a few controllers:
 // ... dunno if it is possible, but dunno, the current code is really huge
 //   -> one pair controller (which has either 1 (primary/slave) or 2 servers active)
 //   -> one undefinedStorageServer (undefined behaviour, returns a wrapped error) (is this one needed?!)
 //   -> one deadServer
 //   -> one nil server
-
-// [TODO]
-// => Figure out how to do the communication with the slave sync controller
 
 // [TODO]
 // => Make it possible that the NBDServer can keep using a slave server as a primary server,
@@ -406,22 +399,34 @@ func (ctrl *singleClusterStateController) UpdateServerState(state ServerState) b
 		log.Infof("couldn't update %s server for vdisk %s: index is OOB", ctrl.serverType, ctrl.vdiskID)
 		return false // OOB
 	}
+
+	server := ctrl.servers[state.Index]
+
 	// ensure given config isn't out of date,
 	// as we'll assume that when the given (dial) config differs from the used config,
 	// the used config is correct and the given config is out of date.
-	if !storageServersEqual(ctrl.servers[state.Index], state.Config) {
+	if !storageServersEqual(server, state.Config) {
 		log.Infof("couldn't update %s server for vdisk %s: given config (%s) is out of date, it is now configured as %s",
-			ctrl.serverType, ctrl.vdiskID, state.Config.String(), ctrl.servers[state.Index].String())
+			ctrl.serverType, ctrl.vdiskID, &state.Config, &server)
 		return false // given config != used config
 	}
 	// ensure the given config's state isn't already equal to the used config's state.
-	if state.Config.State == ctrl.servers[state.Index].State {
+	if state.Config.State == server.State {
 		log.Infof("couldn't update %s server (%s) for vdisk %s: state (%s) remains unchanged",
-			ctrl.serverType, ctrl.servers[state.Index].String(), ctrl.vdiskID, ctrl.servers[state.Index].State)
+			ctrl.serverType, &server, ctrl.vdiskID, server.State)
+		return false // no update happened
+	}
+
+	// ensure that a server marked as RIP stays dead
+	if server.State == config.StorageServerStateRIP {
+		log.Errorf("cannot change state of %s server %s to %s as it's marked as RIP",
+			ctrl.serverType, &server, state.Config.State)
 		return false // no update happened
 	}
 
 	// update applied
+	log.Infof("updating %s server %s for vdisk %s to state %s",
+		ctrl.serverType, &server, ctrl.vdiskID, state.Config.State)
 	ctrl.servers[state.Index].State = state.Config.State
 	return true
 }
@@ -732,8 +737,13 @@ func (ctrl *primarySlaveClusterPairStateController) UpdateServerState(state Serv
 	}
 
 	if err != nil {
-		log.Errorf("couldn't update %s server #%d for vdisk %s: %v",
-			state.Type, state.Index, ctrl.vdiskID, err)
+		if errors.Cause(err) == errNopConfigUpdate {
+			log.Infof("couldn't update %s server #%d for vdisk %s: %v",
+				state.Type, state.Index, ctrl.vdiskID, err)
+		} else {
+			log.Errorf("couldn't update %s server #%d for vdisk %s: %v",
+				state.Type, state.Index, ctrl.vdiskID, err)
+		}
 		return false
 	}
 
