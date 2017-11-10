@@ -41,27 +41,7 @@ func NewGenerator(configSource config.Source, conf Config) (*Generator, error) {
 // GenerateFromStorage generates tlog data from block storage.
 // It returns last sequence flushed.
 func (g *Generator) GenerateFromStorage(parentCtx context.Context) (uint64, error) {
-	staticConf, err := config.ReadVdiskStaticConfig(g.configSource, g.sourceVdiskID)
-	if err != nil {
-		return 0, err
-	}
-
-	storageConf, err := config.ReadNBDStorageConfig(g.configSource, g.sourceVdiskID)
-	if err != nil {
-		return 0, errors.Wrap(err, "failed to ReadNBDStorageConfig")
-	}
-
-	// create (primary) storage cluster
-	// TODO: support optional slave cluster here
-	// see: https://github.com/zero-os/0-Disk/issues/445
-	cluster, err := ardb.NewCluster(storageConf.StorageCluster, nil) // not pooled
-	if err != nil {
-		return 0, errors.Wrapf(err,
-			"cannot create storage cluster model for primary cluster of vdisk %s",
-			g.sourceVdiskID)
-	}
-
-	indices, err := storage.ListBlockIndices(g.sourceVdiskID, staticConf.Type, cluster)
+	indices, err := storage.ListBlockIndices(g.sourceVdiskID, g.configSource)
 	if err != nil {
 		return 0, errors.Wrapf(err, "ListBlockIndices failed for vdisk `%v`", g.sourceVdiskID)
 	}

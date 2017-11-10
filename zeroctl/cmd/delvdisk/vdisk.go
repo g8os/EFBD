@@ -3,9 +3,7 @@ package delvdisk
 import (
 	"github.com/spf13/cobra"
 	"github.com/zero-os/0-Disk/config"
-	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
-	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	tlogdelete "github.com/zero-os/0-Disk/tlog/delete"
 	cmdconfig "github.com/zero-os/0-Disk/zeroctl/cmd/config"
@@ -30,42 +28,14 @@ func deleteVdisk(cmd *cobra.Command, args []string) error {
 	}
 	log.SetLevel(logLevel)
 
-	// create config source
 	source, err := config.NewSource(vdiskCmdCfg.SourceConfig)
-	if err != nil {
-		return err
-	}
 	defer source.Close()
+	configSource := config.NewOnceSource(source)
 
-	argn := len(args)
-	if argn < 1 {
-		return errors.New("no vdisk identifier given")
-	}
-	if argn > 1 {
-		return errors.New("too many vdisk identifier given")
-	}
 	vdiskID := args[0]
 
 	// get vdisk and cluster config
-	staticCfg, err := config.ReadVdiskStaticConfig(source, vdiskID)
-	if err != nil {
-		return err
-	}
-	nbdConfig, err := config.ReadVdiskNBDConfig(source, vdiskID)
-	if err != nil {
-		return err
-	}
-	clusterConfig, err := config.ReadStorageClusterConfig(source, nbdConfig.StorageClusterID)
-	if err != nil {
-		return err
-	}
-
-	cluster, err := ardb.NewCluster(*clusterConfig, nil)
-	if err != nil {
-		return err
-	}
-
-	_, err = storage.DeleteVdisk(vdiskID, staticCfg.Type, cluster)
+	_, err = storage.DeleteVdisk(vdiskID, configSource)
 	if err != nil {
 		return err
 	}

@@ -37,7 +37,7 @@ func Export(ctx context.Context, cfg Config) error {
 	}
 
 	log.Debugf("collecting all stored block indices for vdisk %s, this might take a while...", cfg.VdiskID)
-	indices, err := storage.ListBlockIndices(cfg.VdiskID, storageConfig.Vdisk.Type, storageCluster)
+	indices, err := storage.ListBlockIndicesInCluster(cfg.VdiskID, storageConfig.Vdisk.Type, storageCluster)
 	if err != nil {
 		return errors.Wrapf(err,
 			"couldn't list block (storage) indices (does vdisk '%s' exist?)",

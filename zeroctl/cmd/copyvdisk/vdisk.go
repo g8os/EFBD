@@ -149,7 +149,7 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 // and if so, and the force flag is specified, delete the vdisk.
 func checkVdiskExists(id string, t config.VdiskType, cluster ardb.StorageCluster) error {
 	// check if vdisk exists
-	exists, err := storage.VdiskExists(id, t, cluster)
+	exists, err := storage.VdiskExistsInCluster(id, t, cluster)
 	if err != nil {
 		return errors.Wrapf(err, "couldn't check if vdisk %s already exists", id)
 	}
@@ -161,7 +161,7 @@ func checkVdiskExists(id string, t config.VdiskType, cluster ardb.StorageCluster
 	}
 
 	// delete vdisk, as it exists and `--force` is specified
-	deleted, err := storage.DeleteVdisk(id, t, cluster)
+	deleted, err := storage.DeleteVdiskInCluster(id, t, cluster)
 	if err != nil {
 		return errors.Wrapf(err, "couldn't delete vdisk %s", id)
 	}
