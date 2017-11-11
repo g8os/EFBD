@@ -13,6 +13,11 @@ import (
 )
 
 // [TODO]
+// for the single state controller:
+//     => Share state handling code between SetServers and UpdateServerState
+//     => Ensure that states are handled and validated at creation of the cluster
+
+// [TODO]
 // check if we can hugely simplify the primarySlaveCluster controllers to only a few controllers:
 // ... dunno if it is possible, but dunno, the current code is really huge
 //   -> one pair controller (which has either 1 (primary/slave) or 2 servers active)
@@ -434,10 +439,42 @@ func (ctrl *singleClusterStateController) UpdateServerState(state ServerState) b
 		return false // no update happened
 	}
 
+	// if the new server state is Respread, we'll handle that state seperately
+	if state.Config.State == config.StorageServerStateRespread {
+		// respread the server in question, if it's still online
+		if server.State == config.StorageServerStateOnline {
+			ctrl.servers[state.Index].State = config.StorageServerStateRIP // mark the server in question already as RIP so it won't receive data
+			err := respreadStorageServer(ctrl.vdiskID, ctrl.configSource,
+				config.StorageClusterConfig{Servers: ctrl.servers}, server)
+			if err != nil {
+				log.Errorf("failed to respread the data of %s server (%s) from vdisk %s: %v",
+					ctrl.serverType, &server, ctrl.vdiskID, err)
+				// [TODO] Notify AYS about this error
+
+				log.Infof("marking %s server %s (state: %s) as state Unknown beacuse respreading has failed",
+					ctrl.serverType, &server, server.State)
+				ctrl.servers[state.Index].State = config.StorageServerStateUnknown
+				// [TODO] Notify AYS about this (informational)
+			} else {
+				log.Infof("marking %s server %s (state: %s) as RIP, as its data has succesfully respreaded",
+					ctrl.serverType, &server, server.State)
+				// [TODO] Notify AYS that we have respreaded data (informational)
+			}
+			return true // return already
+		}
+
+		log.Errorf("%s server %s isn't online (state: %s) and thus its data cannot be respread, "+
+			"marking it directly as RIP instead",
+			ctrl.serverType, &server, server.State)
+		// [TODO] Notify AYS about this error
+		server.State = config.StorageServerStateRIP
+	}
+
 	// update applied
-	log.Infof("updating %s server %s for vdisk %s to state %s",
-		ctrl.serverType, &server, ctrl.vdiskID, state.Config.State)
+	log.Infof("updating %s server %s (state: %s) for vdisk %s to state %s",
+		ctrl.serverType, &server, server.State, ctrl.vdiskID, state.Config.State)
 	ctrl.servers[state.Index].State = state.Config.State
+	// [TODO] Notify AYS about this state update (informational)
 	return true
 }
 
@@ -569,6 +606,10 @@ func (ctrl *singleClusterStateController) setServers(servers []config.StorageSer
 		servers = servers[:ctrl.serverCount]
 	}
 
+	// serversToRespread contains all servers which we'll respread at the end of this function call
+	var serverIndicesToRespread []int
+	var serversToRespread []config.StorageServerConfig
+
 	// update all servers
 	var server, curServer config.StorageServerConfig
 	for index := range servers {
@@ -595,7 +636,7 @@ func (ctrl *singleClusterStateController) setServers(servers []config.StorageSer
 		switch server.State {
 		case config.StorageServerStateOnline:
 			// hot-swap defined and input server if both are online
-			if server.State == curServer.State && !storageServersEqual(server, curServer) {
+			if server.State == curServer.State { // if state is equal, we know their dial config is different
 				if ctrl.copyOnHotSwap {
 					log.Infof("swapping online %s server #%d %s with newly defined server %s",
 						ctrl.serverType, index, &curServer, &server)
@@ -617,6 +658,21 @@ func (ctrl *singleClusterStateController) setServers(servers []config.StorageSer
 				}
 			}
 
+		case config.StorageServerStateRespread:
+			if curServer.State == config.StorageServerStateOnline {
+				log.Infof("marking online %s #%d %s to be respread later, "+
+					"in the meanwhile already marking as RIP (using given server cfg %s)",
+					ctrl.serverType, index, &curServer, &server)
+				serversToRespread = append(serversToRespread, curServer)
+				serverIndicesToRespread = append(serverIndicesToRespread, index)
+			} else {
+				log.Errorf("%s server #%d %s isn't online (state: %s) and thus its data cannot be respread, "+
+					"marking it directly as RIP (using given server cfg %s) instead",
+					ctrl.serverType, index, &curServer, curServer.State, &server)
+				// [TODO] Notify AYS about this error
+			}
+			server.State = config.StorageServerStateRIP
+
 		case config.StorageServerStateRIP:
 			if curServer.State != config.StorageServerStateRIP {
 				log.Errorf("%s server #%d %s (state: %s) is being replaced by a RIP server (%s)",
@@ -635,6 +691,30 @@ func (ctrl *singleClusterStateController) setServers(servers []config.StorageSer
 		// simply overwrite config, nothing else to do
 		// [TODO] Notify AYS about this (informational)
 		ctrl.servers[index] = server
+	}
+
+	// return early if no data has to be respread
+	if len(serversToRespread) == 0 {
+		return
+	}
+
+	err := respreadStorageServer(ctrl.vdiskID, ctrl.configSource,
+		config.StorageClusterConfig{Servers: ctrl.servers}, serversToRespread...)
+	if err != nil {
+		log.Errorf("failed to respread the data of the %s servers %v from vdisk %s: %v",
+			ctrl.serverType, serversToRespread, ctrl.vdiskID, err)
+		// [TODO] Notify AYS about this error
+
+		// mark all servers that were supposed to be respread, but couldn't as Unknown
+		for _, index := range serverIndicesToRespread {
+			server = ctrl.servers[index]
+			log.Infof("marking %s server #%d %s (state: %s) as state Unknown beacuse respreading has failed",
+				ctrl.serverType, index, &server, server.State)
+			ctrl.servers[index].State = config.StorageServerStateUnknown
+			// [TODO] Notify AYS about this (informational)
+		}
+	} else {
+		// [TODO} Notify AYS that respreading has happened succesfully (informational)
 	}
 }
 
