@@ -256,6 +256,9 @@ func CopyVdisk(source, target CopyVdiskConfig, sourceCluster, targetCluster ardb
 
 // DeleteVdisk returns true if the vdisk in question was deleted from the given ARDB storage cluster.
 // An error is returned in case this couldn't be deleted (completely) for whatever reason.
+//
+// Note that for deduped storage the actual block data isn't deleted or dereferenced.
+// See https://github.com/zero-os/0-Disk/issues/147
 func DeleteVdisk(vdiskID string, configSource config.Source) (bool, error) {
 	staticConfig, err := config.ReadVdiskStaticConfig(configSource, vdiskID)
 	if err != nil {
@@ -270,16 +273,30 @@ func DeleteVdisk(vdiskID string, configSource config.Source) (bool, error) {
 		return false, err
 	}
 
+	// if slave cluster is configured, we'll want to delete the vdisk from it as well
+	if nbdConfig.SlaveStorageClusterID != "" {
+		slaveClusterCfg, err := config.ReadStorageClusterConfig(configSource, nbdConfig.SlaveStorageClusterID)
+		if err != nil {
+			return false, err
+		}
+		clusterConfig.Servers = append(clusterConfig.Servers, slaveClusterCfg.Servers...)
+	}
+
+	// create a cluster of all primary (and slave) servers
 	cluster, err := ardb.NewCluster(*clusterConfig, nil)
 	if err != nil {
 		return false, err
 	}
 
+	// delete all data for this vdisk found in primary (and slave) servers
 	return DeleteVdiskInCluster(vdiskID, staticConfig.Type, cluster)
 }
 
 // DeleteVdiskInCluster returns true if the vdisk in question was deleted from the given ARDB storage cluster.
 // An error is returned in case this couldn't be deleted (completely) for whatever reason.
+//
+// Note that for deduped storage the actual block data isn't deleted or dereferenced.
+// See https://github.com/zero-os/0-Disk/issues/147
 func DeleteVdiskInCluster(vdiskID string, t config.VdiskType, cluster ardb.StorageCluster) (bool, error) {
 	var err error
 	var deletedTlogMetadata bool
