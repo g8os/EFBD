@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/zero-os/0-Disk"
+	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
@@ -23,26 +24,16 @@ func Export(ctx context.Context, cfg Config) error {
 		return err
 	}
 
-	storageConfig, err := createStorageConfig(cfg.VdiskID, cfg.ConfigSource)
-	if err != nil {
-		return err
-	}
-
-	pool := ardb.NewPool(nil)
-	defer pool.Close()
-
-	storageCluster, err := ardb.NewCluster(storageConfig.NBD.StorageCluster, pool)
-	if err != nil {
-		return err
-	}
-
 	log.Debugf("collecting all stored block indices for vdisk %s, this might take a while...", cfg.VdiskID)
-	indices, err := storage.ListBlockIndicesInCluster(cfg.VdiskID, storageConfig.Vdisk.Type, storageCluster)
+	indices, err := storage.ListBlockIndices(cfg.VdiskID, cfg.ConfigSource)
 	if err != nil {
 		return errors.Wrapf(err,
 			"couldn't list block (storage) indices (does vdisk '%s' exist?)",
 			cfg.VdiskID)
 	}
+
+	pool := ardb.NewPool(nil)
+	defer pool.Close()
 
 	blockStorage, err := storage.BlockStorageFromConfig(
 		cfg.VdiskID,
@@ -59,11 +50,16 @@ func Export(ctx context.Context, cfg Config) error {
 	}
 	defer storageDriver.Close()
 
+	staticConfig, err := config.ReadVdiskStaticConfig(cfg.ConfigSource, cfg.VdiskID)
+	if err != nil {
+		return err
+	}
+
 	exportConfig := exportConfig{
 		JobCount:        cfg.JobCount,
-		SrcBlockSize:    int64(storageConfig.Vdisk.BlockSize),
+		SrcBlockSize:    int64(staticConfig.BlockSize),
 		DstBlockSize:    cfg.BlockSize,
-		VdiskSize:       storageConfig.Vdisk.Size * 1024 * 1024 * 1024, // GiB -> bytes
+		VdiskSize:       staticConfig.Size * 1024 * 1024 * 1024, // GiB -> bytes
 		CompressionType: cfg.CompressionType,
 		CryptoKey:       cfg.CryptoKey,
 		VdiskID:         cfg.VdiskID,

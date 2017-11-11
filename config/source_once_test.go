@@ -15,8 +15,11 @@ func TestOnceSource(t *testing.T) {
 	}, "Providing NewOnceSource with a nil source should cause a panic")
 
 	// create stubsource with data
-	vdiskID := "testVdisk"
-	clusterID := "testCluster"
+	const (
+		vdiskID   = "testVdisk"
+		clusterID = "testCluster"
+	)
+
 	originalSource := NewStubSource()
 	clusterCfg := StorageClusterConfig{
 		Servers: []StorageServerConfig{
@@ -85,8 +88,10 @@ func TestDifferentKeyTypeSameID(t *testing.T) {
 	require := require.New(t)
 
 	// create stubsource with data
-	vdiskID := "testVdisk"
-	clusterID := "testCluster"
+	const (
+		vdiskID   = "testVdisk"
+		clusterID = "testCluster"
+	)
 	originalSource := NewStubSource()
 
 	// create StaticVdiskConfig

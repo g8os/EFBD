@@ -364,24 +364,6 @@ func isNilBlock(block []byte) bool {
 	return true
 }
 
-// Create a block storage ready for importing/exporting to/from a backup.
-func createStorageConfig(vdiskID string, configSource config.Source) (*storageConfig, error) {
-	vdiskConfig, err := config.ReadVdiskStaticConfig(configSource, vdiskID)
-	if err != nil {
-		return nil, err
-	}
-
-	nbdStorageConfig, err := config.ReadNBDStorageConfig(configSource, vdiskID)
-	if err != nil {
-		return nil, err
-	}
-
-	return &storageConfig{
-		NBD:   *nbdStorageConfig,
-		Vdisk: *vdiskConfig,
-	}, nil
-}
-
 var (
 	errNilVdiskID    = errors.New("vdisk's identifier not given")
 	errStreamBlocked = errors.New("stream block fetcher is blocked waiting for next expected block")
