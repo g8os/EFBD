@@ -63,12 +63,12 @@ func (cfg *BlockStorageConfig) Validate() error {
 	return nil
 }
 
-// BlockStorageFromConfigSource creates a block storage
+// BlockStorageFromConfig creates a block storage
 // from the config retrieved from the given config source.
 // It is the simplest way to create a BlockStorage,
 // but it also has the disadvantage that
 // it does not support SelfHealing or HotReloading of the used configuration.
-func BlockStorageFromConfigSource(vdiskID string, cs config.Source, dialer ardb.ConnectionDialer) (BlockStorage, error) {
+func BlockStorageFromConfig(vdiskID string, cs config.Source, dialer ardb.ConnectionDialer) (BlockStorage, error) {
 	// get configs from source
 	vdiskConfig, err := config.ReadVdiskStaticConfig(cs, vdiskID)
 	if err != nil {
@@ -79,33 +79,16 @@ func BlockStorageFromConfigSource(vdiskID string, cs config.Source, dialer ardb.
 		return nil, err
 	}
 
-	return BlockStorageFromConfig(vdiskID, *vdiskConfig, *nbdStorageConfig, dialer)
-}
-
-// BlockStorageFromConfig creates a block storage from the given config.
-// It is the simplest way to create a BlockStorage,
-// but it also has the disadvantage that
-// it does not support SelfHealing or HotReloading of the used configuration.
-func BlockStorageFromConfig(vdiskID string, vdiskConfig config.VdiskStaticConfig, nbdConfig config.NBDStorageConfig, dialer ardb.ConnectionDialer) (BlockStorage, error) {
-	err := vdiskConfig.Validate()
-	if err != nil {
-		return nil, err
-	}
-	err = nbdConfig.Validate()
-	if err != nil {
-		return nil, err
-	}
-
 	// create primary cluster
-	cluster, err := ardb.NewCluster(nbdConfig.StorageCluster, dialer)
+	cluster, err := ardb.NewCluster(nbdStorageConfig.StorageCluster, dialer)
 	if err != nil {
 		return nil, err
 	}
 
 	// create template cluster if needed
 	var templateCluster ardb.StorageCluster
-	if vdiskConfig.Type.TemplateSupport() && nbdConfig.TemplateStorageCluster != nil {
-		templateCluster, err = ardb.NewCluster(*nbdConfig.TemplateStorageCluster, dialer)
+	if vdiskConfig.Type.TemplateSupport() && nbdStorageConfig.TemplateStorageCluster != nil {
+		templateCluster, err = ardb.NewCluster(*nbdStorageConfig.TemplateStorageCluster, dialer)
 		if err != nil {
 			return nil, err
 		}
@@ -173,16 +156,49 @@ func NewBlockStorage(cfg BlockStorageConfig, cluster, templateCluster ardb.Stora
 
 // VdiskExists returns true if the vdisk in question exists in the given ARDB storage cluster.
 // An error is returned in case this couldn't be verified for whatever reason.
-func VdiskExists(id string, t config.VdiskType, cluster ardb.StorageCluster) (bool, error) {
+// Also return vdiskType and ardb cluster from config
+func VdiskExists(vdiskID string, source config.Source) (bool, error) {
+	// gather configs
+	staticConfig, err := config.ReadVdiskStaticConfig(source, vdiskID)
+	if err != nil {
+		return false, errors.Wrapf(err,
+			"cannot read static vdisk config for vdisk %s", vdiskID)
+	}
+	nbdConfig, err := config.ReadVdiskNBDConfig(source, vdiskID)
+	if err != nil {
+		return false, errors.Wrapf(err,
+			"cannot read nbd storage config for vdisk %s", vdiskID)
+	}
+	clusterConfig, err := config.ReadStorageClusterConfig(source, nbdConfig.StorageClusterID)
+	if err != nil {
+		return false, errors.Wrapf(err,
+			"cannot read storage cluster config for cluster %s",
+			nbdConfig.StorageClusterID)
+	}
+
+	// create (primary) storage cluster
+	cluster, err := ardb.NewCluster(*clusterConfig, nil) // not pooled
+	if err != nil {
+		return false, errors.Wrapf(err,
+			"cannot create storage cluster model for cluster %s",
+			nbdConfig.StorageClusterID)
+	}
+
+	return VdiskExistsInCluster(vdiskID, staticConfig.Type, cluster)
+}
+
+// VdiskExistsInCluster returns true if the vdisk in question exists in the given ARDB storage cluster.
+// An error is returned in case this couldn't be verified for whatever reason.
+func VdiskExistsInCluster(vdiskID string, t config.VdiskType, cluster ardb.StorageCluster) (bool, error) {
 	switch st := t.StorageType(); st {
 	case config.StorageDeduped:
-		return dedupedVdiskExists(id, cluster)
+		return dedupedVdiskExists(vdiskID, cluster)
 
 	case config.StorageNonDeduped:
-		return nonDedupedVdiskExists(id, cluster)
+		return nonDedupedVdiskExists(vdiskID, cluster)
 
 	case config.StorageSemiDeduped:
-		return semiDedupedVdiskExists(id, cluster)
+		return semiDedupedVdiskExists(vdiskID, cluster)
 
 	default:
 		return false, errors.Newf("%v is not a supported storage type", st)
@@ -240,28 +256,69 @@ func CopyVdisk(source, target CopyVdiskConfig, sourceCluster, targetCluster ardb
 
 // DeleteVdisk returns true if the vdisk in question was deleted from the given ARDB storage cluster.
 // An error is returned in case this couldn't be deleted (completely) for whatever reason.
-func DeleteVdisk(id string, t config.VdiskType, cluster ardb.StorageCluster) (bool, error) {
+//
+// Note that for deduped storage the actual block data isn't deleted or dereferenced.
+// See https://github.com/zero-os/0-Disk/issues/147
+func DeleteVdisk(vdiskID string, configSource config.Source) (bool, error) {
+	staticConfig, err := config.ReadVdiskStaticConfig(configSource, vdiskID)
+	if err != nil {
+		return false, err
+	}
+	nbdConfig, err := config.ReadVdiskNBDConfig(configSource, vdiskID)
+	if err != nil {
+		return false, err
+	}
+	clusterConfig, err := config.ReadStorageClusterConfig(configSource, nbdConfig.StorageClusterID)
+	if err != nil {
+		return false, err
+	}
+
+	// if slave cluster is configured, we'll want to delete the vdisk from it as well
+	if nbdConfig.SlaveStorageClusterID != "" {
+		slaveClusterCfg, err := config.ReadStorageClusterConfig(configSource, nbdConfig.SlaveStorageClusterID)
+		if err != nil {
+			return false, err
+		}
+		clusterConfig.Servers = append(clusterConfig.Servers, slaveClusterCfg.Servers...)
+	}
+
+	// create a cluster of all primary (and slave) servers
+	cluster, err := ardb.NewCluster(*clusterConfig, nil)
+	if err != nil {
+		return false, err
+	}
+
+	// delete all data for this vdisk found in primary (and slave) servers
+	return DeleteVdiskInCluster(vdiskID, staticConfig.Type, cluster)
+}
+
+// DeleteVdiskInCluster returns true if the vdisk in question was deleted from the given ARDB storage cluster.
+// An error is returned in case this couldn't be deleted (completely) for whatever reason.
+//
+// Note that for deduped storage the actual block data isn't deleted or dereferenced.
+// See https://github.com/zero-os/0-Disk/issues/147
+func DeleteVdiskInCluster(vdiskID string, t config.VdiskType, cluster ardb.StorageCluster) (bool, error) {
 	var err error
 	var deletedTlogMetadata bool
 	if t.TlogSupport() {
-		command := ardb.Command(command.Delete, tlogMetadataKey(id))
+		command := ardb.Command(command.Delete, tlogMetadataKey(vdiskID))
 		deletedTlogMetadata, err = ardb.Bool(cluster.Do(command))
 		if err != nil {
 			return false, err
 		}
 		if deletedTlogMetadata {
-			log.Infof("deleted tlog metadata stored for vdisk %s on first available server", id)
+			log.Infof("deleted tlog metadata stored for vdisk %s on first available server", vdiskID)
 		}
 	}
 
 	var deletedStorage bool
 	switch st := t.StorageType(); st {
 	case config.StorageDeduped:
-		deletedStorage, err = deleteDedupedData(id, cluster)
+		deletedStorage, err = deleteDedupedData(vdiskID, cluster)
 	case config.StorageNonDeduped:
-		deletedStorage, err = deleteNonDedupedData(id, cluster)
+		deletedStorage, err = deleteNonDedupedData(vdiskID, cluster)
 	case config.StorageSemiDeduped:
-		deletedStorage, err = deleteSemiDedupedData(id, cluster)
+		deletedStorage, err = deleteSemiDedupedData(vdiskID, cluster)
 	default:
 		err = errors.Newf("%v is not a supported storage type", st)
 	}
@@ -414,9 +471,34 @@ func (action listVdisksAction) KeysModified() ([]string, bool) {
 	return nil, false
 }
 
-// ListBlockIndices returns all indices stored for the given vdisk.
+// ListBlockIndices returns all indices stored for the given vdisk from a config source.
+func ListBlockIndices(vdiskID string, source config.Source) ([]int64, error) {
+	staticConfig, err := config.ReadVdiskStaticConfig(source, vdiskID)
+	if err != nil {
+		return nil, err
+	}
+
+	nbdConfig, err := config.ReadNBDStorageConfig(source, vdiskID)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to ReadNBDStorageConfig")
+	}
+
+	// create (primary) storage cluster
+	// TODO: support optional slave cluster here
+	// see: https://github.com/zero-os/0-Disk/issues/445
+	cluster, err := ardb.NewCluster(nbdConfig.StorageCluster, nil) // not pooled
+	if err != nil {
+		return nil, errors.Wrapf(err,
+			"cannot create storage cluster model for primary cluster of vdisk %s",
+			vdiskID)
+	}
+
+	return ListBlockIndicesInCluster(vdiskID, staticConfig.Type, cluster)
+}
+
+// ListBlockIndicesInCluster returns all indices stored for the given vdisk from cluster configs.
 // This function returns either an error OR indices.
-func ListBlockIndices(id string, t config.VdiskType, cluster ardb.StorageCluster) ([]int64, error) {
+func ListBlockIndicesInCluster(id string, t config.VdiskType, cluster ardb.StorageCluster) ([]int64, error) {
 	switch st := t.StorageType(); st {
 	case config.StorageDeduped:
 		return listDedupedBlockIndices(id, cluster)

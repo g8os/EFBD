@@ -7,7 +7,6 @@ import (
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
-	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/player"
@@ -32,11 +31,12 @@ var VdiskCmd = &cobra.Command{
 
 func restoreVdisk(cmd *cobra.Command, args []string) error {
 	// create config source
-	configSource, err := config.NewSource(vdiskCmdCfg.SourceConfig)
+	cs, err := config.NewSource(vdiskCmdCfg.SourceConfig)
 	if err != nil {
 		return err
 	}
-	defer configSource.Close()
+	defer cs.Close()
+	configSource := config.NewOnceSource(cs)
 
 	// parse positional args
 	argn := len(args)
@@ -77,34 +77,8 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 // checkVdiskExists checks if the vdisk in question already/still exists,
 // and if so, and the force flag is specified, delete the vdisk.
 func checkVdiskExists(vdiskID string, configSource config.Source) error {
-	// gather configs
-	staticConfig, err := config.ReadVdiskStaticConfig(configSource, vdiskID)
-	if err != nil {
-		return errors.Wrapf(err,
-			"cannot read static vdisk config for vdisk %s", vdiskID)
-	}
-	nbdStorageConfig, err := config.ReadVdiskNBDConfig(configSource, vdiskID)
-	if err != nil {
-		return errors.Wrapf(err,
-			"cannot read nbd storage config for vdisk %s", vdiskID)
-	}
-	clusterConfig, err := config.ReadStorageClusterConfig(configSource, nbdStorageConfig.StorageClusterID)
-	if err != nil {
-		return errors.Wrapf(err,
-			"cannot read storage cluster config for cluster %s",
-			nbdStorageConfig.StorageClusterID)
-	}
-
-	// create (primary) storage cluster
-	cluster, err := ardb.NewCluster(*clusterConfig, nil) // not pooled
-	if err != nil {
-		return errors.Wrapf(err,
-			"cannot create storage cluster model for cluster %s",
-			nbdStorageConfig.StorageClusterID)
-	}
-
 	// check if vdisk exists
-	exists, err := storage.VdiskExists(vdiskID, staticConfig.Type, cluster)
+	exists, err := storage.VdiskExists(vdiskID, configSource)
 	if err != nil {
 		return errors.Wrapf(err, "couldn't check if vdisk %s already exists", vdiskID)
 	}
@@ -116,7 +90,7 @@ func checkVdiskExists(vdiskID string, configSource config.Source) error {
 	}
 
 	// delete vdisk, as it exists and `--force` is specified
-	deleted, err := storage.DeleteVdisk(vdiskID, staticConfig.Type, cluster)
+	deleted, err := storage.DeleteVdisk(vdiskID, configSource)
 	if err != nil {
 		return errors.Wrapf(err, "couldn't delete vdisk %s", vdiskID)
 	}
@@ -125,6 +99,10 @@ func checkVdiskExists(vdiskID string, configSource config.Source) error {
 	}
 
 	// delete 0-Stor (meta)data for this vdisk
+	staticConfig, err := config.ReadVdiskStaticConfig(configSource, vdiskID)
+	if err != nil {
+		return err
+	}
 	if staticConfig.Type.TlogSupport() {
 		// TODO: also delete actual tlog meta(data) from 0-Stor cluster for the supported vdisks ?!?!
 		//       https://github.com/zero-os/0-Disk/issues/147
