@@ -79,15 +79,6 @@ func BlockStorageFromConfig(vdiskID string, cs config.Source, dialer ardb.Connec
 		return nil, err
 	}
 
-	err = vdiskConfig.Validate()
-	if err != nil {
-		return nil, err
-	}
-	err = nbdStorageConfig.Validate()
-	if err != nil {
-		return nil, err
-	}
-
 	// create primary cluster
 	cluster, err := ardb.NewCluster(nbdStorageConfig.StorageCluster, dialer)
 	if err != nil {
@@ -166,21 +157,21 @@ func NewBlockStorage(cfg BlockStorageConfig, cluster, templateCluster ardb.Stora
 // VdiskExists returns true if the vdisk in question exists in the given ARDB storage cluster.
 // An error is returned in case this couldn't be verified for whatever reason.
 // Also return vdiskType and ardb cluster from config
-func VdiskExists(vdiskID string, source config.Source) (bool, config.VdiskType, *ardb.Cluster, error) {
+func VdiskExists(vdiskID string, source config.Source) (bool, error) {
 	// gather configs
 	staticConfig, err := config.ReadVdiskStaticConfig(source, vdiskID)
 	if err != nil {
-		return false, staticConfig.Type, nil, errors.Wrapf(err,
+		return false, errors.Wrapf(err,
 			"cannot read static vdisk config for vdisk %s", vdiskID)
 	}
 	nbdConfig, err := config.ReadVdiskNBDConfig(source, vdiskID)
 	if err != nil {
-		return false, staticConfig.Type, nil, errors.Wrapf(err,
+		return false, errors.Wrapf(err,
 			"cannot read nbd storage config for vdisk %s", vdiskID)
 	}
 	clusterConfig, err := config.ReadStorageClusterConfig(source, nbdConfig.StorageClusterID)
 	if err != nil {
-		return false, staticConfig.Type, nil, errors.Wrapf(err,
+		return false, errors.Wrapf(err,
 			"cannot read storage cluster config for cluster %s",
 			nbdConfig.StorageClusterID)
 	}
@@ -188,14 +179,12 @@ func VdiskExists(vdiskID string, source config.Source) (bool, config.VdiskType, 
 	// create (primary) storage cluster
 	cluster, err := ardb.NewCluster(*clusterConfig, nil) // not pooled
 	if err != nil {
-		return false, staticConfig.Type, nil, errors.Wrapf(err,
+		return false, errors.Wrapf(err,
 			"cannot create storage cluster model for cluster %s",
 			nbdConfig.StorageClusterID)
 	}
 
-	exists, err := VdiskExistsInCluster(vdiskID, staticConfig.Type, cluster)
-
-	return exists, staticConfig.Type, cluster, err
+	return VdiskExistsInCluster(vdiskID, staticConfig.Type, cluster)
 }
 
 // VdiskExistsInCluster returns true if the vdisk in question exists in the given ARDB storage cluster.

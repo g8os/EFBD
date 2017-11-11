@@ -124,7 +124,7 @@ func importVdisk(cmd *cobra.Command, args []string) error {
 // and if so, and the force flag is specified, delete the vdisk.
 func checkVdiskExists(vdiskID string, configSource config.Source) error {
 	// check if vdisk exists
-	exists, vdiskType, cluster, err := storage.VdiskExists(vdiskID, configSource)
+	exists, err := storage.VdiskExists(vdiskID, configSource)
 	if err != nil {
 		return errors.Wrapf(err, "couldn't check if vdisk %s already exists", vdiskID)
 	}
@@ -136,7 +136,7 @@ func checkVdiskExists(vdiskID string, configSource config.Source) error {
 	}
 
 	// delete vdisk, as it exists and `--force` is specified
-	deleted, err := storage.DeleteVdiskInCluster(vdiskID, vdiskType, cluster)
+	deleted, err := storage.DeleteVdisk(vdiskID, configSource)
 	if err != nil {
 		return errors.Wrapf(err, "couldn't delete vdisk %s", vdiskID)
 	}
@@ -145,7 +145,11 @@ func checkVdiskExists(vdiskID string, configSource config.Source) error {
 	}
 
 	// delete 0-Stor (meta)data for this vdisk
-	if vdiskType.TlogSupport() {
+	staticConfig, err := config.ReadVdiskStaticConfig(configSource, vdiskID)
+	if err != nil {
+		return err
+	}
+	if staticConfig.Type.TlogSupport() {
 		// TODO: also delete actual tlog meta(data) from 0-Stor cluster for the supported vdisks ?!?!
 		//       https://github.com/zero-os/0-Disk/issues/147
 	}
