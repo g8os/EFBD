@@ -42,9 +42,13 @@ func exportVdisk(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	s, err := config.NewSource(vdiskCmdCfg.SourceConfig)
-	defer s.Close()
-	source := config.NewOnceSource(s)
+	// create config source
+	cs, err := config.NewSource(vdiskCmdCfg.SourceConfig)
+	if err != nil {
+		return err
+	}
+	defer cs.Close()
+	configSource := config.NewOnceSource(cs)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -58,7 +62,7 @@ func exportVdisk(cmd *cobra.Command, args []string) error {
 		CompressionType:          vdiskCmdCfg.CompressionType,
 		CryptoKey:                vdiskCmdCfg.PrivateKey,
 		Force:                    vdiskCmdCfg.Force,
-		ConfigSource:             source,
+		ConfigSource:             configSource,
 	}
 
 	err = backup.Export(ctx, cfg)

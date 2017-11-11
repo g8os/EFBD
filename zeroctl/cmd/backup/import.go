@@ -46,12 +46,13 @@ func importVdisk(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	source, err := config.NewSource(vdiskCmdCfg.SourceConfig)
+	// create config source
+	cs, err := config.NewSource(vdiskCmdCfg.SourceConfig)
 	if err != nil {
 		return err
 	}
-	defer source.Close()
-	configSource := config.NewOnceSource(source)
+	defer cs.Close()
+	configSource := config.NewOnceSource(cs)
 
 	err = checkVdiskExists(vdiskCmdCfg.VdiskID, configSource)
 	if err != nil {
@@ -69,7 +70,7 @@ func importVdisk(cmd *cobra.Command, args []string) error {
 		CompressionType:          vdiskCmdCfg.CompressionType,
 		CryptoKey:                vdiskCmdCfg.PrivateKey,
 		Force:                    vdiskCmdCfg.Force,
-		ConfigSource:             source,
+		ConfigSource:             configSource,
 	}
 
 	log.Info("Importing the vdisk")

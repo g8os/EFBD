@@ -40,11 +40,12 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 	log.SetLevel(logLevel)
 
 	// create config source
-	configSource, err := config.NewSource(vdiskCmdCfg.SourceConfig)
+	cs, err := config.NewSource(vdiskCmdCfg.SourceConfig)
 	if err != nil {
 		return err
 	}
-	defer configSource.Close()
+	defer cs.Close()
+	configSource := config.NewOnceSource(cs)
 
 	log.Debug("parsing positional arguments...")
 

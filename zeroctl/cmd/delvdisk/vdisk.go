@@ -38,17 +38,20 @@ func deleteVdisk(cmd *cobra.Command, args []string) error {
 	}
 	vdiskID := args[0]
 
-	// get vdisk and cluster config
-	source, err := config.NewSource(vdiskCmdCfg.SourceConfig)
-	defer source.Close()
-	configSource := config.NewOnceSource(source)
+	// create config source
+	cs, err := config.NewSource(vdiskCmdCfg.SourceConfig)
+	if err != nil {
+		return err
+	}
+	defer cs.Close()
+	configSource := config.NewOnceSource(cs)
 
 	_, err = storage.DeleteVdisk(vdiskID, configSource)
 	if err != nil {
 		return err
 	}
 
-	return tlogdelete.Delete(source, vdiskID, vdiskCmdCfg.PrivKey)
+	return tlogdelete.Delete(configSource, vdiskID, vdiskCmdCfg.PrivKey)
 }
 
 func init() {

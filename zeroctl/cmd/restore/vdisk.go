@@ -31,11 +31,12 @@ var VdiskCmd = &cobra.Command{
 
 func restoreVdisk(cmd *cobra.Command, args []string) error {
 	// create config source
-	configSource, err := config.NewSource(vdiskCmdCfg.SourceConfig)
+	cs, err := config.NewSource(vdiskCmdCfg.SourceConfig)
 	if err != nil {
 		return err
 	}
-	defer configSource.Close()
+	defer cs.Close()
+	configSource := config.NewOnceSource(cs)
 
 	// parse positional args
 	argn := len(args)
