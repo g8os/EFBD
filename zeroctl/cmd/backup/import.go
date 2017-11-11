@@ -13,6 +13,7 @@ import (
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/copy"
+	tlogdelete "github.com/zero-os/0-Disk/tlog/delete"
 	tlogserver "github.com/zero-os/0-Disk/tlog/tlogserver/server"
 
 	cmdconfig "github.com/zero-os/0-Disk/zeroctl/cmd/config"
@@ -148,18 +149,15 @@ func checkVdiskExists(vdiskID string, configSource config.Source) error {
 		return errors.Newf("couldn't delete vdisk %s for an unknown reason", vdiskID)
 	}
 
-	// delete 0-Stor (meta)data for this vdisk
-	staticConfig, err := config.ReadVdiskStaticConfig(configSource, vdiskID)
+	// delete 0-Stor (meta)data for this vdisk (if TLog is supported and configured)
+	staticVdiskCfg, err := config.ReadVdiskStaticConfig(configSource, vdiskID)
 	if err != nil {
 		return err
 	}
-	if staticConfig.Type.TlogSupport() {
-		// TODO: also delete actual tlog meta(data) from 0-Stor cluster for the supported vdisks ?!?!
-		//       https://github.com/zero-os/0-Disk/issues/147
+	if !staticVdiskCfg.Type.TlogSupport() {
+		return nil // vdisk has no tlog-support, nothing to do here
 	}
-
-	// vdisk did exist, but we were able to delete all the exiting (meta)data
-	return nil
+	return tlogdelete.Delete(configSource, vdiskID, importVdiskCmdCfg.TlogPrivKey)
 }
 
 func parseImportPosArguments(args []string) error {
@@ -242,7 +240,7 @@ When the configured server does not support FTPS an error will be returned.
 	ImportVdiskCmd.Flags().StringVar(
 		&importVdiskCmdCfg.TlogPrivKey,
 		"tlog-priv-key", "12345678901234567890123456789012",
-		"tlog private key")
+		"32 bytes tlog private key")
 
 	ImportVdiskCmd.Flags().IntVar(
 		&importVdiskCmdCfg.FlushSize,

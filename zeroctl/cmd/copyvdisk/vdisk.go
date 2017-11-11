@@ -11,7 +11,8 @@ import (
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
-	"github.com/zero-os/0-Disk/tlog/copy"
+	tlogcopy "github.com/zero-os/0-Disk/tlog/copy"
+	tlogdelete "github.com/zero-os/0-Disk/tlog/delete"
 	tlogserver "github.com/zero-os/0-Disk/tlog/tlogserver/server"
 	cmdconfig "github.com/zero-os/0-Disk/zeroctl/cmd/config"
 )
@@ -19,7 +20,7 @@ import (
 var vdiskCmdCfg struct {
 	SourceConfig            config.SourceConfig
 	ForceSameStorageCluster bool
-	PrivKey                 string
+	TlogPrivKey             string
 	FlushSize               int
 	JobCount                int
 	Force                   bool
@@ -101,12 +102,12 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		err = checkVdiskExists(targetVdiskID, dstStaticConfig.Type, targetCluster)
+		err = checkVdiskExists(targetVdiskID, dstStaticConfig.Type, targetCluster, configSource)
 		if err != nil {
 			return err
 		}
 	} else {
-		err = checkVdiskExists(targetVdiskID, dstStaticConfig.Type, sourceCluster)
+		err = checkVdiskExists(targetVdiskID, dstStaticConfig.Type, sourceCluster, configSource)
 		if err != nil {
 			return err
 		}
@@ -126,16 +127,16 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 	}
 
 	err = storage.CopyVdisk(sourceConfig, targetConfig, sourceCluster, targetCluster)
-	if err != nil {
-		return err
+	if err != nil || !dstStaticConfig.Type.TlogSupport() {
+		return err // return early if an error occured, or if dst no tlog support
 	}
 
 	// 2. copy the tlog data if it is needed
 
-	err = copy.Copy(context.Background(), configSource, copy.Config{
+	err = tlogcopy.Copy(context.Background(), configSource, tlogcopy.Config{
 		SourceVdiskID: sourceVdiskID,
 		TargetVdiskID: targetVdiskID,
-		PrivKey:       vdiskCmdCfg.PrivKey,
+		PrivKey:       vdiskCmdCfg.TlogPrivKey,
 		FlushSize:     vdiskCmdCfg.FlushSize,
 		JobCount:      vdiskCmdCfg.JobCount,
 	})
@@ -148,7 +149,7 @@ func copyVdisk(cmd *cobra.Command, args []string) error {
 
 // checkVdiskExists checks if the vdisk in question already/still exists,
 // and if so, and the force flag is specified, delete the vdisk.
-func checkVdiskExists(id string, t config.VdiskType, cluster ardb.StorageCluster) error {
+func checkVdiskExists(id string, t config.VdiskType, cluster ardb.StorageCluster, cs config.Source) error {
 	// check if vdisk exists
 	exists, err := storage.VdiskExistsInCluster(id, t, cluster)
 	if err != nil {
@@ -170,14 +171,11 @@ func checkVdiskExists(id string, t config.VdiskType, cluster ardb.StorageCluster
 		return errors.Newf("couldn't delete vdisk %s for an unknown reason", id)
 	}
 
-	// delete 0-Stor (meta)data for this vdisk
-	if t.TlogSupport() {
-		// TODO: also delete actual tlog meta(data) from 0-Stor cluster for the supported vdisks ?!?!
-		//       https://github.com/zero-os/0-Disk/issues/147
+	// delete 0-Stor (meta)data for this vdisk (if TLog is supported and configured)
+	if !t.TlogSupport() {
+		return nil
 	}
-
-	// vdisk did exist, but we were able to delete all the exiting (meta)data
-	return nil
+	return tlogdelete.Delete(cs, id, vdiskCmdCfg.TlogPrivKey)
 }
 
 func init() {
@@ -203,9 +201,9 @@ NOTE: the storage types and block sizes of source and target vdisk
 		"enable flag to force copy within the same nbd servers")
 
 	VdiskCmd.Flags().StringVar(
-		&vdiskCmdCfg.PrivKey,
-		"priv-key", "12345678901234567890123456789012",
-		"private key")
+		&vdiskCmdCfg.TlogPrivKey,
+		"tlog-priv-key", "12345678901234567890123456789012",
+		"32 bytes tlog private key")
 
 	VdiskCmd.Flags().IntVarP(
 		&vdiskCmdCfg.JobCount,

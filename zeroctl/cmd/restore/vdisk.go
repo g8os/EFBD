@@ -8,6 +8,7 @@ import (
 	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
+	tlogdelete "github.com/zero-os/0-Disk/tlog/delete"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
 	"github.com/zero-os/0-Disk/tlog/tlogclient/player"
 	cmdConf "github.com/zero-os/0-Disk/zeroctl/cmd/config"
@@ -16,7 +17,7 @@ import (
 // vdiskCfg is the configuration used for the restore vdisk command
 var vdiskCmdCfg struct {
 	SourceConfig config.SourceConfig
-	PrivKey      string
+	TlogPrivKey  string
 	StartTs      int64 // start timestamp
 	EndTs        int64 // end timestamp
 	Force        bool
@@ -62,7 +63,7 @@ func restoreVdisk(cmd *cobra.Command, args []string) error {
 
 	ctx := context.Background()
 
-	player, err := player.NewPlayer(ctx, configSource, vdiskID, vdiskCmdCfg.PrivKey)
+	player, err := player.NewPlayer(ctx, configSource, vdiskID, vdiskCmdCfg.TlogPrivKey)
 	if err != nil {
 		return err
 	}
@@ -98,18 +99,15 @@ func checkVdiskExists(vdiskID string, configSource config.Source) error {
 		return errors.Newf("couldn't delete vdisk %s for an unknown reason", vdiskID)
 	}
 
-	// delete 0-Stor (meta)data for this vdisk
-	staticConfig, err := config.ReadVdiskStaticConfig(configSource, vdiskID)
+	// delete 0-Stor (meta)data for this vdisk (if TLog is supported and configured)
+	staticVdiskCfg, err := config.ReadVdiskStaticConfig(configSource, vdiskID)
 	if err != nil {
 		return err
 	}
-	if staticConfig.Type.TlogSupport() {
-		// TODO: also delete actual tlog meta(data) from 0-Stor cluster for the supported vdisks ?!?!
-		//       https://github.com/zero-os/0-Disk/issues/147
+	if !staticVdiskCfg.Type.TlogSupport() {
+		return nil // vdisk has no tlog-support, nothing to do here
 	}
-
-	// vdisk did exist, but we were able to delete all the exiting (meta)data
-	return nil
+	return tlogdelete.Delete(configSource, vdiskID, vdiskCmdCfg.TlogPrivKey)
 }
 
 func init() {
@@ -117,9 +115,9 @@ func init() {
 		&vdiskCmdCfg.SourceConfig, "config",
 		"config resource: dialstrings (etcd cluster) or path (yaml file)")
 	VdiskCmd.Flags().StringVar(
-		&vdiskCmdCfg.PrivKey,
-		"priv-key", "12345678901234567890123456789012",
-		"private key")
+		&vdiskCmdCfg.TlogPrivKey,
+		"tlog-priv-key", "12345678901234567890123456789012",
+		"32 bytes tlog private key")
 	VdiskCmd.Flags().Int64Var(
 		&vdiskCmdCfg.StartTs,
 		"start-timestamp", 0,

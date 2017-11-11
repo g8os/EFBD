@@ -12,7 +12,7 @@ import (
 
 var vdiskCmdCfg struct {
 	SourceConfig config.SourceConfig
-	PrivKey      string
+	TlogPrivKey  string
 }
 
 // VdiskCmd represents the vdisks delete subcommand
@@ -51,7 +51,15 @@ func deleteVdisk(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	return tlogdelete.Delete(configSource, vdiskID, vdiskCmdCfg.PrivKey)
+	// delete tlog data if needed
+	staticVdiskCfg, err := config.ReadVdiskStaticConfig(configSource, vdiskID)
+	if err != nil {
+		return err
+	}
+	if !staticVdiskCfg.Type.TlogSupport() {
+		return nil // vdisk has no tlog-support, nothing to do here
+	}
+	return tlogdelete.Delete(configSource, vdiskID, vdiskCmdCfg.TlogPrivKey)
 }
 
 func init() {
@@ -67,8 +75,7 @@ WARNING: until issue #88 has been resolved,
 		"config resource: dialstrings (etcd cluster) or path (yaml file)")
 
 	VdiskCmd.Flags().StringVar(
-		&vdiskCmdCfg.PrivKey,
-		"priv-key", "12345678901234567890123456789012",
+		&vdiskCmdCfg.TlogPrivKey,
+		"tlog-priv-key", "12345678901234567890123456789012",
 		"32 bytes tlog private key")
-
 }
