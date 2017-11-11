@@ -3,6 +3,7 @@ package delvdisk
 import (
 	"github.com/spf13/cobra"
 	"github.com/zero-os/0-Disk/config"
+	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/nbd/ardb/storage"
 	tlogdelete "github.com/zero-os/0-Disk/tlog/delete"
@@ -28,13 +29,20 @@ func deleteVdisk(cmd *cobra.Command, args []string) error {
 	}
 	log.SetLevel(logLevel)
 
+	argn := len(args)
+	if argn < 1 {
+		return errors.New("no vdisk identifier given")
+	}
+	if argn > 1 {
+		return errors.New("too many vdisk identifier given")
+	}
+	vdiskID := args[0]
+
+	// get vdisk and cluster config
 	source, err := config.NewSource(vdiskCmdCfg.SourceConfig)
 	defer source.Close()
 	configSource := config.NewOnceSource(source)
 
-	vdiskID := args[0]
-
-	// get vdisk and cluster config
 	_, err = storage.DeleteVdisk(vdiskID, configSource)
 	if err != nil {
 		return err

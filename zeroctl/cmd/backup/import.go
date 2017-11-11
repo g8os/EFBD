@@ -47,6 +47,9 @@ func importVdisk(cmd *cobra.Command, args []string) error {
 	}
 
 	source, err := config.NewSource(vdiskCmdCfg.SourceConfig)
+	if err != nil {
+		return err
+	}
 	defer source.Close()
 	configSource := config.NewOnceSource(source)
 
