@@ -1934,6 +1934,12 @@ func repairStorageServer(vdiskID string, cs config.Source, source, target config
 		BlockSize: int64(staticCfg.BlockSize),
 	}
 
+	// [TODO]
+	// THIS METHOD DOES NOT USE THE SMART STORAGE CLUSTER
+	// AND THUS:
+	//   1) DOES NOT KEEP THE SMART CLUSTER UP TO DATE IN CASE ANY NETWORK ERRORS OCCUR
+	//   2) DOES NOT SUPPORT ANY SELF-HEALING FUNCTIONALITIES IF SOMETHING GOES WRONG WHILE REPARING
+
 	// create uni clusters
 	sourceCluster, err := ardb.NewUniCluster(source, nil)
 	if err != nil {
@@ -1979,6 +1985,12 @@ func respreadStorageServer(vdiskID string, cs config.Source, targetCluster confi
 	}
 
 	var src ardb.StorageCluster
+
+	// [TODO]
+	// THIS METHOD DOES NOT USE THE SMART STORAGE CLUSTER
+	// AND THUS:
+	//   1) DOES NOT KEEP THE SMART CLUSTER UP TO DATE IN CASE ANY NETWORK ERRORS OCCUR
+	//   2) DOES NOT SUPPORT ANY SELF-HEALING FUNCTIONALITIES IF SOMETHING GOES WRONG WHILE RESPREADING
 
 	// create source cluster
 	switch len(sourceServers) {
