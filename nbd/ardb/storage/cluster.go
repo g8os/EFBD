@@ -73,6 +73,113 @@ func (pc *PrimaryCluster) DoFor(objectIndex int64, action ardb.StorageAction) (r
 	return pc.doAt(serverIndex, cfg, action)
 }
 
+// DoForAll implements StorageCluster.DoForAll
+func (pc *PrimaryCluster) DoForAll(pairs []ardb.IndexActionPair) ([]interface{}, error) {
+	// a shortcut in case we have received no pairs, or just a single one
+	switch len(pairs) {
+	case 0:
+		return nil, nil // nothing to do
+	case 1:
+		reply, err := pc.DoFor(pairs[0].Index, pairs[1].Action)
+		if err != nil {
+			return nil, err
+		}
+		return []interface{}{reply}, nil
+	}
+
+	pc.mux.RLock()
+	defer pc.mux.RUnlock()
+
+	// sort all actions in terms of their mapped server index
+	servers := make(map[int64]*ardb.IndexActionMap)
+	for index, pair := range pairs {
+		// compute server index which maps to the given object index
+		serverIndex, err := ardb.ComputeServerIndex(pc.serverCount, pair.Index, pc.serverOperational)
+		if err != nil {
+			return nil, err
+		}
+		// add the pair to the relevant map
+		server, ok := servers[serverIndex]
+		if !ok {
+			server = new(ardb.IndexActionMap)
+			servers[serverIndex] = server
+		}
+		server.Add(int64(index), pair.Action)
+	}
+
+	// a shortcut if we are lucky enough to only have 1 server
+	if len(servers) == 1 {
+		for serverIndex, indexActionMap := range servers {
+			return ardb.Values(pc.doAt(serverIndex, pc.servers[serverIndex],
+				ardb.Commands(indexActionMap.Actions...)))
+		}
+	}
+
+	// create result -type and -channel to collect all replies async
+	type serverResult struct {
+		ServerIndex int64
+		Replies     []interface{}
+		Error       error
+	}
+	ch := make(chan serverResult)
+
+	// apply all actions async, and collect the results
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var wg sync.WaitGroup
+	for serverIndex := range servers {
+		wg.Add(1)
+
+		// local variables to be used within the goroutine scope
+		indexActionMap := servers[serverIndex]
+		result := serverResult{ServerIndex: serverIndex}
+
+		go func() {
+			defer wg.Done()
+			result.Replies, result.Error = ardb.Values(pc.doAt(
+				result.ServerIndex, pc.servers[result.ServerIndex],
+				ardb.Commands(indexActionMap.Actions...)))
+			select {
+			case ch <- result:
+			case <-ctx.Done():
+			}
+		}()
+	}
+
+	// close channel when all inpu
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+
+	// we'll collect all replies in order
+	replies := make([]interface{}, len(pairs))
+
+	// collect all replies
+	for result := range ch {
+		// return early if an error occured
+		if result.Error != nil {
+			return nil, errors.Wrapf(result.Error,
+				"error while applying actions in serverIndex %d", result.ServerIndex)
+		}
+
+		// get the indexActionMap for the given server,
+		// such that we can retrieve the correct reply index
+		m := servers[result.ServerIndex]
+
+		// collect all received replies in order
+		for i, reply := range result.Replies {
+			replyIndex := m.Indices[i]
+			replies[replyIndex] = reply
+		}
+	}
+
+	// return all replies from all servers in ordered form
+	return replies, nil
+}
+
 // ServerIterator implements StorageCluster.ServerIterator.
 func (pc *PrimaryCluster) ServerIterator(ctx context.Context) (<-chan ardb.StorageServer, error) {
 	pc.mux.Lock()
@@ -379,6 +486,113 @@ func (tsc *TemplateCluster) DoFor(objectIndex int64, action ardb.StorageAction) 
 		return nil, err
 	}
 	return tsc.doAt(serverIndex, cfg, action)
+}
+
+// DoForAll implements StorageCluster.DoForAll
+func (tsc *TemplateCluster) DoForAll(pairs []ardb.IndexActionPair) ([]interface{}, error) {
+	// a shortcut in case we have received no pairs, or just a single one
+	switch len(pairs) {
+	case 0:
+		return nil, nil // nothing to do
+	case 1:
+		reply, err := tsc.DoFor(pairs[0].Index, pairs[1].Action)
+		if err != nil {
+			return nil, err
+		}
+		return []interface{}{reply}, nil
+	}
+
+	tsc.mux.RLock()
+	defer tsc.mux.RUnlock()
+
+	// sort all actions in terms of their mapped server index
+	servers := make(map[int64]*ardb.IndexActionMap)
+	for index, pair := range pairs {
+		// compute server index which maps to the given object index
+		serverIndex, err := ardb.ComputeServerIndex(tsc.serverCount, pair.Index, tsc.serverOperational)
+		if err != nil {
+			return nil, err
+		}
+		// add the pair to the relevant map
+		server, ok := servers[serverIndex]
+		if !ok {
+			server = new(ardb.IndexActionMap)
+			servers[serverIndex] = server
+		}
+		server.Add(int64(index), pair.Action)
+	}
+
+	// a shortcut if we are lucky enough to only have 1 server
+	if len(servers) == 1 {
+		for serverIndex, indexActionMap := range servers {
+			return ardb.Values(tsc.doAt(serverIndex, tsc.servers[serverIndex],
+				ardb.Commands(indexActionMap.Actions...)))
+		}
+	}
+
+	// create result -type and -channel to collect all replies async
+	type serverResult struct {
+		ServerIndex int64
+		Replies     []interface{}
+		Error       error
+	}
+	ch := make(chan serverResult)
+
+	// apply all actions async, and collect the results
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var wg sync.WaitGroup
+	for serverIndex := range servers {
+		wg.Add(1)
+
+		// local variables to be used within the goroutine scope
+		indexActionMap := servers[serverIndex]
+		result := serverResult{ServerIndex: serverIndex}
+
+		go func() {
+			defer wg.Done()
+			result.Replies, result.Error = ardb.Values(tsc.doAt(
+				result.ServerIndex, tsc.servers[result.ServerIndex],
+				ardb.Commands(indexActionMap.Actions...)))
+			select {
+			case ch <- result:
+			case <-ctx.Done():
+			}
+		}()
+	}
+
+	// close channel when all inpu
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+
+	// we'll collect all replies in order
+	replies := make([]interface{}, len(pairs))
+
+	// collect all replies
+	for result := range ch {
+		// return early if an error occured
+		if result.Error != nil {
+			return nil, errors.Wrapf(result.Error,
+				"error while applying actions in serverIndex %d", result.ServerIndex)
+		}
+
+		// get the indexActionMap for the given server,
+		// such that we can retrieve the correct reply index
+		m := servers[result.ServerIndex]
+
+		// collect all received replies in order
+		for i, reply := range result.Replies {
+			replyIndex := m.Indices[i]
+			replies[replyIndex] = reply
+		}
+	}
+
+	// return all replies from all servers in ordered form
+	return replies, nil
 }
 
 // ServerIterator implements StorageCluster.ServerIterator.

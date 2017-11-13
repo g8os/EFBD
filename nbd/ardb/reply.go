@@ -230,6 +230,18 @@ func Int64ToBytesMapping(reply interface{}, err error) (map[int64][]byte, error)
 	return m, nil
 }
 
+// Values is a helper that converts an array command reply to a []interface{}.
+// If err is not equal to nil, then Values returns nil, err. Otherwise, Values
+// converts the reply as follows:
+//
+//  Reply type      Result
+//  array           reply, nil
+//  nil             nil, ErrNil
+//  other           nil, error
+func Values(reply interface{}, err error) ([]interface{}, error) {
+	return redis.Values(reply, err)
+}
+
 var (
 	// ErrNil indicates that a reply value is nil.
 	ErrNil = redis.ErrNil

@@ -2,6 +2,7 @@ package ardb
 
 import (
 	"crypto/rand"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -276,5 +277,127 @@ func TestComputeServerIndex_SomeServersDead_SomeServersError(t *testing.T) {
 		test(-1, serverIndex, err)
 
 		testErr(ComputeServerIndex(count, i+2, pred))
+	}
+}
+
+func TestUniClusterDoForAll(t *testing.T) {
+	server := ledisdb.NewServer()
+	defer server.Close()
+
+	uniCluster, err := NewUniCluster(config.StorageServerConfig{Address: server.Address()}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testClusterDoForAll(t, uniCluster)
+}
+
+func TestClusterDoForAll(t *testing.T) {
+	// create a cluster config for 4 servers
+	var cfg config.StorageClusterConfig
+	for i := 0; i < 4; i++ {
+		server := ledisdb.NewServer()
+		defer server.Close()
+		cfg.Servers = append(cfg.Servers, config.StorageServerConfig{
+			Address: server.Address(),
+		})
+	}
+
+	cluster, err := NewCluster(cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testClusterDoForAll(t, cluster)
+}
+
+func testClusterDoForAll(t *testing.T, cluster StorageCluster) {
+	require := require.New(t)
+
+	const valueCount = 1024
+	// base test - ensure these values don't exist yet using the DoFor metho
+	for i := int64(0); i < valueCount; i++ {
+		exists, err := Bool(cluster.DoFor(i, Command(command.Exists, fmt.Sprintf("foo:%d", i))))
+		require.NoError(err)
+		require.False(exists)
+	}
+
+	// now check the same with DoForAll
+	var pairs []IndexActionPair
+	for i := int64(0); i < valueCount; i++ {
+		pairs = append(pairs, IndexActionPair{
+			Index:  i,
+			Action: Command(command.Exists, fmt.Sprintf("foo:%d", i)),
+		})
+	}
+	replies, err := cluster.DoForAll(pairs)
+	require.NoError(err)
+	require.Len(replies, valueCount)
+	for _, reply := range replies {
+		exists, err := Bool(reply, nil)
+		require.NoError(err)
+		require.False(exists)
+	}
+
+	// now let's store the index as the value for each value
+	pairs = nil
+	for i := int64(0); i < valueCount; i++ {
+		pairs = append(pairs, IndexActionPair{
+			Index:  i,
+			Action: Command(command.Set, fmt.Sprintf("foo:%d", i), i),
+		})
+	}
+	replies, err = cluster.DoForAll(pairs)
+	require.NoError(err)
+	require.Len(replies, valueCount)
+	for _, reply := range replies {
+		ok, err := String(reply, nil)
+		require.NoError(err)
+		require.Equal("OK", ok)
+	}
+
+	// now let's get values, and ensure that the order is correct
+	pairs = nil
+	for i := int64(0); i < valueCount; i++ {
+		pairs = append(pairs, IndexActionPair{
+			Index:  i,
+			Action: Command(command.Get, fmt.Sprintf("foo:%d", i)),
+		})
+	}
+	replies, err = cluster.DoForAll(pairs)
+	require.NoError(err)
+	require.Len(replies, valueCount)
+	for i, reply := range replies {
+		index, err := Int64(reply, nil)
+		require.NoError(err)
+		require.Equal(int64(i), index)
+	}
+
+	// let's delete all odd indices using `DoFor`, as a last sanity check
+	for i := int64(1); i < valueCount; i += 2 {
+		ok, err := Int(cluster.DoFor(i, Command(command.Delete, fmt.Sprintf("foo:%d", i))))
+		require.NoError(err)
+		require.Equal(1, ok)
+	}
+
+	// now let's get values, and ensure that the odd indices are deleted, and that the order is still correct
+	pairs = nil
+	for i := int64(0); i < valueCount; i++ {
+		pairs = append(pairs, IndexActionPair{
+			Index:  i,
+			Action: Command(command.Get, fmt.Sprintf("foo:%d", i)),
+		})
+	}
+	replies, err = cluster.DoForAll(pairs)
+	require.NoError(err)
+	require.Len(replies, valueCount)
+	for i, reply := range replies {
+		index, err := Int64(reply, nil)
+		if i%2 == 1 {
+			require.Equal(ErrNil, err)
+			continue
+		}
+		require.NoError(err)
+		require.Equal(int64(i), index)
 	}
 }

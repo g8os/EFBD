@@ -2,6 +2,7 @@ package ardb
 
 import (
 	"context"
+	"sync"
 
 	"github.com/zero-os/0-Disk/config"
 	"github.com/zero-os/0-Disk/errors"
@@ -17,11 +18,29 @@ type StorageCluster interface {
 	// to a server within this cluster which maps to the given objectIndex.
 	DoFor(objectIndex int64, action StorageAction) (reply interface{}, err error)
 
+	// DoForAll applies each given actions
+	// to the servers within this clusters which maps to its paired index.
+	// This method should try to group all actions per server if possible,
+	// as to avoid too many roundtrips.
+	//
+	// If an error occurs, only the error will be returned.
+	// When no error has occured, it is guaranteed that
+	// a reply will be given for each specified pair,
+	// as well as the fact that the given replies are returned in
+	// the same order that the pairs have been specified.
+	DoForAll(pairs []IndexActionPair) (replies []interface{}, err error)
+
 	// ServerIterator returns a server iterator for this Cluster.
 	ServerIterator(ctx context.Context) (<-chan StorageServer, error)
 
 	// ServerCount returns the amount of currently available servers within this cluster.
 	ServerCount() int64
+}
+
+// IndexActionPair pairs an index and a storage action.
+type IndexActionPair struct {
+	Index  int64
+	Action StorageAction
 }
 
 // NewUniCluster creates a new (ARDB) uni-cluster.
@@ -78,6 +97,28 @@ func (cluster *UniCluster) Do(action StorageAction) (interface{}, error) {
 // DoFor implements StorageCluster.DoFor
 func (cluster *UniCluster) DoFor(_ int64, action StorageAction) (interface{}, error) {
 	return cluster.Do(action)
+}
+
+// DoForAll implements StorageCluster.DoForAll
+func (cluster *UniCluster) DoForAll(pairs []IndexActionPair) ([]interface{}, error) {
+	switch n := len(pairs); n {
+	case 0:
+		return nil, nil
+
+	case 1:
+		reply, err := cluster.DoFor(pairs[0].Index, pairs[0].Action)
+		if err != nil {
+			return nil, err
+		}
+		return []interface{}{reply}, nil
+
+	default:
+		actions := make([]StorageAction, n)
+		for index, pair := range pairs {
+			actions[index] = pair.Action
+		}
+		return Values(cluster.Do(Commands(actions...)))
+	}
 }
 
 // ServerIterator implements StorageCluster.ServerIterator
@@ -168,6 +209,128 @@ func (cluster *Cluster) DoFor(objectIndex int64, action StorageAction) (interfac
 		return nil, err
 	}
 	return cluster.doAt(serverIndex, action)
+}
+
+// IndexActionMap is a helper structure,
+// which can be used to link some index to some action,
+// instead of a map, as a map has no stable order.
+//
+// This structure was designed for and is used to help implement (*Cluster).DoForAll,
+// to be able to collect and return all replies in ordered form,
+// as that has to be guaranteed for all (StorageCluster).DoForAll implementations.
+type IndexActionMap struct {
+	Indices []int64
+	Actions []StorageAction
+}
+
+// Add an index and action to a map,
+// this is just a helper method which appends both the index and the action
+// to the their relative slice type.
+func (m *IndexActionMap) Add(index int64, action StorageAction) {
+	m.Indices = append(m.Indices, index)
+	m.Actions = append(m.Actions, action)
+}
+
+// DoForAll implements StorageCluster.DoForAll
+func (cluster *Cluster) DoForAll(pairs []IndexActionPair) ([]interface{}, error) {
+	// a shortcut in case we have received no pairs, or just a single one
+	switch len(pairs) {
+	case 0:
+		return nil, nil // nothing to do
+	case 1:
+		reply, err := cluster.DoFor(pairs[0].Index, pairs[1].Action)
+		if err != nil {
+			return nil, err
+		}
+		return []interface{}{reply}, nil
+	}
+
+	// sort all actions in terms of their mapped server index
+	servers := make(map[int64]*IndexActionMap)
+	for index, pair := range pairs {
+		// compute server index which maps to the given object index
+		serverIndex, err := ComputeServerIndex(cluster.serverCount, pair.Index, cluster.serverOperational)
+		if err != nil {
+			return nil, err
+		}
+		// add the pair to the relevant map
+		server, ok := servers[serverIndex]
+		if !ok {
+			server = new(IndexActionMap)
+			servers[serverIndex] = server
+		}
+		server.Add(int64(index), pair.Action)
+	}
+
+	// a shortcut if we are lucky enough to only have 1 server
+	if len(servers) == 1 {
+		for serverIndex, indexActionMap := range servers {
+			return Values(cluster.doAt(serverIndex, Commands(indexActionMap.Actions...)))
+		}
+	}
+
+	// create result -type and -channel to collect all replies async
+	type serverResult struct {
+		ServerIndex int64
+		Replies     []interface{}
+		Error       error
+	}
+	ch := make(chan serverResult)
+
+	// apply all actions async, and collect the results
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var wg sync.WaitGroup
+	for serverIndex := range servers {
+		wg.Add(1)
+
+		// local variables to be used within the goroutine scope
+		indexActionMap := servers[serverIndex]
+		result := serverResult{ServerIndex: serverIndex}
+
+		go func() {
+			defer wg.Done()
+			result.Replies, result.Error = Values(cluster.doAt(
+				result.ServerIndex, Commands(indexActionMap.Actions...)))
+			select {
+			case ch <- result:
+			case <-ctx.Done():
+			}
+		}()
+	}
+
+	// close channel when all inpu
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+
+	// we'll collect all replies in order
+	replies := make([]interface{}, len(pairs))
+
+	// collect all replies
+	for result := range ch {
+		// return early if an error occured
+		if result.Error != nil {
+			return nil, errors.Wrapf(result.Error,
+				"error while applying actions in serverIndex %d", result.ServerIndex)
+		}
+
+		// get the indexActionMap for the given server,
+		// such that we can retrieve the correct reply index
+		m := servers[result.ServerIndex]
+
+		// collect all received replies in order
+		for i, reply := range result.Replies {
+			replyIndex := m.Indices[i]
+			replies[replyIndex] = reply
+		}
+	}
+
+	// return all replies from all servers in ordered form
+	return replies, nil
 }
 
 // ServerIterator implements StorageCluster.ServerIterator
@@ -263,6 +426,11 @@ func (cluster ErrorCluster) DoFor(objectIndex int64, action StorageAction) (repl
 	return nil, cluster.Error
 }
 
+// DoForAll implements StorageCluster.DoForAll
+func (cluster ErrorCluster) DoForAll(pairs []IndexActionPair) (replies []interface{}, err error) {
+	return nil, cluster.Error
+}
+
 // ServerIterator implements StorageCluster.ServerIterator
 func (cluster ErrorCluster) ServerIterator(ctx context.Context) (<-chan StorageServer, error) {
 	ch := make(chan StorageServer, 1)
@@ -313,6 +481,11 @@ func (cluster NopCluster) Do(_ StorageAction) (reply interface{}, err error) {
 
 // DoFor implements StorageCluster.DoFor
 func (cluster NopCluster) DoFor(objectIndex int64, action StorageAction) (reply interface{}, err error) {
+	return nil, nil
+}
+
+// DoForAll implements StorageCluster.DoForAll
+func (cluster NopCluster) DoForAll(pairs []IndexActionPair) (replies []interface{}, err error) {
 	return nil, nil
 }
 
