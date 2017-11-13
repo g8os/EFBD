@@ -115,6 +115,38 @@ func parseDescribePosArguments(args []string) error {
 func init() {
 	DescribeSnapshotCmd.Long = DescribeSnapshotCmd.Short + `
 
+A snapshot will be described in JSON format and written to the STDOUT.
+The printed JSON object can have following properties:
+
++ "snapshotID": the identifier of the snapshot, as defined when exporting a vdisk;
++ "blockSize": the size (in bytes) of each (plain, decompressed and deduped) block that make up the snapshot's data;
++ "size": the total (plain and decompressed) data size (in bytes) of the snapshot, as in "blockSize * blockCount";
++ "created": indicates when this snapshot was created (date+time in format RFC3339);
++ "version": tool version that was used to create this snapshot;
++ "source": information about the vdisk that was exported to create this snapshot;
+
+Note that the snapshot size does not equal a vdisk's size.
+A vdisk's (actual) size is defined by its blocksize and the biggest block index stored for that vdisk.
+Meaning that if you have a blocksize of 4096 (bytes) and the biggest block index stored is 1000,
+the actual size of your vdisk at that moment will be 4100096 bytes or 4004 KiB.
+A vdisk's actual size is computed using the following formula:
+
+	vdiskActualSize = vdiskBlockSize * (maxVdiskBlockIndex+1)
+
+This is different from the (actual) size of a snapshot that we output as part of a snapshot's description.
+The size of a snapshot is simply the total size that is used to store the snapshot,
+and will almost always be a lot lower than the actual size of the vdisk that would be created by importing this vdisk.
+The reason being is that we do not care about the actual spreading of the blocks (in terms of their block index),
+when computing that size, and instead only care about the size of each block stored and how many blocks we have stored.
+A snapshot's size is computed using the following formula:
+
+	snapshotSize = snapshotBlockSize * snapshotBlockCount
+
+Also note that in both the vdisk size and snapshot size we do not take into account
+the metadata as part of the size. This is because the metadata is not important in this context,
+as we only care about the actual blocks (content) when transferring between the snapshot and vdisk storage format.
+The snapshot size is not important, neither accurate, and is computed on the fly while executing this command.
+
 Remember to use the same (snapshot) name,
 crypto (private) key and the compression type,
 as you used while exporting the backup in question.
