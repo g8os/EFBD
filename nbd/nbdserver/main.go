@@ -31,6 +31,7 @@ func main() {
 	var sourceConfig config.SourceConfig
 	var logPath string
 	var serverID string
+	var tlogPrivKey string
 
 	flag.BoolVar(&verbose, "v", false, "when false, only log warnings and errors")
 	flag.StringVar(&logPath, "logfile", "", "optionally log to the specified file, instead of the stderr")
@@ -43,6 +44,7 @@ func main() {
 		fmt.Sprintf("Cache limit of LBA in bytes, needs to be higher then %d (bytes in 1 sector)", lba.BytesPerSector))
 	flag.StringVar(&serverID, "id", "default", "The server ID (default: default)")
 	flag.BoolVar(&version, "version", false, "prints build version and exits")
+	flag.StringVar(&tlogPrivKey, "tlog-priv-key", "", "32 bytes tlog private key")
 
 	flag.Parse()
 
@@ -122,6 +124,7 @@ func main() {
 	backendFactory, err := newBackendFactory(backendFactoryConfig{
 		ConfigSource:  configSource,
 		LBACacheLimit: lbacachelimit,
+		TlogPrivKey:   tlogPrivKey,
 	})
 	handleSigterm(backendFactory, cancelFunc)
 

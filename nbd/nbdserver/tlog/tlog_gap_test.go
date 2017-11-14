@@ -18,9 +18,10 @@ import (
 // https://github.com/zero-os/0-Disk/issues/231
 func TestTlogStorageSlow(t *testing.T) {
 	const (
-		vdiskID    = "a"
-		blockSize  = 128
-		blockCount = 512
+		vdiskID     = "a"
+		blockSize   = 128
+		blockCount  = 512
+		tlogPrivKey = ""
 	)
 
 	ctx, cancelFunc := context.WithCancel(context.Background())
@@ -50,7 +51,7 @@ func TestTlogStorageSlow(t *testing.T) {
 	defer source.Close()
 
 	storage, err := Storage(
-		ctx, vdiskID, source, blockSize, slowStorage, ardb.NopCluster{}, nil)
+		ctx, vdiskID, tlogPrivKey, source, blockSize, slowStorage, ardb.NopCluster{}, nil)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}

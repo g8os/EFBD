@@ -2,6 +2,7 @@ package tlog
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -14,12 +15,14 @@ import (
 	"github.com/zero-os/0-Disk/tlog"
 	"github.com/zero-os/0-Disk/tlog/schema"
 	"github.com/zero-os/0-Disk/tlog/tlogclient"
+	"github.com/zero-os/0-Disk/tlog/tlogclient/decoder"
+	"github.com/zero-os/0-Disk/tlog/tlogclient/player"
 )
 
 // Storage creates a tlog storage BlockStorage,
 // wrapping around a given backend storage,
 // using the given tlog client to send its write transactions to the tlog server.
-func Storage(ctx context.Context, vdiskID string, configSource config.Source, blockSize int64, bstorage storage.BlockStorage, cluster ardb.StorageCluster, client tlogClient) (storage.BlockStorage, error) {
+func Storage(ctx context.Context, vdiskID, tlogPrivKey string, configSource config.Source, blockSize int64, bstorage storage.BlockStorage, cluster ardb.StorageCluster, client tlogClient) (storage.BlockStorage, error) {
 	if bstorage == nil {
 		return nil, errors.New("tlogStorage requires a non-nil BlockStorage")
 	}
@@ -60,16 +63,21 @@ func Storage(ctx context.Context, vdiskID string, configSource config.Source, bl
 			return nil, errors.Wrap(err, "tlogStorage requires valid tlogclient")
 		}
 		log.Debugf("tlogclient for vdisk `%v` created", vdiskID)
-
-		if metadata.LastFlushedSequence < client.LastFlushedSequence() {
-			// TODO call tlog player if last flushed sequence from tlog server is
-			// higher than us.
-			// see: https://github.com/zero-os/0-Disk/issues/230
-			log.Infof("possible error when starting vdisk `%v`: might need to sync with tlog", vdiskID)
-		}
 	}
 
 	tlogStorage.tlog = client
+
+	if metadata.LastFlushedSequence < tlogStorage.tlog.LastFlushedSequence() {
+		// Call tlog player if last flushed sequence from tlog server is
+		// higher than us.
+		log.Infof("Vdisk %v syncs with tlog", vdiskID)
+		err = tlogStorage.syncWithTlog(ctx, configSource, tlogPrivKey)
+		if err != nil {
+			cancel()
+			return nil, errors.Wrap(err, "tlogStorage failed to sync with tlog at startup")
+		}
+	}
+
 	tlogStorage.sequence = client.LastFlushedSequence() + 1
 	tlogStorage.tlogReady = client.Ready()
 
@@ -80,6 +88,30 @@ func Storage(ctx context.Context, vdiskID string, configSource config.Source, bl
 	}
 
 	return tlogStorage, nil
+}
+
+// sync our data in primary with tlog
+func (tls *tlogStorage) syncWithTlog(ctx context.Context, configSource config.Source, privKey string) error {
+	// creates tlog player
+	p, err := player.NewPlayer(ctx, configSource, tls.vdiskID, privKey)
+	if err != nil {
+		return err
+	}
+
+	// replay
+	lastSeq, err := p.Replay(decoder.NewLimitBySequence(tls.metadata.LastFlushedSequence+1, 0))
+	if err != nil {
+		return err
+	}
+
+	// check if tlogreplay has synced it correctly
+	if lastSeq != tls.tlog.LastFlushedSequence() {
+		return fmt.Errorf("syncer failed to sync with tlog. synced sequence: %v, expected: %v", lastSeq, tls.tlog.LastFlushedSequence())
+	}
+
+	// update metadata
+	tls.metadata.LastFlushedSequence = lastSeq
+	return nil
 }
 
 // tlogStorage is a BlockStorage implementation,

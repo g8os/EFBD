@@ -183,7 +183,7 @@ func newTestTlogStorage(ctx context.Context, t *testing.T, vdiskID, tlogServerAd
 	})
 	source.SetPrimaryStorageCluster(vdiskID, "nbdcluster", nil)
 
-	tlogStorage, err := Storage(ctx, vdiskID, source, blockSize,
+	tlogStorage, err := Storage(ctx, vdiskID, "", source, blockSize,
 		blockStorage, ardb.NopCluster{}, nil)
 	require.NoError(t, err)
 	require.NotNil(t, tlogStorage)

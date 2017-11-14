@@ -21,10 +21,11 @@ func TestBackendSigtermHandler(t *testing.T) {
 	defer cluster.Close()
 
 	const (
-		vdiskID    = "a"
-		size       = 64
-		blockSize  = 8
-		blockCount = size / blockSize
+		vdiskID     = "a"
+		size        = 64
+		blockSize   = 8
+		blockCount  = size / blockSize
+		tlogPrivKey = ""
 	)
 
 	var blockStorage storage.BlockStorage
@@ -63,7 +64,7 @@ func TestBackendSigtermHandler(t *testing.T) {
 			Servers: []string{tlogrpc},
 		})
 
-		tls, err := tlog.Storage(ctx, vdiskID, source, blockSize, storage, cluster, nil)
+		tls, err := tlog.Storage(ctx, vdiskID, tlogPrivKey, source, blockSize, storage, cluster, nil)
 		require.NoError(t, err)
 		require.NotNil(t, tls)
 
