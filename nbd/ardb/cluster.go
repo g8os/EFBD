@@ -122,21 +122,14 @@ func (cluster *UniCluster) DoForAll(pairs []IndexActionPair) ([]interface{}, err
 }
 
 // ServerIterator implements StorageCluster.ServerIterator
-func (cluster *UniCluster) ServerIterator(ctx context.Context) (<-chan StorageServer, error) {
-	ch := make(chan StorageServer)
+func (cluster *UniCluster) ServerIterator(context.Context) (<-chan StorageServer, error) {
+	ch := make(chan StorageServer, 1)
 	server := storageServer{
 		cfg:    cluster.server,
 		dialer: cluster.dialer,
 	}
-
-	go func() {
-		select {
-		case ch <- server:
-		case <-ctx.Done():
-		}
-		close(ch)
-	}()
-
+	ch <- server
+	close(ch)
 	return ch, nil
 }
 
@@ -432,18 +425,10 @@ func (cluster ErrorCluster) DoForAll(pairs []IndexActionPair) (replies []interfa
 }
 
 // ServerIterator implements StorageCluster.ServerIterator
-func (cluster ErrorCluster) ServerIterator(ctx context.Context) (<-chan StorageServer, error) {
+func (cluster ErrorCluster) ServerIterator(context.Context) (<-chan StorageServer, error) {
 	ch := make(chan StorageServer, 1)
-	server := errorStorageServer{Error: cluster.Error}
-
-	go func() {
-		select {
-		case ch <- server:
-		case <-ctx.Done():
-		}
-		close(ch)
-	}()
-
+	ch <- errorStorageServer{Error: cluster.Error}
+	close(ch)
 	return ch, nil
 }
 
@@ -490,17 +475,10 @@ func (cluster NopCluster) DoForAll(pairs []IndexActionPair) (replies []interface
 }
 
 // ServerIterator implements StorageCluster.ServerIterator
-func (cluster NopCluster) ServerIterator(ctx context.Context) (<-chan StorageServer, error) {
+func (cluster NopCluster) ServerIterator(context.Context) (<-chan StorageServer, error) {
 	ch := make(chan StorageServer, 1)
-
-	go func() {
-		select {
-		case ch <- nopStorageServer{}:
-		case <-ctx.Done():
-		}
-		close(ch)
-	}()
-
+	ch <- nopStorageServer{}
+	close(ch)
 	return ch, nil
 }
 
