@@ -17,6 +17,7 @@ import (
 type backendFactoryConfig struct {
 	LBACacheLimit int64         // min-capped to LBA.BytesPerSector
 	ConfigSource  config.Source // config source
+	TlogPrivKey   string        // tlog private key
 }
 
 // Validate all the parameters of this BackendFactoryConfig,
@@ -42,6 +43,7 @@ func newBackendFactory(cfg backendFactoryConfig) (*backendFactory, error) {
 		lbaCacheLimit: cfg.LBACacheLimit,
 		configSource:  cfg.ConfigSource,
 		vdiskComp:     newVdiskCompletion(),
+		tlogPrivKey:   cfg.TlogPrivKey,
 	}, nil
 }
 
@@ -52,6 +54,7 @@ type backendFactory struct {
 	lbaCacheLimit int64
 	configSource  config.Source
 	vdiskComp     *vdiskCompletion
+	tlogPrivKey   string
 }
 
 type closers []Closer
@@ -136,7 +139,7 @@ func (f *backendFactory) NewBackend(ctx context.Context, ec *nbd.ExportConfig) (
 		if vdiskNBDConfig.TlogServerClusterID != "" {
 			log.Infof("creating tlogStorage for backend %v (%v)", vdiskID, staticConfig.Type)
 			tlogBlockStorage, err := tlog.Storage(ctx,
-				vdiskID,
+				vdiskID, f.tlogPrivKey,
 				f.configSource, blockSize, blockStorage, primaryCluster, nil)
 			if err != nil {
 				blockStorage.Close()

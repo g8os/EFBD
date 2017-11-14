@@ -165,7 +165,7 @@ func testTlogStorage(ctx context.Context, t *testing.T, vdiskID string, blockSiz
 	defer source.Close()
 
 	storage, err := Storage(
-		ctx, vdiskID, source, blockSize, storage, ardb.NopCluster{}, nil)
+		ctx, vdiskID, "", source, blockSize, storage, ardb.NopCluster{}, nil)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}
@@ -188,7 +188,7 @@ func testTlogStorageForceFlush(ctx context.Context, t *testing.T, vdiskID string
 	defer source.Close()
 
 	storage, err := Storage(
-		ctx, vdiskID, source, blockSize, storage, ardb.NopCluster{}, nil)
+		ctx, vdiskID, "", source, blockSize, storage, ardb.NopCluster{}, nil)
 	if !assert.NoError(t, err) || !assert.NotNil(t, storage) {
 		return
 	}
@@ -301,7 +301,7 @@ func testTlogStorageReplay(t *testing.T, storageCreator storageCreator) {
 	defer source.Close()
 
 	storage, err := Storage(
-		ctx, vdiskID, source, blockSize, internalStorage, ardb.NopCluster{}, nil)
+		ctx, vdiskID, "", source, blockSize, internalStorage, ardb.NopCluster{}, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -949,8 +949,9 @@ func TestTlogSwitchClusterID(t *testing.T) {
 	defer cancelFunc()
 
 	const (
-		vdiskID   = "a"
-		blockSize = 8
+		vdiskID     = "a"
+		blockSize   = 8
+		tlogPrivKey = ""
 	)
 
 	// initil cluster, and later on the last valid cluster
@@ -998,7 +999,7 @@ func TestTlogSwitchClusterID(t *testing.T) {
 
 	tlogClient := &stubTlogClient{servers: lastValidCluster.Servers}
 
-	storage, err := Storage(ctx, vdiskID, source, blockSize, storage, ardb.NopCluster{}, tlogClient)
+	storage, err := Storage(ctx, vdiskID, tlogPrivKey, source, blockSize, storage, ardb.NopCluster{}, tlogClient)
 	require.NoError(err)
 
 	defer storage.Close()
