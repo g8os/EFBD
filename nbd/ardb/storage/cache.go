@@ -10,8 +10,8 @@ import (
 
 const (
 	CacheSize              = 5 * 1024 * 1024 //CacheSize in MB
-	cacheDefaultExpiration = 10 * time.Second
-	cacheDefaultCleanup    = 5 * time.Second
+	cacheDefaultExpiration = 10
+	cacheDefaultCleanup    = 5
 	cacheDefaultMaxSize    = 100 //each chunk is 512K so this is around 2.5M of memory
 )
 
@@ -25,13 +25,13 @@ type Cache struct {
 type CacheEvict func(hash zerodisk.Hash, content []byte)
 
 //NewCache create a new buffer cache
-func NewCache(evict CacheEvict, expiration, cleanup time.Duration, maxSize int) *Cache {
-	if expiration == time.Duration(0) {
+func NewCache(evict CacheEvict, expiration, cleanup int64, maxSize int) *Cache {
+	if expiration == 0 {
 		expiration = cacheDefaultExpiration
 	}
 
-	if cleanup == time.Duration(0) {
-		cleanup = time.Duration(math.Min(float64(expiration), float64(cacheDefaultCleanup)))
+	if cleanup == 0 {
+		cleanup = int64(math.Max(float64(expiration), cacheDefaultCleanup))
 	}
 
 	if maxSize == 0 {
@@ -47,12 +47,12 @@ func NewCache(evict CacheEvict, expiration, cleanup time.Duration, maxSize int) 
 	}
 
 	c.cache = gcache.New(maxSize).LRU().
-		Expiration(expiration).
+		Expiration(time.Duration(expiration) * time.Second).
 		EvictedFunc(c.onEvict).
 		PurgeVisitorFunc(c.onEvict).
 		Build()
 
-	go c.flusher(ctx, cleanup)
+	go c.flusher(ctx, time.Duration(cleanup)*time.Second)
 
 	return c
 }

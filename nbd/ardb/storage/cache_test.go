@@ -33,7 +33,7 @@ func TestCacheSizeLimit(t *testing.T) {
 func TestCacheTimeLimit(t *testing.T) {
 	key := zerodisk.Hash("test-key")
 
-	cache := NewCache(nil, 2*time.Second, 0, 5)
+	cache := NewCache(nil, 2, 0, 5)
 
 	cache.Set(key, nil)
 

@@ -45,8 +45,12 @@ func Deduped(cfg BlockStorageConfig, cluster, templateCluster ardb.StorageCluste
 		return nil, err
 	}
 
-	size := int(CacheSize / cfg.BlockSize)
-	dedupedStorage.cache = NewCache(dedupedStorage.evictCache, 0, 0, size)
+	bufSize := cfg.BufferSize
+	if bufSize <= 0 {
+		bufSize = int(CacheSize / cfg.BlockSize)
+	}
+
+	dedupedStorage.cache = NewCache(dedupedStorage.evictCache, cfg.BufferExpiry, cfg.BufferCleanup, bufSize)
 
 	// getContent is ALWAYS defined,
 	// but the actual function used depends on

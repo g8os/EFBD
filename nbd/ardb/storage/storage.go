@@ -47,9 +47,14 @@ type BlockStorageConfig struct {
 
 	//Disk Buffers
 	// optional: Size (number of Blocks to keep in buffer)
+	// default to storage type
 	BufferSize int
 
-	// optional: BufferExpiry
+	// optional: Buffer expiry in seconds (default 10)
+	BufferExpiry int64
+
+	// optional: Buffer cleanup in seconds (default 5)
+	BufferCleanup int64
 }
 
 // Validate this BlockStorageConfig.
