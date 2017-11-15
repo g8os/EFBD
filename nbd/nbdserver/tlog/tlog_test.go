@@ -583,14 +583,14 @@ func testSequenceCache(t *testing.T, sq sequenceCache, lengthTest func(sn, vn in
 	lengthTest(1, 1)
 
 	// data should be the original one (except the first one, which was overwritten)
-	for blockIndex, data := range elements {
+	for _, elem := range elements {
 		var expectedData []byte
-		if blockIndex == 0 {
+		if elem.blockIndex == 0 {
 			expectedData = []byte("Hello")
-		} else if blockIndex%2 == 0 {
-			expectedData = []byte{byte(blockIndex)}
+		} else if elem.blockIndex%2 == 0 {
+			expectedData = []byte{byte(elem.blockIndex)}
 		}
-		assert.Equal(t, expectedData, data)
+		assert.Equal(t, expectedData, elem.data)
 	}
 
 	// getting all blocks (except second one), should now fail
@@ -614,10 +614,18 @@ func testSequenceCache(t *testing.T, sq sequenceCache, lengthTest func(sn, vn in
 	lengthTest(0, 0)
 
 	// and the only element should be our index 1, with value World
-	value, ok = elements[1]
-	if assert.True(t, ok) {
-		assert.Equal(t, []byte("World"), value)
+	elem := elements[0]
+	assert.Equal(t, int64(1), elem.blockIndex)
+	assert.Equal(t, []byte("World"), elem.data)
+}
+
+func findCacheEntry(elems []sequenceCacheEntry, blockIndex int64) (sequenceCacheEntry, bool) {
+	for _, elem := range elems {
+		if elem.blockIndex == blockIndex {
+			return elem, true
+		}
 	}
+	return sequenceCacheEntry{}, false
 }
 
 func testSequenceCacheMassEviction(t *testing.T, sq sequenceCache, lengthTest func(sn, vn int)) {
@@ -703,13 +711,13 @@ func testSequenceCacheMassEviction(t *testing.T, sq sequenceCache, lengthTest fu
 			}
 
 			for blockIndex := int64(0); blockIndex < blockCount; blockIndex++ {
-				data, ok := elements[blockIndex]
+				elem, ok := findCacheEntry(elements, blockIndex)
 				if !ok {
 					t.Fatal("couldn't find data for block ", blockIndex, repetiton, index)
 					continue
 				}
 
-				assert.Equal(t, allData[blockIndex], data)
+				assert.Equal(t, allData[blockIndex], elem.data)
 			}
 		}
 
@@ -743,13 +751,13 @@ func testSequenceCacheMassEviction(t *testing.T, sq sequenceCache, lengthTest fu
 			}
 
 			for blockIndex := int64(0); blockIndex < blockCount; blockIndex++ {
-				data, ok := elements[blockIndex]
+				elem, ok := findCacheEntry(elements, blockIndex)
 				if !ok {
 					t.Fatal("couldn't find data for block ", blockIndex, repetiton, index)
 					continue
 				}
 
-				assert.Equal(t, allData[blockIndex], data)
+				assert.Equal(t, allData[blockIndex], elem.data)
 			}
 		}
 	}
@@ -775,7 +783,7 @@ func testAggressiveSequenceCacheEviction(t *testing.T, sq sequenceCache, lengthT
 		return
 	}
 
-	_, ok := elements[blockIndex]
+	_, ok := findCacheEntry(elements, blockIndex)
 	assert.True(t, ok)
 
 	// both sequences and values should now be empty
