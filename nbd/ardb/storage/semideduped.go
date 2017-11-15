@@ -10,13 +10,13 @@ import (
 )
 
 // SemiDeduped returns a semi deduped BlockStorage
-func SemiDeduped(vdiskID string, blockSize, lbaCacheLimit int64, cluster, templateCluster ardb.StorageCluster) (BlockStorage, error) {
-	templateStorage, err := Deduped(vdiskID, blockSize, lbaCacheLimit, cluster, templateCluster)
+func SemiDeduped(cfg BlockStorageConfig, cluster, templateCluster ardb.StorageCluster) (BlockStorage, error) {
+	templateStorage, err := Deduped(cfg, cluster, templateCluster)
 	if err != nil {
 		return nil, err
 	}
 
-	userStorage, err := NonDeduped(vdiskID, "", blockSize, cluster, nil)
+	userStorage, err := NonDeduped(cfg.VdiskID, "", cfg.BlockSize, cluster, nil)
 	if err != nil {
 		templateStorage.Close()
 		return nil, err
@@ -25,14 +25,14 @@ func SemiDeduped(vdiskID string, blockSize, lbaCacheLimit int64, cluster, templa
 	storage := &semiDedupedStorage{
 		templateStorage: templateStorage,
 		userStorage:     userStorage,
-		vdiskID:         vdiskID,
-		blockSize:       blockSize,
+		vdiskID:         cfg.VdiskID,
+		blockSize:       cfg.BlockSize,
 		cluster:         cluster,
 	}
 
 	err = storage.readBitMap()
 	if err != nil {
-		log.Debugf("couldn't read semi deduped storage %s's bitmap: %v", vdiskID, err)
+		log.Debugf("couldn't read semi deduped storage %s's bitmap: %v", cfg.VdiskID, err)
 	}
 
 	return storage, nil

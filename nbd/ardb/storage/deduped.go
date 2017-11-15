@@ -13,9 +13,9 @@ import (
 )
 
 // Deduped returns a deduped BlockStorage
-func Deduped(vdiskID string, blockSize, lbaCacheLimit int64, cluster, templateCluster ardb.StorageCluster) (BlockStorage, error) {
+func Deduped(cfg BlockStorageConfig, cluster, templateCluster ardb.StorageCluster) (BlockStorage, error) {
 	// define the LBA cache limit
-	cacheLimit := lbaCacheLimit
+	cacheLimit := cfg.LBACacheLimit
 	if cacheLimit < lba.BytesPerSector {
 		log.Infof(
 			"LBACacheLimit (%d) will be defaulted to %d (min-capped)",
@@ -24,7 +24,7 @@ func Deduped(vdiskID string, blockSize, lbaCacheLimit int64, cluster, templateCl
 	}
 
 	// create the LBA (used to store deduped metadata)
-	lbaStorage := newLBASectorStorage(vdiskID, cluster)
+	lbaStorage := newLBASectorStorage(cfg.VdiskID, cluster)
 	vlba, err := lba.NewLBA(cacheLimit, lbaStorage)
 	if err != nil {
 		log.Errorf("couldn't create the LBA: %s", err.Error())
@@ -32,9 +32,7 @@ func Deduped(vdiskID string, blockSize, lbaCacheLimit int64, cluster, templateCl
 	}
 
 	dedupedStorage := &dedupedStorage{
-		blockSize:       blockSize,
-		vdiskID:         vdiskID,
-		zeroContentHash: zerodisk.HashBytes(make([]byte, blockSize)),
+		zeroContentHash: zerodisk.HashBytes(make([]byte, cfg.BlockSize)),
 		cluster:         cluster,
 		lba:             vlba,
 	}
@@ -47,7 +45,7 @@ func Deduped(vdiskID string, blockSize, lbaCacheLimit int64, cluster, templateCl
 		return nil, err
 	}
 
-	size := int(CacheSize / blockSize)
+	size := int(CacheSize / cfg.BlockSize)
 	dedupedStorage.cache = NewCache(dedupedStorage.evictCache, 0, 0, size)
 
 	// getContent is ALWAYS defined,
