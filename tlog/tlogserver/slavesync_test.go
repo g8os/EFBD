@@ -105,7 +105,8 @@ func TestSlaveSyncEndToEnd(t *testing.T) {
 	require.NoError(t, err)
 
 	// check it from the storage
-	storage, err := storage.Deduped(vdiskID, blockSize, ardb.DefaultLBACacheLimit, cluster, nil)
+	storage, err := storage.Deduped(storage.BlockStorageConfig{VdiskID: vdiskID, BlockSize: blockSize, LBACacheLimit: ardb.DefaultLBACacheLimit, BufferSize: 10},
+		cluster, nil)
 	require.NoError(t, err)
 
 	for i := 0; i < numLogs; i++ {
