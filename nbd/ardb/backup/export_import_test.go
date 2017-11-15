@@ -74,7 +74,7 @@ func newInMemoryStorage(t *testing.T, vdiskID string, blockSize int64) (storage.
 
 func newDedupedStorage(t *testing.T, vdiskID string, blockSize int64) (storage.BlockStorage, func()) {
 	cluster := redisstub.NewUniCluster(true)
-	storage, err := storage.Deduped(storage.BlockStorageConfig{VdiskID: vdiskID, BlockSize: blockSize, LBACacheLimit: ardb.DefaultLBACacheLimit, BufferSize: 10},
+	storage, err := storage.Deduped(storage.BlockStorageConfig{VdiskID: vdiskID, BlockSize: blockSize, LBACacheLimit: ardb.DefaultLBACacheLimit, BufferSize: 1},
 		cluster, nil)
 	if err != nil {
 		cluster.Close()

@@ -31,7 +31,7 @@ func NewCache(evict CacheEvict, expiration, cleanup int64, maxSize int) *Cache {
 	}
 
 	if cleanup == 0 {
-		cleanup = int64(math.Max(float64(expiration), cacheDefaultCleanup))
+		cleanup = int64(math.Min(float64(expiration), cacheDefaultCleanup))
 	}
 
 	if maxSize == 0 {
