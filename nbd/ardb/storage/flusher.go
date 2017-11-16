@@ -3,24 +3,26 @@ package storage
 import (
 	"context"
 	"fmt"
+	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/log"
 	"runtime"
 	"sync"
 )
 
-type Work func(in interface{}) (out interface{})
-type Callback func(out interface{})
+type Work func(hash zerodisk.Hash, content []byte) error
+type Callback func(err error)
 
 type payload struct {
-	in interface{}
-	cb Callback
+	hash    zerodisk.Hash
+	content []byte
+	cb      Callback
 }
 
-// Pool is a worker pool that grantees that if a job is submitted (Do call) *before* the pool is closed
+// Flusher is a worker pool that grantees that if a job is submitted (Commit call) *before* the pool is closed
 // that it is granted to be executed, even if the pool has been closed immediately afterwards (from another go routine)
 //
-// Pool is defined by 2 arguments Workers which is number of workers, and Work function
-type Pool struct {
+// Flusher is defined by 2 arguments Workers which is number of workers, and Work function
+type Flusher struct {
 	//Workers defines number of workers, default to number of cpus
 	Workers int
 	//Work function
@@ -33,12 +35,12 @@ type Pool struct {
 	cancel context.CancelFunc
 }
 
-// Do schedule a job for processing, will block if there are no free workers to immediately process your request.
-// If Do is called while pool is open, and no free workers to process it, Do will block until a free worker is available,
+// Commit schedule a job for processing, will block if there are no free workers to immediately process your request.
+// If Commit is called while pool is open, and no free workers to process it, Commit will block until a free worker is available,
 // During that time, if the pool was closed, the Job will not get canceled, but no more jobs will be able to schedule.
 // The call to close will block until all job on the queue is processed
 // If cb is provided, it will get called with the output of the Work function.
-func (p *Pool) Do(in interface{}, cb func(out interface{})) error {
+func (p *Flusher) Commit(hash zerodisk.Hash, content []byte, cb func(err error)) error {
 	p.m.Lock()
 	if !p.open {
 		p.m.Unlock()
@@ -46,24 +48,24 @@ func (p *Pool) Do(in interface{}, cb func(out interface{})) error {
 	}
 
 	p.m.Unlock()
-	p.ch <- payload{in, cb}
+	p.ch <- payload{hash: hash, content: content, cb: cb}
 	return nil
 }
 
-func (p *Pool) apply(work payload) {
+func (p *Flusher) apply(work payload) {
 	defer func() {
 		if err := recover(); err != nil {
 			log.Errorf("recovered from panic in work function: %v", err)
 		}
 	}()
 
-	result := p.Work(work.in)
+	result := p.Work(work.hash, work.content)
 	if work.cb != nil {
 		work.cb(result)
 	}
 }
 
-func (p *Pool) workToEnd() {
+func (p *Flusher) workToEnd() {
 	for {
 		select {
 		case w := <-p.ch:
@@ -74,7 +76,7 @@ func (p *Pool) workToEnd() {
 	}
 }
 
-func (p *Pool) work(ctx context.Context) {
+func (p *Flusher) work(ctx context.Context) {
 	p.wg.Add(1)
 	defer p.wg.Done()
 
@@ -93,7 +95,7 @@ func (p *Pool) work(ctx context.Context) {
 }
 
 // Open prepares this pool, successive calls to Open will fail.
-func (p *Pool) Open() error {
+func (p *Flusher) Open() error {
 	p.m.Lock()
 	defer p.m.Unlock()
 	if p.open {
@@ -119,7 +121,7 @@ func (p *Pool) Open() error {
 
 // Close closes the pool, return only when all workers process all waiting jobs. Close will prevent new jobs
 // from being scheduled. Also successive calls to Close will fail
-func (p *Pool) Close() error {
+func (p *Flusher) Close() error {
 	//on close, we need to make sure that there are NO queued jobs
 	//a close should return ONLY if all workers has processed all waiting jobs
 
@@ -139,7 +141,7 @@ func (p *Pool) Close() error {
 }
 
 // IsRunning returns true if pool is running.
-func (p *Pool) IsRunning() bool {
+func (p *Flusher) IsRunning() bool {
 	p.m.Lock()
 	defer p.m.Unlock()
 	return p.open

@@ -12,20 +12,19 @@ const (
 	CacheSize              = 5 * 1024 * 1024 //CacheSize in MB
 	cacheDefaultExpiration = 10
 	cacheDefaultCleanup    = 5
-	cacheDefaultMaxSize    = 100 //each chunk is 512K so this is around 2.5M of memory
 )
 
-type Cache struct {
+type DiskBuffer struct {
 	cache   gcache.Cache
-	evict   CacheEvict
+	evict   BufferEvict
 	maxSize int
 	cancel  context.CancelFunc
 }
 
-type CacheEvict func(hash zerodisk.Hash, content []byte)
+type BufferEvict func(hash zerodisk.Hash, content []byte)
 
-//NewCache create a new buffer cache
-func NewCache(evict CacheEvict, expiration, cleanup int64, maxSize int) *Cache {
+//NewDiskBuffer create a new buffer cache
+func NewDiskBuffer(evict BufferEvict, expiration, cleanup int64, maxSize int) *DiskBuffer {
 	if expiration == 0 {
 		expiration = cacheDefaultExpiration
 	}
@@ -34,16 +33,16 @@ func NewCache(evict CacheEvict, expiration, cleanup int64, maxSize int) *Cache {
 		cleanup = int64(math.Min(float64(expiration), cacheDefaultCleanup))
 	}
 
-	if maxSize == 0 {
-		maxSize = cacheDefaultMaxSize
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 
-	c := &Cache{
+	c := &DiskBuffer{
 		evict:   evict,
 		maxSize: maxSize,
 		cancel:  cancel,
+	}
+
+	if maxSize == 0 {
+		return c
 	}
 
 	c.cache = gcache.New(maxSize).LRU().
@@ -57,7 +56,7 @@ func NewCache(evict CacheEvict, expiration, cleanup int64, maxSize int) *Cache {
 	return c
 }
 
-func (c *Cache) flusher(ctx context.Context, d time.Duration) {
+func (c *DiskBuffer) flusher(ctx context.Context, d time.Duration) {
 	for {
 		select {
 		case <-time.After(d):
@@ -72,22 +71,32 @@ func (c *Cache) flusher(ctx context.Context, d time.Duration) {
 	}
 }
 
-func (c *Cache) Flush() {
-	c.cache.Purge()
+func (c *DiskBuffer) Flush() {
+	if c.cache != nil {
+		c.cache.Purge()
+	}
 }
 
-func (c *Cache) onEvict(key, value interface{}) {
+func (c *DiskBuffer) onEvict(key, value interface{}) {
 	if c.evict == nil {
 		return
 	}
 	c.evict(zerodisk.Hash(key.(string)), value.([]byte))
 }
 
-func (c *Cache) Set(hash zerodisk.Hash, content []byte) {
-	c.cache.Set(string(hash), content)
+func (c *DiskBuffer) Set(hash zerodisk.Hash, content []byte) {
+	if c.cache == nil {
+		c.evict(hash, content)
+	} else {
+		c.cache.Set(string(hash), content)
+	}
 }
 
-func (c *Cache) Get(hash zerodisk.Hash) ([]byte, bool) {
+func (c *DiskBuffer) Get(hash zerodisk.Hash) ([]byte, bool) {
+	if c.cache == nil {
+		return nil, false
+	}
+
 	data, err := c.cache.Get(string(hash))
 	if err != nil {
 		return nil, false
@@ -96,11 +105,11 @@ func (c *Cache) Get(hash zerodisk.Hash) ([]byte, bool) {
 	return data.([]byte), true
 }
 
-func (c *Cache) Count() int {
+func (c *DiskBuffer) Count() int {
 	return c.cache.Len()
 }
 
-func (c *Cache) Close() {
+func (c *DiskBuffer) Close() {
 	c.cancel()
 	c.Flush()
 }

@@ -22,7 +22,7 @@ func TestDedupedBackendReadWrite(t *testing.T) {
 	defer cluster.Close()
 
 	storage, err := storage.Deduped(
-		storage.BlockStorageConfig{VdiskID: vdiskID, BlockSize: blockSize, LBACacheLimit: ardb.DefaultLBACacheLimit, BufferSize: 10},
+		storage.BlockStorageConfig{VdiskID: vdiskID, BlockSize: blockSize, LBACacheLimit: ardb.DefaultLBACacheLimit, BufferSize: 100},
 		cluster, nil)
 	if err != nil || storage == nil {
 		t.Fatalf("storage could not be created: %v", err)

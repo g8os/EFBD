@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"github.com/stretchr/testify/assert"
+	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/log"
 	"sync"
 	"sync/atomic"
@@ -14,7 +15,7 @@ func TestPool(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	var done int32
-	work := func(in interface{}) interface{} {
+	work := func(_ zerodisk.Hash, _ []byte) error {
 		select {
 		case <-ctx.Done():
 		}
@@ -23,7 +24,7 @@ func TestPool(t *testing.T) {
 		return nil
 	}
 
-	p := &Pool{
+	p := &Flusher{
 		Workers: 5,
 		Work:    work,
 	}
@@ -37,7 +38,7 @@ func TestPool(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			wg.Done()
-			if err := p.Do(i, nil); err != nil {
+			if err := p.Commit(nil, nil, nil); err != nil {
 				t.Fatal(err)
 			}
 		}(i)
@@ -55,7 +56,7 @@ func TestPool(t *testing.T) {
 		t.Fatal()
 	}
 
-	if err := p.Do(200, nil); err == nil {
+	if err := p.Commit(nil, nil, nil); err == nil {
 		t.Fatal("expected err")
 	}
 }

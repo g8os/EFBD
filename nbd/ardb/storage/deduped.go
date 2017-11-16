@@ -37,20 +37,15 @@ func Deduped(cfg BlockStorageConfig, cluster, templateCluster ardb.StorageCluste
 		lba:             vlba,
 	}
 
-	dedupedStorage.wpool = Pool{
+	dedupedStorage.flusher = Flusher{
 		Work: dedupedStorage.commitBlock,
 	}
 
-	if err := dedupedStorage.wpool.Open(); err != nil {
+	if err := dedupedStorage.flusher.Open(); err != nil {
 		return nil, err
 	}
 
-	bufSize := cfg.BufferSize
-	if bufSize <= 0 {
-		bufSize = int(CacheSize / cfg.BlockSize)
-	}
-
-	dedupedStorage.cache = NewCache(dedupedStorage.evictCache, cfg.BufferExpiry, cfg.BufferCleanup, bufSize)
+	dedupedStorage.cache = NewDiskBuffer(dedupedStorage.evictCache, cfg.BufferExpiry, cfg.BufferCleanup, cfg.BufferSize)
 
 	// getContent is ALWAYS defined,
 	// but the actual function used depends on
@@ -78,13 +73,8 @@ type dedupedStorage struct {
 	templateCluster ardb.StorageCluster  // used to interact with the ARDB (StorageEngine) Template Cluster
 	lba             *lba.LBA             // the LBA used to get/set/modify the metadata (content hashes)
 	getContent      dedupedContentGetter // getContent function used to get content, is always defined
-	cache           *Cache               // write cache
-	wpool           Pool                 // writer pool
-}
-
-type writeRequest struct {
-	hash    zerodisk.Hash
-	content []byte
+	cache           *DiskBuffer          // write cache
+	flusher         Flusher              // flushers pool
 }
 
 // used to provide different content getters based on the vdisk properties
@@ -190,19 +180,14 @@ func (ds *dedupedStorage) getPrimaryOrTemplateContent(hash zerodisk.Hash) (conte
 	return
 }
 
-func (ds *dedupedStorage) commitBlock(in interface{}) interface{} {
-	request := in.(*writeRequest)
-	hash := request.hash
-	cmd := ardb.Command(command.Set, hash.Bytes(), request.content)
-	if err := ardb.Error(ds.cluster.DoFor(int64(hash[0]), cmd)); err != nil {
-		log.Errorf("couldn't store content in primary/slave storage: %s", err.Error())
-	}
-
-	return nil
+func (ds *dedupedStorage) commitBlock(hash zerodisk.Hash, content []byte) error {
+	cmd := ardb.Command(command.Set, hash.Bytes(), content)
+	return ardb.Error(ds.cluster.DoFor(int64(hash[0]), cmd))
 }
 
 func (ds *dedupedStorage) evictCache(hash zerodisk.Hash, content []byte) {
-	if err := ds.wpool.Do(&writeRequest{hash: hash, content: content}, nil); err != nil {
+	//todo, callback should handle the error
+	if err := ds.flusher.Commit(hash, content, nil); err != nil {
 		log.Errorf("couldn't store content in primary/slave storage: %s", err.Error())
 	}
 }
@@ -216,7 +201,7 @@ func (ds *dedupedStorage) setContent(hash zerodisk.Hash, content []byte) {
 // Close implements BlockStorage.Close
 func (ds *dedupedStorage) Close() error {
 	ds.cache.Close()
-	return ds.wpool.Close()
+	return ds.flusher.Close()
 }
 
 // dedupedVdiskExists checks if a deduped vdisks exists on a given cluster

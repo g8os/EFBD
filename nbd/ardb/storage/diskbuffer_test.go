@@ -8,13 +8,13 @@ import (
 	"time"
 )
 
-func TestCacheSizeLimit(t *testing.T) {
+func TestDiskBufferSizeLimit(t *testing.T) {
 	var flushed int
 	evict := func(h zerodisk.Hash, block []byte) {
 		flushed++
 	}
 
-	cache := NewCache(evict, 0, 0, 5)
+	cache := NewDiskBuffer(evict, 0, 0, 5)
 
 	for i := 0; i < 10; i++ {
 		key := fmt.Sprint(i)
@@ -30,10 +30,10 @@ func TestCacheSizeLimit(t *testing.T) {
 	}
 }
 
-func TestCacheTimeLimit(t *testing.T) {
+func TestDiskBufferTimeLimit(t *testing.T) {
 	key := zerodisk.Hash("test-key")
 
-	cache := NewCache(nil, 2, 0, 5)
+	cache := NewDiskBuffer(nil, 2, 0, 5)
 
 	cache.Set(key, nil)
 
@@ -44,8 +44,8 @@ func TestCacheTimeLimit(t *testing.T) {
 	}
 }
 
-func TestCacheGet(t *testing.T) {
-	cache := NewCache(nil, 0, 0, 0)
+func TestDiskBufferGet(t *testing.T) {
+	cache := NewDiskBuffer(nil, 0, 0, 5)
 
 	key := zerodisk.Hash("test-key")
 	data := []byte("hello world")
@@ -57,6 +57,22 @@ func TestCacheGet(t *testing.T) {
 	}
 
 	if ok := assert.Equal(t, data, value); !ok {
+		t.Fatal()
+	}
+}
+
+func TestDiskBufferZeroSize(t *testing.T) {
+	count := 0
+	cb := func(h zerodisk.Hash, c []byte) {
+		count++
+	}
+
+	cache := NewDiskBuffer(cb, 0, 0, 0)
+	for i := 0; i < 10; i++ {
+		cache.Set(zerodisk.Hash("test"), nil)
+	}
+
+	if ok := assert.Equal(t, 10, count); !ok {
 		t.Fatal()
 	}
 }

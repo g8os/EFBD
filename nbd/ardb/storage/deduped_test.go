@@ -86,7 +86,8 @@ func TestDedupedContent(t *testing.T) {
 	cluster := redisstub.NewUniCluster(false)
 	defer cluster.Close()
 
-	storage, err := Deduped(BlockStorageConfig{VdiskID: vdiskID, BlockSize: 8, LBACacheLimit: ardb.DefaultLBACacheLimit}, cluster, nil)
+	storage, err := Deduped(BlockStorageConfig{VdiskID: vdiskID, BlockSize: 8, LBACacheLimit: ardb.DefaultLBACacheLimit, BufferSize: 100},
+		cluster, nil)
 	if err != nil || storage == nil {
 		t.Fatalf("storage could not be created: %v", err)
 	}
@@ -102,7 +103,7 @@ func TestDedupedContentForceFlush(t *testing.T) {
 	cluster := redisstub.NewUniCluster(false)
 	defer cluster.Close()
 
-	storage, err := Deduped(BlockStorageConfig{VdiskID: vdiskID, BlockSize: 8, LBACacheLimit: ardb.DefaultLBACacheLimit}, cluster, nil)
+	storage, err := Deduped(BlockStorageConfig{VdiskID: vdiskID, BlockSize: 8, LBACacheLimit: ardb.DefaultLBACacheLimit, BufferSize: 100}, cluster, nil)
 	if err != nil || storage == nil {
 		t.Fatalf("storage could not be created: %v", err)
 	}
@@ -121,7 +122,7 @@ func TestDedupedDeadlock(t *testing.T) {
 	cluster := redisstub.NewUniCluster(true)
 	defer cluster.Close()
 
-	storage, err := Deduped(BlockStorageConfig{VdiskID: vdiskID, BlockSize: blockSize, LBACacheLimit: ardb.DefaultLBACacheLimit}, cluster, nil)
+	storage, err := Deduped(BlockStorageConfig{VdiskID: vdiskID, BlockSize: blockSize, LBACacheLimit: ardb.DefaultLBACacheLimit, BufferSize: 100}, cluster, nil)
 	if err != nil || storage == nil {
 		t.Fatalf("storage could not be created: %v", err)
 	}
@@ -142,7 +143,7 @@ func TestGetPrimaryOrTemplateContent(t *testing.T) {
 	defer clusterA.Close()
 
 	storageA, err := Deduped(
-		BlockStorageConfig{VdiskID: vdiskIDA, BlockSize: 8, LBACacheLimit: ardb.DefaultLBACacheLimit},
+		BlockStorageConfig{VdiskID: vdiskIDA, BlockSize: 8, LBACacheLimit: ardb.DefaultLBACacheLimit, BufferSize: 100},
 		clusterA, ardb.ErrorCluster{Error: ardb.ErrNoServersAvailable})
 	if err != nil || storageA == nil {
 		t.Fatalf("storageA could not be created: %v", err)
@@ -152,7 +153,7 @@ func TestGetPrimaryOrTemplateContent(t *testing.T) {
 	defer clusterB.Close()
 
 	storageB, err := Deduped(
-		BlockStorageConfig{VdiskID: vdiskIDB, BlockSize: 8, LBACacheLimit: ardb.DefaultLBACacheLimit},
+		BlockStorageConfig{VdiskID: vdiskIDB, BlockSize: 8, LBACacheLimit: ardb.DefaultLBACacheLimit, BufferSize: 100},
 		clusterB, clusterA)
 	if err != nil || storageB == nil {
 		t.Fatalf("storageB could not be created: %v", err)
@@ -328,7 +329,7 @@ func TestDedupedStorageTemplateServerDown(t *testing.T) {
 	defer clusterA.Close()
 
 	storageA, err := Deduped(
-		BlockStorageConfig{VdiskID: vdiskIDA, BlockSize: blockSize, LBACacheLimit: ardb.DefaultLBACacheLimit},
+		BlockStorageConfig{VdiskID: vdiskIDA, BlockSize: blockSize, LBACacheLimit: ardb.DefaultLBACacheLimit, BufferSize: 100},
 		clusterA, nil)
 	if err != nil || storageA == nil {
 		t.Fatalf("storageA could not be created: %v", err)
@@ -338,7 +339,7 @@ func TestDedupedStorageTemplateServerDown(t *testing.T) {
 	defer clusterB.Close()
 
 	storageB, err := Deduped(
-		BlockStorageConfig{VdiskID: vdiskIDB, BlockSize: blockSize, LBACacheLimit: ardb.DefaultLBACacheLimit},
+		BlockStorageConfig{VdiskID: vdiskIDB, BlockSize: blockSize, LBACacheLimit: ardb.DefaultLBACacheLimit, BufferSize: 100},
 		clusterB, clusterA)
 	if err != nil || storageB == nil {
 		t.Fatalf("storageB could not be created: %v", err)
@@ -481,7 +482,7 @@ func TestListDedupedBlockIndices(t *testing.T) {
 	defer cluster.Close()
 
 	storage, err := Deduped(
-		BlockStorageConfig{VdiskID: vdiskID, BlockSize: blockSize, LBACacheLimit: ardb.DefaultLBACacheLimit},
+		BlockStorageConfig{VdiskID: vdiskID, BlockSize: blockSize, LBACacheLimit: ardb.DefaultLBACacheLimit, BufferSize: 100},
 		cluster, nil)
 	if err != nil || storage == nil {
 		t.Fatalf("storage could not be created: %v", err)
