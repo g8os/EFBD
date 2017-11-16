@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/zero-os/0-Disk/config"
@@ -146,6 +147,9 @@ type tlogStorage struct {
 	tlogReady        bool
 	tlogNotReadyBuff []writeOp
 	cancel           context.CancelFunc
+
+	// true if the underlying storage is failed
+	storageFailed bool
 }
 
 type transaction struct {
@@ -172,6 +176,13 @@ func (tls *tlogStorage) SetBlock(blockIndex int64, content []byte) error {
 
 func (tls *tlogStorage) set(blockIndex int64, content []byte) error {
 	var op uint8
+
+	tls.storageMux.Lock()
+	if tls.storageFailed {
+		tls.storageMux.Unlock()
+		return syscall.EIO
+	}
+	tls.storageMux.Unlock()
 
 	// define tlog opcode, content and length
 	if content == nil {
@@ -331,6 +342,10 @@ func (tls *tlogStorage) Flush() error {
 	// flush actual storage
 	tls.storageMux.Lock()
 	defer tls.storageMux.Unlock()
+
+	if tls.storageFailed {
+		return syscall.EIO
+	}
 
 	err := tls.storage.Flush()
 	if err != nil {
@@ -520,11 +535,35 @@ func (tls *tlogStorage) flusher(ctx context.Context) {
 	for {
 		select {
 		case seqs := <-tls.toFlushCh:
-			err := tls.flushCachedContent(seqs)
-			if err != nil {
-				panic(errors.Wrapf(err,
-					"failed to write cached content into storage for vdisk %s: %s",
-					tls.vdiskID))
+			for len(seqs) > 0 {
+				unflushedSeqs, failedEntry, err := tls.flushCachedContent(seqs)
+				if err == nil {
+					break
+				}
+
+				// handle error:
+				// - mark the disk as failed
+				// - reinsert transaction into cache: done by flushCachedContent
+				// - wait for the storage to become available again
+				// No need to report to orchestrator.
+				// it already done by storage level.
+				log.Errorf("failed to write cached content into storage for vdisk %s: %s",
+					tls.vdiskID, err.Error())
+
+				tls.storageMux.Lock()
+				tls.storageFailed = true
+				tls.storageMux.Unlock()
+
+				tls.waitStorageHealth(ctx, *failedEntry)
+
+				// make sure the context is not done yet
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+
+				seqs = unflushedSeqs
 			}
 
 		case <-ctx.Done():
@@ -533,6 +572,29 @@ func (tls *tlogStorage) flusher(ctx context.Context) {
 		}
 	}
 
+}
+
+// wait for the storage to be healthy again.
+// it works by doing write operation periodically
+// it considered healty if the operation succeed
+func (tls *tlogStorage) waitStorageHealth(ctx context.Context, entry sequenceCacheEntry) {
+	for {
+		select {
+		case <-time.After(time.Second):
+			// test write
+			if err := tls.flushAContent(entry.blockIndex, entry.data); err != nil {
+				//log.Infof("waitStorageHealth : still failed:%v", err)
+				continue
+			}
+			log.Info("waitStorageHealth : OK!!!")
+			tls.storageMux.Lock()
+			tls.storageFailed = false
+			tls.storageMux.Unlock()
+			return
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 func (tls *tlogStorage) tlogRPCReloader(ctx context.Context, vdiskID string, source config.Source) (*config.TlogClusterConfig, error) {
@@ -682,7 +744,7 @@ func (tls *tlogStorage) tlogRPCReloader(ctx context.Context, vdiskID string, sou
 	return nil
 }*/
 
-func (tls *tlogStorage) flushCachedContent(sequences []uint64) error {
+func (tls *tlogStorage) flushCachedContent(sequences []uint64) ([]uint64, *sequenceCacheEntry, error) {
 	defer func() {
 		tls.cacheEmptyCond.L.Lock()
 		if tls.cache.Empty() {
@@ -692,7 +754,7 @@ func (tls *tlogStorage) flushCachedContent(sequences []uint64) error {
 	}()
 
 	if len(sequences) == 0 {
-		return nil // no work to do
+		return nil, nil, nil // no work to do
 	}
 
 	tls.storageMux.Lock()
@@ -700,31 +762,41 @@ func (tls *tlogStorage) flushCachedContent(sequences []uint64) error {
 
 	elements := tls.cache.Evict(sequences...)
 
-	var errs flushErrors
-	for blockIndex, data := range elements {
-		err := tls.flushAContent(blockIndex, data)
+	var (
+		err        error
+		idx        int
+		cacheEntry sequenceCacheEntry
+	)
+	for idx, cacheEntry = range elements {
+		err = tls.flushAContent(cacheEntry.blockIndex, cacheEntry.data)
 		if err != nil {
-			errs = append(errs, err)
-		}
-	}
+			tls.metadata.LastFlushedSequence = cacheEntry.seq - 1
 
-	if len(errs) > 0 {
-		return errs
+			var unflushedSequences []uint64
+			failedEntry := &cacheEntry
+
+			// reinsert unflushed elements
+			for i := idx; i < len(elements); i++ {
+				cacheEntry = elements[i]
+				tls.cache.Add(cacheEntry.seq, cacheEntry.blockIndex, cacheEntry.data)
+
+				unflushedSequences = append(unflushedSequences, cacheEntry.seq)
+			}
+			return unflushedSequences, failedEntry, err
+		}
 	}
 
 	// the sequences are given in ordered form,
 	// thus we can simply try to set the last given sequence.
 	tls.metadata.LastFlushedSequence = sequences[len(sequences)-1]
-	return nil
+	return nil, nil, nil
 }
 
 func (tls *tlogStorage) flushAContent(blockIndex int64, data []byte) error {
-	flush := func() error {
-		if data == nil {
-			return tls.storage.DeleteBlock(blockIndex)
-		}
-		return tls.storage.SetBlock(blockIndex, data)
+	if data == nil {
+		return tls.storage.DeleteBlock(blockIndex)
 	}
+	return tls.storage.SetBlock(blockIndex, data)
 
 	/*
 		// SWITCH ARDB SLAVE DISABLED SINCE MILESTONE 6
@@ -742,7 +814,6 @@ func (tls *tlogStorage) flushAContent(blockIndex int64, data []byte) error {
 		}
 	*/
 
-	return flush()
 }
 
 type flushErrors []error
@@ -823,6 +894,11 @@ type tlogClient interface {
 	WaitReady()
 	Close() error
 }
+type sequenceCacheEntry struct {
+	seq        uint64
+	blockIndex int64
+	data       []byte
+}
 
 // sequenceCache, is used to cache transactions, linked to their sequenceIndex,
 // which are still being processed by the tlogServer, and thus awaiting to be flushed.
@@ -833,7 +909,7 @@ type sequenceCache interface {
 	// Get the latest version of a transaction from the cache
 	Get(blockIndex int64) ([]byte, bool)
 	// Evict all transactions for the given sequences
-	Evict(sequences ...uint64) map[int64][]byte
+	Evict(sequences ...uint64) []sequenceCacheEntry
 	// Empty returns true if the cache has no cached transactions
 	Empty() bool
 }
@@ -907,14 +983,18 @@ func (sq *inMemorySequenceCache) Get(blockIndex int64) ([]byte, bool) {
 }
 
 // Evict implements sequenceCache.Evict
-func (sq *inMemorySequenceCache) Evict(sequences ...uint64) (elements map[int64][]byte) {
+func (sq *inMemorySequenceCache) Evict(sequences ...uint64) []sequenceCacheEntry {
 	sq.mux.Lock()
 	defer sq.mux.Unlock()
 
-	elements = make(map[int64][]byte)
+	tmpElements := make([]sequenceCacheEntry, 0, len(sequences))
+
+	// map of blockIndex to sequence
+	// we use it to filter out unneeded sequence
+	elementsMap := make(map[int64]uint64)
 
 	var ok bool
-	var element []byte
+	var content []byte
 	var dh *dataHistory
 	var blockIndex int64
 
@@ -936,15 +1016,20 @@ func (sq *inMemorySequenceCache) Evict(sequences ...uint64) (elements map[int64]
 			continue
 		}
 
-		element, ok = dh.Trim(sequenceIndex)
+		content, ok = dh.Trim(sequenceIndex)
 		if !ok {
 			// could be because sequence was already deleted
 			// which is possible due to a previous mass-trim
 			continue
 		}
 
+		elementsMap[blockIndex] = sequenceIndex
 		// add the found element
-		elements[blockIndex] = element
+		tmpElements = append(tmpElements, sequenceCacheEntry{
+			blockIndex: blockIndex,
+			data:       content,
+			seq:        sequenceIndex,
+		})
 
 		// delete the history object, in case there are no values left
 		if dh.Empty() {
@@ -961,7 +1046,17 @@ func (sq *inMemorySequenceCache) Evict(sequences ...uint64) (elements map[int64]
 		}
 	}
 
-	return
+	// creates sequenceCacheEntry slice with unique block index on it
+	// so we don't repeat ardb operation
+	elements := make([]sequenceCacheEntry, 0, len(elementsMap))
+	for _, elem := range tmpElements {
+		seq, ok := elementsMap[elem.blockIndex]
+		if ok && seq == elem.seq {
+			elements = append(elements, elem)
+		}
+	}
+
+	return elements
 }
 
 // Empty implements sequenceCache.Empty
