@@ -9,7 +9,6 @@ import (
 
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
-	"github.com/zero-os/0-Disk/tlog/schema"
 	"github.com/zero-os/0-Disk/tlog/stor/embeddedserver"
 )
 
@@ -39,8 +38,14 @@ func TestStoreDelete(t *testing.T) {
 	for i := 0; i < numData; i++ {
 		data := make([]byte, lenData)
 		rand.Read(data)
+		agg, err := tlog.NewAggregation(nil, 1)
+		require.NoError(t, err)
+
 		block := encodeBlock(t, data)
-		_, err := cli.ProcessStore([]*schema.TlogBlock{block})
+		err = agg.AddBlock(block)
+		require.NoError(t, err)
+
+		_, err = cli.ProcessStoreAgg(agg)
 		require.NoError(t, err, "failed to store blocks")
 	}
 
