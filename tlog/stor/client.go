@@ -8,14 +8,9 @@ import (
 	"github.com/zero-os/0-Disk/errors"
 	"github.com/zero-os/0-Disk/log"
 	"github.com/zero-os/0-Disk/tlog"
-	"github.com/zero-os/0-Disk/tlog/schema"
 	storclient "github.com/zero-os/0-stor/client"
 	"github.com/zero-os/0-stor/client/lib/hash"
 	"github.com/zero-os/0-stor/client/meta"
-)
-
-const (
-	capnpBufLen = 4096 * 4
 )
 
 var (
@@ -46,9 +41,6 @@ type Client struct {
 	metaShards []string
 
 	hasher *hash.Hasher
-
-	// capnp buffer
-	capnpBuf []byte
 
 	metaCli *MetaClient
 	// first & last metadata key
@@ -93,7 +85,6 @@ func NewClient(conf Config) (*Client, error) {
 	cli := &Client{
 		vdiskID:          conf.VdiskID,
 		storClient:       sc,
-		capnpBuf:         make([]byte, 0, capnpBufLen),
 		hasher:           hasher,
 		metaCli:          metaCli,
 		firstMetaEtcdKey: []byte(fmt.Sprintf("tlog:%v:first_meta", conf.VdiskID)),
@@ -127,23 +118,7 @@ func NewClientFromConfigSource(confSource config.Source, vdiskID, privKey string
 	return NewClient(conf)
 }
 
-// ProcessStore processes and then stores the data to 0-stor server
-func (c *Client) ProcessStore(blocks []*schema.TlogBlock) ([]byte, error) {
-	c.mux.Lock()
-	defer c.mux.Unlock()
-
-	timestamp := tlog.TimeNowTimestamp()
-	// encode capnp
-	data, err := c.encodeCapnp(blocks, timestamp)
-	if err != nil {
-		return nil, err
-	}
-
-	lastSequence := blocks[len(blocks)-1].Sequence()
-
-	return data, c.processStoreData(data, lastSequence, timestamp)
-}
-
+// ProcessStoreAgg processes and then stores the aggregation to 0-stor server
 func (c *Client) ProcessStoreAgg(agg *tlog.Aggregation) ([]byte, error) {
 	c.mux.Lock()
 	defer c.mux.Unlock()

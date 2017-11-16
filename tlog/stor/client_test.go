@@ -40,7 +40,13 @@ func TestRoundTrip(t *testing.T) {
 
 		block := encodeBlock(t, val)
 
-		_, err := cli.ProcessStore([]*schema.TlogBlock{block})
+		agg, err := tlog.NewAggregation(nil, 1)
+		require.NoError(t, err)
+
+		err = agg.AddBlock(block)
+		require.NoError(t, err)
+
+		_, err = cli.ProcessStoreAgg(agg)
 		require.Nil(t, err)
 
 		vals = append(vals, val)
