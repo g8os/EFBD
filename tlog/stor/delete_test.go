@@ -66,6 +66,6 @@ func TestStoreDelete(t *testing.T) {
 	log.Info("make sure the generated data are not exists anymore")
 	for key := range keys {
 		_, _, err = cli.storClient.Read([]byte(key))
-		require.Error(t, err, "key = %v", key)
+		require.Errorf(t, err, "key = %v", key)
 	}
 }

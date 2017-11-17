@@ -19,6 +19,7 @@ func (vd *vdisk) watchSlaveConfig() error {
 		return nil
 	}
 	ctx, cancelFunc := context.WithCancel(vd.ctx)
+	defer cancelFunc()
 
 	// watch vdisk nbd config
 	nbdConfCh, err := config.WatchVdiskNBDConfig(ctx, vd.configSource, vd.id)

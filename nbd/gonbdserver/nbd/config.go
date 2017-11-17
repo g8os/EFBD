@@ -361,6 +361,7 @@ func RunConfig(control *Control) {
 		c, err := ParseConfig()
 		if err != nil {
 			logger.Infof("Cannot parse configuration file: %v\n", err)
+			configCancelFunc()
 			return
 		}
 
@@ -384,15 +385,19 @@ func RunConfig(control *Control) {
 		select {
 		case <-ctx.Done():
 			logger.Info("Interrupted")
+			configCancelFunc()
 			return
 		case <-intr:
 			logger.Info("Interrupt signal received")
+			configCancelFunc()
 			return
 		case <-term:
 			logger.Info("Terminate signal received")
+			configCancelFunc()
 			return
 		case <-control.quit:
 			logger.Info("Programmatic quit received")
+			configCancelFunc()
 			return
 		case <-hup:
 			logger.Info("Reload signal received; reloading configuration which will be effective for new connections")

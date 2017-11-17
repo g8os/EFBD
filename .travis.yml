@@ -26,6 +26,12 @@ jobs:
       script: TIMEOUT=10m make testrace_gonbdserver
     - stage: test
       go: 1.9
+      install: skip
+      script:
+        - go vet $(go list ./... | grep -v vendor)
+        - diff -u <(echo -n) <(gofmt -d $(find . -name "*\.go" | grep -v '\.git/' | grep -v vendor))
+    - stage: test
+      go: 1.9
       install:
         - ./scripts/install_capnp_unix.sh
       script: make testcodegen
