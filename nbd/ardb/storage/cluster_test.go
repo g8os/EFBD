@@ -184,10 +184,13 @@ func TestPrimaryServerFailsByNotification(t *testing.T) {
 	sourceClusterConfig.Servers[1].State = config.StorageServerStateOffline
 	source.SetStorageCluster(clusterID, &sourceClusterConfig)
 	waitForAsyncClusterUpdate(t, func() bool {
-		cluster.mux.RLock()
-		ok := len(cluster.servers) == 2 && cluster.servers[1].State == config.StorageServerStateOffline
-		cluster.mux.RUnlock()
-		return ok
+		if cluster.controller.ServerCount() != 2 {
+			return false
+		}
+
+		state, err := cluster.controller.ServerStateAt(1)
+		require.NoError(err)
+		return state.Config.State == config.StorageServerStateOffline
 	})
 
 	// getting all content from the 1st server should still work
@@ -234,7 +237,7 @@ func TestTemplateServerFails(t *testing.T) {
 	require.NoError(err)
 	defer cluster.Close()
 
-	templateCluster, err := NewTemplateCluster(ctx, vdiskID, source)
+	templateCluster, err := NewTemplateCluster(ctx, vdiskID, false, source)
 	require.NoError(err)
 	defer templateCluster.Close()
 
@@ -278,10 +281,11 @@ func TestTemplateServerFails(t *testing.T) {
 	// create new primary servers
 	newSlice := redisstub.NewMemoryRedisSlice(2)
 	defer newSlice.Close()
-	cluster.mux.Lock()
-	cluster.servers = newSlice.StorageClusterConfig().Servers
-	cluster.serverCount = int64(len(cluster.servers))
-	cluster.mux.Unlock()
+	pcc := cluster.controller.(*singleClusterStateController)
+	pcc.mux.Lock()
+	pcc.servers = newSlice.StorageClusterConfig().Servers
+	pcc.serverCount = int64(len(pcc.servers))
+	pcc.mux.Unlock()
 
 	// getting all content from the 1st server should still work
 	for index := int64(0); index < blockCount; index += 2 {
@@ -327,7 +331,7 @@ func TestTemplateServerFailsByNotification(t *testing.T) {
 	require.NoError(err)
 	defer cluster.Close()
 
-	templateCluster, err := NewTemplateCluster(ctx, vdiskID, source)
+	templateCluster, err := NewTemplateCluster(ctx, vdiskID, false, source)
 	require.NoError(err)
 	defer templateCluster.Close()
 
@@ -369,19 +373,24 @@ func TestTemplateServerFailsByNotification(t *testing.T) {
 	templateClusterConfig.Servers[1].State = config.StorageServerStateOffline
 	source.SetStorageCluster(templateClusterID, &templateClusterConfig)
 	waitForAsyncClusterUpdate(t, func() bool {
-		templateCluster.mux.RLock()
-		ok := len(templateCluster.servers) == 2 && templateCluster.servers[1].State == config.StorageServerStateOffline
-		templateCluster.mux.RUnlock()
-		return ok
+		if templateCluster.controller.ServerCount() != 2 {
+			return false
+		}
+
+		state, err := templateCluster.controller.ServerStateAt(1)
+		require.NoError(err)
+		return state.Config.State == config.StorageServerStateOffline
 	})
 
 	// create new primary servers
 	newSlice := redisstub.NewMemoryRedisSlice(2)
 	defer newSlice.Close()
-	cluster.mux.Lock()
-	cluster.servers = newSlice.StorageClusterConfig().Servers
-	cluster.serverCount = int64(len(cluster.servers))
-	cluster.mux.Unlock()
+
+	pcc := cluster.controller.(*singleClusterStateController)
+	pcc.mux.Lock()
+	pcc.servers = newSlice.StorageClusterConfig().Servers
+	pcc.serverCount = int64(len(pcc.servers))
+	pcc.mux.Unlock()
 
 	// getting all content from the 1st server should still work
 	for index := int64(0); index < blockCount; index += 2 {
@@ -432,7 +441,7 @@ func TestTemplateServerRIP(t *testing.T) {
 	require.NoError(err)
 	defer cluster.Close()
 
-	templateCluster, err := NewTemplateCluster(ctx, vdiskID, source)
+	templateCluster, err := NewTemplateCluster(ctx, vdiskID, false, source)
 	require.NoError(err)
 	defer templateCluster.Close()
 
@@ -465,6 +474,10 @@ func TestTemplateServerRIP(t *testing.T) {
 	}
 }
 
+/*
+// [TODO]
+//    + Either activate these tests again, once this method is supported
+//    + or delete these tests and the underlying private test if this method is no longer required and defined
 func TestPrimaryClusterDoForAll(t *testing.T) {
 	slice := redisstub.NewMemoryRedisSlice(4)
 	defer slice.Close()
@@ -510,13 +523,14 @@ func TestTemplateClusterDoForAll(t *testing.T) {
 	cs.SetPrimaryStorageCluster(vdiskID, clusterID, nil)
 	cs.SetTemplateStorageCluster(vdiskID, clusterID, &cfg)
 
-	cluster, err := NewTemplateCluster(ctx, vdiskID, cs)
+	cluster, err := NewTemplateCluster(ctx, vdiskID, false, cs)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	testClusterDoForAll(t, cluster)
 }
+*/
 
 func testClusterDoForAll(t *testing.T, cluster ardb.StorageCluster) {
 	require := require.New(t)
