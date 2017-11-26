@@ -27,8 +27,8 @@ func TestSemiDedupedContentBasic(t *testing.T) {
 
 	func() {
 		template, err := Deduped(
-			"template", blockCount,
-			ardb.DefaultLBACacheLimit, templateCluster, nil)
+			BlockStorageConfig{VdiskID: "template", BlockSize: blockSize, LBACacheLimit: ardb.DefaultLBACacheLimit},
+			templateCluster, nil)
 		if err != nil || template == nil {
 			t.Fatalf("template storage could not be created: %v", err)
 		}
@@ -55,8 +55,8 @@ func TestSemiDedupedContentBasic(t *testing.T) {
 	copyTestMetaData(t, "template", "a", templateCluster, cluster)
 
 	storage, err := SemiDeduped(
-		"a", blockSize,
-		ardb.DefaultLBACacheLimit, cluster, templateCluster)
+		BlockStorageConfig{VdiskID: "a", BlockSize: blockSize, LBACacheLimit: ardb.DefaultLBACacheLimit},
+		cluster, templateCluster)
 	if err != nil || storage == nil {
 		t.Fatalf("creating SemiDedupedStorage failed: %v", err)
 	}

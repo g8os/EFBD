@@ -87,8 +87,8 @@ func TestGenerate(t *testing.T) {
 
 	// 1. Create block storages and fill with data
 	sourceBlockStorage, err := storage.Deduped(
-		sourceVdiskID, blockSize,
-		ardb.DefaultLBACacheLimit, cluster, nil)
+		storage.BlockStorageConfig{VdiskID: sourceVdiskID, BlockSize: blockSize, LBACacheLimit: ardb.DefaultLBACacheLimit, BufferSize: 10},
+		cluster, nil)
 	require.NoError(t, err)
 
 	contents := make(map[int64][]byte, blockCount)
@@ -131,8 +131,8 @@ func TestGenerate(t *testing.T) {
 
 	// 4. Check the replayed data
 	targetBlockStorage, err := storage.Deduped(
-		targetVdiskID, blockSize,
-		ardb.DefaultLBACacheLimit, cluster, nil)
+		storage.BlockStorageConfig{VdiskID: targetVdiskID, BlockSize: blockSize, LBACacheLimit: ardb.DefaultLBACacheLimit, BufferSize: 10},
+		cluster, nil)
 	require.NoError(t, err)
 
 	for idx, content := range contents {

@@ -77,8 +77,8 @@ func TestTlogStorageWithDeduped(t *testing.T) {
 	defer cluster.Close()
 
 	storage, err := storage.Deduped(
-		vdiskID, blockSize,
-		ardb.DefaultLBACacheLimit, cluster, nil)
+		storage.BlockStorageConfig{VdiskID: vdiskID, BlockSize: blockSize, LBACacheLimit: ardb.DefaultLBACacheLimit},
+		cluster, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -99,8 +99,8 @@ func TestTlogStorageForceFlushWithDeduped(t *testing.T) {
 	cluster := redisstub.NewUniCluster(true)
 	defer cluster.Close()
 	storage, err := storage.Deduped(
-		vdiskID, blockSize,
-		ardb.DefaultLBACacheLimit, cluster, nil)
+		storage.BlockStorageConfig{VdiskID: vdiskID, BlockSize: blockSize, LBACacheLimit: ardb.DefaultLBACacheLimit},
+		cluster, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -224,8 +224,8 @@ func TestTlogDedupedStorageReplay(t *testing.T) {
 		cluster = redisstub.NewUniCluster(true)
 
 		return storage.Deduped(
-			vdiskID, blockSize,
-			ardb.DefaultLBACacheLimit, cluster, nil)
+			storage.BlockStorageConfig{VdiskID: vdiskID, BlockSize: blockSize, LBACacheLimit: ardb.DefaultLBACacheLimit},
+			cluster, nil)
 	}
 
 	testTlogStorageReplay(t, createDedupedStorage)

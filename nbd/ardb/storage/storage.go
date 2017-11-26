@@ -44,6 +44,17 @@ type BlockStorageConfig struct {
 
 	// optional: used by (semi)deduped storage
 	LBACacheLimit int64
+
+	//Disk Buffers
+	// optional: Size (number of Blocks to keep in buffer)
+	// default to storage type
+	BufferSize int
+
+	// optional: Buffer expiry in seconds (default 10)
+	BufferExpiry int64
+
+	// optional: Buffer cleanup in seconds (default 5)
+	BufferCleanup int64
 }
 
 // Validate this BlockStorageConfig.
@@ -125,9 +136,7 @@ func NewBlockStorage(cfg BlockStorageConfig, cluster, templateCluster ardb.Stora
 	switch storageType := vdiskType.StorageType(); storageType {
 	case config.StorageDeduped:
 		return Deduped(
-			cfg.VdiskID,
-			cfg.BlockSize,
-			cfg.LBACacheLimit,
+			cfg,
 			cluster,
 			templateCluster)
 
@@ -141,9 +150,7 @@ func NewBlockStorage(cfg BlockStorageConfig, cluster, templateCluster ardb.Stora
 
 	case config.StorageSemiDeduped:
 		return SemiDeduped(
-			cfg.VdiskID,
-			cfg.BlockSize,
-			cfg.LBACacheLimit,
+			cfg,
 			cluster,
 			templateCluster)
 

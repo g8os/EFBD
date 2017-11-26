@@ -26,6 +26,12 @@
   revision = "4c0e84591b9aa9e6dcfdf3e020114cd81f89d5f9"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/bluele/gcache"
+  packages = ["."]
+  revision = "472614239ac7e5bc6461e237c798a6ebd5aff8c1"
+
+[[projects]]
   name = "github.com/boltdb/bolt"
   packages = ["."]
   revision = "2f1ce7a837dcb8da3ec595b1dac9d0632f0f99e8"
@@ -111,8 +117,8 @@
 [[projects]]
   name = "github.com/go-stack/stack"
   packages = ["."]
-  revision = "817915b46b97fd7bb80e8ab6b69f01a53ac3eebf"
-  version = "v1.6.0"
+  revision = "259ab82a6cad3992b4e21ff5cac294ccb06474bc"
+  version = "v1.7.0"
 
 [[projects]]
   name = "github.com/gogo/protobuf"
@@ -446,6 +452,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "c78bf3de753ff7fea25abac7c3eb6d0e5c7a52d09f4ea51ccbb0098ad227ea9e"
+  inputs-digest = "b05e547bf81632d2aa1f375b0bb847da7787ccec0061ea4d5f792764467199f0"
   solver-name = "gps-cdcl"
   solver-version = 1

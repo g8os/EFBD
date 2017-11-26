@@ -252,14 +252,14 @@ func testBlockStorageDeadlock(t *testing.T, blockSize, blockCount int64, storage
 		for i := int64(0); i < blockCount; i++ {
 			wg.Add(1)
 
-			preContent := make([]byte, blockSize)
-			rand.Read(preContent)
+			content := make([]byte, blockSize)
+			rand.Read(content)
 
-			go func(blockIndex int64) {
+			go func(blockIndex int64, content []byte) {
 				defer wg.Done()
 
 				// set content
-				if err := storage.SetBlock(blockIndex, preContent); err != nil {
+				if err := storage.SetBlock(blockIndex, content); err != nil {
 					t.Fatal(time, blockIndex, err)
 					return
 				}
@@ -272,10 +272,10 @@ func testBlockStorageDeadlock(t *testing.T, blockSize, blockCount int64, storage
 				}
 
 				// make sure the postContent (GET) equals the preContent (SET)
-				if bytes.Compare(preContent, postContent) != 0 {
-					t.Fatal(time, blockIndex, "unexpected content received", preContent, postContent)
+				if bytes.Compare(content, postContent) != 0 {
+					t.Error(time, blockIndex, "unexpected content received", content, postContent)
 				}
-			}(i)
+			}(i, content)
 		}
 
 		wg.Wait()
