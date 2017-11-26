@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/config"
@@ -155,12 +156,8 @@ func exportBS(ctx context.Context, src storage.BlockStorage, blockIndices []int6
 		return err
 	}
 
-	errCh := make(chan error)
-	defer close(errCh)
-
-	// setup the context that we'll use for all worker goroutines
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	// setup the errgroup context that we'll use for all worker goroutines
+	group, ctx := errgroup.WithContext(ctx)
 
 	// used to send all the indices to, one by one
 	indexCh := make(chan sequenceBlockIndexPair, cfg.JobCount) // gets closed by index fetch goroutine
@@ -168,51 +165,33 @@ func exportBS(ctx context.Context, src storage.BlockStorage, blockIndices []int6
 	// so that they can be sent to the inputCh in an ordered fashion
 	glueCh := make(chan exportGlueInput, cfg.JobCount) // gets closed when all block storage content is fetched
 	// used as input for the compress->encrypt->write pipelines (goroutines)
-	inputCh := make(chan blockIndexPair, cfg.JobCount) // gets closed by glue goroutine
-
-	sendErr := func(err error) {
-		log.Errorf("an error occured while exporting: %v", err)
-		select {
-		case <-ctx.Done():
-		case errCh <- err:
-		default:
-		}
-	}
+	inputCh := make(chan blockIndexPair, cfg.JobCount) // gets closed by glue goroutine)
 
 	// launch index sender,
 	// such that we can fetch source blocks in parallel
-	go func() {
+	group.Go(func() error {
 		log.Debug("starting export's source-block's index sender")
 		defer close(indexCh)
 		defer log.Debug("stopping export's source-block's index sender")
 
+		var pair sequenceBlockIndexPair
 		for sequenceIndex, blockIndex := range blockIndices {
-			indexCh <- sequenceBlockIndexPair{
-				SequenceIndex: int64(sequenceIndex),
-				BlockIndex:    blockIndex,
+			pair.SequenceIndex = int64(sequenceIndex)
+			pair.BlockIndex = blockIndex
+			select {
+			case indexCh <- pair:
+			case <-ctx.Done():
+				return nil
 			}
 		}
-	}()
-
-	var exportErr error
-	// err ch used to
-	go func() {
-		select {
-		case <-ctx.Done():
-		case exportErr = <-errCh:
-			cancel() // stop all other goroutines
-		}
-	}()
-
-	// input wait group
-	var iwg sync.WaitGroup
+		return nil
+	})
 
 	// launch all fetchers, so it can start fetching blocks
-	iwg.Add(cfg.JobCount)
 	for i := 0; i < cfg.JobCount; i++ {
-		go func(id int) {
+		id := i
+		group.Go(func() error {
 			log.Debug("starting export's block fetcher #", id)
-			defer iwg.Done()
 
 			var err error
 			defer func() {
@@ -229,41 +208,46 @@ func exportBS(ctx context.Context, src storage.BlockStorage, blockIndices []int6
 
 			for {
 				select {
-				case <-ctx.Done():
-					return
-
 				case input, open = <-indexCh:
 					if !open {
-						return
+						// when indexCh is closed,
+						// send a last item over the channel,
+						// as to indicate this goroutine is finished
+						select {
+						case glueCh <- exportGlueInput{BlockIndex: -1}:
+						case <-ctx.Done():
+						}
+						return nil
 					}
 
 					output.BlockData, err = src.GetBlock(input.BlockIndex)
 					if err != nil {
-						sendErr(err)
-						return
+						return err
 					}
 
 					output.BlockIndex = input.BlockIndex
 					output.SequenceIndex = input.SequenceIndex
 
 					select {
-					case <-ctx.Done():
-						return
 					case glueCh <- output:
+					case <-ctx.Done():
+						return nil
 					}
+
+				case <-ctx.Done():
+					return nil
 				}
 			}
-		}(i)
+		})
 	}
 
 	// launch glue goroutine,
 	// which sizes all blocks to the correct size,
 	// and which ensures all blocks are in order as indicated by the blockIndices input slice.
-	go func() {
+	group.Go(func() (err error) {
 		log.Debug("starting export's glue goroutine")
 		defer close(inputCh)
 
-		var err error
 		defer func() {
 			if err != nil {
 				log.Errorf("stopping export's glue goroutine with error: %v", err)
@@ -284,33 +268,30 @@ func exportBS(ctx context.Context, src storage.BlockStorage, blockIndices []int6
 			// ensure that at the end of this function,
 			// the block fetcher is empty
 			_, err = obf.FetchBlock()
-			if err == nil || errors.Cause(err) != io.EOF {
-				err = errors.New("export glue gouroutine's block fetcher still has unprocessed content left")
-				sendErr(err)
-				return
+			if errors.Cause(err) == io.EOF {
+				err = nil
+			} else if err != nil {
+				err = errors.Wrap(err, "export glue gouroutine's block fetcher still has unprocessed content left")
 			}
-			err = nil
 		}()
 
+		var closedExportChannels int
 		var input exportGlueInput
 		var pair *blockIndexPair
 		var open bool
 
 		for {
 			select {
-			case <-ctx.Done():
 			case input, open = <-glueCh:
-				if open {
+				if open && input.BlockIndex != -1 {
 					if input.SequenceIndex < sbf.scursor {
 						// NOTE: this should never happen,
 						//       as it indicates a bug in the code
-						err = errors.Newf(
+						panic(errors.Newf(
 							"unexpected sequence index returned, received %d, which is lower then %d",
 							input.SequenceIndex,
 							sbf.scursor,
-						)
-						sendErr(err)
-						return
+						))
 					}
 
 					// cache the current received output
@@ -323,6 +304,12 @@ func exportBS(ctx context.Context, src storage.BlockStorage, blockIndices []int6
 						// we received an out-of-order index,
 						// so wait for the next one
 						continue
+					}
+				} else if input.BlockIndex == -1 {
+					closedExportChannels++
+					if closedExportChannels >= cfg.JobCount {
+						sbf.streamStopped = true
+						open = false
 					}
 				} else {
 					sbf.streamStopped = true
@@ -340,30 +327,28 @@ func exportBS(ctx context.Context, src storage.BlockStorage, blockIndices []int6
 							break // we have nothing more to send (for now)
 						}
 						// unknown error, quit!
-						sendErr(err)
-						return
+						return err
 					}
 
 					// send block for storage
 					select {
-					case <-ctx.Done():
-						return
 					case inputCh <- *pair:
+					case <-ctx.Done():
+						return nil
 					}
 				}
 
 				if !open {
-					return
+					return nil
 				}
+
+			case <-ctx.Done():
+				return nil
 			}
 		}
-	}()
-
-	// output wait group
-	var owg sync.WaitGroup
+	})
 
 	// launch all pipeline workers
-	owg.Add(cfg.JobCount)
 	for i := 0; i < cfg.JobCount; i++ {
 		compressor, err := NewCompressor(cfg.CompressionType)
 		if err != nil {
@@ -392,8 +377,8 @@ func exportBS(ctx context.Context, src storage.BlockStorage, blockIndices []int6
 		}
 
 		// launch worker
-		go func(id int) {
-			defer owg.Done()
+		id := i
+		group.Go(func() error {
 			log.Debugf("starting export pipeline worker #%d", id)
 
 			var err error
@@ -410,30 +395,25 @@ func exportBS(ctx context.Context, src storage.BlockStorage, blockIndices []int6
 
 			for {
 				select {
-				case <-ctx.Done():
-					return
-
 				case input, open = <-inputCh:
 					if !open {
-						return
+						return nil
 					}
 
 					err = pipeline.WriteBlock(input.Index, input.Block)
 					if err != nil {
-						sendErr(errors.Wrap(err, "error while processing block"))
-						return
+						return errors.Wrap(err, "error while processing block")
 					}
+
+				case <-ctx.Done():
+					return nil
 				}
 			}
-		}(i)
+		})
 	}
 
-	// wait until all blocks have been fetched and backed up
-	iwg.Wait()
-	close(glueCh)
-	owg.Wait()
-
 	// check if error was thrown, if so, quit with an error immediately
+	exportErr := group.Wait()
 	if exportErr != nil {
 		return exportErr
 	}

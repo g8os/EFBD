@@ -6,7 +6,8 @@ import (
 	"io"
 	"io/ioutil"
 	"sort"
-	"sync"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/zero-os/0-Disk"
 	"github.com/zero-os/0-Disk/config"
@@ -75,41 +76,14 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 		return err
 	}
 
-	errCh := make(chan error)
-	defer close(errCh)
-
-	// setup the context that we'll use for all worker goroutines
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	// setup the errgroup and context that we'll use for all worker goroutines
+	group, ctx := errgroup.WithContext(ctx)
 
 	inputCh := make(chan importInput, cfg.JobCount)    // gets closed by fetcher goroutine
 	glueCh := make(chan importOutput, cfg.JobCount)    // gets closed when all blocks have been fetched and sent for storage
 	storeCh := make(chan blockIndexPair, cfg.JobCount) // gets closed when all blocks when been stored
 
-	sendErr := func(err error) {
-		log.Errorf("an error occured while importing: %v", err)
-		select {
-		case <-ctx.Done():
-		case errCh <- err:
-		default:
-		}
-	}
-
-	var importErr error
-	// err ch used to
-	go func() {
-		select {
-		case <-ctx.Done():
-		case importErr = <-errCh:
-			cancel() // stop all other goroutines
-		}
-	}()
-
-	var wg sync.WaitGroup
-	var owg sync.WaitGroup
-
 	// launch all workers
-	wg.Add(cfg.JobCount)
 	for i := 0; i < cfg.JobCount; i++ {
 		decompressor, err := NewDecompressor(cfg.CompressionType)
 		if err != nil {
@@ -137,9 +111,8 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 		}
 
 		// launch worker
-		go func(id int) {
-			defer wg.Done()
-
+		id := i
+		group.Go(func() error {
 			log.Debugf("starting import worker #%d", id)
 
 			var input importInput
@@ -156,19 +129,22 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 
 			for {
 				select {
-				case <-ctx.Done():
-					return
-
 				case input, open = <-inputCh:
 					if !open {
-						return
+						// if inputCh is closed,
+						// let's return a last object,
+						// to indicate this goroutine (worker) is finished
+						select {
+						case glueCh <- importOutput{BlockIndex: -1}:
+						case <-ctx.Done():
+						}
+						return nil
 					}
 
 					// read, decrypt and decompress the input block hash
 					block, err = pipeline.ReadBlock(input.BlockIndex, input.BlockHash)
 					if err != nil {
-						sendErr(err)
-						return
+						return err
 					}
 
 					// send block to storage goroutine (its final destination)
@@ -178,22 +154,24 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 						SequenceIndex: input.SequenceIndex,
 					}
 					select {
-					case <-ctx.Done():
-						return
 					case glueCh <- output:
+					case <-ctx.Done():
+						return nil
 					}
+
+				case <-ctx.Done():
+					return nil
 				}
 			}
-		}(i)
+		})
 	}
 
 	// launch storage goroutines
-	owg.Add(cfg.JobCount)
 	for i := 0; i < cfg.JobCount; i++ {
-		go func(id int64) {
+		id := int64(i)
+		group.Go(func() error {
 			log.Debug("starting importer's output worker #", id)
 			defer log.Debug("stopping importer's output worker #", id)
-			defer owg.Done()
 
 			var err error
 			var open bool
@@ -201,32 +179,30 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 
 			for {
 				select {
-				case <-ctx.Done():
-					return
-
 				case input, open = <-storeCh:
 					if !open {
-						return
+						return nil
 					}
 
 					// store block,
 					// which has been potentially sliced to fit the storage's block size
 					err = dst.SetBlock(input.Index, input.Block)
 					if err != nil {
-						sendErr(err)
-						return
+						return err
 					}
+
+				case <-ctx.Done():
+					return nil
 				}
 			}
-		}(int64(i))
+		})
 	}
 
 	// launch glue goroutine
-	go func() {
+	group.Go(func() (err error) {
 		log.Debug("starting importer's glue (fetch) goroutine")
 		defer close(storeCh)
 
-		var err error
 		defer func() {
 			if err != nil {
 				log.Errorf("stopping importer's glue (fetch) goroutine with error: %v", err)
@@ -247,32 +223,28 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 			// ensure that at the end of this function,
 			// the block fetcher is empty
 			_, err = obf.FetchBlock()
-			if err == nil || errors.Cause(err) != io.EOF {
-				err = errors.New("output's block fetcher still has unstored content left")
-				sendErr(err)
-				return
+			if errors.Cause(err) == io.EOF {
+				err = nil
+			} else if err != nil {
+				err = errors.Wrap(err, "output's block fetcher still has unstored content left")
 			}
-			err = nil
 		}()
 
 		var open bool
+		var closedImportWorkers int
 		var output importOutput
 		var pair *blockIndexPair
 
 		for {
 			select {
-			case <-ctx.Done():
-				return
 			case output, open = <-glueCh:
-				if open {
+				if open && output.BlockIndex != -1 {
 					if output.SequenceIndex < sbf.scursor {
 						// NOTE: this should never happen,
 						//       as it indicates a bug in the code
-						err = errors.Newf(
+						panic(errors.Newf(
 							"unexpected sequence index returned, received %d, which is lower then %d",
-							output.SequenceIndex, sbf.scursor)
-						sendErr(err)
-						return
+							output.SequenceIndex, sbf.scursor))
 					}
 
 					// cache the current received output
@@ -285,6 +257,12 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 						// we received an out-of-order index,
 						// so wait for the next one
 						continue
+					}
+				} else if output.BlockIndex == -1 {
+					closedImportWorkers++
+					if closedImportWorkers >= cfg.JobCount {
+						sbf.streamStopped = true
+						open = false
 					}
 				} else {
 					sbf.streamStopped = true
@@ -302,27 +280,29 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 							break // we have nothing more to send (for now)
 						}
 						// unknown error, quit!
-						sendErr(err)
-						return
+						return err
 					}
 
 					// send block for storage
 					select {
-					case <-ctx.Done():
-						return
 					case storeCh <- *pair:
+					case <-ctx.Done():
+						return nil
 					}
 				}
 
 				if !open {
-					return
+					return nil
 				}
+
+			case <-ctx.Done():
+				return nil
 			}
 		}
-	}()
+	})
 
 	// launch fetcher, so it can start fetching hashes
-	go func() {
+	group.Go(func() error {
 		defer close(inputCh)
 
 		log.Debug("starting importer's hash fetcher")
@@ -349,15 +329,13 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 			snapshotSize, err = computeSnapshotImportSize(
 				hf.pairs[hf.length-1], src, header.Metadata.BlockSize, cfg)
 			if err != nil {
-				sendErr(err)
-				return
+				return err
 			}
 			if snapshotSize > cfg.DstVdiskSize {
 				log.Infof("snapshot %s (size %d) is too big for target vdisk (size %d)",
 					cfg.SnapshotID, snapshotSize, cfg.DstVdiskSize)
 				err = ErrSnapshotTooBig
-				sendErr(err)
-				return
+				return err
 			}
 		}
 
@@ -371,7 +349,7 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 		for {
 			select {
 			case <-ctx.Done():
-				return
+				return nil
 
 			default:
 				// fetch the next available block
@@ -379,10 +357,8 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 				if err != nil {
 					if errors.Cause(err) == io.EOF {
 						err = nil
-					} else {
-						sendErr(err)
 					}
-					return
+					return err
 				}
 
 				// attach a sequence to each block-index pair,
@@ -395,21 +371,17 @@ func importBS(ctx context.Context, src StorageDriver, dst storage.BlockStorage, 
 				sequence++
 
 				select {
-				case <-ctx.Done():
-					return
 				case inputCh <- input:
+				case <-ctx.Done():
+					return nil
 				}
 			}
 		}
-	}()
+	})
 
-	// wait until all blocks have been fetched and processed
-	wg.Wait()
-	// close output ch, which will stop the output goroutine as soon as it's done
-	close(glueCh)
-	owg.Wait()
-
+	// wait until all blocks have been fetched, processed and stored
 	// if an error occured, return it
+	importErr := group.Wait()
 	if importErr != nil {
 		return importErr
 	}
