@@ -1,3 +1,5 @@
+> NOTICE: This project has been discontinued in favor of [0-db](https://github.com/rivine/0-db) in combination with our [qemu](https://github.com/gigforks/qemu).
+
 # Zero-OS 0-Disk
 
 [![GoDoc](https://godoc.org/github.com/zero-os/0-Disk?status.svg)](https://godoc.org/github.com/zero-os/0-Disk) [![Build Status](https://travis-ci.org/zero-os/0-Disk.png?branch=master)](https://travis-ci.org/zero-os/0-Disk) [![Sourcegraph](https://sourcegraph.com/github.com/zero-os/0-Disk/-/badge.svg)](https://sourcegraph.com/github.com/zero-os/0-Disk?badge)
